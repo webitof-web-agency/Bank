@@ -1,0 +1,294 @@
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 12px 16px;
+  margin-bottom: 16px;
+  padding: 20px 24px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.form-grid > * {
+  grid-column: span 6; /* Defaults to half width (backward compatible) */
+}
+
+/* Helper span classes for 12-column flexibility */
+.form-grid > .span-1 { grid-column: span 1; }
+.form-grid > .span-2 { grid-column: span 2; }
+.form-grid > .span-3 { grid-column: span 3; }
+.form-grid > .span-4 { grid-column: span 4; }
+.form-grid > .span-5 { grid-column: span 5; }
+.form-grid > .span-6 { grid-column: span 6; }
+.form-grid > .span-7 { grid-column: span 7; }
+.form-grid > .span-8 { grid-column: span 8; }
+.form-grid > .span-9 { grid-column: span 9; }
+.form-grid > .span-10 { grid-column: span 10; }
+.form-grid > .span-11 { grid-column: span 11; }
+.form-grid > .span-12, .form-grid > .full-span { grid-column: span 12; }
+
+/* Subheading section markers within complex forms */
+.form-section-title {
+  grid-column: span 12;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-primary);
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 4px;
+  margin-top: 8px;
+  margin-bottom: 2px;
+}
+
+.stacked-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+}
+
+.stacked-form > h3 {
+  margin: 8px 0 -8px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--color-text);
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 4px;
+}
+
+/* Adaptive Floating Label Container */
+.field {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 42px;
+}
+
+/* Float Label Text Placement */
+.field label {
+  position: absolute;
+  left: 12px;
+  top: 13px;
+  color: var(--color-muted);
+  font-size: 13px;
+  font-weight: 500;
+  pointer-events: none;
+  transition: transform var(--transition-fast), font-size var(--transition-fast), color var(--transition-fast);
+  transform-origin: left top;
+  line-height: 1;
+}
+
+/* Base Input/Select/Textarea Styling inside Floating Fields */
+.field input,
+.field select,
+.field textarea {
+  width: 100%;
+  min-height: 42px;
+  padding: 18px 12px 4px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xs);
+  color: var(--color-text);
+  background: var(--color-surface);
+  outline: none;
+  font-size: 13px;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast), background-color var(--transition-fast);
+}
+
+.field textarea {
+  resize: vertical;
+  min-height: 70px;
+  padding-top: 20px;
+}
+
+/* Float Animation Trigger */
+.field input:focus ~ label,
+.field input:not(:placeholder-shown) ~ label,
+.field input.has-value ~ label,
+.field textarea:focus ~ label,
+.field textarea:not(:placeholder-shown) ~ label,
+.field textarea.has-value ~ label,
+.field select:focus ~ label,
+.field select.has-value ~ label {
+  transform: translateY(-9px) scale(0.78);
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+/* Outlined glow on focus */
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+  border-color: var(--color-primary);
+  background: var(--color-surface);
+  box-shadow: 0 0 0 4px var(--color-primary-soft);
+}
+
+.field input:hover,
+.field select:hover,
+.field textarea:hover {
+  border-color: var(--color-border-hover);
+}
+
+.full-span {
+  grid-column: span 12;
+}
+
+.small-field {
+  min-width: 200px;
+}
+
+/* Checkbox alignment adjustments */
+.checkbox-field {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-top: 14px;
+}
+
+.checkbox-field input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+}
+
+.checkbox-field span {
+  cursor: pointer;
+  user-select: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-muted);
+}
+
+.form-actions {
+  grid-column: span 12;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border);
+}
+
+.search-box {
+  width: min(340px, 36vw);
+  display: grid;
+  gap: 4px;
+}
+
+.list-search {
+  max-width: 420px;
+  display: grid;
+  gap: 6px;
+  margin-bottom: 18px;
+}
+
+.search-box input,
+.list-search input {
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xs);
+  color: var(--color-text);
+  background: var(--color-surface);
+  outline: none;
+  font-size: 13px;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast), background-color var(--transition-fast);
+}
+
+.search-box input:focus,
+.list-search input:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 4px var(--color-primary-soft);
+}
+
+.search-box input:hover,
+.list-search input:hover {
+  border-color: var(--color-border-hover);
+}
+
+.line-items {
+  display: grid;
+  gap: 14px;
+}
+
+#invoiceItems {
+  display: grid;
+  gap: 14px;
+}
+
+.invoice-item-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(160px, 1.1fr) repeat(7, minmax(110px, 1fr)) minmax(170px, 1fr) 40px;
+  gap: 12px;
+  align-items: end;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+  transition: all var(--transition-fast);
+}
+
+.invoice-item-row:hover {
+  border-color: var(--color-border-hover);
+  box-shadow: var(--shadow-md);
+}
+
+.invoice-item-row .checkbox-field {
+  padding-top: 0;
+}
+
+.row-remove {
+  align-self: end;
+}
+
+.invoice-live-totals {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 14px;
+}
+
+.invoice-live-totals div {
+  min-height: 76px;
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.invoice-live-totals span {
+  color: var(--color-muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.invoice-live-totals strong {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.settings-note {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-muted);
+  background: var(--color-surface-alt);
+  font-size: 12px;
+}

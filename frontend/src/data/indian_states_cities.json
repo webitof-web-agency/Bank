@@ -1,0 +1,182 @@
+[
+  {
+    "state": "Andaman and Nicobar Islands",
+    "stateCode": "35",
+    "cities": ["Port Blair"]
+  },
+  {
+    "state": "Andhra Pradesh",
+    "stateCode": "28",
+    "cities": ["Visakhapatnam", "Vijayawada", "Guntur", "Nellore", "Kurnool"]
+  },
+  {
+    "state": "Arunachal Pradesh",
+    "stateCode": "12",
+    "cities": ["Itanagar", "Naharlagun"]
+  },
+  {
+    "state": "Assam",
+    "stateCode": "18",
+    "cities": ["Guwahati", "Silchar", "Dibrugarh", "Jorhat"]
+  },
+  {
+    "state": "Bihar",
+    "stateCode": "10",
+    "cities": ["Patna", "Gaya", "Bhagalpur", "Muzaffarpur"]
+  },
+  {
+    "state": "Chandigarh",
+    "stateCode": "04",
+    "cities": ["Chandigarh"]
+  },
+  {
+    "state": "Chhattisgarh",
+    "stateCode": "22",
+    "cities": ["Raipur", "Bhilai", "Bilaspur", "Korba", "Durg"]
+  },
+  {
+    "state": "Dadra and Nagar Haveli and Daman and Diu",
+    "stateCode": "26",
+    "cities": ["Daman", "Diu", "Silvassa"]
+  },
+  {
+    "state": "Delhi",
+    "stateCode": "07",
+    "cities": ["New Delhi", "North Delhi", "South Delhi"]
+  },
+  {
+    "state": "Goa",
+    "stateCode": "30",
+    "cities": ["Panaji", "Vasco da Gama", "Margao", "Mapusa"]
+  },
+  {
+    "state": "Gujarat",
+    "stateCode": "24",
+    "cities": ["Ahmedabad", "Surat", "Vadodara", "Rajkot", "Bhavnagar"]
+  },
+  {
+    "state": "Haryana",
+    "stateCode": "06",
+    "cities": ["Faridabad", "Gurugram", "Panipat", "Ambala", "Rohtak"]
+  },
+  {
+    "state": "Himachal Pradesh",
+    "stateCode": "02",
+    "cities": ["Shimla", "Dharamshala", "Mandi", "Solan"]
+  },
+  {
+    "state": "Jammu and Kashmir",
+    "stateCode": "01",
+    "cities": ["Srinagar", "Jammu", "Anantnag"]
+  },
+  {
+    "state": "Jharkhand",
+    "stateCode": "20",
+    "cities": ["Ranchi", "Jamshedpur", "Dhanbad", "Bokaro"]
+  },
+  {
+    "state": "Karnataka",
+    "stateCode": "29",
+    "cities": ["Bengaluru", "Mysuru", "Hubballi", "Mangaluru", "Belagavi"]
+  },
+  {
+    "state": "Kerala",
+    "stateCode": "32",
+    "cities": ["Thiruvananthapuram", "Kochi", "Kozhikode", "Thrissur", "Kollam"]
+  },
+  {
+    "state": "Ladakh",
+    "stateCode": "38",
+    "cities": ["Leh", "Kargil"]
+  },
+  {
+    "state": "Lakshadweep",
+    "stateCode": "31",
+    "cities": ["Kavaratti"]
+  },
+  {
+    "state": "Madhya Pradesh",
+    "stateCode": "23",
+    "cities": ["Bhopal", "Indore", "Gwalior", "Jabalpur", "Ujjain"]
+  },
+  {
+    "state": "Maharashtra",
+    "stateCode": "27",
+    "cities": ["Mumbai", "Pune", "Nagpur", "Nashik", "Aurangabad", "Thane"]
+  },
+  {
+    "state": "Manipur",
+    "stateCode": "14",
+    "cities": ["Imphal"]
+  },
+  {
+    "state": "Meghalaya",
+    "stateCode": "17",
+    "cities": ["Shillong", "Tura"]
+  },
+  {
+    "state": "Mizoram",
+    "stateCode": "15",
+    "cities": ["Aizawl"]
+  },
+  {
+    "state": "Nagaland",
+    "stateCode": "13",
+    "cities": ["Dimapur", "Kohima"]
+  },
+  {
+    "state": "Odisha",
+    "stateCode": "21",
+    "cities": ["Bhubaneswar", "Cuttack", "Rourkela", "Brahmapur", "Sambalpur"]
+  },
+  {
+    "state": "Puducherry",
+    "stateCode": "34",
+    "cities": ["Puducherry", "Ozhukarai"]
+  },
+  {
+    "state": "Punjab",
+    "stateCode": "03",
+    "cities": ["Ludhiana", "Amritsar", "Jalandhar", "Patiala", "Bathinda"]
+  },
+  {
+    "state": "Rajasthan",
+    "stateCode": "08",
+    "cities": ["Jaipur", "Jodhpur", "Kota", "Bikaner", "Ajmer", "Udaipur"]
+  },
+  {
+    "state": "Sikkim",
+    "stateCode": "11",
+    "cities": ["Gangtok"]
+  },
+  {
+    "state": "Tamil Nadu",
+    "stateCode": "33",
+    "cities": ["Chennai", "Coimbatore", "Madurai", "Tiruchirappalli", "Salem"]
+  },
+  {
+    "state": "Telangana",
+    "stateCode": "36",
+    "cities": ["Hyderabad", "Warangal", "Nizamabad", "Khammam"]
+  },
+  {
+    "state": "Tripura",
+    "stateCode": "16",
+    "cities": ["Agartala"]
+  },
+  {
+    "state": "Uttar Pradesh",
+    "stateCode": "09",
+    "cities": ["Lucknow", "Kanpur", "Ghaziabad", "Agra", "Varanasi", "Meerut", "Noida"]
+  },
+  {
+    "state": "Uttarakhand",
+    "stateCode": "05",
+    "cities": ["Dehradun", "Haridwar", "Roorkee", "Haldwani"]
+  },
+  {
+    "state": "West Bengal",
+    "stateCode": "19",
+    "cities": ["Kolkata", "Asansol", "Siliguri", "Durgapur", "Howrah"]
+  }
+]

@@ -1,0 +1,158 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;700&display=swap');
+@import "react-phone-input-2/lib/style.css";
+@import "tailwindcss";
+
+@theme {
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-text-main: var(--text-main);
+  --color-text-muted: var(--text-muted);
+  --color-danger: var(--danger);
+  --color-danger-foreground: var(--danger-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+
+  --font-sans: 'Inter', sans-serif;
+  --font-heading: 'Space Grotesk', sans-serif;
+
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
+  --radius-xl: calc(var(--radius) + 6px);
+
+  --animate-spin-slow: spin 3s linear infinite;
+}
+
+:root {
+  color-scheme: light;
+  
+  /* Dynamic Theme Colors - Set via ThemeContext/Settings */
+  --primary: #3b82f6; 
+  --secondary: #8b5cf6; 
+  --accent: #3b82f6;
+  
+  /* Surface & Background */
+  --background: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #f1f5f9;
+  --surface-3: #e2e8f0;
+  
+  /* Text Colors */
+  --text-main: #0f172a;
+  --text: var(--text-main);
+  --text-muted: #475569;
+  
+  /* Borders and Shadows */
+  --border: rgba(15, 23, 42, 0.09);
+  --shadow-custom: 0 24px 70px rgba(15, 23, 42, 0.08);
+
+  /* Typography Setup */
+  --font-heading: 'Outfit', sans-serif;
+}
+
+html, body, #root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background: var(--surface);
+  color: var(--text-main);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--primary) 30%, transparent);
+  color: var(--text-main);
+}
+
+.glass-surface {
+  background: color-mix(in srgb, var(--surface-2) 84%, transparent);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-custom);
+  backdrop-filter: blur(24px);
+}
+
+/* Custom Scrollbar for better UI */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: var(--border);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--text-muted);
+}
+
+/* Custom utilities for dynamic theme hover */
+.hover-text-primary:hover {
+  color: var(--primary) !important;
+}
+
+.employee-phone-input {
+  width: 100%;
+}
+
+.employee-phone-input .form-control {
+  width: 100% !important;
+  height: 48px !important;
+  border-radius: 0.75rem !important;
+  border: 1px solid var(--border) !important;
+  background: var(--surface) !important;
+  color: var(--text-main) !important;
+  font-size: 0.875rem !important;
+  box-shadow: none !important;
+  padding-left: 72px !important;
+}
+
+.employee-phone-input .form-control:focus {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent) !important;
+}
+
+.employee-phone-input .flag-dropdown {
+  border-radius: 0.75rem 0 0 0.75rem !important;
+  border-color: var(--border) !important;
+  background: var(--surface) !important;
+}
+
+.employee-phone-input .selected-flag {
+  border-radius: 0.75rem 0 0 0.75rem !important;
+  background: var(--surface) !important;
+}
+
+.employee-phone-input .country-list {
+  z-index: 50 !important;
+  border-color: var(--border) !important;
+  box-shadow: var(--shadow-custom) !important;
+}

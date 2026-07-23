@@ -1,0 +1,10 @@
+<svg width="96" height="96" viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="webitof-brand" x1="8" y1="8" x2="88" y2="88" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2392F8"/>
+      <stop offset="1" stop-color="#5E1CD5"/>
+    </linearGradient>
+  </defs>
+  <rect width="96" height="96" rx="18" fill="url(#webitof-brand)"/>
+  <path d="M21 30L31.4 68H42.2L48 46.4L53.8 68H64.6L75 30H63.6L58.6 52.8L52.6 30H43.4L37.4 52.8L32.4 30H21Z" fill="white"/>
+</svg>
