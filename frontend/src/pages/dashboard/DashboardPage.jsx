@@ -23,6 +23,7 @@ import { toast } from 'sonner';
 import { api } from '../../api/api';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { Select } from '../../components/ui/Select';
 import { useAuth } from '../../context/AuthContext';
 import { cn } from '../../lib/cn';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart as RechartsPieChart, Pie, Cell } from 'recharts';
@@ -31,6 +32,10 @@ function formatNumber(value) {
   const number = Number(value || 0);
   if (!Number.isFinite(number)) return '0';
   return new Intl.NumberFormat('en-IN').format(number);
+}
+
+function formatCurrency(value) {
+  return `₹ ${formatNumber(value)}`;
 }
 
 function formatDate(value) {
@@ -57,6 +62,7 @@ export function DashboardPage() {
   const { token, user, hasPermission } = useAuth();
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [analyticsPeriod, setAnalyticsPeriod] = useState('thisMonth');
 
   useEffect(() => {
     let mounted = true;
@@ -103,20 +109,96 @@ export function DashboardPage() {
     { label: 'Reports', desc: 'View reports', icon: PieChart, to: '/app/reports', color: 'text-slate-800', bg: 'bg-slate-100' }
   ];
 
-  const analyticsData = [
-    { name: '01 May', income: 6, expense: 4 },
-    { name: '07 May', income: 4.5, expense: 5 },
-    { name: '14 May', income: 7, expense: 4 },
-    { name: '21 May', income: 6, expense: 4.5 },
-    { name: '28 May', income: 8, expense: 5 }
-  ];
+  const analyticsPeriods = {
+    thisMonth: {
+      label: 'This Month',
+      totals: { income: 1245000, expense: 875000, totalFunds: 3560000, incomeChange: 12.5, expenseChange: 8.2 },
+      lineData: [
+        { name: '01 Jul', income: 6.0, expense: 4.0 },
+        { name: '07 Jul', income: 4.5, expense: 5.0 },
+        { name: '14 Jul', income: 7.0, expense: 4.0 },
+        { name: '21 Jul', income: 6.0, expense: 4.5 },
+        { name: '28 Jul', income: 8.0, expense: 5.0 }
+      ],
+      fundPosition: [
+        { name: 'Cash in Hand', value: 845000, color: '#1661F6' },
+        { name: 'Bank Balances', value: 2015000, color: '#10b981' },
+        { name: 'Deposits', value: 560000, color: '#8b5cf6' },
+        { name: 'Advances', value: 140000, color: '#f59e0b' }
+      ]
+    },
+    lastMonth: {
+      label: 'Last Month',
+      totals: { income: 1098000, expense: 821000, totalFunds: 3415000, incomeChange: 7.8, expenseChange: 4.6 },
+      lineData: [
+        { name: '01 Jun', income: 5.2, expense: 4.1 },
+        { name: '07 Jun', income: 4.8, expense: 4.4 },
+        { name: '14 Jun', income: 5.9, expense: 4.2 },
+        { name: '21 Jun', income: 5.4, expense: 4.6 },
+        { name: '28 Jun', income: 6.5, expense: 4.8 }
+      ],
+      fundPosition: [
+        { name: 'Cash in Hand', value: 765000, color: '#1661F6' },
+        { name: 'Bank Balances', value: 1905000, color: '#10b981' },
+        { name: 'Deposits', value: 515000, color: '#8b5cf6' },
+        { name: 'Advances', value: 230000, color: '#f59e0b' }
+      ]
+    },
+    thisYear: {
+      label: 'This Year',
+      totals: { income: 12150000, expense: 8640000, totalFunds: 37560000, incomeChange: 18.4, expenseChange: 11.2 },
+      lineData: [
+        { name: 'Jan', income: 4.5, expense: 3.6 },
+        { name: 'Mar', income: 5.8, expense: 4.2 },
+        { name: 'May', income: 6.9, expense: 4.8 },
+        { name: 'Jul', income: 8.2, expense: 5.3 },
+        { name: 'Sep', income: 7.4, expense: 5.0 }
+      ],
+      fundPosition: [
+        { name: 'Cash in Hand', value: 9800000, color: '#1661F6' },
+        { name: 'Bank Balances', value: 18950000, color: '#10b981' },
+        { name: 'Deposits', value: 5600000, color: '#8b5cf6' },
+        { name: 'Advances', value: 3200000, color: '#f59e0b' }
+      ]
+    },
+    allTime: {
+      label: 'All Time',
+      totals: { income: 28650000, expense: 20540000, totalFunds: 68290000, incomeChange: 22.1, expenseChange: 14.7 },
+      lineData: [
+        { name: 'FY-1', income: 4.9, expense: 3.7 },
+        { name: 'FY-2', income: 5.6, expense: 4.1 },
+        { name: 'FY-3', income: 6.8, expense: 4.9 },
+        { name: 'FY-4', income: 7.5, expense: 5.4 },
+        { name: 'FY-5', income: 8.4, expense: 5.7 }
+      ],
+      fundPosition: [
+        { name: 'Cash in Hand', value: 14500000, color: '#1661F6' },
+        { name: 'Bank Balances', value: 28950000, color: '#10b981' },
+        { name: 'Deposits', value: 14700000, color: '#8b5cf6' },
+        { name: 'Advances', value: 10140000, color: '#f59e0b' }
+      ]
+    }
+  };
 
-  const fundPositionData = [
-    { name: 'Cash in Hand', value: 845000, color: '#1661F6', pct: '23.7%' },
-    { name: 'Bank Balances', value: 2015000, color: '#10b981', pct: '56.6%' },
-    { name: 'Deposits', value: 560000, color: '#8b5cf6', pct: '15.7%' },
-    { name: 'Advances', value: 140000, color: '#f59e0b', pct: '3.9%' }
-  ];
+  const analyticsOptions = useMemo(() => [
+    { value: 'thisMonth', label: 'This Month' },
+    { value: 'lastMonth', label: 'Last Month' },
+    { value: 'thisYear', label: 'This Year' },
+    { value: 'allTime', label: 'All Time' }
+  ], []);
+
+  const selectedAnalytics = useMemo(
+    () => analyticsPeriods[analyticsPeriod] || analyticsPeriods.thisMonth,
+    [analyticsPeriod]
+  );
+
+  const selectedFundPosition = useMemo(() => {
+    const total = selectedAnalytics.fundPosition.reduce((sum, item) => sum + item.value, 0) || 1;
+    return selectedAnalytics.fundPosition.map((item) => ({
+      ...item,
+      pct: `${((item.value / total) * 100).toFixed(1)}%`
+    }));
+  }, [selectedAnalytics]);
 
   return (
     <div className="space-y-6 pb-12">
@@ -250,8 +332,12 @@ export function DashboardPage() {
               </div>
               Overview Analytics
             </h3>
-            <div className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-1.5 text-[13px] font-medium text-slate-700 cursor-pointer hover:bg-slate-50">
-              This Month <ChevronDown size={14} />
+            <div className="w-40">
+              <Select
+                value={analyticsPeriod}
+                onChange={setAnalyticsPeriod}
+                options={analyticsOptions}
+              />
             </div>
           </div>
           
@@ -262,24 +348,24 @@ export function DashboardPage() {
                 <p className="text-[12px] font-semibold text-slate-500">Income vs Expense</p>
                 <div className="mt-3 flex items-end gap-12">
                   <div>
-                    <p className="text-xl font-bold text-slate-900">₹ 12,45,000</p>
+                    <p className="text-xl font-bold text-slate-900">{formatCurrency(selectedAnalytics.totals.income)}</p>
                     <div className="flex items-center gap-2 mt-1">
                       <p className="text-[11px] text-slate-500">Total Income</p>
-                      <span className="text-[11px] font-bold text-emerald-500">↑ 12.5%</span>
+                      <span className="text-[11px] font-bold text-emerald-500">↑ {selectedAnalytics.totals.incomeChange}%</span>
                     </div>
                   </div>
                   <div>
-                    <p className="text-xl font-bold text-slate-900">₹ 8,75,000</p>
+                    <p className="text-xl font-bold text-slate-900">{formatCurrency(selectedAnalytics.totals.expense)}</p>
                     <div className="flex items-center gap-2 mt-1">
                       <p className="text-[11px] text-slate-500">Total Expense</p>
-                      <span className="text-[11px] font-bold text-rose-500">↑ 8.2%</span>
+                      <span className="text-[11px] font-bold text-rose-500">↑ {selectedAnalytics.totals.expenseChange}%</span>
                     </div>
                   </div>
                 </div>
               </div>
               <div className="mt-6 h-[180px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={analyticsData} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
+                  <LineChart data={selectedAnalytics.lineData} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} dy={10} />
                     <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} tickFormatter={(value) => `${value}L`} />
@@ -303,7 +389,7 @@ export function DashboardPage() {
                   <ResponsiveContainer width="100%" height="100%">
                     <RechartsPieChart>
                       <Pie
-                        data={fundPositionData}
+                        data={selectedFundPosition}
                         cx="50%"
                         cy="50%"
                         innerRadius={55}
@@ -312,27 +398,27 @@ export function DashboardPage() {
                         dataKey="value"
                         stroke="none"
                       >
-                        {fundPositionData.map((entry, index) => (
+                        {selectedFundPosition.map((entry, index) => (
                           <Cell key={`cell-${index}`} fill={entry.color} />
                         ))}
                       </Pie>
                     </RechartsPieChart>
                   </ResponsiveContainer>
                   <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                    <p className="text-[16px] font-bold text-slate-900">₹ 35,60,000</p>
+                    <p className="text-[16px] font-bold text-slate-900">{formatCurrency(selectedAnalytics.totals.totalFunds)}</p>
                     <p className="text-[10px] font-medium text-slate-500">Total Funds</p>
                   </div>
                 </div>
                 
                 <div className="flex-1 w-full space-y-4">
-                  {fundPositionData.map(item => (
+                  {selectedFundPosition.map(item => (
                     <div key={item.name} className="flex items-center justify-between text-[12px]">
                       <div className="flex items-center gap-2">
                         <span className="h-2 w-2 rounded-full" style={{ backgroundColor: item.color }}></span>
                         <span className="font-medium text-slate-600">{item.name}</span>
                       </div>
                       <div className="flex items-center gap-4">
-                        <span className="font-bold text-slate-900">₹ {new Intl.NumberFormat('en-IN').format(item.value)}</span>
+                        <span className="font-bold text-slate-900">{formatCurrency(item.value)}</span>
                         <span className="w-8 text-right font-medium text-slate-400">{item.pct}</span>
                       </div>
                     </div>
