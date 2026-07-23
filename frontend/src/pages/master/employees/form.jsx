@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react';
 import { Camera, Trash2, Upload, User, Briefcase, FileText, Lock } from 'lucide-react';
 import PhoneInput from 'react-phone-input-2';
-import { Input, Textarea, Select } from '../../../components/ui/Input';
+import { Input, Textarea } from '../../../components/ui/Input';
+import { Select } from '../../../components/ui/Select';
 import { UserAvatar } from '../../../components/ui/UserAvatar';
 import { DocumentSection } from '../../../components/master/DocumentSection';
 import { EMPLOYEE_DOCUMENT_DEFS } from '../../../components/master/documentUtils';
@@ -51,7 +52,11 @@ export function EmployeeForm({
   ];
 
   return (
-    <form id="employee-form" className="flex flex-col rounded-2xl border border-slate-200 bg-white shadow-sm" onSubmit={onSubmit}>
+    <form
+      id="employee-form"
+      className="flex flex-col rounded-2xl border border-slate-200 bg-white shadow-sm"
+      onSubmit={(event) => event.preventDefault()}
+    >
       
       {/* Top Progress Stepper */}
       <div className="border-b border-slate-200 px-8 pt-6 pb-10 bg-slate-50/50 rounded-t-2xl">
@@ -60,7 +65,7 @@ export function EmployeeForm({
           {/* Progress Lines */}
           <div className="absolute left-5 right-5 top-5 h-1 bg-slate-200 rounded-full">
             <div 
-              className="absolute left-0 top-0 h-full bg-[#3b79f6] rounded-full transition-all duration-500 ease-out" 
+              className="absolute left-0 top-0 h-full bg-[var(--primary)] rounded-full transition-all duration-500 ease-out" 
               style={{ width: `${(tabs.findIndex(t => t.id === activeTab) / (tabs.length - 1)) * 100}%` }} 
             />
           </div>
@@ -78,15 +83,15 @@ export function EmployeeForm({
                   onClick={() => setActiveTab(tab.id)}
                   className={`flex h-10 w-10 items-center justify-center rounded-full border-2 transition-all duration-300 ${
                     isActive 
-                      ? 'border-[#3b79f6] bg-[#3b79f6] text-white shadow-md ring-4 ring-blue-50' 
+                      ? 'border-[var(--primary)] bg-[var(--primary)] text-white shadow-md ring-4 ring-[color-mix(in_srgb,var(--primary)_15%,transparent)]' 
                       : isCompleted
-                        ? 'border-[#3b79f6] bg-white text-[#3b79f6]'
+                        ? 'border-[var(--primary)] bg-white text-[var(--primary)]'
                         : 'border-slate-200 bg-white text-slate-400 hover:border-slate-300'
                   }`}
                 >
                   <Icon size={18} strokeWidth={isActive ? 2.5 : 2} />
                 </button>
-                <span className={`absolute top-12 left-1/2 -translate-x-1/2 whitespace-nowrap text-[12px] font-semibold transition-colors duration-300 ${isActive ? 'text-[#3b79f6]' : isCompleted ? 'text-slate-700' : 'text-slate-400'}`}>
+                <span className={`absolute top-12 left-1/2 -translate-x-1/2 whitespace-nowrap text-[12px] font-semibold transition-colors duration-300 ${isActive ? 'text-[var(--primary)]' : isCompleted ? 'text-slate-700' : 'text-slate-400'}`}>
                   {tab.label}
                 </span>
               </div>
@@ -119,7 +124,7 @@ export function EmployeeForm({
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
                   disabled={avatarBusy}
-                  className="absolute bottom-0 right-0 inline-flex h-[34px] w-[34px] items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-50 hover:text-[#3b79f6] disabled:cursor-not-allowed disabled:opacity-60"
+                  className="absolute bottom-0 right-0 inline-flex h-[34px] w-[34px] items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-50 hover:text-[var(--primary)] disabled:cursor-not-allowed disabled:opacity-60"
                   title="Choose profile image"
                 >
                   <Camera size={15} />
@@ -184,8 +189,8 @@ export function EmployeeForm({
                 value={stripPhoneDigits(value.mobileNo || '')}
                 onChange={(nextValue) => setValue({ ...value, mobileNo: nextValue ? `+${nextValue}` : '' })}
                 containerClass="employee-phone-input"
-                inputClass="!h-[42px] !w-full !rounded-lg !border-slate-200 focus:!border-[#3b79f6] focus:!ring-1 focus:!ring-[#3b79f6]"
-                buttonClass="!border-r !border-slate-200 !rounded-l-lg !bg-slate-50"
+                inputClass="!h-[42px] !w-full !rounded-[var(--radius-input,0.75rem)] !border-slate-200 focus:!border-[var(--primary)] focus:!ring-1 focus:!ring-[var(--primary)]"
+                buttonClass="!border-r !border-slate-200 !rounded-l-[var(--radius-input,0.75rem)] !bg-slate-50"
                 dropdownClass="!z-50"
                 inputProps={{ name: 'mobileNo' }}
               />
@@ -195,16 +200,16 @@ export function EmployeeForm({
               <label className="text-[13px] font-semibold text-slate-700">Gender</label>
               <div className="flex flex-wrap items-center gap-3">
                 {['Male', 'Female', 'Other'].map((g) => (
-                  <label key={g} className={`flex items-center gap-2 cursor-pointer rounded-lg border px-4 py-2 transition-colors ${value.gender === g ? 'border-[#3b79f6] bg-blue-50/50' : 'border-slate-200 bg-white hover:bg-slate-50'}`}>
+                  <label key={g} className={`flex items-center gap-2 cursor-pointer rounded-[var(--radius-input,0.75rem)] border px-4 py-2 transition-colors ${value.gender === g ? 'border-[var(--primary)] bg-[color-mix(in_srgb,var(--primary)_10%,transparent)]' : 'border-slate-200 bg-white hover:bg-slate-50'}`}>
                     <input
                       type="radio"
                       name="gender"
                       value={g}
                       checked={value.gender === g}
                       onChange={(e) => setValue({ ...value, gender: e.target.value })}
-                      className="w-4 h-4 text-[#3b79f6] border-slate-300 focus:ring-[#3b79f6]"
+                      className="w-4 h-4 text-[var(--primary)] accent-[var(--primary)] border-slate-300 focus:ring-[var(--primary)]"
                     />
-                    <span className={`text-[13px] ${value.gender === g ? 'font-semibold text-[#3b79f6]' : 'font-medium text-slate-700'}`}>{g}</span>
+                    <span className={`text-[13px] ${value.gender === g ? 'font-semibold text-[var(--primary)]' : 'font-medium text-slate-700'}`}>{g}</span>
                   </label>
                 ))}
               </div>
@@ -222,12 +227,14 @@ export function EmployeeForm({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-1.5">
               <label className="text-[13px] font-semibold text-slate-700">Branch <span className="text-rose-500">*</span></label>
-              <Select value={value.branchCode || ''} disabled={branchesLoading && branches.length === 0} onChange={(e) => setValue({ ...value, branchCode: e.target.value })}>
-                <option value="" disabled>{branchesLoading ? 'Loading branches...' : 'Select branch'}</option>
-                {branches.map((branch) => (
-                  <option key={branch.id || branch.code} value={branch.code}>{formatBranchLabel(branch)}</option>
-                ))}
-              </Select>
+              <Select 
+                value={value.branchCode || ''} 
+                disabled={branchesLoading && branches.length === 0} 
+                onChange={(val) => setValue({ ...value, branchCode: val })}
+                searchable={true}
+                placeholder={branchesLoading ? 'Loading branches...' : 'Select branch'}
+                options={branches.map(branch => ({ value: branch.code, label: formatBranchLabel(branch) }))}
+              />
             </div>
             
             <div className="space-y-1.5">
@@ -237,20 +244,25 @@ export function EmployeeForm({
 
             <div className="space-y-1.5">
               <label className="text-[13px] font-semibold text-slate-700">System Role <span className="text-rose-500">*</span></label>
-              <Select value={(value.roleIds && value.roleIds[0]) || ''} onChange={(e) => setValue({ ...value, roleIds: e.target.value ? [e.target.value] : [] })}>
-                <option value="" disabled>Select a role</option>
-                {roles.map((r) => (
-                  <option key={r.id} value={r.id}>{r.name}</option>
-                ))}
-              </Select>
+              <Select 
+                value={(value.roleIds && value.roleIds[0]) || ''} 
+                onChange={(val) => setValue({ ...value, roleIds: val ? [val] : [] })}
+                placeholder="Select a role"
+                searchable={true}
+                options={roles.map(r => ({ value: r.id, label: r.name }))}
+              />
             </div>
 
             <div className="space-y-1.5">
               <label className="text-[13px] font-semibold text-slate-700">Account Status</label>
-              <Select value={value.status || 'Active'} onChange={(e) => setValue({ ...value, status: e.target.value, isActive: e.target.value !== 'Inactive' })}>
-                <option value="Active">Active</option>
-                <option value="Inactive">Inactive</option>
-              </Select>
+              <Select 
+                value={value.status || 'Active'} 
+                onChange={(val) => setValue({ ...value, status: val, isActive: val !== 'Inactive' })}
+                options={[
+                  { value: 'Active', label: 'Active' },
+                  { value: 'Inactive', label: 'Inactive' }
+                ]}
+              />
             </div>
 
             <div className="space-y-1.5 md:col-span-2">
@@ -269,6 +281,10 @@ export function EmployeeForm({
             documents={value.documents || {}}
             editable
             onPickFile={(key, file) => {
+              const currentDocument = value.documents?.[key];
+              if (currentDocument?.fileId) {
+                onDocumentRemove?.(key, currentDocument);
+              }
               updateDocument(key, {
                 file,
                 fileName: file.name,
@@ -320,7 +336,7 @@ export function EmployeeForm({
             type="button"
             onClick={onCancel}
             disabled={saving}
-            className="rounded-xl px-5 py-2.5 text-[14px] font-semibold text-slate-600 transition hover:bg-slate-200 disabled:opacity-50"
+            className="rounded-[var(--radius-button,1rem)] border border-slate-300 bg-white px-5 py-2.5 text-[14px] font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-50"
           >
             Cancel
           </button>
@@ -330,7 +346,7 @@ export function EmployeeForm({
             <button
               type="button"
               onClick={() => setActiveTab(tabs[tabs.findIndex(t => t.id === activeTab) - 1].id)}
-              className="rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-[14px] font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+              className="rounded-[var(--radius-button,1rem)] border border-slate-300 bg-white px-5 py-2.5 text-[14px] font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
             >
               Previous
             </button>
@@ -339,17 +355,18 @@ export function EmployeeForm({
             <button
               type="button"
               onClick={() => setActiveTab(tabs[tabs.findIndex(t => t.id === activeTab) + 1].id)}
-              className="rounded-xl bg-[#3b79f6] px-8 py-2.5 text-[14px] font-semibold text-white shadow-sm transition hover:bg-blue-700 hover:shadow"
+              className="rounded-[var(--radius-button,1rem)] bg-[var(--primary)] px-8 py-2.5 text-[14px] font-semibold text-white shadow-sm transition hover:opacity-90 hover:shadow"
             >
               Next Step
             </button>
           ) : (
             <button
-              type="submit"
+              type="button"
+              onClick={onSubmit}
               disabled={saving}
-              className="rounded-xl bg-[#3b79f6] px-8 py-2.5 text-[14px] font-semibold text-white shadow-sm transition hover:bg-blue-700 hover:shadow disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-[var(--radius-button,1rem)] bg-[var(--primary)] px-8 py-2.5 text-[14px] font-semibold text-white shadow-sm transition hover:opacity-90 hover:shadow disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {saving ? 'Saving...' : (isEdit ? 'Save Changes' : 'Create Employee')}
+              {saving ? 'Saving...' : (isEdit ? 'Update Employee' : 'Create Employee')}
             </button>
           )}
         </div>

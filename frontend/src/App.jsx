@@ -56,6 +56,7 @@ import { ReportViewerPage } from './pages/reports/ReportViewerPage';
 import { ProfilePage } from './pages/profile/ProfilePage';
 import { NotificationsPage } from './pages/notifications';
 import { NotificationDetailPage } from './pages/notifications/detail';
+import { CalendarPage } from './pages/calendar';
 import { NotFoundPage } from './pages/system/NotFoundPage';
 import { AccessDeniedPage } from './pages/system/AccessDeniedPage';
 
@@ -172,6 +173,7 @@ function AppRoutes() {
         <Route path="profile" element={<ProfilePage />} />
         <Route path="notifications" element={<NotificationsPage />} />
         <Route path="notifications/:id" element={<NotificationDetailPage />} />
+        <Route path="calendar" element={<CalendarPage />} />
         <Route path="master" element={<Navigate to="/app/master/overview" replace />} />
         <Route path="master/overview" element={<MasterHomePage />} />
         <Route path="transactions" element={<Navigate to="/app/transactions/overview" replace />} />

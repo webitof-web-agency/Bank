@@ -177,7 +177,6 @@ export function BankAccountsPage() {
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Manage Bank Accounts</h1>
-          <p className="mt-1 text-sm text-slate-500">Maintain operating accounts, map ledgers, and control balances from a dedicated master screen.</p>
         </div>
         {canManage ? (
           <Button onClick={openCreate} className="gap-2">
@@ -229,13 +228,12 @@ export function BankAccountsPage() {
       <Modal
         open={editorOpen}
         title={activeRecord ? 'Edit Bank Account' : 'Add Bank Account'}
-        subtitle="Maintain bank account profile, current balance, and ledger linkage."
         onClose={closeEditor}
         width="min(1080px, 96vw)"
         footer={
           <div className="flex justify-end gap-3 w-full">
             <Button variant="secondary" type="button" onClick={closeEditor}>Cancel</Button>
-            <Button type="submit" form="bank-account-form" disabled={saving || lookupsLoading} className="bg-[#3b79f6] hover:bg-blue-700 text-white shadow-sm rounded-lg px-6">
+            <Button type="submit" form="bank-account-form" disabled={saving || lookupsLoading} className="bg-[var(--primary,#1661F6)] hover:bg-[color-mix(in_srgb,var(--primary)_90%,black)] text-white shadow-sm rounded-[var(--radius-input,0.75rem)] px-6 border-none">
               {saving ? 'Saving...' : (activeRecord ? 'Save Changes' : 'Create Bank Account')}
             </Button>
           </div>

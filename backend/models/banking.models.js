@@ -83,6 +83,7 @@ const memberSchema = new Schema(
     nomineeRelation: { type: String, default: '' },
     photoUrl: { type: String, default: '' },
     photoFileId: { type: Schema.Types.ObjectId, ref: 'FileAsset', default: null },
+    documentsFolderId: { type: Schema.Types.ObjectId, ref: 'FileFolder', default: null },
     documents: { type: Schema.Types.Mixed, default: {} },
     status: { type: String, default: 'Active' },
     createdByUserId: { type: Schema.Types.ObjectId, ref: 'User', default: null },

@@ -27,7 +27,11 @@ const {
   Voucher
 } = require('../models/banking.models');
 const User = require('../models/user.model');
-const { deleteFileById } = require('./file.service');
+const {
+  deleteFileById,
+  deleteFolder,
+  ensureEntityFolder
+} = require('./file.service');
 const { createNotification } = require('./notification.service');
 const { toResponse } = require('../utils/mongoose');
 
@@ -440,6 +444,7 @@ function normalizeEmployeeUser(data = {}) {
     isActive,
     avatarUrl: cleanText(data.avatarUrl),
     avatarFileId: data.avatarFileId || null,
+    documentsFolderId: data.documentsFolderId || null,
     documents: toMixed(data.documents, {}),
     roles: Array.isArray(data.roles) ? data.roles.filter(Boolean) : [],
     payload: toMixed(data.payload, {})
@@ -451,6 +456,7 @@ function sanitizeEmployeeUserResponse(doc) {
   if (!response) return null;
   response.phone = normalizePhone(response.phone || response.mobileNo || '');
   response.mobileNo = normalizePhone(response.mobileNo || response.phone || '');
+  response.documentsFolderId = response.documentsFolderId ? String(response.documentsFolderId) : null;
   delete response.passwordHash;
   delete response.passwordReset;
   return response;
@@ -461,7 +467,33 @@ function sanitizeMemberResponse(doc) {
   if (!response) return null;
   response.mobileNo = normalizePhone(response.mobileNo || '');
   response.photoFileId = response.photoFileId ? String(response.photoFileId) : null;
+  response.documentsFolderId = response.documentsFolderId ? String(response.documentsFolderId) : null;
   return response;
+}
+
+async function syncRecordDocumentsFolder(resource, record, createdBy = null) {
+  if (!record?._id || !['employees', 'members'].includes(resource)) return null;
+
+  const moduleName = resource;
+  const entityName = resource === 'employees'
+    ? record.fullName || record.name || record.username || record.code || 'Employee'
+    : record.name || record.code || 'Member';
+
+  const folder = await ensureEntityFolder({
+    moduleName,
+    entityId: String(record._id),
+    entityName,
+    entityCode: record.code || '',
+    createdBy
+  });
+
+  const folderId = folder?.id ? String(folder.id) : null;
+  if (folderId && String(record.documentsFolderId || '') !== folderId) {
+    record.documentsFolderId = folderId;
+    await record.save();
+  }
+
+  return folderId;
 }
 
 const TRANSACTION_CATALOG = [
@@ -814,6 +846,7 @@ const RESOURCE_DEFS = {
         nomineeRelation: cleanText(data.nomineeRelation),
         photoUrl: cleanText(data.photoUrl),
         photoFileId: data.photoFileId || null,
+        documentsFolderId: data.documentsFolderId || null,
         documents: toMixed(data.documents, {}),
         status: cleanText(data.status, 'Active'),
         payload: toMixed(data.payload, {})
@@ -1067,6 +1100,7 @@ async function createResource(resource, data = {}, meta = {}) {
       payload.updatedByUserId = meta.actorUserId;
     }
     const record = await User.create(payload);
+    await syncRecordDocumentsFolder(resource, record, meta.actorUserId || null);
     const response = sanitizeEmployeeUserResponse(record);
     await notifySafely(buildResourceNotificationPayload(resource, 'created', response, meta));
     return response;
@@ -1084,6 +1118,7 @@ async function createResource(resource, data = {}, meta = {}) {
       payload.updatedByUserId = meta.actorUserId;
     }
     const record = await def.model.create(payload);
+    await syncRecordDocumentsFolder(resource, record, meta.actorUserId || null);
     const response = resource === 'members' ? sanitizeMemberResponse(record) : toResponse(record);
     await notifySafely(buildResourceNotificationPayload(resource, 'created', response, meta));
     return response;
@@ -1127,6 +1162,7 @@ async function updateResource(resource, id, data = {}, meta = {}) {
     }
     current.set(payload);
     await current.save();
+    await syncRecordDocumentsFolder(resource, current, meta.actorUserId || null);
     const response = sanitizeEmployeeUserResponse(current);
     await notifySafely(buildResourceNotificationPayload(resource, 'updated', response, meta));
     return response;
@@ -1148,6 +1184,7 @@ async function updateResource(resource, id, data = {}, meta = {}) {
     if (previousPhotoFileId && previousPhotoFileId !== nextPhotoFileId) {
       await deleteFileById(previousPhotoFileId).catch(() => {});
     }
+    await syncRecordDocumentsFolder(resource, current, meta.actorUserId || null);
     const response = sanitizeMemberResponse(current);
     await notifySafely(buildResourceNotificationPayload(resource, 'updated', response, meta));
     return response;
@@ -1182,6 +1219,13 @@ async function deleteResource(resource, id) {
   if (resource === 'employees') {
     const record = await User.findOneAndDelete({ _id: id, code: { $ne: '' } }).lean();
     if (record) {
+      await deleteDocumentFiles(record.documents || {});
+      if (record.avatarFileId) {
+        await deleteFileById(record.avatarFileId).catch(() => {});
+      }
+      if (record.documentsFolderId) {
+        await deleteFolder(record.documentsFolderId).catch(() => {});
+      }
       await notifySafely(buildResourceNotificationPayload(resource, 'deleted', toResponse(record), {}));
     }
     return Boolean(record);
@@ -1193,8 +1237,14 @@ async function deleteResource(resource, id) {
   }
 
   const record = await def.model.findByIdAndDelete(id).lean();
-  if (record && resource === 'members' && record.photoFileId) {
-    await deleteFileById(record.photoFileId).catch(() => {});
+  if (record && resource === 'members') {
+    await deleteDocumentFiles(record.documents || {});
+    if (record.photoFileId) {
+      await deleteFileById(record.photoFileId).catch(() => {});
+    }
+    if (record.documentsFolderId) {
+      await deleteFolder(record.documentsFolderId).catch(() => {});
+    }
   }
   if (record) {
     await notifySafely(buildResourceNotificationPayload(resource, 'deleted', toResponse(record), {}));

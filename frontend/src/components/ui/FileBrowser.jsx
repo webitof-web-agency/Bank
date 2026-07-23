@@ -188,7 +188,7 @@ export function FileBrowser({
             <button
               type="button"
               onClick={() => setNewFolderOpen(true)}
-              className="inline-flex h-9 items-center gap-2 rounded-full border border-slate-200 bg-white px-3 text-sm font-medium text-slate-600 transition hover:border-[color-mix(in_srgb,var(--primary)_20%,white)] hover:text-slate-900"
+              className="inline-flex h-9 items-center gap-2 rounded-[var(--radius-button,9999px)] border border-slate-200 bg-white px-3 text-sm font-medium text-slate-600 transition hover:border-[color-mix(in_srgb,var(--primary)_20%,white)] hover:text-slate-900"
             >
               <FolderPlus size={16} />
             </button>
@@ -239,7 +239,7 @@ export function FileBrowser({
                 <button
                   type="button"
                   onClick={() => setNewFolderOpen(true)}
-                  className="inline-flex h-9 items-center gap-2 rounded-full border border-slate-200 bg-white px-3 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
+                  className="inline-flex h-9 items-center gap-2 rounded-[var(--radius-button,9999px)] border border-slate-200 bg-white px-3 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
                 >
                   <FolderPlus size={16} />
                   Folder
@@ -248,7 +248,7 @@ export function FileBrowser({
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="inline-flex h-9 items-center gap-2 rounded-full bg-[var(--primary)] px-4 text-sm font-semibold text-white transition hover:opacity-90"
+                  className="inline-flex h-9 items-center gap-2 rounded-[var(--radius-button,9999px)] bg-[var(--primary)] px-4 text-sm font-semibold text-white transition hover:opacity-90"
                 >
                   <Upload size={16} />
                   Upload
@@ -261,18 +261,18 @@ export function FileBrowser({
               <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search files..." className="pl-9" />
             </div>
 
-            <div className="inline-flex rounded-full border border-slate-200 bg-white p-1">
+            <div className="inline-flex rounded-[var(--radius-button,9999px)] border border-slate-200 bg-white p-1">
               <button
                 type="button"
                 onClick={() => setViewMode('grid')}
-                className={cn('rounded-full p-2 transition', viewMode === 'grid' ? 'bg-slate-100 text-slate-900' : 'text-slate-400')}
+                className={cn('rounded-[var(--radius-button,9999px)] p-2 transition', viewMode === 'grid' ? 'bg-slate-100 text-slate-900' : 'text-slate-400')}
               >
                 <Grid2x2 size={16} />
               </button>
               <button
                 type="button"
                 onClick={() => setViewMode('list')}
-                className={cn('rounded-full p-2 transition', viewMode === 'list' ? 'bg-slate-100 text-slate-900' : 'text-slate-400')}
+                className={cn('rounded-[var(--radius-button,9999px)] p-2 transition', viewMode === 'list' ? 'bg-slate-100 text-slate-900' : 'text-slate-400')}
               >
                 <List size={16} />
               </button>
@@ -474,10 +474,10 @@ export function FileBrowser({
         <form onSubmit={submitFolder} className="space-y-4">
           <Input value={newFolderName} onChange={(e) => setNewFolderName(e.target.value)} placeholder="Folder name" autoFocus />
           <div className="flex justify-end gap-3">
-            <button type="button" onClick={() => setNewFolderOpen(false)} className="rounded-full px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100">
+            <button type="button" onClick={() => setNewFolderOpen(false)} className="rounded-[var(--radius-button,9999px)] px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100">
               Cancel
             </button>
-            <button type="submit" className="rounded-full bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white hover:opacity-90">
+            <button type="submit" className="rounded-[var(--radius-button,9999px)] bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white hover:opacity-90">
               Create
             </button>
           </div>
@@ -488,10 +488,10 @@ export function FileBrowser({
         <form onSubmit={submitRename} className="space-y-4">
           <Input value={renameValue} onChange={(e) => setRenameValue(e.target.value)} placeholder="New name" autoFocus />
           <div className="flex justify-end gap-3">
-            <button type="button" onClick={() => setEditingFolder(null)} className="rounded-full px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100">
+            <button type="button" onClick={() => setEditingFolder(null)} className="rounded-[var(--radius-button,9999px)] px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100">
               Cancel
             </button>
-            <button type="submit" className="rounded-full bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white hover:opacity-90">
+            <button type="submit" className="rounded-[var(--radius-button,9999px)] bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white hover:opacity-90">
               Save
             </button>
           </div>
@@ -504,10 +504,10 @@ export function FileBrowser({
             Delete <strong>{deleteTarget?.originalName || deleteTarget?.name}</strong>? {deleteTarget?.originalName ? 'This will permanently remove the file.' : 'This only works when the folder is empty.'}
           </p>
           <div className="flex justify-end gap-3">
-            <button type="button" onClick={() => setDeleteTarget(null)} className="rounded-full px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100">
+            <button type="button" onClick={() => setDeleteTarget(null)} className="rounded-[var(--radius-button,9999px)] px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100">
               Cancel
             </button>
-            <button type="button" onClick={confirmDelete} className="rounded-full bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:opacity-90">
+            <button type="button" onClick={confirmDelete} className="rounded-[var(--radius-button,9999px)] bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:opacity-90">
               Delete
             </button>
           </div>

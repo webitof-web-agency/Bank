@@ -1,5 +1,5 @@
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
-const CACHE_PREFIX = 'bank-api-cache:v1';
+const CACHE_PREFIX = 'bank-api-cache:v2';
 const CACHE_TTL_MS = 15 * 60 * 1000;
 const memoryCache = new Map();
 
@@ -94,6 +94,7 @@ export async function request(path, { method = 'GET', body, token, headers = {},
 
   const init = {
     method,
+    cache: skipCache ? 'no-store' : 'default',
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...headers
@@ -158,6 +159,7 @@ export const api = {
     list: (token, query = {}) => request(`/notifications${buildQuery(query)}`, { token, skipCache: true }),
     get: (token, id) => request(`/notifications/${id}`, { token, skipCache: true }),
     unreadCount: (token) => request('/notifications/unread-count', { token, skipCache: true }),
+    create: (token, payload) => request('/notifications', { method: 'POST', token, body: payload }),
     markRead: (token, id) => request(`/notifications/${id}/read`, { method: 'PATCH', token }),
     markAllRead: (token) => request('/notifications/read-all', { method: 'PATCH', token }),
     remove: (token, id) => request(`/notifications/${id}`, { method: 'DELETE', token }),

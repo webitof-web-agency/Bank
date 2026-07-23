@@ -118,14 +118,8 @@ export function EmployeesPage() {
   }
 
   function openEdit(user) {
-
-    if (avatarPreview && String(avatarPreview).startsWith('blob:')) {
-      URL.revokeObjectURL(avatarPreview);
-    }
-
-    setAvatarFile(uploadFile);
-    setAvatarCleared(false);
-    setAvatarPreview(URL.createObjectURL(uploadFile));
+    if (!user?.id) return;
+    navigate(`/app/master/employees/${user.id}/edit`);
   }
 
   function handleAvatarClear() {
@@ -147,14 +141,28 @@ export function EmployeesPage() {
     event.preventDefault();
     setSaving(true);
     try {
+      const basePayload = {
+        ...buildEmployeePayload(draft)
+      };
+      delete basePayload.documents;
+
+      let response;
+      const baseResponse = activeRecord
+        ? await api.users.update(token, activeRecord.id, basePayload)
+        : await api.users.create(token, basePayload);
+      const savedRecord = baseResponse.data || {};
+      const entityId = savedRecord.id || activeRecord?.id;
+      const folderId = savedRecord.documentsFolderId || null;
+
       let avatarPayload = {};
       if (avatarFile) {
         const uploadData = new FormData();
         uploadData.append('file', avatarFile);
         uploadData.append('moduleName', 'users');
-        if (activeRecord?.id) uploadData.append('entityId', activeRecord.id);
-        const response = await api.files.upload(token, uploadData);
-        const uploaded = response.data?.[0] || response.data;
+        if (entityId) uploadData.append('entityId', entityId);
+        if (folderId) uploadData.append('folderId', folderId);
+        const uploadResponse = await api.files.upload(token, uploadData);
+        const uploaded = uploadResponse.data?.[0] || uploadResponse.data;
         if (!uploaded) {
           throw new Error('Avatar upload failed');
         }
@@ -169,34 +177,23 @@ export function EmployeesPage() {
         };
       }
 
-      const basePayload = {
-        ...buildEmployeePayload(draft),
-        ...avatarPayload
-      };
+      const documents = await uploadDocumentMap(token, draft.documents || {}, {
+        moduleName: 'employees',
+        entityId,
+        folderId
+      });
 
-      let response;
-      if (activeRecord) {
-        const documents = await uploadDocumentMap(token, draft.documents || {}, {
-          moduleName: 'employees',
-          entityId: activeRecord.id
-        });
-        response = await api.users.update(token, activeRecord.id, {
-          ...basePayload,
-          documents
-        });
+      const finalPayload = {};
+      if (Object.keys(avatarPayload).length > 0) {
+        Object.assign(finalPayload, avatarPayload);
+      }
+      if (Object.keys(documents).length > 0) {
+        finalPayload.documents = documents;
+      }
+      if (Object.keys(finalPayload).length > 0) {
+        response = await api.users.update(token, entityId, finalPayload);
       } else {
-        const created = await api.users.create(token, {
-          ...basePayload,
-          documents: {}
-        });
-        const documents = await uploadDocumentMap(token, draft.documents || {}, {
-          moduleName: 'employees',
-          entityId: created.data.id
-        });
-        response = await api.users.update(token, created.data.id, {
-          ...basePayload,
-          documents
-        });
+        response = baseResponse;
       }
 
       if (removedDocumentIds.length) {
@@ -320,7 +317,6 @@ export function EmployeesPage() {
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Manage Employees</h1>
-          <p className="mt-1 text-sm text-slate-500">Create employees, assign RBAC roles, and reset access without leaving the banking shell.</p>
         </div>
         {canManage ? (
           <Button onClick={openCreate} className="gap-2">

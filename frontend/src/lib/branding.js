@@ -6,9 +6,14 @@ export const DEFAULT_BRANDING = {
   logoUrl: '',
   logoText: 'Bank',
   tagline: 'Employee portal',
-  primaryColor: '#3b82f6',
-  accentColor: '#1d4ed8',
-  sidebarBg: '#090d16'
+  primaryColor: '#1661F6',
+  accentColor: '#1661F6',
+  sidebarBg: '#090d16',
+  borderRadius: {
+    card: '1.75rem',
+    button: '1rem',
+    input: '0.75rem'
+  }
 };
 
 function isHexColor(value) {
@@ -30,7 +35,12 @@ export function extractBranding(settings = {}) {
     sidebarBg: String(branding.sidebarBg || DEFAULT_BRANDING.sidebarBg).trim() || DEFAULT_BRANDING.sidebarBg,
     faviconUrl: String(branding.faviconUrl || '').trim(),
     sidebarExpandedUrl: String(branding.sidebarExpandedUrl || '').trim(),
-    sidebarCollapsedUrl: String(branding.sidebarCollapsedUrl || '').trim()
+    sidebarCollapsedUrl: String(branding.sidebarCollapsedUrl || '').trim(),
+    borderRadius: {
+      card: branding.borderRadius?.card || DEFAULT_BRANDING.borderRadius.card,
+      button: branding.borderRadius?.button || DEFAULT_BRANDING.borderRadius.button,
+      input: branding.borderRadius?.input || DEFAULT_BRANDING.borderRadius.input
+    }
   };
 }
 
@@ -41,6 +51,7 @@ export function applyBranding(branding = DEFAULT_BRANDING) {
   const primary = branding.primaryColor || DEFAULT_BRANDING.primaryColor;
   const accent = branding.accentColor || DEFAULT_BRANDING.accentColor;
   const sidebarBg = branding.sidebarBg || DEFAULT_BRANDING.sidebarBg;
+  const radiuses = branding.borderRadius || DEFAULT_BRANDING.borderRadius;
 
   root.style.setProperty('--primary', primary);
   root.style.setProperty('--secondary', accent);
@@ -52,6 +63,10 @@ export function applyBranding(branding = DEFAULT_BRANDING) {
   root.style.setProperty('--brand-sidebar-text', '#f8fafc');
   root.style.setProperty('--brand-sidebar-muted', '#94a3b8');
   root.style.setProperty('--brand-sidebar-border', 'rgba(255, 255, 255, 0.08)');
+  
+  root.style.setProperty('--radius-card', radiuses.card);
+  root.style.setProperty('--radius-button', radiuses.button);
+  root.style.setProperty('--radius-input', radiuses.input);
 
   if (branding.faviconUrl) {
     let link = document.querySelector("link[rel~='icon']");

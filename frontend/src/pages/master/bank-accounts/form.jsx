@@ -1,4 +1,5 @@
-import { Input, Select } from '../../../components/ui/Input';
+import { Input } from '../../../components/ui/Input';
+import { Select } from '../../../components/ui/Select';
 import { BANK_ACCOUNT_STATUS_OPTIONS, BANK_ACCOUNT_TYPE_OPTIONS, getLedgerLabel } from './bankAccountUtils';
 
 function FieldLabel({ children, required }) {
@@ -71,13 +72,11 @@ export function BankAccountForm({ value, setValue, onSubmit, ledgers = [] }) {
         <div>
           <FieldLabel>Account Type</FieldLabel>
           <Select
-            value={value.accountType || 'Current'}
-            onChange={(event) => setValue((current) => ({ ...current, accountType: event.target.value }))}
-          >
-            {BANK_ACCOUNT_TYPE_OPTIONS.map((option) => (
-              <option key={option} value={option}>{option}</option>
-            ))}
-          </Select>
+            searchable
+            value={value.accountType || 'Savings'}
+            onChange={(val) => setValue((current) => ({ ...current, accountType: val }))}
+            options={BANK_ACCOUNT_TYPE_OPTIONS.map((opt) => ({ label: opt, value: opt }))}
+          />
         </div>
 
         <div>
@@ -114,28 +113,22 @@ export function BankAccountForm({ value, setValue, onSubmit, ledgers = [] }) {
         <div>
           <FieldLabel>Linked Ledger</FieldLabel>
           <Select
+            searchable
             value={value.linkedLedgerCode || ''}
-            onChange={(event) => setValue((current) => ({ ...current, linkedLedgerCode: event.target.value }))}
-          >
-            <option value="">Select ledger</option>
-            {ledgers.map((ledger) => (
-              <option key={ledger.id || ledger.code} value={ledger.code}>
-                {getLedgerLabel(ledger)}
-              </option>
-            ))}
-          </Select>
+            onChange={(val) => setValue((current) => ({ ...current, linkedLedgerCode: val }))}
+            options={ledgers.map((ledger) => ({ label: getLedgerLabel(ledger), value: ledger.code }))}
+            searchable
+            placeholder="Select ledger..."
+          />
         </div>
 
         <div>
           <FieldLabel>Status</FieldLabel>
           <Select
             value={value.status || 'Active'}
-            onChange={(event) => setValue((current) => ({ ...current, status: event.target.value }))}
-          >
-            {BANK_ACCOUNT_STATUS_OPTIONS.map((option) => (
-              <option key={option} value={option}>{option}</option>
-            ))}
-          </Select>
+            onChange={(val) => setValue((current) => ({ ...current, status: val }))}
+            options={BANK_ACCOUNT_STATUS_OPTIONS.map((opt) => ({ label: opt, value: opt }))}
+          />
         </div>
       </div>
 
@@ -145,7 +138,8 @@ export function BankAccountForm({ value, setValue, onSubmit, ledgers = [] }) {
             type="checkbox"
             checked={Boolean(value.isPrimary)}
             onChange={(event) => setValue((current) => ({ ...current, isPrimary: event.target.checked }))}
-            className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-600"
+            className="h-4 w-4 rounded border-slate-300 focus:ring-2 focus:ring-[color-mix(in_srgb,var(--primary)_20%,transparent)]"
+            style={{ accentColor: 'var(--primary, #1661F6)' }}
           />
           Primary Account
         </label>
@@ -159,4 +153,3 @@ export function BankAccountForm({ value, setValue, onSubmit, ledgers = [] }) {
 }
 
 export default BankAccountForm;
-

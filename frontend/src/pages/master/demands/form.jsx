@@ -1,4 +1,5 @@
-import { Input, Select, Textarea } from '../../../components/ui/Input';
+import { Input, Textarea } from '../../../components/ui/Input';
+import { Select } from '../../../components/ui/Select';
 import { DEMAND_STATUS_OPTIONS, getBranchLabel, getMemberLabel } from './demandUtils';
 
 function FieldLabel({ children, required }) {
@@ -35,31 +36,33 @@ export function DemandForm({ value, setValue, onSubmit, branches = [], members =
         <div>
           <FieldLabel>Branch</FieldLabel>
           <Select
+            searchable
             value={value.branchCode || ''}
-            onChange={(event) => setValue((current) => ({ ...current, branchCode: event.target.value }))}
-          >
-            <option value="">Select branch</option>
-            {branches.map((branch) => (
-              <option key={branch.id || branch.code} value={branch.code}>
-                {getBranchLabel(branch)}
-              </option>
-            ))}
-          </Select>
+            onChange={(val) => setValue((current) => ({ ...current, branchCode: val }))}
+            options={[
+              { value: '', label: 'Select branch' },
+              ...branches.map((branch) => ({
+                value: branch.code,
+                label: getBranchLabel(branch)
+              }))
+            ]}
+          />
         </div>
 
         <div>
           <FieldLabel>Member</FieldLabel>
           <Select
+            searchable
             value={value.memberCode || ''}
-            onChange={(event) => setValue((current) => ({ ...current, memberCode: event.target.value }))}
-          >
-            <option value="">Select member</option>
-            {members.map((member) => (
-              <option key={member.id || member.code} value={member.code}>
-                {getMemberLabel(member)}
-              </option>
-            ))}
-          </Select>
+            onChange={(val) => setValue((current) => ({ ...current, memberCode: val }))}
+            options={[
+              { value: '', label: 'Select member' },
+              ...members.map((member) => ({
+                value: member.code,
+                label: getMemberLabel(member)
+              }))
+            ]}
+          />
         </div>
 
         <div>
@@ -75,12 +78,12 @@ export function DemandForm({ value, setValue, onSubmit, branches = [], members =
           <FieldLabel>Status</FieldLabel>
           <Select
             value={value.status || 'Pending'}
-            onChange={(event) => setValue((current) => ({ ...current, status: event.target.value }))}
-          >
-            {DEMAND_STATUS_OPTIONS.map((option) => (
-              <option key={option} value={option}>{option}</option>
-            ))}
-          </Select>
+            onChange={(val) => setValue((current) => ({ ...current, status: val }))}
+            options={DEMAND_STATUS_OPTIONS.map((option) => ({
+              value: option,
+              label: option
+            }))}
+          />
         </div>
 
         <div>

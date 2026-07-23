@@ -1,4 +1,4 @@
-import { ArrowLeftRight, Bell, FolderOpen, LayoutDashboard, LayoutGrid, Settings, ShieldCheck } from 'lucide-react';
+import { ArrowLeftRight, Bell, Calendar, FolderOpen, LayoutDashboard, LayoutGrid, Settings, ShieldCheck } from 'lucide-react';
 import { MASTER_LINKS } from '../pages/master/masterLinks';
 import { REPORT_NAV_LINKS } from '../pages/reports/reportLinks';
 import { TRANSACTION_LINKS } from '../pages/transactions/transactionLinks';
@@ -9,6 +9,7 @@ export const navigationGroups = [
     title: 'Workspace',
     items: [
       { label: 'Dashboard', path: '/app/dashboard', icon: LayoutDashboard, permission: 'dashboard.view' },
+      { label: 'Calendar', path: '/app/calendar', icon: Calendar },
       { label: 'Files', path: '/app/files', icon: FolderOpen, permission: 'files.read' },
       { label: 'Notifications', path: '/app/notifications', icon: Bell }
     ]

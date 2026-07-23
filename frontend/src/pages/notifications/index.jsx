@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
@@ -6,6 +6,7 @@ import {
   CheckCheck,
   CheckCircle2,
   ChevronDown,
+  ChevronRight,
   FileText,
   Filter,
   Folder,
@@ -15,15 +16,19 @@ import {
   Settings2,
   ShieldAlert,
   Trash2,
-  UserRound
+  UserRound,
+  Plus
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../api/api';
 import { useAuth } from '../../context/AuthContext';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { Select } from '../../components/ui/Select';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { Table } from '../../components/ui/Table';
+import { CreateNotificationModal } from './CreateNotificationModal';
+import { FilterSettingsModal } from './FilterSettingsModal';
 import {
   formatNotificationTime,
   getNotificationAccentTone,
@@ -145,6 +150,10 @@ export function NotificationsPage() {
   const [severityFilter, setSeverityFilter] = useState('');
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [expandedModules, setExpandedModules] = useState({});
+  const inboxRef = useRef(null);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
 
   const loadNotifications = useCallback(async () => {
     if (!token) return;
@@ -239,22 +248,40 @@ export function NotificationsPage() {
 
   const modulePills = useMemo(() => {
     const base = [
-      { key: '', label: 'All', value: meta.total },
-      { key: 'master', label: 'Master', value: summary.moduleCounts.master || 0 },
-      { key: 'banking', label: 'Banking', value: summary.moduleCounts.banking || 0 },
-      { key: 'transaction', label: 'Transaction', value: summary.moduleCounts.transaction || 0 },
-      { key: 'settings', label: 'Settings', value: summary.moduleCounts.settings || 0 },
-      { key: 'reports', label: 'Reports', value: summary.moduleCounts.reports || 0 },
-      { key: 'auth', label: 'Auth', value: summary.moduleCounts.auth || 0 },
-      { key: 'files', label: 'Files', value: summary.moduleCounts.files || 0 }
+      { key: '', label: 'All', value: meta.total, icon: BellRing, bg: 'bg-blue-50', color: 'text-blue-600' },
+      { key: 'master', label: 'Master', value: summary.moduleCounts.master || 0, icon: FileText, bg: 'bg-slate-100', color: 'text-slate-600' },
+      { key: 'banking', label: 'Banking', value: summary.moduleCounts.banking || 0, icon: Landmark, bg: 'bg-emerald-50', color: 'text-emerald-600' },
+      { key: 'transaction', label: 'Transaction', value: summary.moduleCounts.transaction || 0, icon: Landmark, bg: 'bg-amber-50', color: 'text-amber-600' },
+      { key: 'settings', label: 'Settings', value: summary.moduleCounts.settings || 0, icon: Settings2, bg: 'bg-slate-100', color: 'text-slate-600' },
+      { key: 'reports', label: 'Reports', value: summary.moduleCounts.reports || 0, icon: FileText, bg: 'bg-violet-50', color: 'text-violet-600' },
+      { key: 'auth', label: 'Auth', value: summary.moduleCounts.auth || 0, icon: UserRound, bg: 'bg-rose-50', color: 'text-rose-600' },
+      { key: 'files', label: 'Files', value: summary.moduleCounts.files || 0, icon: Folder, bg: 'bg-orange-50', color: 'text-orange-600' }
     ];
     return base;
   }, [meta.total, summary.moduleCounts]);
 
   const quickFilters = [
-    { label: 'All', active: !unreadOnly && !moduleFilter && !typeFilter && !severityFilter, onClick: () => { setUnreadOnly(false); setModuleFilter(''); setTypeFilter(''); setSeverityFilter(''); setPage(1); } },
+    {
+      label: 'All',
+      active: !unreadOnly,
+      onClick: () => {
+        setUnreadOnly(false);
+        setPage(1);
+      }
+    },
     { label: 'Unread', active: unreadOnly, onClick: () => { setUnreadOnly((current) => !current); setPage(1); } },
-    { label: 'Reset', active: !unreadOnly && !moduleFilter && !typeFilter && !severityFilter, onClick: () => { setUnreadOnly(false); setModuleFilter(''); setTypeFilter(''); setSeverityFilter(''); setPage(1); } }
+    {
+      label: 'Reset',
+      active: Boolean(search || moduleFilter || typeFilter || severityFilter || unreadOnly),
+      onClick: () => {
+        setSearch('');
+        setUnreadOnly(false);
+        setModuleFilter('');
+        setTypeFilter('');
+        setSeverityFilter('');
+        setPage(1);
+      }
+    }
   ];
 
   async function refreshList() {
@@ -291,6 +318,51 @@ export function NotificationsPage() {
     } catch (error) {
       toast.error(error.message || 'Unable to delete notification');
     }
+  }
+
+  async function handleCreateNotification(payload) {
+    setCreating(true);
+    try {
+      const response = await api.notifications.create(token, payload);
+      const createdCount = Array.isArray(response.data?.notifications) ? response.data.notifications.length : 0;
+      if (!createdCount) {
+        throw new Error('No matching recipients found');
+      }
+      toast.success(`${createdCount} notification${createdCount === 1 ? '' : 's'} created`);
+      setCreateOpen(false);
+      notifyNotificationsChanged();
+      await loadNotifications();
+    } catch (error) {
+      toast.error(error.message || 'Unable to create notification');
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  function applyFilterDraft(draft = {}) {
+    setSearch(String(draft.search || ''));
+    setModuleFilter(String(draft.module || ''));
+    setTypeFilter(String(draft.type || ''));
+    setSeverityFilter(String(draft.severity || ''));
+    setUnreadOnly(Boolean(draft.unreadOnly));
+    setPage(1);
+    setFilterOpen(false);
+  }
+
+  function resetFilters() {
+    setSearch('');
+    setModuleFilter('');
+    setTypeFilter('');
+    setSeverityFilter('');
+    setUnreadOnly(false);
+    setPage(1);
+  }
+
+  function openInbox() {
+    resetFilters();
+    setTimeout(() => {
+      inboxRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 0);
   }
 
   function toggleModuleGroup(key) {
@@ -401,9 +473,7 @@ export function NotificationsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Alerts"
         title="Notifications"
-        description="Banking shell ke saare auto alerts, manual notices, aur email-triggered updates yahan inbox style me dikhte hain."
         meta={(
           <div className="flex flex-wrap gap-2 text-[12px]">
             <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 font-semibold text-slate-600">Total {meta.total}</span>
@@ -412,177 +482,157 @@ export function NotificationsPage() {
         )}
         actions={[
           {
-            label: unreadOnly ? 'Showing unread' : 'Show unread only',
-            variant: unreadOnly ? 'primary' : 'outline',
-            icon: Filter,
-            onClick: () => {
-              setUnreadOnly((current) => !current);
-              setPage(1);
-            }
+            label: 'Create Notification',
+            variant: 'primary',
+            icon: Plus,
+            onClick: () => setCreateOpen(true)
           },
           {
             label: 'Mark all read',
             variant: 'outline',
             icon: CheckCheck,
             onClick: handleMarkAllRead
-          },
-          {
-            label: 'Refresh',
-            variant: 'outline',
-            icon: RefreshCw,
-            onClick: refreshList
           }
         ]}
       />
 
       <div className="grid gap-4 md:grid-cols-4">
         {[
-          { label: 'Unread', value: summary.unread, tone: 'border-blue-100 bg-blue-50 text-blue-700' },
-          { label: 'Critical', value: summary.critical, tone: 'border-rose-100 bg-rose-50 text-rose-700' },
-          { label: 'Security', value: summary.security, tone: 'border-violet-100 bg-violet-50 text-violet-700' },
-          { label: 'Loaded', value: loading ? '...' : items.length, tone: 'border-slate-200 bg-slate-50 text-slate-700' }
-        ].map((item) => (
-          <Card key={item.label} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold ${item.tone}`}>
-              {item.label}
-            </div>
-            <div className="mt-3 text-3xl font-semibold text-slate-900">{item.value}</div>
-            <p className="mt-1 text-sm text-slate-500">Auto alerts and inbox entries.</p>
-          </Card>
-        ))}
-      </div>
-
-      <Card className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="flex flex-wrap items-center gap-2">
-          {quickFilters.map((chip) => (
-            <button
-              key={chip.label}
-              type="button"
-              onClick={chip.onClick}
-              className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-[12px] font-semibold transition ${
-                chip.active
-                  ? 'border-blue-200 bg-blue-50 text-blue-700'
-                  : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900'
-              }`}
-            >
-              {chip.label}
-              {chip.label === 'Unread' ? <span className="h-2 w-2 rounded-full bg-blue-500" /> : null}
-            </button>
-          ))}
-        </div>
-      </Card>
-
-      <Card className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-blue-600">Module collapse</p>
-            <h3 className="mt-1 text-lg font-semibold text-slate-900">Group-wise notification view</h3>
-            <p className="mt-1 text-sm text-slate-500">Har module alag accordion me khul sakta hai, taaki master, transaction, settings, aur reports ko quickly scan kar sako.</p>
-          </div>
-          <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[12px] font-semibold text-slate-600">
-            {groupedNotifications.length} module groups
-          </span>
-        </div>
-
-        <div className="mt-4 space-y-3">
-          {groupedNotifications.map((group) => {
-            const firstItem = group.items[0] || { module: group.key, type: 'info' };
-            const isExpanded = Boolean(expandedModules[group.key]);
-
-            return (
-              <div key={group.key} className="overflow-hidden rounded-2xl border border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => toggleModuleGroup(group.key)}
-                  className="flex w-full items-center justify-between gap-4 bg-slate-50/70 px-4 py-3 text-left transition hover:bg-slate-50"
-                >
-                  <div className="flex min-w-0 items-center gap-3">
-                    <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border ${getNotificationAccentTone(firstItem)}`}>
-                      <NotificationIcon item={firstItem} />
-                    </span>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-slate-900">{group.label}</p>
-                      <p className="text-[12px] text-slate-500">
-                        {group.items.length} notifications
-                        {' · '}
-                        {group.unreadCount} unread
-                      </p>
-                    </div>
-                  </div>
-                  <ChevronDown size={16} className={`shrink-0 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                </button>
-
-                {isExpanded ? (
-                  <div className="border-t border-slate-100 bg-white p-4">
-                    <div className="space-y-3">
-                      {group.items.slice(0, 3).map((item) => (
-                        <div key={item.id} className="rounded-2xl border border-slate-100 bg-slate-50/40 p-3">
-                          <NotificationPreview
-                            compact
-                            item={{
-                              ...item,
-                              onOpen: () => navigate(`/app/notifications/${item.id}`)
-                            }}
-                          />
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setModuleFilter(group.key);
-                          setPage(1);
-                        }}
-                      >
-                        Filter {group.label}
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => navigate('/app/notifications')}
-                      >
-                        Open inbox
-                      </Button>
-                    </div>
-                  </div>
-                ) : null}
+          { label: 'Unread', value: summary.unread, bg: 'bg-blue-50', color: 'text-blue-500', icon: BellRing, subLabel: 'Unread notifications requiring attention' },
+          { label: 'Critical', value: summary.critical, bg: 'bg-emerald-50', color: 'text-emerald-500', icon: ShieldAlert, subLabel: 'Critical system alerts and failures' },
+          { label: 'Security', value: summary.security, bg: 'bg-rose-50', color: 'text-rose-500', icon: UserRound, subLabel: 'Security-related warnings' },
+          { label: 'Loaded', value: loading ? '...' : items.length, bg: 'bg-purple-50', color: 'text-purple-500', icon: CheckCheck, subLabel: 'Total notifications loaded' }
+        ].map((item) => {
+          const Icon = item.icon;
+          return (
+            <Card key={item.label} className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className={`flex h-12 w-12 items-center justify-center rounded-full ${item.bg} ${item.color}`}>
+                <Icon size={22} strokeWidth={1.5} />
               </div>
-            );
-          })}
-        </div>
-      </Card>
-
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {modulePills.map((item) => (
-          <button
-            key={item.label}
-            type="button"
-            onClick={() => {
-              setModuleFilter(item.key);
-              setPage(1);
-            }}
-            className="text-left"
-          >
-            <Card className={`rounded-2xl border p-4 shadow-sm transition ${moduleFilter === item.key ? 'border-blue-200 bg-blue-50/60' : 'border-slate-200 bg-white hover:-translate-y-0.5 hover:shadow-md'}`}>
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">{item.label}</p>
-                  <p className="mt-2 text-2xl font-semibold text-slate-900">{item.value}</p>
-                </div>
-                <span className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${moduleFilter === item.key ? 'border-blue-200 bg-white text-blue-700' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>
-                  Filter
-                </span>
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">{item.label}</p>
+                <p className="text-xl font-bold text-slate-900">{item.value}</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">{item.subLabel}</p>
               </div>
             </Card>
+          );
+        })}
+      </div>
+
+
+
+      <div className="flex items-center gap-6 border-b border-slate-200 px-1">
+        {quickFilters.map((chip) => (
+          <button
+            key={chip.label}
+            type="button"
+            onClick={chip.onClick}
+            className={`inline-flex items-center gap-2 border-b-2 py-3 text-[13px] font-semibold transition-colors -mb-px ${
+              chip.active
+                ? 'border-[var(--primary)] text-[var(--primary)]'
+                : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-900'
+            }`}
+          >
+            {chip.label}
+            {chip.label === 'Unread' ? <span className={`h-2 w-2 rounded-full ${chip.active ? 'bg-[var(--primary)]' : 'bg-slate-300'}`} /> : null}
           </button>
         ))}
       </div>
 
+      <Card className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-button,12px)] bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary,#1661F6)]">
+              <Folder size={18} />
+            </span>
+            <h3 className="text-lg font-bold text-slate-900">Group-wise notification view</h3>
+          </div>
+          <button type="button" onClick={() => setCreateOpen(true)} className="inline-flex items-center gap-1.5 rounded-[var(--radius-button,1rem)] border border-[var(--primary)] px-3 py-1.5 text-[12px] font-semibold text-[var(--primary)] transition-colors">
+            <Plus size={14} />
+            Create Notification
+          </button>
+        </div>
+
+        <div className="mt-5 flex flex-col">
+          {groupedNotifications.map((group, index) => {
+            const firstItem = group.items[0] || { module: group.key, type: 'info' };
+            const desc = group.key === 'settings' ? 'System and application settings' 
+                         : group.key === 'updates' ? 'System updates and maintenance' 
+                         : group.key === 'security' ? 'Security related warnings and alerts'
+                         : group.key === 'master' ? 'Master data changes and updates'
+                         : group.key === 'banking' ? 'Banking and ledger updates'
+                         : group.key === 'transaction' ? 'Transactions and voucher alerts'
+                         : group.key === 'reports' ? 'Report generation and schedules'
+                         : group.key === 'auth' ? 'Authentication and access alerts'
+                         : group.key === 'files' ? 'File system and storage notices'
+                         : `${group.label} notifications`;
+            return (
+              <button
+                key={group.key}
+                type="button"
+                onClick={() => {
+                  setModuleFilter(group.key);
+                  setPage(1);
+                }}
+                className={`group flex items-center justify-between py-4 text-left transition-colors ${index !== groupedNotifications.length - 1 ? 'border-b border-slate-100' : ''}`}
+              >
+                <div className="flex items-center gap-4">
+                  <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-transparent ${getNotificationAccentTone(firstItem).replace(/border-[a-z]+-\\d+/, '')}`}>
+                    <NotificationIcon item={firstItem} />
+                  </span>
+                  <div>
+                    <p className="text-[13px] font-bold text-slate-900">{group.label}</p>
+                    <p className="mt-0.5 text-[11.5px] font-medium text-slate-500">{desc}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-[11.5px] font-semibold text-slate-500">{group.items.length} Notifications</span>
+                  <ChevronRight size={16} className="text-slate-400 group-hover:text-slate-600 transition-colors" />
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="mt-4 flex items-center gap-3">
+          <button type="button" onClick={() => setFilterOpen(true)} className="inline-flex items-center gap-2 rounded-[var(--radius-button,1rem)] border border-slate-200 px-3 py-1.5 text-[12px] font-semibold text-slate-600 transition hover:bg-slate-50 hover:text-slate-900">
+            <Filter size={14} />
+            Filter Settings
+          </button>
+          <button type="button" onClick={openInbox} className="inline-flex items-center gap-2 rounded-[var(--radius-button,1rem)] border border-slate-200 px-3 py-1.5 text-[12px] font-semibold text-slate-600 transition hover:bg-slate-50 hover:text-slate-900">
+            <Folder size={14} />
+            Open Inbox
+          </button>
+        </div>
+      </Card>
+
+      <div className="flex items-center gap-6 border-b border-slate-200 px-1 overflow-x-auto hide-scrollbar">
+        {modulePills.map((item) => {
+          const isActive = moduleFilter === item.key;
+          return (
+            <button
+              key={item.label}
+              type="button"
+              onClick={() => {
+                setModuleFilter(item.key);
+                setPage(1);
+              }}
+              className={`inline-flex items-center gap-2 border-b-2 py-3 text-[13px] font-semibold transition-colors -mb-px whitespace-nowrap ${
+                isActive
+                  ? 'border-[var(--primary)] text-[var(--primary)]'
+                  : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-900'
+              }`}
+            >
+              {item.label}
+              <span className={`rounded-full px-2 py-0.5 text-[10px] ${isActive ? 'bg-[var(--primary)]/10 text-[var(--primary)]' : 'bg-slate-100 text-slate-500'}`}>
+                {item.value}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      <div ref={inboxRef}>
       <Card className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="mb-4 grid gap-3 md:grid-cols-3">
           <div className="relative md:col-span-2">
@@ -594,49 +644,40 @@ export function NotificationsPage() {
                 setPage(1);
               }}
               placeholder="Search notifications..."
-              className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 pl-9 text-[13px] text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="h-9 w-full rounded-[var(--radius-input,0.75rem)] border border-slate-200 bg-white px-3 pl-9 text-[13px] text-slate-900 placeholder:text-slate-400 focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)] transition-colors"
             />
           </div>
 
           <div className="grid gap-3 sm:grid-cols-3 md:grid-cols-1 lg:grid-cols-3">
-            <select
+            <Select
               value={moduleFilter}
-              onChange={(event) => {
-                setModuleFilter(event.target.value);
+              onChange={(value) => {
+                setModuleFilter(value);
                 setPage(1);
               }}
-              className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-[13px] text-slate-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            >
-              {NOTIFICATION_MODULE_OPTIONS.map((item) => (
-                <option key={item.value || 'all-modules'} value={item.value}>{item.label}</option>
-              ))}
-            </select>
+              size="sm"
+              options={NOTIFICATION_MODULE_OPTIONS}
+            />
 
-            <select
+            <Select
               value={typeFilter}
-              onChange={(event) => {
-                setTypeFilter(event.target.value);
+              onChange={(value) => {
+                setTypeFilter(value);
                 setPage(1);
               }}
-              className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-[13px] text-slate-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            >
-              {NOTIFICATION_TYPE_OPTIONS.map((item) => (
-                <option key={item.value || 'all-types'} value={item.value}>{item.label}</option>
-              ))}
-            </select>
+              size="sm"
+              options={NOTIFICATION_TYPE_OPTIONS}
+            />
 
-            <select
+            <Select
               value={severityFilter}
-              onChange={(event) => {
-                setSeverityFilter(event.target.value);
+              onChange={(value) => {
+                setSeverityFilter(value);
                 setPage(1);
               }}
-              className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-[13px] text-slate-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            >
-              {NOTIFICATION_SEVERITY_OPTIONS.map((item) => (
-                <option key={item.value || 'all-severity'} value={item.value}>{item.label}</option>
-              ))}
-            </select>
+              size="sm"
+              options={NOTIFICATION_SEVERITY_OPTIONS}
+            />
           </div>
         </div>
 
@@ -667,6 +708,31 @@ export function NotificationsPage() {
           />
         )}
       </Card>
+      </div>
+
+      <CreateNotificationModal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreate={handleCreateNotification}
+        saving={creating}
+      />
+
+      <FilterSettingsModal
+        open={filterOpen}
+        onClose={() => setFilterOpen(false)}
+        value={{
+          search,
+          module: moduleFilter,
+          type: typeFilter,
+          severity: severityFilter,
+          unreadOnly
+        }}
+        onApply={applyFilterDraft}
+        onReset={() => {
+          resetFilters();
+          setFilterOpen(false);
+        }}
+      />
     </div>
   );
 }

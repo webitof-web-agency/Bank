@@ -1,4 +1,5 @@
-import { Input, Select } from '../../../components/ui/Input';
+import { Input } from '../../../components/ui/Input';
+import { Select } from '../../../components/ui/Select';
 import { getLedgerLabel } from './rateUtils';
 
 function FieldLabel({ children, required }) {
@@ -11,8 +12,7 @@ function FieldLabel({ children, required }) {
 }
 
 export function RateForm({ value, setValue, onSubmit, ledgers = [] }) {
-  function handleLedgerChange(event) {
-    const ledgerCode = event.target.value;
+  function handleLedgerChange(ledgerCode) {
     const selectedLedger = ledgers.find((ledger) => String(ledger.code || '').toUpperCase() === String(ledgerCode || '').toUpperCase());
     setValue((current) => ({
       ...current,
@@ -35,14 +35,14 @@ export function RateForm({ value, setValue, onSubmit, ledgers = [] }) {
 
         <div>
           <FieldLabel required>Ledger Code</FieldLabel>
-          <Select value={value.ledgerCode || ''} onChange={handleLedgerChange}>
-            <option value="">Select ledger</option>
-            {ledgers.map((ledger) => (
-              <option key={ledger.id || ledger.code} value={ledger.code}>
-                {getLedgerLabel(ledger)}
-              </option>
-            ))}
-          </Select>
+          <Select 
+            searchable
+            value={value.ledgerCode || ''} 
+            onChange={handleLedgerChange}
+            options={ledgers.map((ledger) => ({ label: getLedgerLabel(ledger), value: ledger.code }))}
+            searchable
+            placeholder="Select ledger..."
+          />
         </div>
 
         <div>

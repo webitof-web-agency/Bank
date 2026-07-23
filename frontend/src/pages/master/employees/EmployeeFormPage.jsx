@@ -96,12 +96,25 @@ export function EmployeeFormPage() {
     event.preventDefault();
     setSaving(true);
     try {
+      const basePayload = {
+        ...buildEmployeePayload(draft),
+      };
+      delete basePayload.documents;
+
+      const baseResponse = isEdit
+        ? await api.users.update(token, id, basePayload)
+        : await api.users.create(token, basePayload);
+      const savedRecord = baseResponse.data || {};
+      const entityId = savedRecord.id || id;
+      const folderId = savedRecord.documentsFolderId || null;
+
       let avatarPayload = {};
       if (avatarFile) {
         const uploadData = new FormData();
         uploadData.append('file', avatarFile);
         uploadData.append('moduleName', 'users');
-        if (isEdit) uploadData.append('entityId', id);
+        if (entityId) uploadData.append('entityId', entityId);
+        if (folderId) uploadData.append('folderId', folderId);
         const response = await api.files.upload(token, uploadData);
         const uploaded = response.data?.[0] || response.data;
         if (!uploaded) throw new Error('Avatar upload failed');
@@ -110,19 +123,21 @@ export function EmployeeFormPage() {
         avatarPayload = { avatarUrl: '', avatarFileId: null };
       }
 
-      const basePayload = {
-        ...buildEmployeePayload(draft),
-        ...avatarPayload
-      };
+      const documents = await uploadDocumentMap(token, draft.documents || {}, {
+        moduleName: 'employees',
+        entityId,
+        folderId
+      });
 
-      if (!isEdit && draft.password) {
-        basePayload.password = draft.password;
+      const finalPayload = {};
+      if (Object.keys(avatarPayload).length > 0) {
+        Object.assign(finalPayload, avatarPayload);
       }
-
-      let entityId = id;
-      if (!isEdit) {
-        const createRes = await api.users.create(token, basePayload);
-        entityId = createRes.data?.id;
+      if (Object.keys(documents).length > 0) {
+        finalPayload.documents = documents;
+      }
+      if (Object.keys(finalPayload).length > 0) {
+        await api.users.update(token, entityId, finalPayload);
       }
 
       if (removedDocumentIds.length > 0) {
@@ -135,22 +150,8 @@ export function EmployeeFormPage() {
         }
       }
 
-      const documents = await uploadDocumentMap(token, draft.documents || {}, {
-        moduleName: 'employees',
-        entityId: entityId
-      });
-
-      if (isEdit) {
-        await api.users.update(token, id, { ...basePayload, documents });
-        toast.success('Employee updated');
-        navigate(`/app/master/employees/${id}`);
-      } else {
-        if (Object.keys(documents).length > 0) {
-          await api.users.update(token, entityId, { documents });
-        }
-        toast.success('Employee created');
-        navigate('/app/master/employees');
-      }
+      toast.success(isEdit ? 'Employee updated' : 'Employee created');
+      navigate(isEdit ? `/app/master/employees/${entityId}` : '/app/master/employees');
     } catch (error) {
       toast.error(error.message || 'Unable to save employee');
     } finally {

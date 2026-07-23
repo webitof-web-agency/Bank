@@ -152,14 +152,14 @@ export function EmployeeDetailPage() {
       </div>
 
       <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-6 bg-[#3b79f6] px-8 py-10 text-white">
+        <div className="flex flex-col gap-6 bg-white px-8 py-10 text-slate-900 border-b border-slate-100">
           <div className="flex flex-col items-center gap-4 text-center sm:flex-row sm:text-left">
             <div className="relative">
               <UserAvatar
                 name={employeeName}
                 url={user.avatarUrl}
                 gender={user.gender}
-                className="h-28 w-28 border-4 border-white text-3xl shadow-xl"
+                className="h-28 w-28 border-[3px] border-white ring-1 ring-slate-200 text-3xl shadow-md"
                 fallbackSize={40}
               />
               <button
@@ -173,22 +173,22 @@ export function EmployeeDetailPage() {
             </div>
 
             <div className="flex-1">
-              <p className="mb-1 text-sm text-blue-50">{employeeCode}</p>
+              <p className="mb-1 text-[13px] font-semibold text-[var(--primary)] tracking-wide">{employeeCode}</p>
               <h1 className="text-2xl font-bold tracking-tight">{employeeName}</h1>
 
               <div className="mt-4 flex flex-wrap justify-center sm:justify-start gap-2">
                 {primaryRole ? (
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-[13px] font-medium">
-                    {primaryRole?.name?.toLowerCase().includes('support') ? <Shield size={14} /> : <User size={14} />}
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[13px] font-medium text-slate-700">
+                    {primaryRole?.name?.toLowerCase().includes('support') ? <Shield size={14} className="text-slate-400" /> : <User size={14} className="text-slate-400" />}
                     {primaryRole.name}
                   </span>
                 ) : null}
                 {statusLabel === 'Active' ? (
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/30 bg-emerald-500/20 px-3 py-1.5 text-[13px] font-medium text-emerald-100">
-                    <CheckCircle size={14} className="text-emerald-300" /> Active
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[13px] font-medium text-emerald-700">
+                    <CheckCircle size={14} className="text-emerald-500" /> Active
                   </span>
                 ) : (
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-rose-400/30 bg-rose-500/20 px-3 py-1.5 text-[13px] font-medium text-rose-100">
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50 px-3 py-1.5 text-[13px] font-medium text-rose-700">
                     Inactive
                   </span>
                 )}
@@ -210,20 +210,19 @@ export function EmployeeDetailPage() {
               onClick={() => setActiveTab(tab.id)}
               className={`relative px-4 py-3 text-[14px] font-medium transition-colors ${
                 activeTab === tab.id
-                  ? 'text-[#3b79f6]'
+                  ? 'text-[var(--primary)]'
                   : 'text-slate-500 hover:text-slate-700'
               }`}
             >
               {tab.label}
               {activeTab === tab.id && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#3b79f6]" />
+                <div className="absolute bottom-0 left-0 right-0 h-[3px] rounded-t-full bg-[var(--primary)]" />
               )}
             </button>
           ))}
         </div>
 
-        <div className="p-8">
-          <div className="space-y-6">
+        <div className="p-8 space-y-6">
             {activeTab === 'personal' && (
               <Card className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                 <div className="divide-y divide-slate-100 px-6">
@@ -247,7 +246,7 @@ export function EmployeeDetailPage() {
                     label="Assigned Role"
                     value={primaryRole?.name ? (
                       <span className="inline-flex items-center gap-1.5 text-[14px] font-medium text-slate-900">
-                        <Shield size={16} className="text-[#3b79f6]" />
+                        <Shield size={16} className="text-[var(--primary)]" />
                         {primaryRole.name}
                       </span>
                     ) : 'No Role'}
@@ -259,12 +258,11 @@ export function EmployeeDetailPage() {
             {activeTab === 'documents' && (
               <Card className="overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                 <DocumentSection
-                  title="Employee Documents"
-                  description="KYC, salary, and verification files stored against this employee."
+                  title=""
+                  description=""
                   definitions={EMPLOYEE_DOCUMENT_DEFS}
                   documents={user.documents || {}}
                   editable={false}
-                  onDeleteFile={canManage ? handleDeleteDocument : undefined}
                 />
               </Card>
             )}
@@ -334,7 +332,6 @@ export function EmployeeDetailPage() {
                 </div>
               </Card>
             )}
-          </div>
         </div>
       </div>
     </div>

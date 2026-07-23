@@ -41,8 +41,8 @@ function SidebarLink({ item, onNavigate, open }) {
       onClick={onNavigate}
       className={({ isActive }) =>
         cn(
-          'group flex items-center gap-3 px-3 py-2.5 text-[15px] transition-all duration-200 overflow-hidden whitespace-nowrap rounded-xl',
-          isActive ? 'font-medium bg-blue-100/60 text-blue-600' : 'font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900',
+          'group flex items-center gap-3 px-3 py-2.5 text-[15px] transition-all duration-200 overflow-hidden whitespace-nowrap rounded-[var(--radius-button,1rem)]',
+          isActive ? 'font-medium bg-[var(--brand-sidebar-active,#e0e7ff)] text-[var(--primary,#2563eb)]' : 'font-medium text-slate-700 hover:bg-[color-mix(in_srgb,var(--primary)_8%,transparent)] hover:text-[var(--primary,#2563eb)]',
           !open && 'lg:justify-center lg:px-0'
         )
       }
@@ -54,8 +54,8 @@ function SidebarLink({ item, onNavigate, open }) {
     >
       {({ isActive }) => (
         <>
-          <item.icon size={20} strokeWidth={2} className={cn('shrink-0', isActive ? 'text-blue-600' : 'text-slate-700')} />
-          <span className={cn('truncate transition-opacity duration-200', !open && 'lg:hidden', isActive && 'text-blue-700 font-semibold')}>
+          <item.icon size={20} strokeWidth={2} className={cn('shrink-0 transition-colors', isActive ? 'text-[var(--primary,#2563eb)]' : 'text-slate-700 group-hover:text-[var(--primary,#2563eb)]')} />
+          <span className={cn('truncate transition-colors duration-200 group-hover:text-[var(--primary,#2563eb)]', !open && 'lg:hidden', isActive && 'text-[var(--primary,#2563eb)] font-semibold')}>
             {item.label}
           </span>
         </>
@@ -81,15 +81,15 @@ function SidebarDropdown({ item, onNavigate, open, pathname, expanded, onToggle 
         type="button"
         onClick={() => onToggle(!visible)}
         className={cn(
-          'group flex w-full items-center justify-between gap-3 px-3 py-2.5 text-[15px] transition-all duration-200 whitespace-nowrap rounded-xl',
-          activeChild || activeParent || visible ? 'font-medium text-blue-600' : 'font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900',
+          'group flex w-full items-center justify-between gap-3 px-3 py-2.5 text-[15px] transition-all duration-200 whitespace-nowrap rounded-[var(--radius-button,1rem)]',
+          activeChild || activeParent || visible ? 'font-medium text-[var(--primary,#2563eb)]' : 'font-medium text-slate-700 hover:bg-[color-mix(in_srgb,var(--primary)_8%,transparent)] hover:text-[var(--primary,#2563eb)]',
           !open && 'lg:justify-center lg:px-0'
         )}
         title={!open ? item.label : undefined}
       >
         <span className="flex items-center gap-3 overflow-hidden">
-          <item.icon size={20} strokeWidth={2} className={cn('shrink-0', activeChild || activeParent || visible ? 'text-blue-600' : 'text-slate-700')} />
-          <span className={cn('truncate transition-opacity duration-200', !open && 'lg:hidden')}>
+          <item.icon size={20} strokeWidth={2} className={cn('shrink-0 transition-colors', activeChild || activeParent || visible ? 'text-[var(--primary,#2563eb)]' : 'text-slate-700 group-hover:text-[var(--primary,#2563eb)]')} />
+          <span className={cn('truncate transition-colors duration-200 group-hover:text-[var(--primary,#2563eb)]', !open && 'lg:hidden')}>
             {item.label}
           </span>
         </span>

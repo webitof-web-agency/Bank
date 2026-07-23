@@ -200,7 +200,6 @@ export function DemandsPage() {
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Manage Demands</h1>
-          <p className="mt-1 text-sm text-slate-500">Track monthly demands, recoveries, and member-wise dues from a dedicated master screen.</p>
         </div>
         {canManage ? (
           <Button onClick={openCreate} className="gap-2">
@@ -252,13 +251,12 @@ export function DemandsPage() {
       <Modal
         open={editorOpen}
         title={activeRecord ? 'Edit Demand' : 'Add Demand'}
-        subtitle="Maintain demand number, branch/member mapping, and recovery status."
         onClose={closeEditor}
         width="min(1000px, 96vw)"
         footer={
           <div className="flex justify-end gap-3 w-full">
             <Button variant="secondary" type="button" onClick={closeEditor}>Cancel</Button>
-            <Button type="submit" form="demand-form" disabled={saving || lookupsLoading} className="bg-[#3b79f6] hover:bg-blue-700 text-white shadow-sm rounded-lg px-6">
+            <Button type="submit" form="demand-form" disabled={saving || lookupsLoading} className="bg-[var(--primary,#1661F6)] hover:bg-[color-mix(in_srgb,var(--primary)_90%,black)] text-white shadow-sm rounded-[var(--radius-input,0.75rem)] px-6 border-none">
               {saving ? 'Saving...' : (activeRecord ? 'Save Changes' : 'Create Demand')}
             </Button>
           </div>

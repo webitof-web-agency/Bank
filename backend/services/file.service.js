@@ -7,6 +7,10 @@ const FileFolder = require('../models/fileFolder.model');
 const { toResponse } = require('../utils/mongoose');
 
 const UPLOAD_ROOT = path.join(__dirname, '..', 'uploads');
+const MODULE_ROOT_NAMES = {
+  employees: 'Employees',
+  members: 'Members'
+};
 
 function ensureSafeName(name = '') {
   return String(name || '')
@@ -23,6 +27,12 @@ function splitExt(filename = '') {
   return { base: ensureSafeName(base), ext };
 }
 
+function getModuleRootName(moduleName = '') {
+  const key = String(moduleName || '').trim().toLowerCase();
+  if (MODULE_ROOT_NAMES[key]) return MODULE_ROOT_NAMES[key];
+  return ensureSafeName(key ? key.replace(/[-_]+/g, ' ') : 'Files');
+}
+
 async function ensureUploadRoot() {
   await fsp.mkdir(UPLOAD_ROOT, { recursive: true });
 }
@@ -37,6 +47,170 @@ async function ensureFolderPath(folderId = null) {
 async function getFolderById(folderId) {
   if (!folderId) return null;
   return FileFolder.findById(folderId).lean();
+}
+
+function getDocumentFileIds(documents = {}) {
+  return [...new Set(
+    Object.values(documents || {})
+      .map((document) => document?.fileId || document?.id || null)
+      .filter(Boolean)
+      .map((fileId) => String(fileId))
+  )];
+}
+
+async function deleteDocumentFiles(documents = {}) {
+  const fileIds = getDocumentFileIds(documents);
+  await Promise.allSettled(fileIds.map((fileId) => deleteFileById(fileId)));
+}
+
+async function upsertFolderRecord({
+  name,
+  parentFolderId = null,
+  createdBy = null,
+  payload = {}
+}) {
+  const normalizedName = ensureSafeName(name);
+  const folderQuery = {
+    parentFolderId: parentFolderId || null,
+    name: normalizedName
+  };
+
+  let folder = await FileFolder.findOne(folderQuery);
+  if (folder) {
+    const nextPayload = { ...(folder.payload || {}), ...(payload || {}) };
+    const updates = {};
+    if (JSON.stringify(folder.payload || {}) !== JSON.stringify(nextPayload)) {
+      updates.payload = nextPayload;
+    }
+    if (!folder.createdBy && createdBy) {
+      updates.createdBy = createdBy;
+    }
+    if (Object.keys(updates).length > 0) {
+      folder = await FileFolder.findByIdAndUpdate(folder._id, { $set: updates }, { new: true });
+    }
+    return toResponse(folder);
+  }
+
+  try {
+    folder = await FileFolder.create({
+      name: normalizedName,
+      parentFolderId: parentFolderId || null,
+      createdBy: createdBy || null,
+      payload: payload || {}
+    });
+    await ensureFolderPath(folder.id);
+    return toResponse(folder);
+  } catch (error) {
+    if (error?.code === 11000) {
+      const existing = await FileFolder.findOne(folderQuery);
+      if (existing) return toResponse(existing);
+    }
+    throw error;
+  }
+}
+
+async function ensureModuleFolder(moduleName, { createdBy = null } = {}) {
+  const moduleKey = String(moduleName || '').trim().toLowerCase();
+  const rootName = getModuleRootName(moduleKey);
+  return upsertFolderRecord({
+    name: rootName,
+    parentFolderId: null,
+    createdBy,
+    payload: { moduleName: moduleKey }
+  });
+}
+
+async function ensureEntityFolder({
+  moduleName,
+  entityId = '',
+  entityName = '',
+  entityCode = '',
+  createdBy = null
+} = {}) {
+  const moduleKey = String(moduleName || '').trim().toLowerCase();
+  const rootFolder = await ensureModuleFolder(moduleKey, { createdBy });
+  const normalizedEntityId = String(entityId || '').trim();
+  const baseName = ensureSafeName(entityName || entityCode || normalizedEntityId || moduleKey || 'Item');
+  const payload = {
+    moduleName: moduleKey,
+    entityId: normalizedEntityId,
+    entityName: baseName,
+    entityCode: String(entityCode || '').trim()
+  };
+
+  let folder = normalizedEntityId
+    ? await FileFolder.findOne({
+      parentFolderId: rootFolder.id,
+      'payload.moduleName': moduleKey,
+      'payload.entityId': normalizedEntityId
+    })
+    : null;
+
+  if (!folder) {
+    folder = await FileFolder.findOne({
+      parentFolderId: rootFolder.id,
+      name: baseName
+    });
+    if (folder && normalizedEntityId) {
+      const existingEntityId = String(folder.payload?.entityId || '').trim();
+      if (existingEntityId && existingEntityId !== normalizedEntityId) {
+        folder = null;
+      }
+    }
+  }
+
+  if (!folder) {
+    try {
+      folder = await FileFolder.create({
+        name: baseName,
+        parentFolderId: rootFolder.id,
+        createdBy: createdBy || null,
+        payload
+      });
+      await ensureFolderPath(folder.id);
+      return toResponse(folder);
+    } catch (error) {
+      if (error?.code === 11000) {
+        const fallbackName = ensureSafeName(
+          `${baseName}-${String(normalizedEntityId || entityCode || Date.now()).slice(-6)}`
+        );
+        folder = await FileFolder.create({
+          name: fallbackName,
+          parentFolderId: rootFolder.id,
+          createdBy: createdBy || null,
+          payload
+        });
+        await ensureFolderPath(folder.id);
+        return toResponse(folder);
+      }
+      throw error;
+    }
+  }
+
+  const nextPayload = { ...(folder.payload || {}), ...payload };
+  const updates = {};
+  if (JSON.stringify(folder.payload || {}) !== JSON.stringify(nextPayload)) {
+    updates.payload = nextPayload;
+  }
+  if (!folder.createdBy && createdBy) {
+    updates.createdBy = createdBy;
+  }
+  if (folder.name !== baseName) {
+    const nameConflict = await FileFolder.findOne({
+      parentFolderId: rootFolder.id,
+      name: baseName,
+      _id: { $ne: folder._id }
+    });
+    if (!nameConflict) {
+      updates.name = baseName;
+    }
+  }
+
+  if (Object.keys(updates).length > 0) {
+    folder = await FileFolder.findByIdAndUpdate(folder._id, { $set: updates }, { new: true });
+  }
+
+  return toResponse(folder);
 }
 
 async function listFolders(parentFolderId = null) {
@@ -188,9 +362,12 @@ async function readFileStream(fileId) {
 module.exports = {
   archiveFile,
   createFolder,
+  deleteDocumentFiles,
   deleteFileById,
   deleteFolder,
   ensureFolderPath,
+  ensureEntityFolder,
+  ensureModuleFolder,
   getFileById,
   getFolderById,
   listFiles,

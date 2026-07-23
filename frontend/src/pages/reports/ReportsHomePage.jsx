@@ -78,7 +78,7 @@ export function ReportsHomePage() {
   return (
     <div className="space-y-6">
       <Card className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-        <div className="relative bg-gradient-to-r from-[#0f172a] via-[#2563eb] to-[#3b82f6] px-6 py-8 text-white md:px-8">
+        <div className="relative bg-gradient-to-r from-[#0f172a] via-[#2563eb] to-[#1661F6] px-6 py-8 text-white md:px-8">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.16),transparent_28%),radial-gradient(circle_at_bottom_left,rgba(255,255,255,0.08),transparent_30%)]" />
           <div className="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-2xl space-y-3">

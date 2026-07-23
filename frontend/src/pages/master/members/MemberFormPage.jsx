@@ -106,43 +106,52 @@ export function MemberFormPage() {
     setSaving(true);
     try {
       const payload = buildMemberPayload(draft);
-      let entityId = id;
+      delete payload.documents;
 
-      if (!isEdit) {
-        const createRes = await api.resources.create('/banking/masters/members', payload, token);
-        entityId = createRes.data?.id;
-      } else {
-        await api.resources.update('/banking/masters/members', id, payload, token);
-      }
+      const baseResponse = isEdit
+        ? await api.resources.update('/banking/masters/members', id, payload, token)
+        : await api.resources.create('/banking/masters/members', payload, token);
+      const savedRecord = baseResponse.data || {};
+      const entityId = savedRecord.id || id;
+      const folderId = savedRecord.documentsFolderId || null;
 
-      if (avatarFile || avatarCleared) {
-        let avatarPayload = {};
-        if (avatarFile) {
-          const uploadData = new FormData();
-          uploadData.append('file', avatarFile);
-          uploadData.append('moduleName', 'members');
-          if (entityId) uploadData.append('entityId', entityId);
-          const response = await api.files.upload(token, uploadData);
-          const uploaded = response.data?.[0] || response.data;
-          if (!uploaded) throw new Error('Profile image upload failed');
-          avatarPayload = {
-            photoUrl: uploaded.viewUrl,
-            photoFileId: uploaded.id
-          };
-        } else if (avatarCleared) {
-          avatarPayload = {
-            photoUrl: '',
-            photoFileId: null
-          };
-        }
-
-        await api.resources.update('/banking/masters/members', entityId, avatarPayload, token);
+      let avatarPayload = {};
+      if (avatarFile) {
+        const uploadData = new FormData();
+        uploadData.append('file', avatarFile);
+        uploadData.append('moduleName', 'members');
+        if (entityId) uploadData.append('entityId', entityId);
+        if (folderId) uploadData.append('folderId', folderId);
+        const response = await api.files.upload(token, uploadData);
+        const uploaded = response.data?.[0] || response.data;
+        if (!uploaded) throw new Error('Profile image upload failed');
+        avatarPayload = {
+          photoUrl: uploaded.viewUrl,
+          photoFileId: uploaded.id
+        };
+      } else if (avatarCleared) {
+        avatarPayload = {
+          photoUrl: '',
+          photoFileId: null
+        };
       }
 
       const documents = await uploadDocumentMap(token, draft.documents || {}, {
         moduleName: 'members',
-        entityId
+        entityId,
+        folderId
       });
+
+      const finalPayload = {};
+      if (Object.keys(avatarPayload).length > 0) {
+        Object.assign(finalPayload, avatarPayload);
+      }
+      if (Object.keys(documents).length > 0) {
+        finalPayload.documents = documents;
+      }
+      if (Object.keys(finalPayload).length > 0) {
+        await api.resources.update('/banking/masters/members', entityId, finalPayload, token);
+      }
 
       if (removedDocumentIds.length > 0) {
         for (const fileId of removedDocumentIds) {
@@ -152,10 +161,6 @@ export function MemberFormPage() {
             console.warn('Failed to remove member document file', fileId, removeError);
           }
         }
-      }
-
-      if (Object.keys(documents).length > 0) {
-        await api.resources.update('/banking/masters/members', entityId, { documents }, token);
       }
 
       toast.success(isEdit ? 'Member updated' : 'Member created');

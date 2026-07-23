@@ -30,6 +30,7 @@ const userSchema = new Schema(
     status: { type: String, default: 'Active', trim: true },
     avatarUrl: { type: String, default: '' },
     avatarFileId: { type: Schema.Types.ObjectId, ref: 'FileAsset', default: null },
+    documentsFolderId: { type: Schema.Types.ObjectId, ref: 'FileFolder', default: null },
     documents: { type: Schema.Types.Mixed, default: {} },
     isActive: { type: Boolean, default: true },
     lastLoginAt: { type: Date, default: null },

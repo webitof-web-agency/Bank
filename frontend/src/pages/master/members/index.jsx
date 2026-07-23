@@ -103,29 +103,40 @@ export function MembersPage() {
       const payload = buildMemberPayload(draft);
       let response;
 
-      if (activeRecord) {
-        const documents = await uploadDocumentMap(token, draft.documents || {}, {
-          moduleName: 'members',
-          entityId: activeRecord.id
-        });
-        response = await api.resources.update('/banking/masters/members', activeRecord.id, {
-          ...payload,
-          documents
-        }, token);
+      delete payload.documents;
+
+      const baseResponse = activeRecord
+        ? await api.resources.update('/banking/masters/members', activeRecord.id, payload, token)
+        : await api.resources.create('/banking/masters/members', payload, token);
+      const savedRecord = baseResponse.data || {};
+      const entityId = savedRecord.id || activeRecord?.id;
+      const folderId = savedRecord.documentsFolderId || null;
+
+      let avatarPayload = {};
+      if (draft.photoFileId || draft.photoUrl) {
+        avatarPayload = {
+          photoUrl: draft.photoUrl || '',
+          photoFileId: draft.photoFileId || null
+        };
+      }
+
+      const documents = await uploadDocumentMap(token, draft.documents || {}, {
+        moduleName: 'members',
+        entityId,
+        folderId
+      });
+
+      const finalPayload = {};
+      if (Object.keys(avatarPayload).length > 0) {
+        Object.assign(finalPayload, avatarPayload);
+      }
+      if (Object.keys(documents).length > 0) {
+        finalPayload.documents = documents;
+      }
+      if (Object.keys(finalPayload).length > 0) {
+        response = await api.resources.update('/banking/masters/members', entityId, finalPayload, token);
       } else {
-        const created = await api.resources.create('/banking/masters/members', {
-          ...payload,
-          documents: {}
-        }, token);
-        const createdRecord = created.data || created;
-        const documents = await uploadDocumentMap(token, draft.documents || {}, {
-          moduleName: 'members',
-          entityId: createdRecord.id
-        });
-        response = await api.resources.update('/banking/masters/members', createdRecord.id, {
-          ...payload,
-          documents
-        }, token);
+        response = baseResponse;
       }
 
       if (removedDocumentIds.length) {
@@ -254,7 +265,6 @@ export function MembersPage() {
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Manage Members</h1>
-          <p className="mt-1 text-sm text-slate-500">Create members, auto-generate membership numbers, and manage balances from the master section.</p>
         </div>
         {canManage ? (
           <Button onClick={openCreate} className="gap-2">

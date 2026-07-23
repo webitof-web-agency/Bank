@@ -60,10 +60,19 @@ async function getController(req, res, next) {
 
 async function createController(req, res, next) {
   try {
+    const title = String(req.body?.title || '').trim();
+    if (!title) {
+      return res.status(400).json({ success: false, message: 'Title is required' });
+    }
+
     const result = await createNotification({
       ...req.body,
+      title,
       actorUserId: req.user?.id || null
     });
+    if (!result?.notifications?.length) {
+      return res.status(400).json({ success: false, message: 'No matching recipients found' });
+    }
     res.status(201).json({ success: true, data: result });
   } catch (error) {
     next(error);

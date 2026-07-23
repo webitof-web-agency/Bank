@@ -65,7 +65,8 @@ export function BranchForm({ value, setValue, onSubmit }) {
               type="checkbox"
               checked={Boolean(value.isActive)}
               onChange={(event) => setValue((current) => ({ ...current, isActive: event.target.checked }))}
-              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-600"
+              className="h-4 w-4 rounded border-slate-300 focus:ring-[var(--primary,#1661F6)]"
+              style={{ accentColor: 'var(--primary,#1661F6)' }}
             />
             Active Branch
           </label>
@@ -86,4 +87,3 @@ export function BranchForm({ value, setValue, onSubmit }) {
 }
 
 export default BranchForm;
-

@@ -1,5 +1,6 @@
-import { Input, Select, Textarea } from '../../../components/ui/Input';
-import { NO_INTEREST_STATUS_OPTIONS, getMemberLabel } from './noInterestMemberUtils';
+import { Input, Textarea } from '../../../components/ui/Input';
+import { Select } from '../../../components/ui/Select';
+import { getMemberLabel } from './noInterestMemberUtils';
 
 function FieldLabel({ children, required }) {
   return (
@@ -26,16 +27,17 @@ export function NoInterestMemberForm({ value, setValue, onSubmit, members = [] }
         <div>
           <FieldLabel required>Member</FieldLabel>
           <Select
+            searchable
             value={value.memberCode || ''}
-            onChange={(event) => setValue((current) => ({ ...current, memberCode: event.target.value }))}
-          >
-            <option value="">Select member</option>
-            {members.map((member) => (
-              <option key={member.id || member.code} value={member.code}>
-                {getMemberLabel(member)}
-              </option>
-            ))}
-          </Select>
+            onChange={(val) => setValue((current) => ({ ...current, memberCode: val }))}
+            options={[
+              { value: '', label: 'Select member' },
+              ...members.map((member) => ({
+                value: member.code,
+                label: getMemberLabel(member)
+              }))
+            ]}
+          />
         </div>
 
         <div>
@@ -59,13 +61,14 @@ export function NoInterestMemberForm({ value, setValue, onSubmit, members = [] }
         <div>
           <FieldLabel>Status</FieldLabel>
           <Select
+            searchable
             value={value.status || 'Active'}
-            onChange={(event) => setValue((current) => ({ ...current, status: event.target.value }))}
-          >
-            {NO_INTEREST_STATUS_OPTIONS.map((option) => (
-              <option key={option} value={option}>{option}</option>
-            ))}
-          </Select>
+            onChange={(val) => setValue((current) => ({ ...current, status: val }))}
+            options={[
+              { value: 'Active', label: 'Active' },
+              { value: 'Inactive', label: 'Inactive' }
+            ]}
+          />
         </div>
 
         <div className="md:col-span-2">

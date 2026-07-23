@@ -10,21 +10,14 @@ import { CommitteeForm } from './form';
 const EMPTY_FORM = {
   chairman: '',
   viceChairman: '',
-  directorsText: ''
+  directors: []
 };
-
-function parseDirectors(text = '') {
-  return String(text || '')
-    .split(/\r?\n|,/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
 
 function buildFormFromRecord(record = {}) {
   return {
     chairman: record.chairman || '',
     viceChairman: record.viceChairman || '',
-    directorsText: Array.isArray(record.directors) ? record.directors.join(', ') : String(record.directors || '')
+    directors: Array.isArray(record.directors) ? record.directors : []
   };
 }
 
@@ -32,7 +25,7 @@ function InfoRow({ label, value }) {
   return (
     <div className="grid grid-cols-[180px_1fr] gap-4 border-b border-slate-100 py-4 last:border-b-0">
       <div className="text-[13px] font-medium text-slate-500">{label}</div>
-      <div className="text-[14px] font-medium text-slate-900">{value || '—'}</div>
+      <div className="text-[14px] font-medium text-slate-900">{value || '-'}</div>
     </div>
   );
 }
@@ -41,20 +34,24 @@ export function CommitteePage() {
   const { token, hasPermission } = useAuth();
   const [record, setRecord] = useState(null);
   const [draft, setDraft] = useState(EMPTY_FORM);
+  const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   const canWrite = hasPermission('committee.write');
-  const directors = useMemo(() => parseDirectors(draft.directorsText), [draft.directorsText]);
 
   useEffect(() => {
     let mounted = true;
-    api.banking.getMaster('/masters/committee', token)
-      .then((response) => {
+    Promise.all([
+      api.banking.getMaster('/masters/committee', token),
+      api.resources.list('/banking/masters/members', token)
+    ])
+      .then(([committeeRes, membersRes]) => {
         if (!mounted) return;
-        const nextRecord = response.data || null;
+        const nextRecord = committeeRes.data || null;
         setRecord(nextRecord);
         setDraft(buildFormFromRecord(nextRecord || {}));
+        setMembers(membersRes.data || []);
       })
       .catch((error) => {
         if (!mounted) return;
@@ -76,7 +73,7 @@ export function CommitteePage() {
       const payload = {
         chairman: draft.chairman.trim(),
         viceChairman: draft.viceChairman.trim(),
-        directors: parseDirectors(draft.directorsText)
+        directors: draft.directors
       };
       const response = await api.banking.updateMaster('/masters/committee', token, payload);
       const nextRecord = response.data || response;
@@ -102,16 +99,15 @@ export function CommitteePage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Committee</h1>
-          <p className="mt-1 text-sm text-slate-500">Maintain chairman and board member information in a dedicated singleton page.</p>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Members of Managing Committee</h1>
         </div>
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <Card className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="mb-6 flex items-start gap-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600 shrink-0">
-              <ShieldCheck size={20} strokeWidth={2} />
+            <div className="flex h-11 w-11 items-center justify-center rounded-[14px] bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary,#1661F6)] shrink-0">
+              <ShieldCheck size={22} strokeWidth={1.5} />
             </div>
             <div>
               <h3 className="text-base font-semibold text-slate-900">Committee Setup</h3>
@@ -119,14 +115,14 @@ export function CommitteePage() {
             </div>
           </div>
 
-          <CommitteeForm value={draft} setValue={setDraft} onSubmit={saveCommittee} />
+          <CommitteeForm value={draft} setValue={setDraft} onSubmit={saveCommittee} members={members} />
 
           <div className="flex justify-end pt-6">
             <Button
               type="submit"
               form="committee-form"
               disabled={!canWrite || saving}
-              className="gap-2 bg-blue-600 text-white hover:bg-blue-700"
+              className="gap-2 bg-[var(--primary,#1661F6)] text-white hover:bg-[color-mix(in_srgb,var(--primary)_90%,black)] border-none"
             >
               <Save size={16} />
               {saving ? 'Saving...' : 'Save Changes'}
@@ -136,8 +132,8 @@ export function CommitteePage() {
 
         <Card className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="mb-6 flex items-start gap-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 shrink-0">
-              <BadgeCheck size={20} strokeWidth={2} />
+            <div className="flex h-11 w-11 items-center justify-center rounded-[14px] bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary,#1661F6)] shrink-0">
+              <BadgeCheck size={22} strokeWidth={1.5} />
             </div>
             <div>
               <h3 className="text-base font-semibold text-slate-900">Saved Data</h3>
@@ -148,12 +144,12 @@ export function CommitteePage() {
           <div className="space-y-5">
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Chairman</p>
-              <p className="mt-2 text-sm font-semibold text-slate-900">{record?.chairman || '—'}</p>
+              <p className="mt-2 text-sm font-semibold text-slate-900">{record?.chairman || '-'}</p>
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Vice Chairman</p>
-              <p className="mt-2 text-sm font-semibold text-slate-900">{record?.viceChairman || '—'}</p>
+              <p className="mt-2 text-sm font-semibold text-slate-900">{record?.viceChairman || '-'}</p>
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -175,9 +171,22 @@ export function CommitteePage() {
               </div>
             </div>
 
-            <Card className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-              <InfoRow label="Total Directors" value={String(directors.length || record?.directors?.length || 0)} />
-            </Card>
+            <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-gradient-to-r from-slate-50 to-white p-5 shadow-sm">
+              <div className="flex items-center gap-4">
+                <div className="flex h-11 w-11 items-center justify-center rounded-[14px] bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary,#1661F6)]">
+                  <Users size={22} strokeWidth={1.5} />
+                </div>
+                <div>
+                  <p className="text-[13px] font-bold text-slate-900">Total Directors</p>
+                  <p className="text-[11px] font-medium text-slate-500 mt-0.5">Active committee members</p>
+                </div>
+              </div>
+              <div className="flex h-11 min-w-[44px] items-center justify-center rounded-[14px] bg-white border border-slate-200 shadow-sm px-3">
+                <span className="text-lg font-bold text-[var(--primary,#1661F6)]">
+                  {String(draft.directors?.length || record?.directors?.length || 0)}
+                </span>
+              </div>
+            </div>
           </div>
         </Card>
       </div>

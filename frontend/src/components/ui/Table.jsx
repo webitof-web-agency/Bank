@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowUpDown, ArrowDown, ArrowUp, Search } from 'lucide-react';
+import { Select } from './Select';
 
 export function Table({
   columns = [],
@@ -122,23 +123,25 @@ export function Table({
                   value={search}
                   onChange={(e) => onSearch(e.target.value)}
                   placeholder={searchPlaceholder}
-                  className="flex h-9 w-full rounded-xl border border-slate-200 bg-white px-3 pl-9 text-[13px] text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="flex h-9 w-full rounded-[var(--radius-input,0.75rem)] border border-slate-200 bg-white px-3 pl-9 text-[13px] text-slate-900 placeholder:text-slate-400 focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
                 />
               </div>
             )}
           </div>
           <div className="flex items-center gap-2">
             {headerActions}
-            <select
+            <Select
               value={rowsPerPage}
-              onChange={(e) => updateRows(Number(e.target.value))}
-              className="h-9 rounded-xl border border-slate-200 bg-white px-3 text-[13px] text-slate-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
-            >
-              <option value={10}>10 rows</option>
-              <option value={25}>25 rows</option>
-              <option value={50}>50 rows</option>
-              <option value={100}>100 rows</option>
-            </select>
+              onChange={(val) => updateRows(Number(val))}
+              options={[
+                { label: '10 rows', value: 10 },
+                { label: '25 rows', value: 25 },
+                { label: '50 rows', value: 50 },
+                { label: '100 rows', value: 100 },
+              ]}
+              size="sm"
+              className="w-28"
+            />
           </div>
         </div>
       )}
@@ -203,19 +206,19 @@ export function Table({
           <button
             onClick={() => updatePage(validCurrentPage - 1)}
             disabled={validCurrentPage === 1}
-            className="flex h-8 items-center gap-1 rounded-lg px-2 text-[13px] font-medium text-slate-500 hover:text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="flex h-8 items-center gap-1 rounded-[var(--radius-button,1rem)] px-2 text-[13px] font-medium text-slate-500 hover:text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             <span className="hidden sm:inline">Previous</span>
           </button>
 
-          <div className="flex h-8 min-w-[32px] items-center justify-center rounded-lg bg-blue-600 px-2 text-[13px] font-medium text-white shadow-sm">
+          <div className="flex h-8 min-w-[32px] items-center justify-center rounded-[var(--radius-button,1rem)] bg-[var(--primary,#1661F6)] px-2 text-[13px] font-medium text-white shadow-sm">
             {validCurrentPage}
           </div>
 
           <button
             onClick={() => updatePage(validCurrentPage + 1)}
             disabled={validCurrentPage === pageCount || totalItems === 0}
-            className="flex h-8 items-center gap-1 rounded-lg px-2 text-[13px] font-medium text-slate-500 hover:text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="flex h-8 items-center gap-1 rounded-[var(--radius-button,1rem)] px-2 text-[13px] font-medium text-slate-500 hover:text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             <span className="hidden sm:inline">Next</span>
           </button>

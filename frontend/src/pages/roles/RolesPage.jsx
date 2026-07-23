@@ -100,7 +100,6 @@ export function RolesPage() {
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Manage Roles & Permissions</h1>
-          <p className="mt-1 text-sm text-slate-500">Map permissions to roles and keep access control aligned with your backend RBAC rules.</p>
         </div>
         {canEdit ? (
           <Button onClick={openCreate} className="gap-2">

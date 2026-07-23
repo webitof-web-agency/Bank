@@ -42,7 +42,7 @@ export function AppLayout() {
     : 'Ready for role-based work';
 
   return (
-    <div className="min-h-screen bg-[linear-gradient(180deg,_#f8fafc_0%,_#eef2f7_100%)]">
+    <div className="min-h-screen bg-white">
       <Sidebar
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}

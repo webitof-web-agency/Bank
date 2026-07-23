@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Edit2, Shield, User, CalendarDays, Home, Coins } from 'lucide-react';
+import { ArrowLeft, Edit2, Shield, User, CalendarDays, Home, Coins, Wallet, PiggyBank, Landmark, PieChart, Lock, Star, ShieldCheck, Banknote, Umbrella } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../api/api';
 import { useAuth } from '../../../context/AuthContext';
@@ -62,7 +62,7 @@ export function MemberDetailPage() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [draft, setDraft] = useState(null);
   const [removedDocumentIds, setRemovedDocumentIds] = useState([]);
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState('identity');
 
   const canManage = hasPermission('members.write');
   const branchLookup = useMemo(() => getBranchMap(branches), [branches]);
@@ -161,13 +161,13 @@ export function MemberDetailPage() {
       </div>
 
       <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-6 bg-[#3b79f6] px-8 py-10 text-white">
+        <div className="flex flex-col gap-6 bg-white px-8 py-10 text-slate-900 border-b border-slate-100">
           <div className="flex flex-col items-center gap-4 text-center sm:flex-row sm:text-left">
             <div className="relative">
               <UserAvatar
                 name={memberName}
                 url={member.photoUrl}
-                className="h-28 w-28 border-4 border-white text-3xl shadow-xl"
+                className="h-28 w-28 border-[3px] border-white ring-1 ring-slate-200 text-3xl shadow-md"
                 fallbackSize={40}
               />
               <button
@@ -180,19 +180,25 @@ export function MemberDetailPage() {
               </button>
             </div>
 
-            <div>
+            <div className="flex-1">
+              <p className="mb-1 text-[13px] font-semibold text-[var(--primary)] tracking-wide">{memberCode}</p>
               <h1 className="text-2xl font-bold tracking-tight">{memberName}</h1>
-              <p className="mt-1 text-sm text-blue-50">{memberCode}</p>
-              <div className="mt-4 flex flex-wrap items-center gap-3 justify-center sm:justify-start">
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-[13px] font-medium">
-                  <Shield size={14} />
+              <div className="mt-4 flex flex-wrap items-center gap-2 justify-center sm:justify-start">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[13px] font-medium text-slate-700">
+                  <Shield size={14} className="text-slate-400" />
                   {membershipNo}
                 </span>
-                <span className="inline-flex items-center rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-[13px] font-medium">
-                  {status}
-                </span>
+                {status === 'Active' ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[13px] font-medium text-emerald-700">
+                    {status}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50 px-3 py-1.5 text-[13px] font-medium text-rose-700">
+                    {status}
+                  </span>
+                )}
                 {summaryLabel.map((item) => (
-                  <span key={item} className="inline-flex items-center rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-[13px] font-medium">
+                  <span key={item} className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[13px] font-medium text-slate-700">
                     {item}
                   </span>
                 ))}
@@ -203,122 +209,108 @@ export function MemberDetailPage() {
 
         <div className="flex border-b border-slate-200 px-8 pt-4">
           {[
-            { id: 'overview', label: 'Overview' },
+            { id: 'identity', label: 'Identity' },
+            { id: 'membership', label: 'Membership' },
+            { id: 'contact', label: 'Contact Details' },
+            { id: 'balances', label: 'Balances' },
             { id: 'documents', label: 'Documents' }
           ].map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`relative px-4 py-3 text-[14px] font-medium transition-colors ${
-                activeTab === tab.id ? 'text-[#3b79f6]' : 'text-slate-500 hover:text-slate-700'
+                activeTab === tab.id ? 'text-[var(--primary)]' : 'text-slate-500 hover:text-slate-700'
               }`}
             >
               {tab.label}
-              {activeTab === tab.id && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#3b79f6]" />}
+              {activeTab === tab.id && <div className="absolute bottom-0 left-0 right-0 h-[3px] rounded-t-full bg-[var(--primary)]" />}
             </button>
           ))}
         </div>
 
         <div className="p-8 space-y-6">
-          {activeTab === 'overview' ? (
-            <>
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <h2 className="text-lg font-bold text-slate-900">General Info</h2>
-                  <p className="mt-1 text-sm text-slate-500">Member identity, membership, and balance details.</p>
+
+            {activeTab === 'identity' && (
+              <Card className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <div className="divide-y divide-slate-100 px-6">
+                  <DetailRow label="Member Code" value={memberCode} />
+                  <DetailRow label="Member Name" value={memberName} />
+                  <DetailRow label="Father / Husband Name" value={member.fatherOrHusbandName} />
+                  <DetailRow label="Branch" value={formatBranchLabel(memberBranch) || member.branchCode} />
+                  <DetailRow label="Category" value={member.category} />
+                  <DetailRow label="Caste" value={member.caste} />
+                  <DetailRow label="Occupation / Designation" value={member.designation} />
+                  <DetailRow label="Status" value={status} />
                 </div>
-                {canManage ? (
-                  <Button variant="secondary" type="button" onClick={openEditor} className="gap-2">
-                    <Edit2 size={16} />
-                    Edit Member
-                  </Button>
-                ) : null}
-              </div>
+              </Card>
+            )}
 
-              <div className="grid gap-6">
-                <SectionCard title="Identity">
-                  <div className="divide-y divide-slate-100">
-                    <DetailRow label="Member Code" value={memberCode} />
-                    <DetailRow label="Member Name" value={memberName} />
-                    <DetailRow label="Father / Husband Name" value={member.fatherOrHusbandName} />
-                    <DetailRow label="Branch" value={formatBranchLabel(memberBranch) || member.branchCode} />
-                    <DetailRow label="Category" value={member.category} />
-                    <DetailRow label="Caste" value={member.caste} />
-                    <DetailRow label="Occupation / Designation" value={member.designation} />
-                    <DetailRow label="Status" value={status} />
-                  </div>
-                </SectionCard>
+            {activeTab === 'membership' && (
+              <Card className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <div className="divide-y divide-slate-100 px-6">
+                  <DetailRow label="Membership No" value={membershipNo} />
+                  <DetailRow label="Membership Date" value={member.membershipDate} />
+                  <DetailRow label="Appointment Date" value={member.appointmentDate} />
+                  <DetailRow label="Date of Birth" value={member.dateOfBirth} />
+                  <DetailRow label="Service Name 1" value={member.serviceName1} />
+                  <DetailRow label="Service Name 2" value={member.serviceName2} />
+                </div>
+              </Card>
+            )}
 
-                <SectionCard title="Membership">
-                  <div className="grid gap-4 md:grid-cols-2">
-                    {[
-                      { icon: Shield, label: 'Membership No', value: membershipNo },
-                      { icon: CalendarDays, label: 'Membership Date', value: member.membershipDate || '—' },
-                      { icon: CalendarDays, label: 'Appointment Date', value: member.appointmentDate || '—' },
-                      { icon: CalendarDays, label: 'Date of Birth', value: member.dateOfBirth || '—' },
-                      { icon: Home, label: 'Service Name 1', value: member.serviceName1 || '—' },
-                      { icon: Home, label: 'Service Name 2', value: member.serviceName2 || '—' }
-                    ].map((item) => {
-                      const Icon = item.icon;
-                      return (
-                        <div key={item.label} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                          <div className="flex items-center gap-2 text-slate-500">
-                            <Icon size={14} />
-                            <p className="text-[11px] font-semibold uppercase tracking-wider">{item.label}</p>
+            {activeTab === 'contact' && (
+              <Card className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <div className="divide-y divide-slate-100 px-6">
+                  <DetailRow label="Mobile No" value={formatMemberPhone(member.mobileNo || '') || '—'} />
+                  <DetailRow label="Address" value={member.address || '—'} />
+                  <DetailRow label="Nominee Name" value={member.nomineeName || '—'} />
+                  <DetailRow label="Nominee Relation" value={member.nomineeRelation || '—'} />
+                </div>
+              </Card>
+            )}
+
+            {activeTab === 'balances' && (
+              <Card className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm p-6">
+                <div className="grid gap-4 md:grid-cols-3">
+                  {[
+                    { label: 'Opening Balance', value: formatMoney(member.openingBalance), icon: Wallet, color: 'text-blue-500', bg: 'bg-blue-50' },
+                    { label: 'Deposit Balance', value: formatMoney(member.depositBalance ?? balances.compulsoryDeposit), icon: PiggyBank, color: 'text-emerald-500', bg: 'bg-emerald-50' },
+                    { label: 'Loan Outstanding', value: formatMoney(member.loanOutstanding), icon: Landmark, color: 'text-rose-500', bg: 'bg-rose-50' },
+                    { label: 'Share', value: formatMoney(balances.share), icon: PieChart, color: 'text-indigo-500', bg: 'bg-indigo-50' },
+                    { label: 'Compulsory Deposit', value: formatMoney(balances.compulsoryDeposit ?? member.depositBalance), icon: Lock, color: 'text-teal-500', bg: 'bg-teal-50' },
+                    { label: 'Special Saving', value: formatMoney(balances.specialSaving), icon: Star, color: 'text-amber-500', bg: 'bg-amber-50' },
+                    { label: 'Provident Fund', value: formatMoney(balances.providentFund), icon: ShieldCheck, color: 'text-purple-500', bg: 'bg-purple-50' },
+                    { label: 'Loan Against Deposit', value: formatMoney(balances.loanAgainstDeposit), icon: Banknote, color: 'text-orange-500', bg: 'bg-orange-50' },
+                    { label: 'Insurance Premium', value: formatMoney(balances.insurancePremium), icon: Umbrella, color: 'text-cyan-500', bg: 'bg-cyan-50' }
+                  ].map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <div key={item.label} className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+                        <div className="flex items-center gap-3">
+                          <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${item.bg} ${item.color}`}>
+                            <Icon size={18} strokeWidth={2} />
                           </div>
-                          <p className="mt-2 text-sm font-semibold text-slate-900">{item.value}</p>
+                          <p className="text-[12px] font-semibold uppercase tracking-wider text-slate-500">{item.label}</p>
                         </div>
-                      );
-                    })}
-                  </div>
-                </SectionCard>
-
-                <SectionCard title="Contact">
-                  <div className="divide-y divide-slate-100">
-                    <DetailRow label="Mobile No" value={formatMemberPhone(member.mobileNo || '') || '—'} />
-                    <DetailRow label="Address" value={member.address || '—'} />
-                    <DetailRow label="Nominee Name" value={member.nomineeName || '—'} />
-                    <DetailRow label="Nominee Relation" value={member.nomineeRelation || '—'} />
-                  </div>
-                </SectionCard>
-
-                <SectionCard title="Balances">
-                  <div className="grid gap-4 md:grid-cols-3">
-                    {[
-                      { label: 'Opening Balance', value: formatMoney(member.openingBalance) },
-                      { label: 'Deposit Balance', value: formatMoney(member.depositBalance ?? balances.compulsoryDeposit) },
-                      { label: 'Loan Outstanding', value: formatMoney(member.loanOutstanding) },
-                      { label: 'Share', value: formatMoney(balances.share) },
-                      { label: 'Compulsory Deposit', value: formatMoney(balances.compulsoryDeposit ?? member.depositBalance) },
-                      { label: 'Special Saving', value: formatMoney(balances.specialSaving) },
-                      { label: 'Provident Fund', value: formatMoney(balances.providentFund) },
-                      { label: 'Loan Against Deposit', value: formatMoney(balances.loanAgainstDeposit) },
-                      { label: 'Insurance Premium', value: formatMoney(balances.insurancePremium) }
-                    ].map((item) => (
-                      <div key={item.label} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                        <div className="flex items-center gap-2 text-slate-500">
-                          <Coins size={14} />
-                          <p className="text-[11px] font-semibold uppercase tracking-wider">{item.label}</p>
-                        </div>
-                        <p className="mt-2 text-sm font-semibold text-slate-900">{item.value}</p>
+                        <p className="mt-4 text-xl font-bold text-slate-900">{item.value}</p>
                       </div>
-                    ))}
-                  </div>
-                </SectionCard>
-              </div>
-            </>
-          ) : (
-            <Card className="overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <DocumentSection
-                title="Member Documents"
-                description="Aadhaar, PAN, signature, nominee and income verification files."
-                definitions={MEMBER_DOCUMENT_DEFS}
-                documents={member.documents || {}}
-                editable={false}
-                onDeleteFile={canManage ? handleDeleteDocument : undefined}
-              />
-            </Card>
-          )}
+                    );
+                  })}
+                </div>
+              </Card>
+            )}
+
+            {activeTab === 'documents' && (
+              <Card className="overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <DocumentSection
+                  title=""
+                  description=""
+                  definitions={MEMBER_DOCUMENT_DEFS}
+                  documents={member.documents || {}}
+                  editable={false}
+                />
+              </Card>
+            )}
         </div>
       </div>
     </div>

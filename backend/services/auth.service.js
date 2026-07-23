@@ -13,7 +13,12 @@ const {
 } = require('../config/rbac');
 const { sendPasswordResetOtpEmail } = require('./mailer.service');
 const { createNotification } = require('./notification.service');
-const { deleteFileById } = require('./file.service');
+const {
+  deleteDocumentFiles,
+  deleteFileById,
+  deleteFolder,
+  ensureEntityFolder
+} = require('./file.service');
 
 function normalizeEmail(value) {
   return String(value || '').trim().toLowerCase();
@@ -239,7 +244,35 @@ function applyStaffFields(user, data = {}) {
     user.payload = data.payload || {};
   }
 
+  if (data.documents !== undefined) {
+    user.documents = data.documents || {};
+  }
+
+  if (data.documentsFolderId !== undefined) {
+    user.documentsFolderId = data.documentsFolderId || null;
+  }
+
   return user;
+}
+
+async function syncEmployeeDocumentsFolder(user) {
+  if (!user?._id) return null;
+
+  const folder = await ensureEntityFolder({
+    moduleName: 'employees',
+    entityId: String(user._id),
+    entityName: user.fullName || user.name || user.username || user.code || 'Employee',
+    entityCode: user.code || '',
+    createdBy: user.createdByUserId || user.updatedByUserId || null
+  });
+
+  const folderId = folder?.id ? String(folder.id) : null;
+  if (folderId && String(user.documentsFolderId || '') !== folderId) {
+    user.documentsFolderId = folderId;
+    await user.save();
+  }
+
+  return folderId;
 }
 
 async function buildAccessProfile(userDoc) {
@@ -278,6 +311,8 @@ async function buildAccessProfile(userDoc) {
     status: user.status || (user.isActive !== false ? 'Active' : 'Inactive'),
     avatarUrl: user.avatarUrl || '',
     avatarFileId: user.avatarFileId ? String(user.avatarFileId) : null,
+    documentsFolderId: user.documentsFolderId ? String(user.documentsFolderId) : null,
+    documents: user.documents || {},
     isActive: user.isActive !== false,
     lastLoginAt: user.lastLoginAt || null,
     payload: user.payload || {},
@@ -699,10 +734,14 @@ async function createUser(data = {}) {
     status,
     avatarUrl: String(data.avatarUrl || '').trim(),
     avatarFileId: data.avatarFileId || null,
+    documentsFolderId: data.documentsFolderId || null,
+    documents: data.documents || {},
     isActive: isActiveFromStatus(status, data.isActive !== false),
     roles: roleIds,
     payload: data.payload || {}
   });
+
+  await syncEmployeeDocumentsFolder(user);
 
   await notifySafely({
     title: 'Employee Created',
@@ -741,6 +780,8 @@ async function updateUser(userId, data = {}) {
   if (data.gender !== undefined) user.gender = String(data.gender || '').trim();
   if (data.avatarUrl !== undefined) user.avatarUrl = String(data.avatarUrl || '').trim();
   if (data.avatarFileId !== undefined) user.avatarFileId = data.avatarFileId || null;
+  if (data.documentsFolderId !== undefined) user.documentsFolderId = data.documentsFolderId || null;
+  if (data.documents !== undefined) user.documents = data.documents || {};
   if (data.payload !== undefined) user.payload = data.payload || {};
   if (Array.isArray(data.roleIds)) user.roles = data.roleIds.filter(Boolean);
   if (data.password) {
@@ -748,8 +789,10 @@ async function updateUser(userId, data = {}) {
   }
   await user.save();
 
+  await syncEmployeeDocumentsFolder(user);
+
   const nextAvatarFileId = user.avatarFileId ? String(user.avatarFileId) : '';
-  if (previousAvatarFileId && nextAvatarFileId && previousAvatarFileId !== nextAvatarFileId) {
+  if (previousAvatarFileId && previousAvatarFileId !== nextAvatarFileId) {
     await deleteFileById(previousAvatarFileId).catch(() => {});
   }
 
@@ -773,8 +816,13 @@ async function deleteUser(userId) {
   const user = await User.findById(userId);
   if (!user) return false;
 
+  await deleteDocumentFiles(user.documents || {});
   if (user.avatarFileId) {
     await deleteFileById(user.avatarFileId).catch(() => {});
+  }
+
+  if (user.documentsFolderId) {
+    await deleteFolder(user.documentsFolderId).catch(() => {});
   }
 
   await user.deleteOne();

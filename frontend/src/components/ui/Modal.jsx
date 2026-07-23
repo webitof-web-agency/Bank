@@ -2,7 +2,7 @@ import { useRef } from 'react';
 import { X } from 'lucide-react';
 import { Button } from './Button';
 
-export function Modal({ open, title, subtitle, children, onClose, footer, width = 'min(980px, 96vw)', hideHeader = false }) {
+export function Modal({ open, title, subtitle, children, onClose, footer, width = 'min(980px, 96vw)', hideHeader = false, overflowVisible = false }) {
   const modalRef = useRef();
 
   if (!open) return null;
@@ -42,7 +42,7 @@ export function Modal({ open, title, subtitle, children, onClose, footer, width 
               </Button>
             </div>
           )}
-          <div className={hideHeader ? 'px-6 pb-6 pt-2 overflow-y-auto' : 'px-6 py-6 overflow-y-auto'}>{children}</div>
+          <div className={hideHeader ? `px-6 pb-6 pt-2 ${overflowVisible ? 'overflow-visible' : 'overflow-y-auto'}` : `px-6 py-6 ${overflowVisible ? 'overflow-visible' : 'overflow-y-auto'}`}>{children}</div>
           {footer ? <div className="rounded-b-2xl border-t border-slate-200 px-6 py-5 bg-slate-50 shrink-0">{footer}</div> : null}
         </div>
       </div>

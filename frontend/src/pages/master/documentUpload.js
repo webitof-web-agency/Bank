@@ -1,16 +1,17 @@
 import { api } from '../../api/api';
 import { serializeDocumentMap } from '../../components/master/documentUtils';
 
-export function buildDocumentUploadFormData(file, { moduleName, entityId, documentType }) {
+export function buildDocumentUploadFormData(file, { moduleName, entityId, documentType, folderId }) {
   const formData = new FormData();
   formData.append('file', file);
   formData.append('moduleName', moduleName);
   if (entityId) formData.append('entityId', entityId);
   if (documentType) formData.append('documentType', documentType);
+  if (folderId) formData.append('folderId', folderId);
   return formData;
 }
 
-export async function uploadDocumentMap(token, documents = {}, { moduleName, entityId }) {
+export async function uploadDocumentMap(token, documents = {}, { moduleName, entityId, folderId } = {}) {
   const uploaded = serializeDocumentMap(documents);
 
   for (const [key, value] of Object.entries(documents || {})) {
@@ -18,7 +19,8 @@ export async function uploadDocumentMap(token, documents = {}, { moduleName, ent
     const response = await api.files.upload(token, buildDocumentUploadFormData(value.file, {
       moduleName,
       entityId,
-      documentType: key
+      documentType: key,
+      folderId
     }));
     const fileRecord = response.data?.[0] || response.data;
     if (!fileRecord) {
@@ -37,4 +39,3 @@ export async function uploadDocumentMap(token, documents = {}, { moduleName, ent
 
   return uploaded;
 }
-

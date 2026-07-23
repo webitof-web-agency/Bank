@@ -161,7 +161,6 @@ export function BranchesPage() {
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Manage Branches</h1>
-          <p className="mt-1 text-sm text-slate-500">Maintain branch master records used across employees, members, and accounting flows.</p>
         </div>
         {canManage ? (
           <Button onClick={openCreate} className="gap-2">
@@ -213,13 +212,12 @@ export function BranchesPage() {
       <Modal
         open={editorOpen}
         title={activeRecord ? 'Edit Branch' : 'Add Branch'}
-        subtitle="Maintain branch code, location, and active status."
         onClose={closeEditor}
         width="min(980px, 96vw)"
         footer={
           <div className="flex justify-end gap-3 w-full">
             <Button variant="secondary" type="button" onClick={closeEditor}>Cancel</Button>
-            <Button type="submit" form="branch-form" disabled={saving} className="bg-[#3b79f6] hover:bg-blue-700 text-white shadow-sm rounded-lg px-6">
+            <Button type="submit" form="branch-form" disabled={saving} className="bg-[var(--primary,#1661F6)] hover:opacity-90 text-white shadow-sm rounded-[var(--radius-button,1rem)] px-6">
               {saving ? 'Saving...' : (activeRecord ? 'Save Changes' : 'Create Branch')}
             </Button>
           </div>
@@ -246,4 +244,3 @@ export function BranchesPage() {
 }
 
 export default BranchesPage;
-

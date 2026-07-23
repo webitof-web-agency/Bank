@@ -70,9 +70,9 @@ const FALLBACK_SETTINGS = {
 
 function SettingCard({ title, description, icon: Icon, children }) {
   return (
-    <Card className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+    <Card className="border border-slate-200 bg-white p-6 shadow-sm">
       <div className="mb-5 flex items-start gap-4 border-b border-slate-100 pb-4">
-        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-50 text-slate-600">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary,#1661F6)]">
           <Icon size={20} strokeWidth={2} />
         </div>
         <div>
@@ -87,8 +87,8 @@ function SettingCard({ title, description, icon: Icon, children }) {
 
 function ToggleRow({ label, description, checked, onChange, icon: Icon }) {
   return (
-    <label className="flex items-start gap-4 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-      <span className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-xl bg-white text-slate-600 shadow-sm">
+    <label className="flex items-start gap-4 rounded-[var(--radius-card,1.75rem)] border border-slate-200 bg-slate-50/70 p-4">
+      <span className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-[var(--radius-button,1rem)] bg-white text-slate-600 shadow-sm">
         <Icon size={18} />
       </span>
       <span className="flex-1">
@@ -99,7 +99,8 @@ function ToggleRow({ label, description, checked, onChange, icon: Icon }) {
         type="checkbox"
         checked={checked}
         onChange={(event) => onChange(event.target.checked)}
-        className="mt-1 h-5 w-5 rounded border-slate-300 text-blue-600 focus:ring-blue-600"
+        className="mt-1 h-5 w-5 rounded border-slate-300 focus:ring-[var(--primary,#1661F6)]"
+        style={{ accentColor: 'var(--primary, #1661F6)' }}
       />
     </label>
   );
@@ -169,13 +170,20 @@ export function NotificationSettingsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Communication"
         title="Notification Settings"
-        description="In-app alerts aur email delivery preferences ko yahan centralize karo."
         meta={(
           <div className="flex flex-wrap gap-2 text-[12px]">
             <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 font-semibold text-slate-600">Default roles {notifications.defaultRoleCodes?.length || 0}</span>
-            <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 font-semibold text-blue-700">{notifications.enabled ? 'Enabled' : 'Disabled'}</span>
+            <span
+              className="rounded-full border px-3 py-1 font-semibold"
+              style={{
+                borderColor: 'color-mix(in srgb, var(--primary, #1661F6) 20%, white)',
+                backgroundColor: 'color-mix(in srgb, var(--primary, #1661F6) 6%, white)',
+                color: 'var(--primary, #1661F6)'
+              }}
+            >
+              {notifications.enabled ? 'Enabled' : 'Disabled'}
+            </span>
           </div>
         )}
       />
@@ -255,7 +263,7 @@ export function NotificationSettingsPage() {
               <select
                 value={activeTemplateKey}
                 onChange={(event) => setActiveTemplateKey(event.target.value)}
-                className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-[13px] text-slate-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className="h-10 w-full rounded-[var(--radius-input,0.75rem)] border border-slate-200 bg-white px-3 text-[13px] text-slate-700 focus:border-[var(--primary,#1661F6)] focus:outline-none focus:ring-1 focus:ring-[var(--primary,#1661F6)]"
               >
                 <option value="notificationAlert">Notification Alert</option>
                 <option value="securityAlert">Security Alert</option>
@@ -293,7 +301,7 @@ export function NotificationSettingsPage() {
               />
             </div>
 
-            <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4 text-[13px] text-amber-700">
+            <div className="rounded-[var(--radius-card,1.75rem)] border border-amber-100 bg-amber-50 p-4 text-[13px] text-amber-700">
               Available variables: <span className="font-semibold">{'{{appName}}'}</span>, <span className="font-semibold">{'{{recipientName}}'}</span>, <span className="font-semibold">{'{{title}}'}</span>, <span className="font-semibold">{'{{message}}'}</span>, <span className="font-semibold">{'{{actionUrl}}'}</span>
             </div>
           </div>
@@ -307,7 +315,7 @@ export function NotificationSettingsPage() {
               { label: 'Email', value: notifications.emailEnabled ? 'On' : 'Off' },
               { label: 'Roles', value: (notifications.defaultRoleCodes || []).join(', ') || 'None' }
             ].map((item) => (
-              <div key={item.label} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div key={item.label} className="rounded-[var(--radius-card,1.75rem)] border border-slate-200 bg-slate-50 p-4">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">{item.label}</p>
                 <p className="mt-2 text-sm font-semibold text-slate-900">{item.value}</p>
               </div>
@@ -317,7 +325,7 @@ export function NotificationSettingsPage() {
       </div>
 
       <div className="flex justify-end">
-        <Button onClick={saveSettings} disabled={saving} className="bg-blue-600 hover:bg-blue-700 text-white h-10 px-5 rounded-xl text-[13px] font-medium gap-2">
+        <Button onClick={saveSettings} disabled={saving} className="bg-[var(--primary,#1661F6)] hover:opacity-90 text-white h-10 px-5 rounded-[var(--radius-button,1rem)] text-[13px] font-medium gap-2">
           <Save size={16} />
           {saving ? 'Saving...' : 'Save Notification Settings'}
         </Button>

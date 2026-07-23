@@ -112,7 +112,7 @@ export function DashboardPage() {
   ];
 
   const fundPositionData = [
-    { name: 'Cash in Hand', value: 845000, color: '#3b82f6', pct: '23.7%' },
+    { name: 'Cash in Hand', value: 845000, color: '#1661F6', pct: '23.7%' },
     { name: 'Bank Balances', value: 2015000, color: '#10b981', pct: '56.6%' },
     { name: 'Deposits', value: 560000, color: '#8b5cf6', pct: '15.7%' },
     { name: 'Advances', value: 140000, color: '#f59e0b', pct: '3.9%' }
@@ -120,68 +120,77 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-6 pb-12">
-      {/* Banner */}
-      <div className="relative overflow-hidden rounded-2xl shadow-sm bg-[#093ebd]">
-        {/* Background Image */}
-        <div className="absolute inset-0">
-          <img src="/assets/images/banner.png" alt="Bank Banner" className="absolute right-0 top-0 h-full w-full md:w-[60%] object-cover object-right" />
-          <div className="absolute inset-0 bg-gradient-to-r from-[#093ebd] via-[#093ebd]/70 to-transparent" />
+      <div 
+        className="relative overflow-hidden shadow-sm"
+        style={{ 
+          borderRadius: 'var(--radius-card, 1.75rem)',
+          background: 'linear-gradient(135deg, color-mix(in srgb, var(--primary, #1661F6) 85%, white) 0%, color-mix(in srgb, var(--primary, #1661F6) 65%, white) 100%)'
+        }}
+      >
+        {/* Real Bank Image with Theme Blending */}
+        <div className="absolute right-0 top-0 h-full w-[60%] pointer-events-none flex items-center justify-end overflow-hidden">
+          <img 
+            src="/assets/images/banner.png" 
+            alt="Bank Building" 
+            className="h-[110%] w-auto max-w-none opacity-40 mix-blend-overlay grayscale contrast-125" 
+            style={{ 
+              maskImage: 'linear-gradient(to right, transparent 0%, black 40%)', 
+              WebkitMaskImage: 'linear-gradient(to right, transparent 0%, black 40%)' 
+            }}
+          />
         </div>
         
-        <div className="relative px-8 py-10 md:px-10 text-white">
-          <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-[11px] font-medium text-white/90 backdrop-blur-sm">
-            <span>🛡️</span> Welcome back, {user?.fullName || 'System Admin'} 👋
+        <div className="relative px-6 py-8 md:px-8 text-white flex flex-col justify-between min-h-[160px]">
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-wider text-white/80 mb-1">
+              Welcome back,
+            </p>
+            <h1 className="text-2xl font-bold leading-tight tracking-tight md:text-[32px]">
+              {user?.fullName || 'System Admin'} <span className="inline-block">👋</span>
+            </h1>
+            <p className="mt-1.5 text-sm font-medium text-white/90 max-w-xl">
+              {society?.name || 'The Raipur Co-operative Employees Thrift Society Ltd.'} • {society?.branchCode || 'BR01'}
+            </p>
           </div>
-          
-          <h1 className="max-w-2xl text-2xl font-bold leading-tight tracking-tight md:text-3xl lg:text-[34px]">
-            {society?.name || 'The Raipur Co-operative Employees Thrift Society Ltd.'}
-          </h1>
-          <p className="mt-2 text-sm font-medium text-blue-100/90">
-            {society?.regNo ? `Reg. No. ${society.regNo}` : 'Reg. No. CG/PPR/CS/00417'}
-          </p>
 
-          <div className="mt-8 flex flex-wrap gap-4">
-            <div className="flex w-[210px] items-center gap-4 rounded-xl bg-[#2a62df]/90 px-4 py-3 backdrop-blur-md shadow-sm border border-[#447eed]/30">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#447eed]">
-                <ShieldCheck size={20} className="text-white" />
+          <div className="mt-8 flex flex-wrap gap-4 md:gap-5">
+            <div className="flex items-center gap-3 rounded-[var(--radius-button,1rem)] bg-white/15 px-4 py-3 backdrop-blur-md border border-white/20 shadow-sm transition-transform hover:-translate-y-1">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/25">
+                <Users size={18} className="text-white" />
               </div>
-              <div className="overflow-hidden">
-                <p className="text-[10px] font-semibold text-blue-200">Logged in as</p>
-                <p className="truncate text-[13px] font-bold text-white">{user?.fullName || 'System Admin'}</p>
-                <p className="truncate text-[10px] text-blue-200">{user?.role || 'Administrator'}</p>
+              <div className="pr-2">
+                <p className="text-[10px] font-bold text-white/70 uppercase tracking-wider">Members</p>
+                <p className="text-[15px] font-bold text-white leading-none mt-1">{counts.members || 8}</p>
               </div>
             </div>
             
-            <div className="flex w-[210px] items-center gap-4 rounded-xl bg-[#2a62df]/90 px-4 py-3 backdrop-blur-md shadow-sm border border-[#447eed]/30">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#447eed]">
-                <Building2 size={20} className="text-white" />
+            <div className="flex items-center gap-3 rounded-[var(--radius-button,1rem)] bg-white/15 px-4 py-3 backdrop-blur-md border border-white/20 shadow-sm transition-transform hover:-translate-y-1">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/25">
+                <ShieldCheck size={18} className="text-white" />
               </div>
-              <div className="overflow-hidden">
-                <p className="text-[10px] font-semibold text-blue-200">Branch Link</p>
-                <p className="truncate text-[13px] font-bold text-white">{society?.branchCode || 'BR01'}</p>
-                <p className="truncate text-[10px] text-blue-200">Default operating branch</p>
-              </div>
-            </div>
-
-            <div className="flex w-[210px] items-center gap-4 rounded-xl bg-[#2a62df]/90 px-4 py-3 backdrop-blur-md shadow-sm border border-[#447eed]/30">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#447eed]">
-                <FileText size={20} className="text-white" />
-              </div>
-              <div className="overflow-hidden">
-                <p className="text-[10px] font-semibold text-blue-200">Vouchers</p>
-                <p className="truncate text-[13px] font-bold text-white">{counts.vouchers || 5}</p>
-                <p className="truncate text-[10px] text-blue-200">Posted voucher records</p>
+              <div className="pr-2">
+                <p className="text-[10px] font-bold text-white/70 uppercase tracking-wider">Employees</p>
+                <p className="text-[15px] font-bold text-white leading-none mt-1">{counts.employees || 9}</p>
               </div>
             </div>
 
-            <div className="flex w-[210px] items-center gap-4 rounded-xl bg-[#2a62df]/90 px-4 py-3 backdrop-blur-md shadow-sm border border-[#447eed]/30">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#447eed]">
-                <ArrowRightLeft size={20} className="text-white" />
+            <div className="flex items-center gap-3 rounded-[var(--radius-button,1rem)] bg-white/15 px-4 py-3 backdrop-blur-md border border-white/20 shadow-sm transition-transform hover:-translate-y-1">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/25">
+                <ReceiptText size={18} className="text-white" />
               </div>
-              <div className="overflow-hidden">
-                <p className="text-[10px] font-semibold text-blue-200">Bank TX</p>
-                <p className="truncate text-[13px] font-bold text-white">{counts.bankTransactions || 1}</p>
-                <p className="truncate text-[10px] text-blue-200">Bank movement entries</p>
+              <div className="pr-2">
+                <p className="text-[10px] font-bold text-white/70 uppercase tracking-wider">Vouchers</p>
+                <p className="text-[15px] font-bold text-white leading-none mt-1">{counts.vouchers || 5}</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 rounded-[var(--radius-button,1rem)] bg-white/15 px-4 py-3 backdrop-blur-md border border-white/20 shadow-sm transition-transform hover:-translate-y-1">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/25">
+                <ArrowRightLeft size={18} className="text-white" />
+              </div>
+              <div className="pr-2">
+                <p className="text-[10px] font-bold text-white/70 uppercase tracking-wider">Bank TX</p>
+                <p className="text-[15px] font-bold text-white leading-none mt-1">{counts.bankTransactions || 1}</p>
               </div>
             </div>
           </div>
@@ -191,7 +200,7 @@ export function DashboardPage() {
       {/* Stat Cards */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-6 lg:gap-6">
         {metrics.map((item) => (
-          <div key={item.label} className="relative flex flex-col justify-between overflow-hidden rounded-[20px] bg-white p-5 min-h-[140px] shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] border border-gray-100 hover:shadow-md transition-shadow group">
+          <div key={item.label} className="relative flex flex-col justify-between overflow-hidden rounded-[var(--radius-card,1.75rem)] bg-white p-5 min-h-[140px] shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] border border-gray-100 hover:shadow-md transition-shadow group">
             <div className="flex items-center gap-3">
               <div className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px]', item.bg, item.color)}>
                 <item.icon size={22} strokeWidth={1.5} />
@@ -233,10 +242,12 @@ export function DashboardPage() {
       {/* Analytics & Quick Actions */}
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Overview Analytics */}
-        <div className="rounded-3xl border border-slate-100 bg-white p-6 shadow-sm lg:col-span-2">
+        <div className="rounded-[var(--radius-card,1.75rem)] border border-slate-100 bg-white p-6 shadow-sm lg:col-span-2">
           <div className="mb-6 flex items-center justify-between">
-            <h3 className="flex items-center gap-2 text-lg font-bold text-slate-900">
-              <FileBarChart size={20} className="text-blue-500" />
+            <h3 className="flex items-center gap-2.5 text-lg font-bold text-slate-900">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary,#1661F6)]">
+                <FileBarChart size={22} strokeWidth={1.5} />
+              </div>
               Overview Analytics
             </h3>
             <div className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-1.5 text-[13px] font-medium text-slate-700 cursor-pointer hover:bg-slate-50">
@@ -273,7 +284,7 @@ export function DashboardPage() {
                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} dy={10} />
                     <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} tickFormatter={(value) => `${value}L`} />
                     <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                    <Line type="monotone" dataKey="income" stroke="#3b82f6" strokeWidth={2.5} dot={{ r: 4, strokeWidth: 2, fill: '#fff' }} />
+                    <Line type="monotone" dataKey="income" stroke="#1661F6" strokeWidth={2.5} dot={{ r: 4, strokeWidth: 2, fill: '#fff' }} />
                     <Line type="monotone" dataKey="expense" stroke="#94a3b8" strokeWidth={2} strokeDasharray="5 5" dot={false} />
                   </LineChart>
                 </ResponsiveContainer>
@@ -333,14 +344,16 @@ export function DashboardPage() {
         </div>
 
         {/* Quick Actions */}
-        <div className="rounded-[20px] border border-gray-100 bg-white p-6 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)]">
-          <h3 className="mb-6 flex items-center gap-2 text-[14px] font-bold text-gray-900">
-            <Zap size={16} className="text-blue-600" />
+        <div className="rounded-[var(--radius-card,1.75rem)] border border-gray-100 bg-white p-6 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)]">
+          <h3 className="mb-6 flex items-center gap-2.5 text-[15px] font-bold text-gray-900">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary,#1661F6)]">
+              <Zap size={22} strokeWidth={1.5} />
+            </div>
             Quick Actions
           </h3>
           <div className="grid grid-cols-3 gap-3">
             {quickActions.map(action => (
-              <Link key={action.label} to={action.to} className="group flex flex-col items-center justify-center rounded-[16px] border border-gray-100 py-5 px-2 text-center transition-all hover:border-blue-100 hover:shadow-[0_4px_12px_-4px_rgba(0,0,0,0.08)] bg-white">
+              <Link key={action.label} to={action.to} className="group flex flex-col items-center justify-center rounded-[var(--radius-button,1rem)] border border-gray-100 py-5 px-2 text-center transition-all hover:border-blue-100 hover:shadow-[0_4px_12px_-4px_rgba(0,0,0,0.08)] bg-white">
                 <div className={cn('mb-3 flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] transition-transform group-hover:scale-110', action.bg, action.color)}>
                   <action.icon size={22} strokeWidth={1.5} />
                 </div>
@@ -355,9 +368,11 @@ export function DashboardPage() {
       {/* Tables Section */}
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Recent Vouchers */}
-        <div className="rounded-3xl border border-slate-100 bg-white p-6 shadow-sm">
-          <h3 className="mb-5 flex items-center gap-2 text-lg font-bold text-slate-900">
-            <ReceiptText size={20} className="text-blue-500" />
+        <div className="rounded-[var(--radius-card,1.75rem)] border border-slate-100 bg-white p-6 shadow-sm">
+          <h3 className="mb-5 flex items-center gap-2.5 text-lg font-bold text-slate-900">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary,#1661F6)]">
+              <ReceiptText size={22} strokeWidth={1.5} />
+            </div>
             Recent Vouchers
           </h3>
           <div className="overflow-x-auto">
@@ -392,17 +407,19 @@ export function DashboardPage() {
               </tbody>
             </table>
           </div>
-          <div className="mt-4 flex justify-center">
-            <Link to="/app/transactions/vouchers" className="inline-flex items-center gap-1.5 text-[13px] font-bold text-blue-600 transition hover:text-blue-700">
+          <div className="mt-5 flex justify-center">
+            <Link to="/app/transactions/vouchers" className="inline-flex items-center gap-1.5 text-[13px] font-bold transition-all hover:opacity-80 hover:gap-2.5" style={{ color: 'var(--primary, #1661F6)' }}>
               View all vouchers <ArrowRight size={14} strokeWidth={2.5} />
             </Link>
           </div>
         </div>
 
         {/* Recent Bank Transactions */}
-        <div className="rounded-3xl border border-slate-100 bg-white p-6 shadow-sm">
-          <h3 className="mb-5 flex items-center gap-2 text-lg font-bold text-slate-900">
-            <Landmark size={20} className="text-blue-500" />
+        <div className="rounded-[var(--radius-card,1.75rem)] border border-slate-100 bg-white p-6 shadow-sm">
+          <h3 className="mb-5 flex items-center gap-2.5 text-lg font-bold text-slate-900">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary,#1661F6)]">
+              <Landmark size={22} strokeWidth={1.5} />
+            </div>
             Recent Bank Transactions
           </h3>
           <div className="overflow-x-auto">
@@ -439,8 +456,8 @@ export function DashboardPage() {
               </tbody>
             </table>
           </div>
-          <div className="mt-4 flex justify-center">
-            <Link to="/app/transactions/bank-transactions" className="inline-flex items-center gap-1.5 text-[13px] font-bold text-blue-600 transition hover:text-blue-700">
+          <div className="mt-5 flex justify-center">
+            <Link to="/app/transactions/bank-transactions" className="inline-flex items-center gap-1.5 text-[13px] font-bold transition-all hover:opacity-80 hover:gap-2.5" style={{ color: 'var(--primary, #1661F6)' }}>
               View all transactions <ArrowRight size={14} strokeWidth={2.5} />
             </Link>
           </div>

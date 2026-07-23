@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react';
 import { Camera, Trash2, Upload, User, Briefcase, FileText, Wallet } from 'lucide-react';
 import PhoneInput from 'react-phone-input-2';
-import { Input, Textarea, Select } from '../../../components/ui/Input';
+import { Input, Textarea } from '../../../components/ui/Input';
+import { Select } from '../../../components/ui/Select';
 import { UserAvatar } from '../../../components/ui/UserAvatar';
 import { DocumentSection } from '../../../components/master/DocumentSection';
 import { MEMBER_DOCUMENT_DEFS } from '../../../components/master/documentUtils';
@@ -82,7 +83,11 @@ export function MemberForm({
   ];
 
   return (
-    <form id="member-form" className="flex flex-col rounded-2xl border border-slate-200 bg-white shadow-sm" onSubmit={onSubmit}>
+    <form
+      id="member-form"
+      className="flex flex-col rounded-2xl border border-slate-200 bg-white shadow-sm"
+      onSubmit={(event) => event.preventDefault()}
+    >
       
       {/* Top Progress Stepper */}
       <div className="border-b border-slate-200 px-8 pt-6 pb-10 bg-slate-50/50 rounded-t-2xl">
@@ -91,7 +96,7 @@ export function MemberForm({
           {/* Progress Lines */}
           <div className="absolute left-5 right-5 top-5 h-1 bg-slate-200 rounded-full">
             <div 
-              className="absolute left-0 top-0 h-full bg-[#3b79f6] rounded-full transition-all duration-500 ease-out" 
+              className="absolute left-0 top-0 h-full bg-[var(--primary)] rounded-full transition-all duration-500 ease-out" 
               style={{ width: `${(tabs.findIndex(t => t.id === activeTab) / (tabs.length - 1)) * 100}%` }} 
             />
           </div>
@@ -109,15 +114,15 @@ export function MemberForm({
                   onClick={() => setActiveTab(tab.id)}
                   className={`flex h-10 w-10 items-center justify-center rounded-full border-2 transition-all duration-300 ${
                     isActive 
-                      ? 'border-[#3b79f6] bg-[#3b79f6] text-white shadow-md ring-4 ring-blue-50' 
+                      ? 'border-[var(--primary)] bg-[var(--primary)] text-white shadow-md ring-4 ring-[color-mix(in_srgb,var(--primary)_20%,transparent)]' 
                       : isCompleted
-                        ? 'border-[#3b79f6] bg-white text-[#3b79f6]'
+                        ? 'border-[var(--primary)] bg-white text-[var(--primary)]'
                         : 'border-slate-200 bg-white text-slate-400 hover:border-slate-300'
                   }`}
                 >
                   <Icon size={18} strokeWidth={isActive ? 2.5 : 2} />
                 </button>
-                <span className={`absolute top-12 left-1/2 -translate-x-1/2 whitespace-nowrap text-[12px] font-semibold transition-colors duration-300 ${isActive ? 'text-[#3b79f6]' : isCompleted ? 'text-slate-700' : 'text-slate-400'}`}>
+                <span className={`absolute top-12 left-1/2 -translate-x-1/2 whitespace-nowrap text-[12px] font-semibold transition-colors duration-300 ${isActive ? 'text-[var(--primary)]' : isCompleted ? 'text-slate-700' : 'text-slate-400'}`}>
                   {tab.label}
                 </span>
               </div>
@@ -149,7 +154,7 @@ export function MemberForm({
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
                   disabled={avatarBusy || !onAvatarPick}
-                  className="absolute bottom-0 right-0 inline-flex h-[34px] w-[34px] items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-50 hover:text-[#3b79f6] disabled:cursor-not-allowed disabled:opacity-60"
+                  className="absolute bottom-0 right-0 inline-flex h-[34px] w-[34px] items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-50 hover:text-[var(--primary)] disabled:cursor-not-allowed disabled:opacity-60"
                   title="Choose profile image"
                 >
                   <Camera size={15} />
@@ -218,8 +223,8 @@ export function MemberForm({
                 value={stripPhoneDigits(value.mobileNo || '')}
                 onChange={(nextValue) => setValue({ ...value, mobileNo: nextValue ? `+${nextValue}` : '' })}
                 containerClass="employee-phone-input"
-                inputClass="!h-[42px] !w-full !rounded-lg !border-slate-200 focus:!border-[#3b79f6] focus:!ring-1 focus:!ring-[#3b79f6]"
-                buttonClass="!border-r !border-slate-200 !rounded-l-lg !bg-slate-50"
+                inputClass="!h-[42px] !w-full !rounded-[var(--radius-input,0.75rem)] !border-slate-200 focus:!border-[var(--primary)] focus:!ring-1 focus:!ring-[var(--primary)]"
+                buttonClass="!border-r !border-slate-200 !rounded-l-[var(--radius-input,0.75rem)] !bg-slate-50"
                 dropdownClass="!z-50"
                 inputProps={{ name: 'mobileNo' }}
               />
@@ -262,12 +267,14 @@ export function MemberForm({
 
             <div className="space-y-1.5">
               <label className="text-[13px] font-semibold text-slate-700">Branch <span className="text-rose-500">*</span></label>
-              <Select value={value.branchCode || ''} disabled={branchesLoading && branches.length === 0} onChange={(e) => setValue({ ...value, branchCode: e.target.value })}>
-                <option value="" disabled>{branchesLoading ? 'Loading branches...' : 'Select branch'}</option>
-                {branches.map((branch) => (
-                  <option key={branch.id || branch.code} value={branch.code}>{formatBranchLabel(branch)}</option>
-                ))}
-              </Select>
+              <Select 
+                value={value.branchCode || ''} 
+                disabled={branchesLoading && branches.length === 0} 
+                onChange={(val) => setValue({ ...value, branchCode: val })}
+                searchable={true}
+                placeholder={branchesLoading ? 'Loading branches...' : 'Select branch'}
+                options={branches.map(branch => ({ value: branch.code, label: formatBranchLabel(branch) }))}
+              />
             </div>
 
             <div className="space-y-1.5">
@@ -297,11 +304,15 @@ export function MemberForm({
 
             <div className="space-y-1.5">
               <label className="text-[13px] font-semibold text-slate-700">Account Status</label>
-              <Select value={value.status || 'Active'} onChange={(e) => setValue({ ...value, status: e.target.value })}>
-                <option value="Active">Active</option>
-                <option value="Inactive">Inactive</option>
-                <option value="Exited">Exited</option>
-              </Select>
+              <Select 
+                value={value.status || 'Active'} 
+                onChange={(val) => setValue({ ...value, status: val })}
+                options={[
+                  { value: 'Active', label: 'Active' },
+                  { value: 'Inactive', label: 'Inactive' },
+                  { value: 'Exited', label: 'Exited' }
+                ]}
+              />
             </div>
           </div>
         </div>
@@ -315,6 +326,10 @@ export function MemberForm({
             documents={value.documents || {}}
             editable
             onPickFile={(key, file) => {
+              const currentDocument = value.documents?.[key];
+              if (currentDocument?.fileId) {
+                onDocumentRemove?.(key, currentDocument);
+              }
               updateDocument(key, {
                 file,
                 fileName: file.name,
@@ -378,7 +393,7 @@ export function MemberForm({
             type="button"
             onClick={onCancel}
             disabled={saving}
-            className="rounded-xl px-5 py-2.5 text-[14px] font-semibold text-slate-600 transition hover:bg-slate-200 disabled:opacity-50"
+            className="rounded-[var(--radius-button,1rem)] border border-slate-300 bg-white px-5 py-2.5 text-[14px] font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-50"
           >
             Cancel
           </button>
@@ -388,7 +403,7 @@ export function MemberForm({
             <button
               type="button"
               onClick={() => setActiveTab(tabs[tabs.findIndex(t => t.id === activeTab) - 1].id)}
-              className="rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-[14px] font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+              className="rounded-[var(--radius-button,1rem)] border border-slate-300 bg-white px-5 py-2.5 text-[14px] font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
             >
               Previous
             </button>
@@ -397,17 +412,18 @@ export function MemberForm({
             <button
               type="button"
               onClick={() => setActiveTab(tabs[tabs.findIndex(t => t.id === activeTab) + 1].id)}
-              className="rounded-xl bg-[#3b79f6] px-8 py-2.5 text-[14px] font-semibold text-white shadow-sm transition hover:bg-blue-700 hover:shadow"
+              className="rounded-[var(--radius-button,1rem)] bg-[var(--primary)] px-8 py-2.5 text-[14px] font-semibold text-white shadow-sm transition hover:opacity-90 hover:shadow"
             >
               Next Step
             </button>
           ) : (
             <button
-              type="submit"
+              type="button"
+              onClick={onSubmit}
               disabled={saving}
-              className="rounded-xl bg-[#3b79f6] px-8 py-2.5 text-[14px] font-semibold text-white shadow-sm transition hover:bg-blue-700 hover:shadow disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-[var(--radius-button,1rem)] bg-[var(--primary)] px-8 py-2.5 text-[14px] font-semibold text-white shadow-sm transition hover:opacity-90 hover:shadow disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {saving ? 'Saving...' : (isEdit ? 'Save Changes' : 'Create Member')}
+              {saving ? 'Saving...' : (isEdit ? 'Update Member' : 'Create Member')}
             </button>
           )}
         </div>

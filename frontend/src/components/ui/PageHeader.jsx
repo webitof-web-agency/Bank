@@ -2,10 +2,10 @@ import { Button } from './Button';
 
 export function PageHeader({ title, description, actions = [], eyebrow, meta }) {
   return (
-    <div className="flex flex-col gap-5 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm md:flex-row md:items-end md:justify-between">
+    <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between mb-2">
       <div className="max-w-3xl">
         {eyebrow ? <p className="mb-2 text-xs font-semibold uppercase tracking-[0.28em] text-[var(--accent)]">{eyebrow}</p> : null}
-        <h1 className="text-3xl font-semibold tracking-tight text-slate-900 md:text-4xl">{title}</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{title}</h1>
         {description ? <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-500">{description}</p> : null}
         {meta ? <div className="mt-4 text-sm text-slate-500">{meta}</div> : null}
       </div>

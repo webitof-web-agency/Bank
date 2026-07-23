@@ -3,6 +3,40 @@ import { Eye, Paperclip, Trash2, Upload } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { cn } from '../../lib/cn';
 import { getDocumentFileName, getDocumentFileUrl, isPendingDocument } from './documentUtils';
+import { useEffect, useState } from 'react';
+
+function DocumentPreview({ document }) {
+  const [previewUrl, setPreviewUrl] = useState(null);
+
+  useEffect(() => {
+    if (!document) {
+      setPreviewUrl(null);
+      return;
+    }
+    const isImage = document.mimeType?.startsWith('image/') || document.fileName?.match(/\.(jpeg|jpg|gif|png)$/i);
+    if (!isImage) {
+      setPreviewUrl(null);
+      return;
+    }
+
+    if (document.file) {
+      const url = URL.createObjectURL(document.file);
+      setPreviewUrl(url);
+      return () => URL.revokeObjectURL(url);
+    } else {
+      const url = getDocumentFileUrl(document);
+      setPreviewUrl(url);
+    }
+  }, [document]);
+
+  if (!previewUrl) return null;
+
+  return (
+    <div className="mt-3 mb-2 w-full h-40 rounded-lg border border-slate-200 overflow-hidden bg-white flex items-center justify-center p-2 shadow-sm">
+      <img src={previewUrl} alt="Preview" className="w-full h-full object-contain" />
+    </div>
+  );
+}
 
 function formatSize(bytes = 0) {
   const value = Number(bytes || 0);
@@ -81,6 +115,7 @@ export function DocumentSection({
                       <p className="mt-1 text-[12px] text-slate-500">
                         {pending ? 'Selected for upload' : [document.mimeType, formatSize(document.sizeBytes)].filter(Boolean).join(' • ')}
                       </p>
+                      <DocumentPreview document={document} />
                     </div>
                     {pending ? null : (
                       <Button
@@ -114,8 +149,8 @@ export function DocumentSection({
                     />
                     <Button
                       type="button"
-                      variant="secondary"
-                      className="h-9 gap-2 rounded-full px-3 text-[13px]"
+                      variant="outline"
+                      className="h-9 gap-2 rounded-[var(--radius-button,1rem)] bg-white border border-slate-200 hover:bg-slate-50 px-3 text-[13px] text-slate-700 shadow-sm transition"
                       onClick={() => triggerPicker(definition.key)}
                     >
                       <Upload size={14} />
@@ -124,8 +159,8 @@ export function DocumentSection({
                     {hasFile ? (
                       <Button
                         type="button"
-                        variant="secondary"
-                        className="h-9 gap-2 rounded-full px-3 text-[13px] text-rose-600"
+                        variant="outline"
+                        className="h-9 gap-2 rounded-[var(--radius-button,1rem)] bg-rose-50 border border-rose-100 hover:bg-rose-100 px-3 text-[13px] text-rose-600 shadow-sm transition"
                         onClick={() => onClearFile?.(definition.key, document)}
                       >
                         <Trash2 size={14} />

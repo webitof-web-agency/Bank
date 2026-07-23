@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Edit2, Building2, MapPin, Phone, GitBranch, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Edit2, Building2, MapPin, Phone, GitBranch, CheckCircle2, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../api/api';
 import { useAuth } from '../../../context/AuthContext';
@@ -28,6 +28,9 @@ export function BranchDetailPage() {
   const [saving, setSaving] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [draft, setDraft] = useState(null);
+  const [activeTab, setActiveTab] = useState('info');
+  const [employees, setEmployees] = useState([]);
+  const [members, setMembers] = useState([]);
 
   const canManage = hasPermission('branches.write');
 
@@ -35,14 +38,24 @@ export function BranchDetailPage() {
     let mounted = true;
     setLoading(true);
 
-    api.resources.get('/banking/masters/branches', id, token)
-      .then((response) => {
+    Promise.all([
+      api.resources.get('/banking/masters/branches', id, token),
+      api.users.list(token),
+      api.resources.list('/banking/masters/members', token)
+    ])
+      .then(([branchRes, usersRes, membersRes]) => {
         if (!mounted) return;
-        setBranch(response.data || null);
+        const branchData = branchRes.data || null;
+        setBranch(branchData);
+        if (branchData) {
+          const bCode = String(branchData.code || '').trim().toUpperCase();
+          setEmployees((usersRes.data || []).filter(u => String(u.branchCode || '').trim().toUpperCase() === bCode));
+          setMembers((membersRes.data || []).filter(m => String(m.branchCode || '').trim().toUpperCase() === bCode));
+        }
       })
       .catch((error) => {
         if (!mounted) return;
-        toast.error(error.message || 'Unable to load branch');
+        toast.error(error.message || 'Unable to load branch details');
       })
       .finally(() => {
         if (mounted) setLoading(false);
@@ -117,21 +130,21 @@ export function BranchDetailPage() {
       </div>
 
       <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-6 bg-[#3b79f6] px-8 py-10 text-white md:flex-row md:items-center md:justify-between">
-          <div className="flex items-center gap-4">
-            <div className="flex h-24 w-24 items-center justify-center rounded-full border-4 border-white/20 bg-white/15 shadow-xl">
-              <GitBranch size={34} />
+        <div className="flex flex-col gap-6 px-8 py-8 md:flex-row md:items-start md:justify-between border-b border-slate-100">
+          <div className="flex items-center gap-5">
+            <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-[18px] bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary,#1661F6)] shadow-sm">
+              <GitBranch size={36} strokeWidth={1.5} />
             </div>
             <div>
-              <p className="mb-2 text-sm text-blue-50">{branchCode}</p>
-              <h1 className="text-3xl font-bold tracking-tight">{branch.label || 'Branch'}</h1>
-              <div className="mt-4 flex flex-wrap gap-2">
-                <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[13px] font-medium ${statusBadge}`}>
+              <p className="mb-1 text-[13px] font-bold text-[var(--primary,#1661F6)] tracking-wide">{branchCode}</p>
+              <h1 className="text-2xl font-bold text-slate-900 tracking-tight">{branch.label || 'Branch'}</h1>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[12px] font-semibold ${statusBadge}`}>
                   <CheckCircle2 size={14} />
                   {branch.isActive !== false ? 'Active' : 'Inactive'}
                 </span>
                 {branch.place ? (
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-[13px] font-medium">
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[12px] font-semibold text-slate-600">
                     <MapPin size={14} />
                     {branch.place}
                   </span>
@@ -140,57 +153,140 @@ export function BranchDetailPage() {
             </div>
           </div>
 
-          {canManage ? (
-            <Button variant="secondary" type="button" onClick={openEditor} className="gap-2 bg-white text-slate-900 hover:bg-slate-100">
-              <Edit2 size={16} />
-              Edit Branch
-            </Button>
-          ) : null}
-        </div>
-
-        <div className="p-8">
-          <div className="grid gap-6 lg:grid-cols-2">
-            <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-              <div className="border-b border-slate-100 px-6 py-5">
-                <h2 className="text-lg font-semibold text-slate-900">Branch Info</h2>
-                <p className="mt-1 text-sm text-slate-500">Core branch identity and status.</p>
+          <div className="flex flex-col md:items-end gap-4">
+            {canManage && (
+              <Button variant="outline" type="button" onClick={openEditor} className="gap-2 border-slate-200 shadow-sm rounded-[var(--radius-input,0.75rem)] hover:bg-slate-50 text-slate-700 font-semibold">
+                <Edit2 size={16} />
+                Edit Branch
+              </Button>
+            )}
+            
+            <div className="flex items-center gap-5 mt-1 bg-slate-50/80 border border-slate-100 rounded-[14px] px-5 py-3 shadow-sm">
+              <div>
+                <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Employees</p>
+                <p className="text-base font-bold text-slate-900 leading-tight mt-0.5">{employees.length}</p>
               </div>
-              <div className="divide-y divide-slate-100 px-6">
-                <DetailRow label="Branch Code" value={branchCode} />
-                <DetailRow label="Branch Name" value={branch.label} />
-                <DetailRow label="Place" value={branch.place} />
-                <DetailRow label="District" value={branch.district} />
-                <DetailRow label="Phone" value={branch.phone} />
-                <DetailRow label="Status" value={branch.isActive !== false ? 'Active' : 'Inactive'} />
+              <div className="w-px h-8 bg-slate-200"></div>
+              <div>
+                <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Members</p>
+                <p className="text-base font-bold text-slate-900 leading-tight mt-0.5">{members.length}</p>
               </div>
-            </Card>
-
-            <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-              <div className="border-b border-slate-100 px-6 py-5">
-                <h2 className="text-lg font-semibold text-slate-900">Address</h2>
-                <p className="mt-1 text-sm text-slate-500">Registered branch address information.</p>
-              </div>
-              <div className="divide-y divide-slate-100 px-6">
-                <DetailRow label="Address" value={branch.address} />
-                <DetailRow label="Location" value={branch.place} />
-                <DetailRow label="Contact" value={branch.phone} />
-                <DetailRow label="Branch Status" value={branch.isActive !== false ? 'Operational' : 'Closed'} />
-              </div>
-            </Card>
+            </div>
           </div>
         </div>
-      </div>
+
+        <div className="flex border-b border-slate-100 bg-slate-50/50 px-6">
+          {[
+            { id: 'info', label: 'Branch Info', icon: Building2 },
+            { id: 'address', label: 'Address', icon: MapPin },
+            { id: 'employees', label: 'Related Employees', icon: Users },
+            { id: 'members', label: 'Related Members', icon: Users }
+          ].map((tab) => {
+            const Icon = tab.icon;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-2 border-b-2 px-6 py-4 text-sm font-medium transition-colors ${
+                  activeTab === tab.id
+                    ? 'border-[var(--primary,#1661F6)] text-[var(--primary,#1661F6)]'
+                    : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700'
+                }`}
+              >
+                {Icon && <Icon size={16} />}
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="p-8 bg-slate-50/30 min-h-[400px]">
+            {activeTab === 'info' && (
+              <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <div className="divide-y divide-slate-100 px-6">
+                  <DetailRow label="Branch Code" value={branchCode} />
+                  <DetailRow label="Branch Name" value={branch.label} />
+                  <DetailRow label="Place" value={branch.place} />
+                  <DetailRow label="District" value={branch.district} />
+                  <DetailRow label="Phone" value={branch.phone} />
+                  <DetailRow label="Status" value={branch.isActive !== false ? 'Active' : 'Inactive'} />
+                </div>
+              </Card>
+            )}
+
+            {activeTab === 'address' && (
+              <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <div className="divide-y divide-slate-100 px-6">
+                  <DetailRow label="Address" value={branch.address} />
+                  <DetailRow label="Location" value={branch.place} />
+                  <DetailRow label="Contact" value={branch.phone} />
+                  <DetailRow label="Branch Status" value={branch.isActive !== false ? 'Operational' : 'Closed'} />
+                </div>
+              </Card>
+            )}
+
+            {activeTab === 'employees' && (
+              <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <div className="p-4 border-b border-slate-100">
+                  <h3 className="font-semibold text-slate-900">Employees in this branch ({employees.length})</h3>
+                </div>
+                {employees.length > 0 ? (
+                  <div className="divide-y divide-slate-100 max-h-[600px] overflow-y-auto">
+                    {employees.map(emp => (
+                      <div key={emp.id} className="p-4 flex items-center justify-between hover:bg-slate-50">
+                        <div>
+                          <p className="font-medium text-slate-900">{emp.fullName || emp.name}</p>
+                          <p className="text-sm text-slate-500">{emp.designation || 'No designation'} • {emp.code || 'No Code'}</p>
+                        </div>
+                        <Button variant="outline" size="sm" onClick={() => navigate(`/app/master/employees/${emp.id}`)}>
+                          View
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-8 text-center text-slate-500">No employees assigned to this branch.</div>
+                )}
+              </Card>
+            )}
+
+            {activeTab === 'members' && (
+               <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <div className="p-4 border-b border-slate-100">
+                  <h3 className="font-semibold text-slate-900">Members in this branch ({members.length})</h3>
+                </div>
+                {members.length > 0 ? (
+                  <div className="divide-y divide-slate-100 max-h-[600px] overflow-y-auto">
+                    {members.map(member => (
+                      <div key={member.id} className="p-4 flex items-center justify-between hover:bg-slate-50">
+                        <div>
+                          <p className="font-medium text-slate-900">{member.name}</p>
+                          <p className="text-sm text-slate-500">{member.code || 'No Code'} • {member.membershipNo || 'No Membership No'}</p>
+                        </div>
+                        <Button variant="outline" size="sm" onClick={() => navigate(`/app/master/members/${member.id}`)}>
+                          View
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-8 text-center text-slate-500">No members assigned to this branch.</div>
+                )}
+              </Card>
+            )}
+          </div>
+        </div>
 
       <Modal
         open={editorOpen}
         title="Edit Branch"
-        subtitle="Update branch identity and location details."
         onClose={closeEditor}
         width="min(980px, 96vw)"
         footer={
           <div className="flex justify-end gap-3 w-full">
             <Button variant="secondary" type="button" onClick={closeEditor}>Cancel</Button>
-            <Button type="submit" form="branch-form" disabled={saving} className="bg-[#3b79f6] hover:bg-blue-700 text-white shadow-sm rounded-lg px-6">
+            <Button type="submit" form="branch-form" disabled={saving} className="bg-[var(--primary,#1661F6)] hover:bg-[color-mix(in_srgb,var(--primary)_90%,black)] text-white shadow-sm rounded-[var(--radius-input,0.75rem)] px-6 border-none">
               {saving ? 'Saving...' : 'Save Changes'}
             </Button>
           </div>

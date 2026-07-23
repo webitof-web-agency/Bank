@@ -29,6 +29,7 @@ export function NoInterestMemberDetailPage() {
   const [saving, setSaving] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [draft, setDraft] = useState(null);
+  const [activeTab, setActiveTab] = useState('info');
 
   const canManage = hasPermission('no-interest-members.write');
 
@@ -122,20 +123,20 @@ export function NoInterestMemberDetailPage() {
       </div>
 
       <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-6 bg-[#3b79f6] px-8 py-10 text-white md:flex-row md:items-center md:justify-between">
-          <div className="flex items-center gap-4">
-            <div className="flex h-24 w-24 items-center justify-center rounded-full border-4 border-white/20 bg-white/15 shadow-xl">
-              <Ban size={34} />
+        <div className="flex flex-col gap-6 px-8 py-8 md:flex-row md:items-start md:justify-between border-b border-slate-100">
+          <div className="flex items-center gap-5">
+            <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-[18px] bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary,#1661F6)] shadow-sm">
+              <Ban size={36} strokeWidth={1.5} />
             </div>
             <div>
-              <p className="mb-2 text-sm text-blue-50">{recordCode}</p>
-              <h1 className="text-3xl font-bold tracking-tight">{record.reason || 'No Interest Member'}</h1>
-              <div className="mt-4 flex flex-wrap gap-2">
-                <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[13px] font-medium ${statusBadge}`}>
+              <p className="mb-1 text-[13px] font-bold text-[var(--primary,#1661F6)] tracking-wide">{recordCode}</p>
+              <h1 className="text-2xl font-bold text-slate-900 tracking-tight">{record.reason || 'No Interest Member'}</h1>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[12px] font-semibold ${statusBadge}`}>
                   <CheckCircle2 size={14} />
                   {record.status || 'Active'}
                 </span>
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-[13px] font-medium">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[12px] font-semibold text-slate-600">
                   <UserRound size={14} />
                   {getMemberLabel(member) || record.memberCode}
                 </span>
@@ -143,21 +144,55 @@ export function NoInterestMemberDetailPage() {
             </div>
           </div>
 
-          {canManage ? (
-            <Button variant="secondary" type="button" onClick={openEditor} className="gap-2 bg-white text-slate-900 hover:bg-slate-100">
-              <Edit2 size={16} />
-              Edit Record
-            </Button>
-          ) : null}
+          <div className="flex flex-col md:items-end gap-4">
+            {canManage && (
+              <Button variant="outline" type="button" onClick={openEditor} className="gap-2 border-slate-200 shadow-sm rounded-[var(--radius-input,0.75rem)] hover:bg-slate-50 text-slate-700 font-semibold">
+                <Edit2 size={16} />
+                Edit Record
+              </Button>
+            )}
+            
+            <div className="flex items-center gap-5 mt-1 bg-slate-50/80 border border-slate-100 rounded-[14px] px-5 py-3 shadow-sm">
+              <div>
+                <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">From Date</p>
+                <p className="text-base font-bold text-slate-900 leading-tight mt-0.5">{record.fromDate || '—'}</p>
+              </div>
+              <div className="w-px h-8 bg-slate-200"></div>
+              <div>
+                <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">To Date</p>
+                <p className="text-base font-bold text-slate-900 leading-tight mt-0.5">{record.toDate || '—'}</p>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <div className="p-8">
-          <div className="grid gap-6 lg:grid-cols-2">
-            <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-              <div className="border-b border-slate-100 px-6 py-5">
-                <h2 className="text-lg font-semibold text-slate-900">Record Info</h2>
-                <p className="mt-1 text-sm text-slate-500">Member exclusion details.</p>
-              </div>
+        <div className="flex border-b border-slate-100 bg-slate-50/50 px-6">
+          {[
+            { id: 'info', label: 'Record Info', icon: Ban },
+            { id: 'status', label: 'Status Summary', icon: Calendar }
+          ].map((tab) => {
+            const Icon = tab.icon;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-2 border-b-2 px-6 py-4 text-sm font-medium transition-colors ${
+                  activeTab === tab.id
+                    ? 'border-[var(--primary,#1661F6)] text-[var(--primary,#1661F6)]'
+                    : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700'
+                }`}
+              >
+                <Icon size={16} />
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="p-8 bg-slate-50/30">
+          {activeTab === 'info' && (
+            <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm py-2">
               <div className="divide-y divide-slate-100 px-6">
                 <DetailRow label="Record Code" value={recordCode} />
                 <DetailRow label="Member" value={getMemberLabel(member) || record.memberCode} />
@@ -167,12 +202,10 @@ export function NoInterestMemberDetailPage() {
                 <DetailRow label="Status" value={record.status} />
               </div>
             </Card>
+          )}
 
-            <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-              <div className="border-b border-slate-100 px-6 py-5">
-                <h2 className="text-lg font-semibold text-slate-900">Status Summary</h2>
-                <p className="mt-1 text-sm text-slate-500">Current exclusion period and member mapping.</p>
-              </div>
+          {activeTab === 'status' && (
+            <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm py-2">
               <div className="divide-y divide-slate-100 px-6">
                 <DetailRow label="Record Status" value={record.status} />
                 <DetailRow label="Member Code" value={record.memberCode} />
@@ -180,20 +213,19 @@ export function NoInterestMemberDetailPage() {
                 <DetailRow label="Reason Tag" value={record.reason} />
               </div>
             </Card>
-          </div>
+          )}
         </div>
       </div>
 
       <Modal
         open={editorOpen}
         title="Edit Record"
-        subtitle="Update member exclusion details."
         onClose={closeEditor}
         width="min(980px, 96vw)"
         footer={
           <div className="flex justify-end gap-3 w-full">
             <Button variant="secondary" type="button" onClick={closeEditor}>Cancel</Button>
-            <Button type="submit" form="no-interest-member-form" disabled={saving} className="bg-[#3b79f6] hover:bg-blue-700 text-white shadow-sm rounded-lg px-6">
+            <Button type="submit" form="no-interest-member-form" disabled={saving} className="bg-[var(--primary,#1661F6)] hover:bg-[color-mix(in_srgb,var(--primary)_90%,black)] text-white shadow-sm rounded-[var(--radius-input,0.75rem)] px-6 border-none">
               {saving ? 'Saving...' : 'Save Changes'}
             </Button>
           </div>

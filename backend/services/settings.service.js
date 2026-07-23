@@ -23,14 +23,24 @@ async function updateSettings(patch = {}) {
   const next = mergeDeep(current, patch);
   
   const { _id, key, createdAt, updatedAt, __v, ...updateData } = next;
-
-  const updated = await Settings.findOneAndUpdate(
-    { key: 'default' },
-    { $set: updateData, $setOnInsert: { key: 'default' } },
-    { new: true, upsert: true }
-  ).lean();
-
-  return updated || next;
+  
+  let doc = await Settings.findOne({ key: 'default' });
+  if (!doc) {
+    doc = new Settings({ key: 'default' });
+  }
+  
+  Object.keys(updateData).forEach(k => {
+    doc[k] = updateData[k];
+  });
+  
+  doc.markModified('payload');
+  doc.markModified('smtp');
+  doc.markModified('emailTemplates');
+  doc.markModified('notifications');
+  
+  await doc.save();
+  
+  return doc.toObject();
 }
 
 module.exports = {

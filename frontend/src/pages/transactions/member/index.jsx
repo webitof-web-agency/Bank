@@ -473,7 +473,7 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase }) {
         footer={
           <div className="flex w-full justify-end gap-3">
             <Button variant="secondary" type="button" onClick={closeEditor}>Cancel</Button>
-            <Button type="submit" form="transaction-voucher-form" disabled={saving || !canWrite} className="bg-[#3b79f6] text-white hover:bg-blue-700">
+            <Button type="submit" form="transaction-voucher-form" disabled={saving || !canWrite} className="bg-[#1661F6] text-white hover:bg-blue-700">
               {saving ? 'Saving...' : (activeRecord ? 'Save Changes' : 'Create Voucher')}
             </Button>
           </div>

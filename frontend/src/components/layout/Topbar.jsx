@@ -237,7 +237,13 @@ export function Topbar({ title, subtitle, onMenuClick }) {
 
         <div className="flex items-center gap-3">
 
-          <button type="button" className="text-slate-400 transition hover:text-slate-600">
+          <button
+            type="button"
+            onClick={() => navigate('/app/calendar')}
+            className="text-slate-400 transition hover:text-slate-600"
+            aria-label="Open calendar"
+            title="Calendar"
+          >
             <Calendar size={20} strokeWidth={1.8} />
           </button>
 
@@ -251,7 +257,7 @@ export function Topbar({ title, subtitle, onMenuClick }) {
             >
               <Bell size={20} strokeWidth={1.8} />
               {unreadCount > 0 ? (
-                <span className="absolute -right-1 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white ring-2 ring-white">
+                <span className="absolute -right-1 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[var(--primary,#1661F6)] px-1 text-[10px] font-bold text-white ring-2 ring-white">
                   {unreadCount > 99 ? '99+' : unreadCount}
                 </span>
               ) : null}
@@ -259,10 +265,9 @@ export function Topbar({ title, subtitle, onMenuClick }) {
 
             {notificationsOpen ? (
               <div className="absolute right-0 top-full z-30 mt-3 w-[min(24rem,calc(100vw-1rem))] overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-[0_24px_80px_-20px_rgba(15,23,42,0.24)]">
-                <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-4 py-4">
+                <div className="flex items-center justify-between gap-4 border-b border-[color-mix(in_srgb,var(--primary)_10%,transparent)] bg-[color-mix(in_srgb,var(--primary)_4%,transparent)] px-4 py-4">
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Notifications</p>
-                    <p className="mt-1 text-sm text-slate-600">Latest alerts and updates</p>
+                    <p className="text-[14px] font-bold text-[var(--primary)]">Notifications</p>
                   </div>
                   <button
                     type="button"
@@ -270,7 +275,7 @@ export function Topbar({ title, subtitle, onMenuClick }) {
                       setNotificationsOpen(false);
                       navigate('/app/notifications');
                     }}
-                    className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[12px] font-semibold text-slate-700 transition hover:border-blue-200 hover:text-blue-600"
+                    className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[12px] font-semibold text-slate-700 transition hover:border-[var(--primary)] hover:text-[var(--primary)] hover:bg-[color-mix(in_srgb,var(--primary)_4%,transparent)]"
                   >
                     Open inbox
                     <ArrowRight size={13} />
@@ -289,15 +294,15 @@ export function Topbar({ title, subtitle, onMenuClick }) {
                             key={notification.id}
                             type="button"
                             onClick={() => handleOpenNotification(notification)}
-                            className="flex w-full items-start gap-3 rounded-2xl px-3 py-3 text-left transition hover:bg-slate-50"
+                            className="flex w-full items-start gap-3 rounded-2xl px-3 py-3 text-left transition hover:bg-[color-mix(in_srgb,var(--primary)_4%,transparent)]"
                           >
-                            <span className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border ${getNotificationAccentTone(notification)}`}>
+                            <span className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] border ${getNotificationAccentTone(notification)}`}>
                               <NotificationIcon item={notification} />
                             </span>
                             <span className="min-w-0 flex-1">
                               <span className="flex items-center gap-2">
                                 <span className="truncate text-[13px] font-semibold text-slate-900">{notification.title}</span>
-                                {unread ? <span className="h-2.5 w-2.5 rounded-full bg-blue-600" /> : null}
+                                {unread ? <span className="h-2.5 w-2.5 rounded-full bg-[var(--primary)]" /> : null}
                               </span>
                               <span className="mt-1 line-clamp-2 text-[12px] leading-5 text-slate-500">{notification.message || 'No message provided.'}</span>
                               <span className="mt-2 block text-[11px] text-slate-400">{formatNotificationTime(notification.createdAt)}</span>
@@ -314,11 +319,11 @@ export function Topbar({ title, subtitle, onMenuClick }) {
                   )}
                 </div>
 
-                <div className="flex items-center justify-between gap-3 border-t border-slate-100 px-4 py-3">
+                <div className="flex items-center justify-between gap-3 border-t border-[color-mix(in_srgb,var(--primary)_10%,transparent)] bg-[color-mix(in_srgb,var(--primary)_2%,transparent)] px-4 py-3">
                   <button
                     type="button"
                     onClick={handleMarkAllReadInDropdown}
-                    className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[12px] font-semibold text-slate-700 transition hover:border-blue-200 hover:text-blue-600"
+                    className="inline-flex items-center gap-2 rounded-[var(--radius-button,1rem)] border border-slate-200 bg-white px-3 py-1.5 text-[12px] font-semibold text-slate-700 transition hover:border-[var(--primary)] hover:text-[var(--primary)] hover:bg-[color-mix(in_srgb,var(--primary)_4%,transparent)]"
                   >
                     <CheckCheck size={13} />
                     Mark all read
@@ -329,7 +334,7 @@ export function Topbar({ title, subtitle, onMenuClick }) {
                       setNotificationsOpen(false);
                       navigate('/app/notifications');
                     }}
-                    className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[12px] font-semibold text-slate-500 transition hover:text-slate-700"
+                    className="inline-flex items-center gap-2 rounded-[var(--radius-button,1rem)] px-3 py-1.5 text-[12px] font-semibold text-[var(--primary)] transition hover:bg-[color-mix(in_srgb,var(--primary)_8%,transparent)]"
                   >
                     View all
                     <ArrowRight size={13} />
