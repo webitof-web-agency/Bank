@@ -2227,6 +2227,7 @@ module.exports = {
   buildDividendReport,
   buildJournalLines,
   buildMonthlySummaryReport,
+  buildMemberLedgerReport,
   buildPaymentReceiptStatementReport,
   buildProfitLossReport,
   buildTrialBalanceReport,

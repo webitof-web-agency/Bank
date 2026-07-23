@@ -408,7 +408,7 @@ export function DashboardPage() {
             </table>
           </div>
           <div className="mt-5 flex justify-center">
-            <Link to="/app/transactions/vouchers" className="inline-flex items-center gap-1.5 text-[13px] font-bold transition-all hover:opacity-80 hover:gap-2.5" style={{ color: 'var(--primary, #1661F6)' }}>
+            <Link to="/app/transactions/transfer-voucher" className="inline-flex items-center gap-1.5 text-[13px] font-bold transition-all hover:opacity-80 hover:gap-2.5" style={{ color: 'var(--primary, #1661F6)' }}>
               View all vouchers <ArrowRight size={14} strokeWidth={2.5} />
             </Link>
           </div>
@@ -457,7 +457,7 @@ export function DashboardPage() {
             </table>
           </div>
           <div className="mt-5 flex justify-center">
-            <Link to="/app/transactions/bank-transactions" className="inline-flex items-center gap-1.5 text-[13px] font-bold transition-all hover:opacity-80 hover:gap-2.5" style={{ color: 'var(--primary, #1661F6)' }}>
+            <Link to="/app/transactions/bank" className="inline-flex items-center gap-1.5 text-[13px] font-bold transition-all hover:opacity-80 hover:gap-2.5" style={{ color: 'var(--primary, #1661F6)' }}>
               View all transactions <ArrowRight size={14} strokeWidth={2.5} />
             </Link>
           </div>

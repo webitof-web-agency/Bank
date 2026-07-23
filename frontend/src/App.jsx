@@ -197,7 +197,7 @@ function AppRoutes() {
           path="transactions/member"
           element={
             <PermissionRoute permission="transactions.read">
-              <MemberTransactionsPage />
+              <MemberTransactionsPage sectionKey="member" detailPathBase="/app/transactions/member" />
             </PermissionRoute>
           }
         />
@@ -205,7 +205,7 @@ function AppRoutes() {
           path="transactions/member/:id"
           element={
             <PermissionRoute permission="transactions.read">
-              <MemberTransactionDetailPage />
+              <MemberTransactionDetailPage sectionKey="member" />
             </PermissionRoute>
           }
         />
@@ -213,7 +213,7 @@ function AppRoutes() {
           path="transactions/bank"
           element={
             <PermissionRoute permission="bank-transactions.read">
-              <BankTransactionsPage />
+              <BankTransactionsPage sectionKey="bank" detailPathBase="/app/transactions/bank" />
             </PermissionRoute>
           }
         />
@@ -221,7 +221,7 @@ function AppRoutes() {
           path="transactions/bank/:id"
           element={
             <PermissionRoute permission="bank-transactions.read">
-              <BankTransactionDetailPage />
+              <BankTransactionDetailPage sectionKey="bank" />
             </PermissionRoute>
           }
         />
@@ -229,7 +229,7 @@ function AppRoutes() {
           path="transactions/employee"
           element={
             <PermissionRoute permission="transactions.read">
-              <EmployeeTransactionsPage />
+              <EmployeeTransactionsPage sectionKey="employee" detailPathBase="/app/transactions/employee" />
             </PermissionRoute>
           }
         />
@@ -237,7 +237,7 @@ function AppRoutes() {
           path="transactions/employee/:id"
           element={
             <PermissionRoute permission="transactions.read">
-              <EmployeeTransactionDetailPage />
+              <EmployeeTransactionDetailPage sectionKey="employee" />
             </PermissionRoute>
           }
         />
@@ -245,7 +245,7 @@ function AppRoutes() {
           path="transactions/transfer-voucher"
           element={
             <PermissionRoute permission="transactions.read">
-              <TransferVoucherTransactionsPage />
+              <TransferVoucherTransactionsPage sectionKey="transfer-voucher" detailPathBase="/app/transactions/transfer-voucher" />
             </PermissionRoute>
           }
         />
@@ -253,7 +253,7 @@ function AppRoutes() {
           path="transactions/transfer-voucher/:id"
           element={
             <PermissionRoute permission="transactions.read">
-              <TransferVoucherTransactionDetailPage />
+              <TransferVoucherTransactionDetailPage sectionKey="transfer-voucher" />
             </PermissionRoute>
           }
         />
@@ -261,7 +261,7 @@ function AppRoutes() {
           path="transactions/receipt-interest"
           element={
             <PermissionRoute permission={['transactions.read', 'no-interest-members.read']}>
-              <ReceiptInterestTransactionsPage />
+              <ReceiptInterestTransactionsPage sectionKey="receipt-interest" detailPathBase="/app/transactions/receipt-interest" />
             </PermissionRoute>
           }
         />
@@ -269,7 +269,7 @@ function AppRoutes() {
           path="transactions/receipt-interest/:id"
           element={
             <PermissionRoute permission={['transactions.read', 'no-interest-members.read']}>
-              <ReceiptInterestTransactionDetailPage />
+              <ReceiptInterestTransactionDetailPage sectionKey="receipt-interest" />
             </PermissionRoute>
           }
         />
@@ -277,7 +277,7 @@ function AppRoutes() {
           path="transactions/supporting"
           element={
             <PermissionRoute permission={['transactions.read', 'demands.read']}>
-              <SupportingTransactionsPage />
+              <SupportingTransactionsPage sectionKey="supporting" detailPathBase="/app/transactions/supporting" />
             </PermissionRoute>
           }
         />
@@ -285,7 +285,7 @@ function AppRoutes() {
           path="transactions/supporting/:id"
           element={
             <PermissionRoute permission={['transactions.read', 'demands.read']}>
-              <SupportingTransactionDetailPage />
+              <SupportingTransactionDetailPage sectionKey="supporting" />
             </PermissionRoute>
           }
         />
