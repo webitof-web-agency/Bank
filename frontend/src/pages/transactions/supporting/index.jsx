@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Eye, Edit2, Plus, Trash2, RotateCcw, ArrowRight, Sparkles, Link2 } from 'lucide-react';
+import { Eye, Edit2, Plus, Trash2, RotateCcw, ArrowRight, Sparkles, Link2, ChevronDown, FileText, CheckCircle, Banknote, Filter, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../api/api';
 import { Button } from '../../../components/ui/Button';
@@ -8,6 +8,7 @@ import { Card } from '../../../components/ui/Card';
 import { Modal } from '../../../components/ui/Modal';
 import { ConfirmDialog } from '../../../components/overlays/ConfirmDialog';
 import { Table } from '../../../components/ui/Table';
+import { Select } from '../../../components/ui/Select';
 import { useAuth } from '../../../context/AuthContext';
 import { uploadDocumentMap } from '../../master/documentUpload';
 import { SupportingTransactionForm } from './form';
@@ -51,6 +52,8 @@ export function SupportingTransactionsPage({ sectionKey, detailPathBase }) {
   const [filterDateFrom, setFilterDateFrom] = useState('');
   const [filterDateTo, setFilterDateTo] = useState('');
   const [removedDocumentIds, setRemovedDocumentIds] = useState([]);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [filterDropdownOpen, setFilterDropdownOpen] = useState(false);
 
   const section = useMemo(() => catalog.find((item) => item.key === sectionKey) || null, [catalog, sectionKey]);
   const sectionItems = useMemo(() => getSectionItems(catalog, sectionKey), [catalog, sectionKey]);
@@ -273,14 +276,14 @@ export function SupportingTransactionsPage({ sectionKey, detailPathBase }) {
     },
     {
       key: 'party',
-      label: 'Party',
+      label: 'Linked Party',
       sortable: true,
       sortValue: (row) => getTransactionPartyLabel(row.partyCode, lookups, row.partyType),
       render: (row) => <span className="text-slate-700">{getTransactionPartyLabel(row.partyCode, lookups, row.partyType)}</span>
     },
     {
       key: 'settlement',
-      label: 'Settlement',
+      label: 'Settlement A/c',
       sortable: true,
       sortValue: (row) => getTransactionLedgerLabel(row.details?.settlementAccount || row.details?.ledgerTarget || row.details?.depositIn || row.details?.fromAccount || '', lookups),
       render: (row) => <span className="text-slate-700">{getTransactionLedgerLabel(row.details?.settlementAccount || row.details?.ledgerTarget || row.details?.depositIn || row.details?.fromAccount || '', lookups)}</span>
@@ -335,58 +338,78 @@ export function SupportingTransactionsPage({ sectionKey, detailPathBase }) {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <div className="flex items-center gap-2 text-[13px] font-medium text-slate-500">
-            <button type="button" onClick={() => navigate('/app/transactions/overview')} className="inline-flex items-center gap-1.5 hover:text-slate-900">
-              <ArrowRight size={14} className="rotate-180" />
-              Transactions
-            </button>
-            <span className="text-slate-300">/</span>
-            <span className="text-slate-900">{section?.label || sectionKey}</span>
-          </div>
           <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">{section?.label || sectionKey} Transactions</h1>
-          <p className="mt-1 text-sm text-slate-500">{section?.description || 'Transaction vouchers for this group.'}</p>
         </div>
 
         <div className="flex flex-wrap gap-2">
           <Button type="button" variant="outline" className="gap-2" onClick={exportCsv}>
             Export CSV
           </Button>
-          <Button type="button" variant="outline" className="gap-2" onClick={() => window.print()}>
-            Print
-          </Button>
-          {editableItems.map((item) => (
-            <Button key={item.key} onClick={() => openCreate(item.key)} className="gap-2">
+          
+          <div className="relative">
+            <Button
+              type="button"
+              className="gap-2 bg-[var(--primary,#1661F6)] text-white hover:opacity-90"
+              onClick={() => setDropdownOpen(!dropdownOpen)}
+              onBlur={() => setTimeout(() => setDropdownOpen(false), 200)}
+            >
               <Plus size={16} />
-              {item.label}
+              Create Transaction
+              <ChevronDown size={14} className="ml-1 opacity-70" />
             </Button>
-          ))}
+            {dropdownOpen && (
+              <div className="absolute right-0 top-full z-50 mt-2 w-72 origin-top-right rounded-2xl border border-slate-200 bg-white p-2 shadow-xl ring-1 ring-slate-900/5">
+                {editableItems.map((item) => (
+                  <button
+                    key={item.key}
+                    onClick={() => {
+                      setDropdownOpen(false);
+                      openCreate(item.key);
+                    }}
+                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 hover:bg-[color-mix(in_srgb,var(--primary)_8%,transparent)] hover:text-[var(--primary)] transition-colors"
+                  >
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary)]">
+                      <Plus size={14} strokeWidth={2.5} />
+                    </div>
+                    <span className="line-clamp-1">{item.label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
-        <Card className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] ${toneClassName(section?.tone || 'slate')}`}>
-            {section?.label || 'Transactions'}
-          </p>
-          <h2 className="mt-3 text-2xl font-semibold text-slate-900">{stats.total}</h2>
-          <p className="mt-1 text-sm text-slate-500">Voucher records loaded in this section.</p>
-        </Card>
-        <Card className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Posted</p>
-          <h2 className="mt-3 text-2xl font-semibold text-slate-900">{stats.posted}</h2>
-          <p className="mt-1 text-sm text-slate-500">Posted and active entries.</p>
-        </Card>
-        <Card className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Amount</p>
-          <h2 className="mt-3 text-2xl font-semibold text-slate-900">{formatTransactionAmount(stats.amount)}</h2>
-          <p className="mt-1 text-sm text-slate-500">Total voucher amount for the filtered section.</p>
-        </Card>
+        {[
+          { label: 'Total Transactions', subLabel: 'Voucher records loaded in this section', value: stats.total, icon: FileText, color: 'text-blue-500', bg: 'bg-blue-50' },
+          { label: 'Posted', subLabel: 'Posted and active entries', value: stats.posted, icon: CheckCircle, color: 'text-emerald-500', bg: 'bg-emerald-50' },
+          { label: 'Amount', subLabel: 'Total voucher amount for the filtered section', value: formatTransactionAmount(stats.amount), icon: Banknote, color: 'text-purple-500', bg: 'bg-purple-50' }
+        ].map((item) => {
+          const Icon = item.icon;
+          return (
+            <Card key={item.label} className="border border-slate-200 bg-white p-4 shadow-sm flex items-center gap-4 rounded-2xl">
+              <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${item.bg} ${item.color}`}>
+                <Icon size={22} strokeWidth={1.5} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 truncate">{item.label}</p>
+                <div className="flex items-baseline gap-2">
+                  <p className="text-xl font-bold text-slate-900 truncate">{loading ? '...' : item.value}</p>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-0.5 truncate">{item.subLabel}</p>
+              </div>
+            </Card>
+          );
+        })}
       </div>
 
       {linkedItems.length ? (
         <Card className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex items-center gap-2 text-slate-700">
-            <Sparkles size={16} className="text-blue-500" />
+          <div className="flex items-center gap-3 mb-2">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary)]">
+              <Sparkles size={20} strokeWidth={2} />
+            </div>
             <h3 className="text-base font-semibold text-slate-900">Linked Master Pages</h3>
           </div>
           <div className="mt-4 flex flex-wrap gap-3">
@@ -400,54 +423,7 @@ export function SupportingTransactionsPage({ sectionKey, detailPathBase }) {
         </Card>
       ) : null}
 
-      <Card className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="grid gap-3 md:grid-cols-5">
-          <div className="space-y-1.5">
-            <label className="text-[12px] font-semibold text-slate-600">Status</label>
-            <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="w-full rounded-[0.75rem] border border-slate-200 bg-white px-3 py-2 text-sm">
-              <option value="">All</option>
-              <option value="Draft">Draft</option>
-              <option value="Posted">Posted</option>
-              <option value="Reversed">Reversed</option>
-            </select>
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-[12px] font-semibold text-slate-600">Party Type</label>
-            <select value={filterPartyType} onChange={(e) => setFilterPartyType(e.target.value)} className="w-full rounded-[0.75rem] border border-slate-200 bg-white px-3 py-2 text-sm">
-              <option value="">All</option>
-              <option value="ledger">Ledger</option>
-              <option value="member">Member</option>
-              <option value="employee">Employee</option>
-              <option value="bank">Bank</option>
-            </select>
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-[12px] font-semibold text-slate-600">Date From</label>
-            <input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} className="w-full rounded-[0.75rem] border border-slate-200 bg-white px-3 py-2 text-sm" />
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-[12px] font-semibold text-slate-600">Date To</label>
-            <input type="date" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} className="w-full rounded-[0.75rem] border border-slate-200 bg-white px-3 py-2 text-sm" />
-          </div>
-          <div className="flex items-end">
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full"
-              onClick={() => {
-                setFilterStatus('');
-                setFilterPartyType('');
-                setFilterDateFrom('');
-                setFilterDateTo('');
-                setSearch('');
-              }}
-            >
-              Clear Filters
-            </Button>
-          </div>
-        </div>
-
-        <div className="mt-4">
+      <Card className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm mt-4">
         {loading ? (
           <div className="flex h-40 items-center justify-center text-sm text-slate-500">Loading transactions...</div>
         ) : (
@@ -459,22 +435,98 @@ export function SupportingTransactionsPage({ sectionKey, detailPathBase }) {
             search={search}
             onSearch={setSearch}
             searchPlaceholder="Search voucher no, party, narration..."
+            headerActions={
+              <div className="relative">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="gap-2 h-9 text-[13px] border-slate-200 bg-white hover:bg-slate-50"
+                  onClick={() => setFilterDropdownOpen(!filterDropdownOpen)}
+                >
+                  <Filter size={14} />
+                  Filter
+                </Button>
+                {filterDropdownOpen && (
+                  <div className="absolute right-0 top-full mt-2 w-[320px] sm:w-[400px] z-50 rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">
+                    <div className="flex items-center justify-between mb-4">
+                      <h4 className="font-semibold text-slate-900 text-sm">Filters</h4>
+                      <button type="button" onClick={() => setFilterDropdownOpen(false)} className="text-slate-400 hover:text-slate-600">
+                        <X size={16} />
+                      </button>
+                    </div>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="space-y-1.5">
+                        <label className="text-[12px] font-semibold text-slate-600">Status</label>
+                        <Select
+                          value={filterStatus}
+                          onChange={setFilterStatus}
+                          options={[
+                            { value: '', label: 'All' },
+                            { value: 'Draft', label: 'Draft' },
+                            { value: 'Posted', label: 'Posted' },
+                            { value: 'Reversed', label: 'Reversed' }
+                          ]}
+                          size="sm"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[12px] font-semibold text-slate-600">Party Type</label>
+                        <Select
+                          value={filterPartyType}
+                          onChange={setFilterPartyType}
+                          options={[
+                            { value: '', label: 'All' },
+                            { value: 'ledger', label: 'Ledger' },
+                            { value: 'member', label: 'Member' },
+                            { value: 'employee', label: 'Employee' },
+                            { value: 'bank', label: 'Bank' }
+                          ]}
+                          size="sm"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[12px] font-semibold text-slate-600">Date From</label>
+                        <input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} className="w-full rounded-[0.75rem] border border-slate-200 bg-white px-3 py-2 text-sm" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[12px] font-semibold text-slate-600">Date To</label>
+                        <input type="date" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} className="w-full rounded-[0.75rem] border border-slate-200 bg-white px-3 py-2 text-sm" />
+                      </div>
+                      <div className="flex items-end sm:col-span-2 mt-2">
+                        <Button
+                          type="button"
+                          className="w-full gap-2 bg-[var(--primary,#1661F6)] text-white hover:opacity-90"
+                          onClick={() => {
+                            setFilterStatus('');
+                            setFilterPartyType('');
+                            setFilterDateFrom('');
+                            setFilterDateTo('');
+                            setSearch('');
+                            setFilterDropdownOpen(false);
+                          }}
+                        >
+                          Clear Filters
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            }
           />
         )}
-        </div>
       </Card>
 
       <Modal
         open={editorOpen}
-        title={activeRecord ? 'Edit Transaction' : 'Create Transaction'}
-        subtitle={section?.description || 'Maintain transaction voucher details.'}
+        title={activeRecord ? `Edit ${draft?.voucherCategory || 'Transaction'}` : `Create ${draft?.voucherCategory || 'Transaction'}`}
         onClose={closeEditor}
         width="min(1100px, 96vw)"
         footer={
           <div className="flex w-full justify-end gap-3">
-            <Button variant="secondary" type="button" onClick={closeEditor}>Cancel</Button>
-            <Button type="submit" form="transaction-voucher-form" disabled={saving || !canWrite} className="bg-[#1661F6] text-white hover:bg-blue-700">
-              {saving ? 'Saving...' : (activeRecord ? 'Save Changes' : 'Create Voucher')}
+            <Button variant="outline" type="button" onClick={closeEditor} disabled={saving}>Cancel</Button>
+            <Button type="submit" form="transaction-voucher-form" disabled={saving || !canWrite} className="bg-[var(--primary,#1661F6)] text-white hover:opacity-90">
+              {saving ? 'Saving...' : (activeRecord ? 'Save Changes' : `Create ${draft?.voucherCategory || 'Transaction'}`)}
             </Button>
           </div>
         }

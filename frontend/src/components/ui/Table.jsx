@@ -110,6 +110,20 @@ export function Table({
     setCurrentPage(1);
   }
 
+  const getVisiblePages = () => {
+    const maxVisible = 5;
+    if (pageCount <= maxVisible) {
+      return Array.from({ length: pageCount }, (_, i) => i + 1);
+    }
+    let start = Math.max(1, validCurrentPage - Math.floor(maxVisible / 2));
+    let end = start + maxVisible - 1;
+    if (end > pageCount) {
+      end = pageCount;
+      start = Math.max(1, end - maxVisible + 1);
+    }
+    return Array.from({ length: maxVisible }, (_, i) => start + i);
+  };
+
   return (
     <div className="flex flex-col">
       {(onSearch !== undefined || headerActions !== undefined || true) && (
@@ -206,19 +220,31 @@ export function Table({
           <button
             onClick={() => updatePage(validCurrentPage - 1)}
             disabled={validCurrentPage === 1}
-            className="flex h-8 items-center gap-1 rounded-[var(--radius-button,1rem)] px-2 text-[13px] font-medium text-slate-500 hover:text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="flex h-8 items-center gap-1 rounded-[var(--radius-button,0.5rem)] px-2 text-[13px] font-medium text-slate-500 hover:text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             <span className="hidden sm:inline">Previous</span>
           </button>
 
-          <div className="flex h-8 min-w-[32px] items-center justify-center rounded-[var(--radius-button,1rem)] bg-[var(--primary,#1661F6)] px-2 text-[13px] font-medium text-white shadow-sm">
-            {validCurrentPage}
+          <div className="flex items-center gap-1 mx-1">
+            {getVisiblePages().map((pageNum) => (
+              <button
+                key={pageNum}
+                onClick={() => updatePage(pageNum)}
+                className={
+                  pageNum === validCurrentPage
+                    ? 'flex h-8 min-w-[32px] items-center justify-center rounded-[var(--radius-button,0.5rem)] bg-[var(--primary,#1661F6)] px-2 text-[13px] font-medium text-white shadow-sm'
+                    : 'flex h-8 min-w-[32px] items-center justify-center rounded-[var(--radius-button,0.5rem)] border border-slate-200 bg-white px-2 text-[13px] font-medium text-slate-600 hover:bg-slate-50'
+                }
+              >
+                {pageNum}
+              </button>
+            ))}
           </div>
 
           <button
             onClick={() => updatePage(validCurrentPage + 1)}
             disabled={validCurrentPage === pageCount || totalItems === 0}
-            className="flex h-8 items-center gap-1 rounded-[var(--radius-button,1rem)] px-2 text-[13px] font-medium text-slate-500 hover:text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="flex h-8 items-center gap-1 rounded-[var(--radius-button,0.5rem)] px-2 text-[13px] font-medium text-slate-500 hover:text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             <span className="hidden sm:inline">Next</span>
           </button>

@@ -1,8 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, Sparkles } from 'lucide-react';
-import { toast } from 'sonner';
-import { api } from '../../api/api';
+import { ArrowRight } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { useAuth } from '../../context/AuthContext';
@@ -22,9 +20,7 @@ function toneClassName(index) {
 
 export function ReportsHomePage() {
   const navigate = useNavigate();
-  const { token, hasPermission } = useAuth();
-  const [dashboard, setDashboard] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const { hasPermission } = useAuth();
   const visibleGroups = useMemo(
     () => REPORT_GROUPED_LINKS
       .map((group) => ({
@@ -35,84 +31,10 @@ export function ReportsHomePage() {
     [hasPermission]
   );
 
-  useEffect(() => {
-    let mounted = true;
-    if (!hasPermission('dashboard.read')) {
-      setDashboard(null);
-      setLoading(false);
-      return () => {
-        mounted = false;
-      };
-    }
-
-    setLoading(true);
-    api.banking.dashboard(token)
-      .then((response) => {
-        if (!mounted) return;
-        setDashboard(response.data || null);
-      })
-      .catch((error) => {
-        if (!mounted) return;
-        toast.error(error.message || 'Unable to load report dashboard');
-      })
-      .finally(() => {
-        if (mounted) setLoading(false);
-      });
-
-    return () => {
-      mounted = false;
-    };
-  }, [token, hasPermission]);
-
-  const stats = useMemo(() => {
-    const counts = dashboard?.counts || {};
-    const reportCount = visibleGroups.reduce((sum, group) => sum + group.items.length, 0);
-    return [
-      { label: 'Branches', value: counts.branches || 0 },
-      { label: 'Members', value: counts.members || 0 },
-      { label: 'Employees', value: counts.employees || 0 },
-      { label: 'Reports', value: reportCount }
-    ];
-  }, [dashboard, visibleGroups]);
-
   return (
     <div className="space-y-6">
-      <Card className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-        <div className="relative bg-gradient-to-r from-[#0f172a] via-[#2563eb] to-[#1661F6] px-6 py-8 text-white md:px-8">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.16),transparent_28%),radial-gradient(circle_at_bottom_left,rgba(255,255,255,0.08),transparent_30%)]" />
-          <div className="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-            <div className="max-w-2xl space-y-3">
-              <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[12px] font-medium text-white/90 backdrop-blur">
-                <Sparkles size={13} />
-                Reports Module
-              </div>
-              <div>
-                <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">Reports</h1>
-                <p className="mt-2 max-w-2xl text-sm text-blue-50 md:text-[15px]">
-                  Account statement, member ledger, trial balance, cash book, day book, voucher summary, and monthly reports.
-                </p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 sm:min-w-[320px] lg:grid-cols-4">
-              {loading ? (
-                <div className="col-span-full rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm text-blue-50">Loading dashboard...</div>
-              ) : stats.map((item) => (
-                <div key={item.label} className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3 backdrop-blur">
-                  <p className="text-[11px] uppercase tracking-[0.18em] text-blue-100">{item.label}</p>
-                  <p className="mt-1 text-xl font-semibold">{item.value}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </Card>
-
-      <div className="flex flex-wrap gap-2">
-        <Button type="button" variant="outline" className="gap-2" onClick={() => navigate('/app/transactions/overview')}>
-          Back to Transactions
-          <ArrowRight size={14} />
-        </Button>
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900 md:text-3xl">Reports</h1>
       </div>
 
       <div className="space-y-5">

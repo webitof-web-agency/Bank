@@ -42,19 +42,19 @@ export function AppLayout() {
     : 'Ready for role-based work';
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-white print:h-auto print:min-h-0 print:bg-transparent">
       <Sidebar
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
         onToggleCollapse={() => setSidebarOpen((current) => !current)}
       />
-      <div className={cn('min-h-screen transition-all duration-300', sidebarOpen ? 'lg:pl-64' : 'lg:pl-20')}>
+      <div className={cn('min-h-screen transition-all duration-300 print:pl-0 print:h-auto print:min-h-0 print:block', sidebarOpen ? 'lg:pl-64' : 'lg:pl-20')}>
         <Topbar
           title={title}
           subtitle={subtitle}
           onMenuClick={() => setSidebarOpen((current) => !current)}
         />
-        <main className="w-full px-4 py-6 md:px-8 md:py-8">
+        <main className="w-full px-4 py-6 md:px-8 md:py-8 print:p-0 print:m-0 print:w-full print:block">
           <Outlet />
         </main>
       </div>

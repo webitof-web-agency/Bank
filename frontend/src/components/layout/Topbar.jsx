@@ -229,7 +229,7 @@ export function Topbar({ title, subtitle, onMenuClick }) {
   }
 
   return (
-    <header className="sticky top-0 z-20 border-b border-slate-200/70 bg-white/90 px-4 py-3 backdrop-blur-xl shadow-sm print:hidden md:px-8">
+    <header className="sticky top-0 z-20 border-b border-slate-200/70 bg-white/90 px-4 py-3 backdrop-blur-xl shadow-sm md:px-8">
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           <SidebarToggle onClick={onMenuClick} />
@@ -240,24 +240,24 @@ export function Topbar({ title, subtitle, onMenuClick }) {
           <button
             type="button"
             onClick={() => navigate('/app/calendar')}
-            className="text-slate-400 transition hover:text-slate-600"
+            className="flex h-10 w-10 items-center justify-center text-slate-400 transition hover:bg-slate-50 hover:text-slate-600 rounded-full"
             aria-label="Open calendar"
             title="Calendar"
           >
             <Calendar size={20} strokeWidth={1.8} />
           </button>
 
-          <div className="relative" ref={notificationsDropdownRef}>
+          <div className="relative flex items-center" ref={notificationsDropdownRef}>
             <button
               type="button"
-              className="relative text-slate-400 transition hover:text-slate-600"
+              className="relative flex h-10 w-10 items-center justify-center text-slate-400 transition hover:bg-slate-50 hover:text-slate-600 rounded-full"
               onClick={() => setNotificationsOpen((current) => !current)}
               aria-label="Open notifications"
               title="Notifications"
             >
               <Bell size={20} strokeWidth={1.8} />
               {unreadCount > 0 ? (
-                <span className="absolute -right-1 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[var(--primary,#1661F6)] px-1 text-[10px] font-bold text-white ring-2 ring-white">
+                <span className="absolute right-1 top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[var(--primary,#1661F6)] px-1 text-[10px] font-bold text-white ring-2 ring-white">
                   {unreadCount > 99 ? '99+' : unreadCount}
                 </span>
               ) : null}
@@ -359,7 +359,7 @@ export function Topbar({ title, subtitle, onMenuClick }) {
                   <UserAvatar name={user?.fullName || 'User'} url={user?.avatarUrl} gender={user?.gender} className="h-10 w-10 shrink-0" fallbackSize={18} />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold text-slate-900">{user?.fullName || 'System Admin'}</p>
-                    <p className="truncate text-[13px] font-medium text-blue-600">{user?.role || 'Admin'}</p>
+                    <p className="truncate text-[13px] font-medium text-[var(--primary)]">{user?.role || 'Admin'}</p>
                     <p className="truncate text-xs text-slate-500">{user?.email || 'admin@webitof.com'}</p>
                   </div>
                 </div>

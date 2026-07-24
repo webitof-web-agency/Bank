@@ -101,10 +101,10 @@ export function DashboardPage() {
   ];
 
   const quickActions = [
-    { label: 'New Voucher', desc: 'Create new voucher', icon: FileText, to: '/app/transactions/vouchers/new', color: 'text-blue-600', bg: 'bg-blue-50' },
-    { label: 'Receipt Entry', desc: 'Add receipt', icon: Download, to: '/app/transactions/vouchers/new?type=receipt', color: 'text-emerald-600', bg: 'bg-emerald-50' },
-    { label: 'Payment Entry', desc: 'Add payment', icon: Upload, to: '/app/transactions/vouchers/new?type=payment', color: 'text-rose-600', bg: 'bg-rose-50' },
-    { label: 'Bank Transfer', desc: 'New transfer', icon: ArrowRightLeft, to: '/app/transactions/vouchers/new?type=journal', color: 'text-violet-600', bg: 'bg-violet-50' },
+    { label: 'New Voucher', desc: 'Supporting voucher', icon: FileText, to: '/app/transactions/supporting/new', color: 'text-blue-600', bg: 'bg-blue-50' },
+    { label: 'Receipt Entry', desc: 'Add receipt', icon: Download, to: '/app/transactions/receipt-interest/new', color: 'text-emerald-600', bg: 'bg-emerald-50' },
+    { label: 'Bank Entry', desc: 'Add bank tx', icon: Upload, to: '/app/transactions/bank/new', color: 'text-rose-600', bg: 'bg-rose-50' },
+    { label: 'Bank Transfer', desc: 'New transfer', icon: ArrowRightLeft, to: '/app/transactions/transfer-voucher/new', color: 'text-violet-600', bg: 'bg-violet-50' },
     { label: 'Member Search', desc: 'Search member', icon: User, to: '/app/master/members', color: 'text-amber-600', bg: 'bg-amber-50' },
     { label: 'Reports', desc: 'View reports', icon: PieChart, to: '/app/reports', color: 'text-slate-800', bg: 'bg-slate-100' }
   ];

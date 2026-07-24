@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Edit2, Trash2, Eye, Users, UserCheck, User, UserX } from 'lucide-react';
+import { Plus, Edit2, Trash2, Eye, Key, Users, UserCheck, User, UserX } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../../api/api';
 import { useAuth } from '../../../context/AuthContext';
 import { Card } from '../../../components/ui/Card';
 import { Button } from '../../../components/ui/Button';
+import { Input } from '../../../components/ui/Input';
 import { Modal } from '../../../components/ui/Modal';
 import { ConfirmDialog } from '../../../components/overlays/ConfirmDialog';
 import { UserAvatar } from '../../../components/ui/UserAvatar';
@@ -57,6 +58,10 @@ export function EmployeesPage() {
   const [saving, setSaving] = useState(false);
   const [removedDocumentIds, setRemovedDocumentIds] = useState([]);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [passwordTarget, setPasswordTarget] = useState(null);
+  const [passwordDraft, setPasswordDraft] = useState('');
+  const [passwordConfirm, setPasswordConfirm] = useState('');
+  const [passwordSaving, setPasswordSaving] = useState(false);
   const branchLookup = useMemo(() => getBranchMap(branches), [branches]);
 
   const canManage = hasPermission('employees.write', 'users.manage');
@@ -120,6 +125,20 @@ export function EmployeesPage() {
   function openEdit(user) {
     if (!user?.id) return;
     navigate(`/app/master/employees/${user.id}/edit`);
+  }
+
+  function openPasswordReset(user) {
+    if (!user?.id) return;
+    setPasswordTarget(user);
+    setPasswordDraft('');
+    setPasswordConfirm('');
+  }
+
+  function closePasswordReset() {
+    if (passwordSaving) return;
+    setPasswordTarget(null);
+    setPasswordDraft('');
+    setPasswordConfirm('');
   }
 
   function handleAvatarClear() {
@@ -228,6 +247,32 @@ export function EmployeesPage() {
     }
   }
 
+  async function confirmPasswordReset(event) {
+    event.preventDefault();
+    if (!passwordTarget?.id) return;
+
+    const nextPassword = String(passwordDraft || '').trim();
+    if (nextPassword.length < 8) {
+      toast.error('Password must be at least 8 characters long');
+      return;
+    }
+    if (nextPassword !== String(passwordConfirm || '').trim()) {
+      toast.error('Password and confirm password must match');
+      return;
+    }
+
+    setPasswordSaving(true);
+    try {
+      await api.users.update(token, passwordTarget.id, { password: nextPassword });
+      toast.success('Password reset successfully');
+      closePasswordReset();
+    } catch (error) {
+      toast.error(error.message || 'Unable to reset password');
+    } finally {
+      setPasswordSaving(false);
+    }
+  }
+
   const stats = useMemo(() => ({
     total: rows.length,
     active: rows.filter((row) => isEmployeeActive(row)).length,
@@ -289,6 +334,14 @@ export function EmployeesPage() {
           </button>
           {canManage ? (
             <>
+              <button
+                type="button"
+                onClick={() => openPasswordReset(row)}
+                className="rounded-full p-2 text-slate-400 hover:bg-amber-50 hover:text-amber-600"
+                title="Reset password"
+              >
+                <Key size={16} />
+              </button>
               <button
                 type="button"
                 onClick={() => openEdit(row)}
@@ -377,6 +430,51 @@ export function EmployeesPage() {
         onConfirm={confirmDelete}
         onClose={() => setDeleteTarget(null)}
       />
+
+      <Modal
+        open={Boolean(passwordTarget)}
+        title="Reset Employee Password"
+        subtitle={passwordTarget ? `${passwordTarget.fullName || passwordTarget.name || passwordTarget.username || 'Employee'} will get a new login password.` : ''}
+        onClose={closePasswordReset}
+        footer={(
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={closePasswordReset} disabled={passwordSaving}>
+              Cancel
+            </Button>
+            <Button type="submit" form="employee-password-reset-form" disabled={passwordSaving} className="bg-[#1661F6] text-white hover:bg-blue-700">
+              {passwordSaving ? 'Saving...' : 'Reset Password'}
+            </Button>
+          </div>
+        )}
+      >
+        <form id="employee-password-reset-form" className="space-y-4" onSubmit={confirmPasswordReset}>
+          <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            This will update the employee login password immediately. Share the new password securely.
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-[13px] font-semibold text-slate-700">New Password</label>
+            <Input
+              type="password"
+              value={passwordDraft}
+              onChange={(event) => setPasswordDraft(event.target.value)}
+              placeholder="Enter new password"
+              autoComplete="new-password"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-[13px] font-semibold text-slate-700">Confirm Password</label>
+            <Input
+              type="password"
+              value={passwordConfirm}
+              onChange={(event) => setPasswordConfirm(event.target.value)}
+              placeholder="Re-enter new password"
+              autoComplete="new-password"
+            />
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

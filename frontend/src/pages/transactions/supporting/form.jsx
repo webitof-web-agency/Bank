@@ -19,8 +19,9 @@ import {
 import { Button } from '../../../components/ui/Button';
 import { Card } from '../../../components/ui/Card';
 import { Input, Select, Textarea } from '../../../components/ui/Input';
+import { Select as CustomSelect } from '../../../components/ui/Select';
 import { DocumentSection } from '../../../components/master/DocumentSection';
-import { TRANSACTION_DOCUMENT_DEFS } from '../transactionDocumentUtils';
+import { getSupportingDocumentDefinitions } from './supportingDocumentUtils';
 import {
   formatTransactionAmount,
   getTransactionLedgerLabel,
@@ -134,9 +135,11 @@ function OptionCard({ title, description, active = false, onClick, badge, tone =
 function SectionHeader({ title, description, icon: Icon }) {
   return (
     <div className="flex items-start gap-3">
-      <div className="mt-0.5 flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-600">
-        <Icon size={20} strokeWidth={1.9} />
-      </div>
+      {Icon ? (
+        <div className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-600">
+          <Icon size={20} strokeWidth={1.9} />
+        </div>
+      ) : null}
       <div>
         <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
         <p className="mt-1 text-sm text-slate-500">{description}</p>
@@ -164,21 +167,30 @@ function LookupSelect({
   required = false,
   disabled = false
 }) {
+  const flatOptions = useMemo(() => {
+    const opts = [];
+    groups.forEach((group) => {
+      group.items.forEach((item) => {
+        opts.push({
+          label: group.label ? `${item.label} (${group.label})` : item.label,
+          value: item.value
+        });
+      });
+    });
+    return opts;
+  }, [groups]);
+
   return (
     <div className="space-y-1.5">
       {label ? <FieldLabel required={required}>{label}</FieldLabel> : null}
-      <Select value={value || ''} onChange={(e) => onChange(e.target.value)} disabled={disabled || !groups.length}>
-        <option value="">{placeholder}</option>
-        {groups.map((group) => (
-          <optgroup key={group.label} label={group.label}>
-            {group.items.map((item) => (
-              <option key={`${group.label}:${item.value}`} value={item.value}>
-                {item.label}
-              </option>
-            ))}
-          </optgroup>
-        ))}
-      </Select>
+      <CustomSelect 
+        value={value || ''} 
+        onChange={onChange} 
+        disabled={disabled || !groups.length}
+        placeholder={placeholder}
+        options={flatOptions}
+        searchable
+      />
       {helper ? <p className="text-[12px] text-slate-500">{helper}</p> : null}
     </div>
   );
@@ -208,12 +220,15 @@ function ArrayRowsEditor({
 
   function removeRow(index) {
     const next = safeRows.filter((_, rowIndex) => rowIndex !== index);
-    onChange(next.length ? next : [deepClone(emptyRow)]);
+    onChange(next);
   }
 
   return (
-    <Card className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-      <SectionHeader title={title} description={description} icon={Icon} />
+    <Card className="rounded-[var(--radius-card,1.75rem)] border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="mb-4">
+        <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
+        {description ? <p className="text-sm text-slate-500">{description}</p> : null}
+      </div>
 
       <div className="mt-5 space-y-4">
         {safeRows.length ? safeRows.map((row, index) => (
@@ -337,6 +352,7 @@ export function SupportingTransactionForm({ section, lookups = {}, value, setVal
   const showInterestPanel = activeKey === 'interest-paid-member' || activeKey === 'receipt-voucher';
   const showBankPanel = section?.key === 'bank';
   const showSupportingPanel = section?.key === 'supporting' || activeKey === 'payment-voucher';
+  const documentDefs = getSupportingDocumentDefinitions(activeKey);
 
   function updateDetails(path, nextValue) {
     setDetailsValue(setValue, path, nextValue);
@@ -353,348 +369,150 @@ export function SupportingTransactionForm({ section, lookups = {}, value, setVal
   const notes = getSectionNotes(section?.key || '', activeKey);
 
   return (
-    <form id="transaction-voucher-form" className="space-y-5" onSubmit={onSubmit}>
-      <Card className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-        <div className="relative bg-gradient-to-r from-[#0f172a] via-[#2563eb] to-[#1661F6] px-6 py-7 text-white">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.18),transparent_28%),radial-gradient(circle_at_bottom_left,rgba(255,255,255,0.08),transparent_30%)]" />
-          <div className="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-            <div className="max-w-3xl space-y-3">
-              <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[12px] font-medium text-white/90 backdrop-blur">
-                <Sparkles size={13} />
-                Clean voucher form
-              </div>
-              <div>
-                <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">
-                  {activeItem?.label || section?.label || 'Transaction Voucher'}
-                </h1>
-                <p className="mt-2 max-w-3xl text-sm text-blue-50 md:text-[15px]">
-                  Structured fields, row-based breakdowns, and backend-friendly payloads without raw JSON editing.
-                </p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-3 sm:min-w-[320px]">
-              {[
-                { label: 'Type', value: activeItem?.transactionType || 'payment' },
-                { label: 'Party', value: partyType || 'ledger' },
-                { label: 'Section', value: section?.label || 'Transactions' }
-              ].map((item) => (
-                <div key={item.label} className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3 backdrop-blur">
-                  <p className="text-[11px] uppercase tracking-[0.18em] text-blue-100">{item.label}</p>
-                  <p className="mt-1 text-lg font-semibold">{item.value}</p>
-                </div>
-              ))}
-            </div>
+    <form id="transaction-voucher-form" className="mx-auto w-full space-y-6" onSubmit={onSubmit}>
+      <Card className="rounded-[var(--radius-card,1.75rem)] border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="grid gap-6 md:grid-cols-2">
+          
+          <div className="space-y-1.5 md:col-span-2">
+            <LookupSelect
+              label="Select Party (Optional)"
+              value={value.partyCode || ''}
+              onChange={(next) => setRootValue(setValue, 'partyCode', next.toUpperCase())}
+              placeholder="Search or select party"
+              groups={partyGroups}
+              helper={partyType === 'member' ? 'Member codes from master members.' : partyType === 'employee' ? 'Employee codes from master employees.' : 'Ledger or bank account codes.'}
+            />
           </div>
-        </div>
-      </Card>
 
-      <div className="grid gap-5 xl:grid-cols-[1.18fr_0.82fr]">
-        <div className="space-y-5">
-          <Card className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-            <SectionHeader
-              title="Transaction Type"
-              description="Pick the voucher template for this section."
-              icon={Layers3}
+          <div className="space-y-1.5">
+            <FieldLabel>Voucher No</FieldLabel>
+            <Input
+              value={value.voucherNo || ''}
+              onChange={(e) => setRootValue(setValue, 'voucherNo', String(e.target.value || '').toUpperCase())}
+              placeholder="Auto generated on save"
+              className="font-mono uppercase tracking-wider"
             />
+          </div>
 
-            <div className="mt-5 grid gap-4 md:grid-cols-2">
-              {editableItems.map((item) => (
-                <OptionCard
-                  key={item.key}
-                  title={item.label}
-                  description={item.description}
-                  active={activeKey === item.key}
-                  badge={item.transactionType}
-                  tone={item.accent || 'slate'}
-                  icon={item.key.includes('member') ? Users : item.key.includes('employee') ? UserRound : item.key.includes('bank') ? Landmark : WalletCards}
-                  onClick={() => setValue((current) => selectTemplate(setValue, current, item))}
-                />
-              ))}
-            </div>
-          </Card>
-
-          <Card className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-            <SectionHeader
-              title="Voucher Basics"
-              description="Core fields required for posting and search."
-              icon={FileText}
+          <div className="space-y-1.5">
+            <FieldLabel required>Date</FieldLabel>
+            <Input
+              type="date"
+              value={value.date || ''}
+              onChange={(e) => setRootValue(setValue, 'date', e.target.value)}
             />
+          </div>
 
-            <div className="mt-5 grid gap-5 md:grid-cols-2">
-              <div className="space-y-1.5">
-                <FieldLabel>Voucher No</FieldLabel>
-                <Input
-                  value={value.voucherNo || ''}
-                  onChange={(e) => setRootValue(setValue, 'voucherNo', String(e.target.value || '').toUpperCase())}
-                  placeholder="Auto generated on save"
-                  className="font-mono uppercase tracking-wider"
-                />
-              </div>
+          <LookupSelect
+            label="Branch"
+            value={value.branchCode || ''}
+            onChange={(next) => setRootValue(setValue, 'branchCode', next)}
+            placeholder="Select branch"
+            groups={buildGroups(branches, 'Branches')}
+            helper="Branch code is stored with voucher for filtering and reporting."
+          />
 
-              <div className="space-y-1.5">
-                <FieldLabel required>Date</FieldLabel>
-                <Input
-                  type="date"
-                  value={value.date || ''}
-                  onChange={(e) => setRootValue(setValue, 'date', e.target.value)}
-                />
-              </div>
+          <div className="space-y-1.5">
+            <FieldLabel>Financial Year</FieldLabel>
+            <Input
+              value={value.fyCode || ''}
+              onChange={(e) => setRootValue(setValue, 'fyCode', String(e.target.value || '').toUpperCase())}
+              placeholder="FY25-26"
+              className="uppercase tracking-wider"
+            />
+          </div>
 
+          <div className="space-y-1.5">
+            <FieldLabel required>Amount</FieldLabel>
+            <Input
+              type="number"
+              min="0"
+              step="0.01"
+              value={value.amount ?? ''}
+              onChange={(e) => setRootValue(setValue, 'amount', e.target.value)}
+              placeholder="0.00"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <FieldLabel>Status</FieldLabel>
+            <CustomSelect
+              value={value.status || 'Draft'}
+              onChange={(next) => setRootValue(setValue, 'status', next)}
+              options={[
+                { label: 'Draft', value: 'Draft' },
+                { label: 'Posted', value: 'Posted' },
+                { label: 'Reversed', value: 'Reversed' }
+              ]}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <FieldLabel>Mode</FieldLabel>
+            <Input
+              value={value.mode || ''}
+              onChange={(e) => setRootValue(setValue, 'mode', e.target.value)}
+              placeholder={activeItem?.mode || 'Cash / Cheque'}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <FieldLabel>Reference No</FieldLabel>
+            <Input
+              value={value.referenceNo || ''}
+              onChange={(e) => setRootValue(setValue, 'referenceNo', e.target.value)}
+              placeholder="Reference / slip no"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <FieldLabel>Instrument No</FieldLabel>
+            <Input
+              value={value.instrumentNo || ''}
+              onChange={(e) => setRootValue(setValue, 'instrumentNo', e.target.value)}
+              placeholder="Cheque / DD no"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <FieldLabel>Instrument Date</FieldLabel>
+            <Input
+              type="date"
+              value={value.instrumentDate || ''}
+              onChange={(e) => setRootValue(setValue, 'instrumentDate', e.target.value)}
+            />
+          </div>
+
+          {showEmployeePanel || showLoanComponents || showInterestPanel || showSupportingPanel ? (
+            <div className="space-y-1.5">
+              <FieldLabel>Settlement Account</FieldLabel>
               <LookupSelect
-                label="Branch"
-                value={value.branchCode || ''}
-                onChange={(next) => setRootValue(setValue, 'branchCode', next)}
-                placeholder="Select branch"
-                groups={buildGroups(branches, 'Branches')}
-                helper="Branch code is stored with voucher for filtering and reporting."
+                label=""
+                value={value.details?.settlementAccount || ''}
+                onChange={(next) => updateDetails('settlementAccount', next)}
+                placeholder="Select settlement account"
+                groups={accountGroups}
               />
-
-              <div className="space-y-1.5">
-                <FieldLabel>Financial Year</FieldLabel>
-                <Input
-                  value={value.fyCode || ''}
-                  onChange={(e) => setRootValue(setValue, 'fyCode', String(e.target.value || '').toUpperCase())}
-                  placeholder="FY25-26"
-                  className="uppercase tracking-wider"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <FieldLabel required>Amount</FieldLabel>
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={value.amount ?? ''}
-                  onChange={(e) => setRootValue(setValue, 'amount', e.target.value)}
-                  placeholder="0.00"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <FieldLabel>Status</FieldLabel>
-                <Select value={value.status || 'Draft'} onChange={(e) => setRootValue(setValue, 'status', e.target.value)}>
-                  <option value="Draft">Draft</option>
-                  <option value="Posted">Posted</option>
-                  <option value="Reversed">Reversed</option>
-                </Select>
-              </div>
-
-              <div className="space-y-1.5">
-                <FieldLabel>Mode</FieldLabel>
-                <Input
-                  value={value.mode || ''}
-                  onChange={(e) => setRootValue(setValue, 'mode', e.target.value)}
-                  placeholder={activeItem?.mode || 'Cash / Cheque'}
-                />
-              </div>
-
-              <div className="space-y-1.5 md:col-span-2">
-                <FieldLabel>Narration</FieldLabel>
-                <Textarea
-                  rows={3}
-                  value={value.narration || ''}
-                  onChange={(e) => setRootValue(setValue, 'narration', e.target.value)}
-                  placeholder="Brief narration for voucher"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <FieldLabel>Reference No</FieldLabel>
-                <Input
-                  value={value.referenceNo || ''}
-                  onChange={(e) => setRootValue(setValue, 'referenceNo', e.target.value)}
-                  placeholder="Reference / slip no"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <FieldLabel>Instrument No</FieldLabel>
-                <Input
-                  value={value.instrumentNo || ''}
-                  onChange={(e) => setRootValue(setValue, 'instrumentNo', e.target.value)}
-                  placeholder="Cheque / DD no"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <FieldLabel>Instrument Date</FieldLabel>
-                <Input
-                  type="date"
-                  value={value.instrumentDate || ''}
-                  onChange={(e) => setRootValue(setValue, 'instrumentDate', e.target.value)}
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <FieldLabel>Approved By</FieldLabel>
-                <Input
-                  value={value.approvedBy || ''}
-                  onChange={(e) => setRootValue(setValue, 'approvedBy', e.target.value)}
-                  placeholder="Approver name"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <FieldLabel>Created By</FieldLabel>
-                <Input
-                  value={value.createdBy || ''}
-                  onChange={(e) => setRootValue(setValue, 'createdBy', e.target.value)}
-                  placeholder="Prepared by"
-                />
-              </div>
             </div>
-          </Card>
-
-          <Card className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-            <SectionHeader
-              title="Party Details"
-              description="Lookup-based party selection. The party type follows voucher template."
-              icon={Users}
-            />
-
-            <div className="mt-5 grid gap-5 md:grid-cols-2">
-              <LookupSelect
-                label="Party"
-                value={value.partyCode || ''}
-                onChange={(next) => setRootValue(setValue, 'partyCode', next.toUpperCase())}
-                placeholder="Select party"
-                groups={partyGroups}
-                helper={partyType === 'member' ? 'Member codes from master members.' : partyType === 'employee' ? 'Employee codes from master employees.' : 'Ledger or bank account codes.'}
-              />
-
-              <div className="space-y-1.5">
-                <FieldLabel>Party Type</FieldLabel>
-                <div className="flex h-12 items-center rounded-[0.75rem] border border-slate-200 bg-slate-50 px-4 text-sm font-medium text-slate-700">
-                  {value.partyType || derivedPartyType || 'ledger'}
-                </div>
-              </div>
-            </div>
-          </Card>
+          ) : null}
 
           {showLoanComponents ? (
-            <Card className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-              <SectionHeader
-                title="Loan Components"
-                description="Loan paid transactions need component level values."
-                icon={Banknote}
+            <div className="space-y-1.5">
+              <FieldLabel>LAD (Loan Against Deposit)</FieldLabel>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={value.details?.components?.lad ?? ''}
+                onChange={(e) => updateComponents('lad', e.target.value)}
+                placeholder="0.00"
               />
-
-              <div className="mt-5 grid gap-5 md:grid-cols-2">
-                <div className="space-y-1.5">
-                  <FieldLabel>Settlement Account</FieldLabel>
-                  <LookupSelect
-                    label=""
-                    value={value.details?.settlementAccount || ''}
-                    onChange={(next) => updateDetails('settlementAccount', next)}
-                    placeholder="Select settlement account"
-                    groups={accountGroups}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <FieldLabel>Loan Amount</FieldLabel>
-                  <Input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={value.details?.components?.loanAmt ?? ''}
-                    onChange={(e) => updateComponents('loanAmt', e.target.value)}
-                    placeholder="0.00"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <FieldLabel>LAD</FieldLabel>
-                  <Input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={value.details?.components?.lad ?? ''}
-                    onChange={(e) => updateComponents('lad', e.target.value)}
-                    placeholder="0.00"
-                  />
-                </div>
-              </div>
-            </Card>
+            </div>
           ) : null}
 
-          {showRecoveryLines ? (
-            <ArrayRowsEditor
-              title="Recovery Breakdown"
-              description="Add member-wise recovery lines for the voucher."
-              rows={value.details?.recoveryLines || []}
-              onChange={(next) => updateRows('recoveryLines', next)}
-              emptyRow={{ memberCode: '', head: '', amount: '', memo: '' }}
-              addLabel="Add Recovery Line"
-              icon={Repeat2}
-              rowTone="emerald"
-              fields={[
-                { key: 'memberCode', label: 'Member Code', placeholder: 'M0001' },
-                { key: 'head', label: 'Head', placeholder: 'Recovery Head' },
-                { key: 'amount', label: 'Amount', type: 'number', step: '0.01', placeholder: '0.00' },
-                { key: 'memo', label: 'Memo', placeholder: 'Optional memo' }
-              ]}
-            />
-          ) : null}
-
-          {showAllocations ? (
-            <ArrayRowsEditor
-              title="Transfer Allocations"
-              description="Allocate transfer voucher amount across members or demand heads."
-              rows={value.details?.allocations || []}
-              onChange={(next) => updateRows('allocations', next)}
-              emptyRow={{ memberCode: '', head: '', amount: '' }}
-              addLabel="Add Allocation"
-              icon={FileText}
-              rowTone="amber"
-              fields={[
-                { key: 'memberCode', label: 'Member Code', placeholder: 'M0001' },
-                { key: 'head', label: 'Head', placeholder: 'Transfer Head' },
-                { key: 'amount', label: 'Amount', type: 'number', step: '0.01', placeholder: '0.00' }
-              ]}
-            />
-          ) : null}
-
-          {showEmployeePanel ? (
-            <Card className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-              <SectionHeader
-                title="Employee Link"
-                description="Employee advance vouchers use employee master codes."
-                icon={UserRound}
-              />
-
-              <div className="mt-5 grid gap-5 md:grid-cols-2">
-                <LookupSelect
-                  label="Employee"
-                  value={value.partyCode || ''}
-                  onChange={(next) => setRootValue(setValue, 'partyCode', next.toUpperCase())}
-                  placeholder="Select employee"
-                  groups={buildGroups(employees, 'Employees')}
-                  helper="Employee code from master employees."
-                />
-                <div className="space-y-1.5">
-                  <FieldLabel>Settlement Account</FieldLabel>
-                  <LookupSelect
-                    label=""
-                    value={value.details?.settlementAccount || ''}
-                    onChange={(next) => updateDetails('settlementAccount', next)}
-                    placeholder="Select ledger / bank account"
-                    groups={accountGroups}
-                  />
-                </div>
-              </div>
-            </Card>
-          ) : null}
-
-          {showBankPanel ? (
-            <Card className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-              <SectionHeader
-                title="Bank Posting"
-                description="Bank section vouchers often need debit / credit account targets."
-                icon={Landmark}
-              />
-
-              <div className="mt-5 grid gap-5 md:grid-cols-2">
+          {showSupportingPanel || showInterestPanel ? (
+            <>
+              {showSupportingPanel && (
                 <div className="space-y-1.5">
                   <FieldLabel>Ledger Target</FieldLabel>
                   <LookupSelect
@@ -702,60 +520,11 @@ export function SupportingTransactionForm({ section, lookups = {}, value, setVal
                     value={value.details?.ledgerTarget || ''}
                     onChange={(next) => updateDetails('ledgerTarget', next)}
                     placeholder="Select ledger"
-                    groups={buildGroups(ledgers, 'Ledgers')}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <FieldLabel>Deposit In</FieldLabel>
-                  <LookupSelect
-                    label=""
-                    value={value.details?.depositIn || ''}
-                    onChange={(next) => updateDetails('depositIn', next)}
-                    placeholder="Select bank account / ledger"
                     groups={accountGroups}
                   />
                 </div>
-                <div className="space-y-1.5">
-                  <FieldLabel>From Account</FieldLabel>
-                  <LookupSelect
-                    label=""
-                    value={value.details?.fromAccount || ''}
-                    onChange={(next) => updateDetails('fromAccount', next)}
-                    placeholder="Select from account"
-                    groups={accountGroups}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <FieldLabel>To Account</FieldLabel>
-                  <LookupSelect
-                    label=""
-                    value={value.details?.toAccount || ''}
-                    onChange={(next) => updateDetails('toAccount', next)}
-                    placeholder="Select to account"
-                    groups={accountGroups}
-                  />
-                </div>
-                <div className="space-y-1.5 md:col-span-2">
-                  <FieldLabel>Account Head</FieldLabel>
-                  <Input
-                    value={value.details?.accountHead || ''}
-                    onChange={(e) => updateDetails('accountHead', e.target.value)}
-                    placeholder="Optional account head"
-                  />
-                </div>
-              </div>
-            </Card>
-          ) : null}
-
-          {showInterestPanel ? (
-            <Card className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-              <SectionHeader
-                title="Receipt / Interest Details"
-                description="Interest and receipt vouchers use ledger-linked account references."
-                icon={WalletCards}
-              />
-
-              <div className="mt-5 grid gap-5 md:grid-cols-2">
+              )}
+              {showInterestPanel && (
                 <div className="space-y-1.5">
                   <FieldLabel>Receipt By</FieldLabel>
                   <LookupSelect
@@ -766,178 +535,189 @@ export function SupportingTransactionForm({ section, lookups = {}, value, setVal
                     groups={accountGroups}
                   />
                 </div>
-                <div className="space-y-1.5">
-                  <FieldLabel>Settlement Account</FieldLabel>
-                  <LookupSelect
-                    label=""
-                    value={value.details?.settlementAccount || ''}
-                    onChange={(next) => updateDetails('settlementAccount', next)}
-                    placeholder="Select settlement account"
-                    groups={accountGroups}
-                  />
-                </div>
-                <div className="space-y-1.5 md:col-span-2">
-                  <FieldLabel>Account Head</FieldLabel>
-                  <Input
-                    value={value.details?.accountHead || ''}
-                    onChange={(e) => updateDetails('accountHead', e.target.value)}
-                    placeholder="Optional interest head"
-                  />
-                </div>
+              )}
+              <div className="space-y-1.5">
+                <FieldLabel>Account Head</FieldLabel>
+                <Input
+                  value={value.details?.accountHead || ''}
+                  onChange={(e) => updateDetails('accountHead', e.target.value)}
+                  placeholder="Optional supporting/interest head"
+                />
               </div>
-            </Card>
+            </>
           ) : null}
 
-          {showSupportingPanel ? (
-            <Card className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-              <SectionHeader
-                title="Supporting Voucher"
-                description="Keep payment vouchers structured but simple."
-                icon={ShieldCheck}
-              />
-
-              <div className="mt-5 grid gap-5 md:grid-cols-2">
-                <div className="space-y-1.5">
-                  <FieldLabel>Ledger Target</FieldLabel>
-                  <LookupSelect
-                    label=""
-                    value={value.details?.ledgerTarget || ''}
-                    onChange={(next) => updateDetails('ledgerTarget', next)}
-                    placeholder="Select ledger"
-                    groups={accountGroups}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <FieldLabel>Account Head</FieldLabel>
-                  <Input
-                    value={value.details?.accountHead || ''}
-                    onChange={(e) => updateDetails('accountHead', e.target.value)}
-                    placeholder="Optional supporting head"
-                  />
-                </div>
+          {showBankPanel ? (
+            <>
+              <div className="space-y-1.5">
+                <FieldLabel>Ledger Target</FieldLabel>
+                <LookupSelect
+                  label=""
+                  value={value.details?.ledgerTarget || ''}
+                  onChange={(next) => updateDetails('ledgerTarget', next)}
+                  placeholder="Select ledger"
+                  groups={buildGroups(ledgers, 'Ledgers')}
+                />
               </div>
-            </Card>
+              <div className="space-y-1.5">
+                <FieldLabel>Deposit In</FieldLabel>
+                <LookupSelect
+                  label=""
+                  value={value.details?.depositIn || ''}
+                  onChange={(next) => updateDetails('depositIn', next)}
+                  placeholder="Select bank account / ledger"
+                  groups={accountGroups}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <FieldLabel>From Account</FieldLabel>
+                <LookupSelect
+                  label=""
+                  value={value.details?.fromAccount || ''}
+                  onChange={(next) => updateDetails('fromAccount', next)}
+                  placeholder="Select from account"
+                  groups={accountGroups}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <FieldLabel>To Account</FieldLabel>
+                <LookupSelect
+                  label=""
+                  value={value.details?.toAccount || ''}
+                  onChange={(next) => updateDetails('toAccount', next)}
+                  placeholder="Select to account"
+                  groups={accountGroups}
+                />
+              </div>
+              <div className="space-y-1.5 md:col-span-2">
+                <FieldLabel>Account Head</FieldLabel>
+                <Input
+                  value={value.details?.accountHead || ''}
+                  onChange={(e) => updateDetails('accountHead', e.target.value)}
+                  placeholder="Optional account head"
+                />
+              </div>
+            </>
           ) : null}
 
-          <Card className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-            <SectionHeader
-              title="Attachments"
-              description="Upload files to the file manager under the transactions module."
-              icon={FileText}
+          <div className="space-y-1.5 md:col-span-2">
+            <FieldLabel>Narration</FieldLabel>
+            <Textarea
+              rows={3}
+              value={value.narration || ''}
+              onChange={(e) => setRootValue(setValue, 'narration', e.target.value)}
+              placeholder="Brief narration for voucher"
             />
-            <div className="mt-5">
-              <DocumentSection
-                title=""
-                description=""
-                definitions={TRANSACTION_DOCUMENT_DEFS}
-                documents={value.documents || {}}
-                editable
-                onPickFile={(key, file) => {
-                  setValue((current) => ({
-                    ...(current || {}),
-                    documents: {
-                      ...(current?.documents || {}),
-                      [key]: {
-                        file,
-                        fileName: file.name,
-                        originalName: file.name,
-                        mimeType: file.type,
-                        sizeBytes: file.size,
-                        documentType: key
-                      }
-                    }
-                  }));
-                }}
-                onClearFile={(key, document) => {
-                  onDocumentRemove?.(key, document);
-                  setValue((current) => ({
-                    ...(current || {}),
-                    documents: {
-                      ...(current?.documents || {}),
-                      [key]: null
-                    }
-                  }));
-                }}
-              />
-            </div>
-          </Card>
+          </div>
 
-          <Card className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-            <SectionHeader
-              title="Summary"
-              description="Quick summary before saving the voucher."
-              icon={CalendarDays}
+          <div className="space-y-1.5">
+            <FieldLabel>Approved By</FieldLabel>
+            <Input
+              value={value.approvedBy || ''}
+              onChange={(e) => setRootValue(setValue, 'approvedBy', e.target.value)}
+              placeholder="Approver name"
             />
+          </div>
 
-            <div className="mt-5 grid gap-4 md:grid-cols-3">
-              {[
-                { label: 'Amount', value: formatTransactionAmount(value.amount || 0) },
-                { label: 'Party', value: getTransactionPartyLabel(value.partyCode, lookups, value.partyType || derivedPartyType) },
-                { label: 'Settlement', value: getTransactionLedgerLabel(value.details?.settlementAccount || value.details?.ledgerTarget || value.details?.depositIn || value.details?.fromAccount || '', lookups) }
-              ].map((item) => (
-                <div key={item.label} className="rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3">
-                  <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">{item.label}</p>
-                  <p className="mt-1 text-[14px] font-semibold text-slate-900">{item.value || '—'}</p>
-                </div>
-              ))}
-            </div>
-          </Card>
+          <div className="space-y-1.5">
+            <FieldLabel>Created By</FieldLabel>
+            <Input
+              value={value.createdBy || ''}
+              onChange={(e) => setRootValue(setValue, 'createdBy', e.target.value)}
+              placeholder="Prepared by"
+            />
+          </div>
         </div>
+      </Card>
 
-        <div className="space-y-5">
-          <Card className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-            <SectionHeader
-              title="Context"
-              description="Quick reminders for this voucher template."
-              icon={ChevronRight}
-            />
-            <div className="mt-5 space-y-3">
-              {notes.map((note) => (
-                <div key={note} className="flex items-start gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
-                  <ChevronRight size={14} className="mt-0.5 shrink-0 text-blue-500" />
-                  <span>{note}</span>
-                </div>
-              ))}
-            </div>
-          </Card>
+      {showRecoveryLines ? (
+        <ArrayRowsEditor
+          title="Recovery Breakdown"
+          description="Add recovery lines for this voucher."
+          rows={value.details?.recoveryLines || []}
+          onChange={(next) => {
+            updateRows('recoveryLines', next);
+            const total = next.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+            if (total > 0) {
+              setRootValue(setValue, 'amount', total);
+            }
+          }}
+          emptyRow={{ memberCode: '', head: '', amount: '', memo: '' }}
+          addLabel="Add Recovery Line"
+          rowTone="emerald"
+          fields={[
+            { key: 'memberCode', label: 'Member Code', placeholder: 'M0001' },
+            { key: 'head', label: 'Head', placeholder: 'Recovery Head' },
+            { key: 'amount', label: 'Amount', type: 'number', step: '0.01', placeholder: '0.00' },
+            { key: 'memo', label: 'Memo', placeholder: 'Optional memo' }
+          ]}
+        />
+      ) : null}
 
-          <Card className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-            <SectionHeader
-              title="Current Selection"
-              description="Voucher template mapped from the transaction catalog."
-              icon={Layers3}
-            />
+      {showAllocations ? (
+        <ArrayRowsEditor
+          title="Transfer Allocations"
+          description="Allocate transfer voucher amount across members or demand heads."
+          rows={value.details?.allocations || []}
+          onChange={(next) => {
+            updateRows('allocations', next);
+            const total = next.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+            if (total > 0) {
+              setRootValue(setValue, 'amount', total);
+            }
+          }}
+          emptyRow={{ memberCode: '', head: '', amount: '' }}
+          addLabel="Add Allocation"
+          rowTone="amber"
+          fields={[
+            { key: 'memberCode', label: 'Member Code', placeholder: 'M0001' },
+            { key: 'head', label: 'Head', placeholder: 'Transfer Head' },
+            { key: 'amount', label: 'Amount', type: 'number', step: '0.01', placeholder: '0.00' }
+          ]}
+        />
+      ) : null}
 
-            <div className="mt-5 space-y-3">
-              <div className={`rounded-2xl border px-4 py-3 ${toneClassName(activeItem?.accent || section?.tone || 'slate')}`}>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em]">Selected Type</p>
-                <p className="mt-1 text-[15px] font-semibold">{activeItem?.label || 'Select a voucher template'}</p>
-              </div>
-              <div className="rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Party Type</p>
-                <p className="mt-1 text-[15px] font-semibold text-slate-900">{value.partyType || derivedPartyType || 'ledger'}</p>
-              </div>
-              <div className="rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Lookup Count</p>
-                <p className="mt-1 text-[15px] font-semibold text-slate-900">
-                  {members.length} members, {employees.length} employees, {bankAccounts.length} bank accounts, {ledgers.length} ledgers
-                </p>
-              </div>
-            </div>
-          </Card>
-
-          <Card className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-            <SectionHeader
-              title="Structured Payload"
-              description="Auto-generated arrays are kept in row format, not raw JSON."
-              icon={FileText}
-            />
-            <div className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-slate-50/50 p-4 text-sm text-slate-500">
-              Recovery lines and transfer allocations are stored as arrays, so the backend can post them directly without extra parsing.
-            </div>
-          </Card>
+      <Card className="rounded-[var(--radius-card,1.75rem)] border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="mb-4">
+          <h3 className="text-sm font-semibold text-slate-900">Attachments</h3>
+          <p className="text-sm text-slate-500">
+            Payment voucher attachment, invoice / bill, and approval note.
+          </p>
         </div>
-      </div>
+        <DocumentSection
+          title=""
+          description=""
+          definitions={documentDefs}
+          documents={value.documents || {}}
+          editable
+          onPickFile={(key, file) => {
+            setValue((current) => ({
+              ...(current || {}),
+              documents: {
+                ...(current?.documents || {}),
+                [key]: {
+                  file,
+                  fileName: file.name,
+                  originalName: file.name,
+                  mimeType: file.type,
+                  sizeBytes: file.size,
+                  documentType: key
+                }
+              }
+            }));
+          }}
+          onClearFile={(key, document) => {
+            onDocumentRemove?.(key, document);
+            setValue((current) => ({
+              ...(current || {}),
+              documents: {
+                ...(current?.documents || {}),
+                [key]: null
+              }
+            }));
+          }}
+        />
+      </Card>
     </form>
   );
 }

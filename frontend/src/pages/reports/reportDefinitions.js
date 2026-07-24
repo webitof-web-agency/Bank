@@ -28,8 +28,8 @@ function firstBranch(items = []) {
   return Array.isArray(items) && items.length ? String(items[0]?.code || '').trim() : '';
 }
 
-function makeSummary(label, value) {
-  return { label, value };
+function makeSummary(label, value, subLabel = '') {
+  return { label, value, subLabel };
 }
 
 export function getReportDefaultFilters(reportKey = '', lookups = {}) {
@@ -92,9 +92,9 @@ export function getReportConfig(reportKey = '') {
           title: 'Account Statement View',
           subtitle: filters.uptoDate ? `Upto ${filters.uptoDate}` : 'All ledgers',
           summary: [
-            makeSummary('Ledgers', rows.length),
-            makeSummary('Nature', filters.nature || 'All'),
-            makeSummary('Search', filters.search || 'All')
+            makeSummary('Ledgers', rows.length, 'Total ledgers in report'),
+            makeSummary('Nature', filters.nature || 'All', 'Selected ledger nature'),
+            makeSummary('Search', filters.search || 'All', 'Current search filter')
           ],
           sections: [
             {
@@ -146,9 +146,9 @@ export function getReportConfig(reportKey = '') {
           title: "Member Ledger / Member's A/c Status",
           subtitle: `${member.name || member.code || 'Member'} ${member.membershipNo ? `- ${member.membershipNo}` : ''}`.trim(),
           summary: [
-            makeSummary('Member', member.code || '-'),
-            makeSummary('Membership No', member.membershipNo || member.memNo || '-'),
-            makeSummary('Running Balance', formatMoney(summaryBalance))
+            makeSummary('Member', member.code || '-', 'Selected member code'),
+            makeSummary('Membership No', member.membershipNo || member.memNo || '-', 'Member registration no'),
+            makeSummary('Running Balance', formatMoney(summaryBalance), 'Closing balance')
           ],
           sections: [
             {
@@ -206,9 +206,9 @@ export function getReportConfig(reportKey = '') {
           title: 'Balance Sheet',
           subtitle: filters.date ? `As on ${filters.date}` : 'Current snapshot',
           summary: [
-            makeSummary('Liabilities', formatMoney(payload.totalLiabilities || liabilities.reduce((sum, row) => sum + Number(row.amount || 0), 0))),
-            makeSummary('Assets', formatMoney(payload.totalAssets || assets.reduce((sum, row) => sum + Number(row.amount || 0), 0))),
-            makeSummary('Status', 'Ready')
+            makeSummary('Liabilities', formatMoney(payload.totalLiabilities || liabilities.reduce((sum, row) => sum + Number(row.amount || 0), 0)), 'Total liability amount'),
+            makeSummary('Assets', formatMoney(payload.totalAssets || assets.reduce((sum, row) => sum + Number(row.amount || 0), 0)), 'Total asset amount'),
+            makeSummary('Status', 'Ready', 'Report generation status')
           ],
           sections: [
             {
@@ -238,9 +238,9 @@ export function getReportConfig(reportKey = '') {
           title: 'Trial Balance',
           subtitle: filters.date ? `As on ${filters.date}` : 'Current snapshot',
           summary: [
-            makeSummary('Ledgers', rows.length),
-            makeSummary('Debit', formatMoney(rows.reduce((sum, row) => sum + Number(row.debit || 0), 0))),
-            makeSummary('Credit', formatMoney(rows.reduce((sum, row) => sum + Number(row.credit || 0), 0)))
+            makeSummary('Ledgers', rows.length, 'Total ledgers found'),
+            makeSummary('Debit', formatMoney(rows.reduce((sum, row) => sum + Number(row.debit || 0), 0)), 'Total debit amount'),
+            makeSummary('Credit', formatMoney(rows.reduce((sum, row) => sum + Number(row.credit || 0), 0)), 'Total credit amount')
           ],
           sections: [
             {
@@ -265,9 +265,9 @@ export function getReportConfig(reportKey = '') {
           title: 'Cash Book',
           subtitle: filters.date ? `For ${filters.date}` : 'All posted cash entries',
           summary: [
-            makeSummary('Rows', rows.length),
-            makeSummary('Receipts', formatMoney(rows.reduce((sum, row) => sum + Number(row.receipt || 0), 0))),
-            makeSummary('Payments', formatMoney(rows.reduce((sum, row) => sum + Number(row.payment || 0), 0)))
+            makeSummary('Rows', rows.length, 'Total transactions'),
+            makeSummary('Receipts', formatMoney(rows.reduce((sum, row) => sum + Number(row.receipt || 0), 0)), 'Total cash received'),
+            makeSummary('Payments', formatMoney(rows.reduce((sum, row) => sum + Number(row.payment || 0), 0)), 'Total cash paid')
           ],
           sections: [
             {
@@ -291,7 +291,10 @@ export function getReportConfig(reportKey = '') {
         return {
           title: 'Day Book',
           subtitle: filters.date ? `For ${filters.date}` : 'All posted journal entries',
-          summary: [makeSummary('Rows', rows.length), makeSummary('Vouchers', new Set(rows.map((row) => row.voucherNo)).size)],
+          summary: [
+            makeSummary('Rows', rows.length, 'Total journal lines'), 
+            makeSummary('Vouchers', new Set(rows.map((row) => row.voucherNo)).size, 'Unique vouchers posted')
+          ],
           sections: [
             {
               title: 'Day Book',
@@ -314,7 +317,10 @@ export function getReportConfig(reportKey = '') {
         return {
           title: 'Voucher Summary',
           subtitle: filters.date ? `For ${filters.date}` : 'Posted vouchers',
-          summary: [makeSummary('Categories', rows.length), makeSummary('Amount', formatMoney(rows.reduce((sum, row) => sum + Number(row.amount || 0), 0)))],
+          summary: [
+            makeSummary('Categories', rows.length, 'Voucher types found'), 
+            makeSummary('Amount', formatMoney(rows.reduce((sum, row) => sum + Number(row.amount || 0), 0)), 'Total voucher amount')
+          ],
           sections: [
             {
               title: 'Voucher Summary',
@@ -341,9 +347,9 @@ export function getReportConfig(reportKey = '') {
           title: 'Summary / Monthly Report',
           subtitle: `${filters.branchCode || 'All branches'} ${filters.month ? `- ${filters.month}` : ''}`.trim(),
           summary: [
-            makeSummary('Rows', rows.length),
-            makeSummary('Branch', filters.branchCode || 'All'),
-            makeSummary('Month', filters.month || 'All')
+            makeSummary('Rows', rows.length, 'Transaction categories'),
+            makeSummary('Branch', filters.branchCode || 'All', 'Selected branch'),
+            makeSummary('Month', filters.month || 'All', 'Selected period')
           ],
           sections: [
             {
@@ -368,8 +374,8 @@ export function getReportConfig(reportKey = '') {
           title: 'Demand List',
           subtitle: filters.month || 'All months',
           summary: [
-            makeSummary('Demands', rows.length),
-            makeSummary('Pending', formatMoney(rows.reduce((sum, row) => sum + Number(row.pending || 0), 0)))
+            makeSummary('Demands', rows.length, 'Total demand records'),
+            makeSummary('Pending', formatMoney(rows.reduce((sum, row) => sum + Number(row.pending || 0), 0)), 'Total outstanding amount')
           ],
           sections: [
             {
@@ -399,9 +405,9 @@ export function getReportConfig(reportKey = '') {
           title: 'Profit / Loss',
           subtitle: filters.date ? `As on ${filters.date}` : 'Current snapshot',
           summary: [
-            makeSummary('Income', formatMoney(totalIncome)),
-            makeSummary('Expense', formatMoney(totalExpense)),
-            makeSummary('Net', formatMoney(net))
+            makeSummary('Income', formatMoney(totalIncome), 'Total income amount'),
+            makeSummary('Expense', formatMoney(totalExpense), 'Total expenditure amount'),
+            makeSummary('Net', formatMoney(net), 'Net profit or loss')
           ],
           sections: [
             {
@@ -432,9 +438,9 @@ export function getReportConfig(reportKey = '') {
           title: 'All Member List',
           subtitle: 'Complete member registry',
           summary: [
-            makeSummary('Members', rows.length),
-            makeSummary('Active', activeCount),
-            makeSummary('Inactive', rows.length - activeCount)
+            makeSummary('Members', rows.length, 'Total registered members'),
+            makeSummary('Active', activeCount, 'Currently active members'),
+            makeSummary('Inactive', rows.length - activeCount, 'Currently inactive members')
           ],
           sections: [
             {
@@ -462,9 +468,9 @@ export function getReportConfig(reportKey = '') {
           title: 'Statement of Payment and Receipt',
           subtitle: `${filters.dateFrom || 'Start'} to ${filters.dateTo || 'End'}`.trim(),
           summary: [
-            makeSummary('Rows', rows.length),
-            makeSummary('Payment', formatMoney(rows.reduce((sum, row) => sum + Number(row.payment || 0), 0))),
-            makeSummary('Receipt', formatMoney(rows.reduce((sum, row) => sum + Number(row.receipt || 0), 0)))
+            makeSummary('Rows', rows.length, 'Total voucher entries'),
+            makeSummary('Payment', formatMoney(rows.reduce((sum, row) => sum + Number(row.payment || 0), 0)), 'Total payment amount'),
+            makeSummary('Receipt', formatMoney(rows.reduce((sum, row) => sum + Number(row.receipt || 0), 0)), 'Total receipt amount')
           ],
           sections: [
             {
@@ -489,8 +495,8 @@ export function getReportConfig(reportKey = '') {
           title: 'Branch List',
           subtitle: 'All branches',
           summary: [
-            makeSummary('Branches', rows.length),
-            makeSummary('Districts', new Set(rows.map((row) => row.district).filter(Boolean)).size)
+            makeSummary('Branches', rows.length, 'Total branches found'),
+            makeSummary('Districts', new Set(rows.map((row) => row.district).filter(Boolean)).size, 'Unique districts covered')
           ],
           sections: [
             {
@@ -516,9 +522,9 @@ export function getReportConfig(reportKey = '') {
           title: 'Dividend Report',
           subtitle: `Rate ${Number(filters.rate || 8)}%`,
           summary: [
-            makeSummary('Members', rows.length),
-            makeSummary('Rate', `${Number(filters.rate || 8)}%`),
-            makeSummary('Dividend', formatMoney(totalDividend))
+            makeSummary('Members', rows.length, 'Eligible members'),
+            makeSummary('Rate', `${Number(filters.rate || 8)}%`, 'Dividend percentage'),
+            makeSummary('Dividend', formatMoney(totalDividend), 'Total dividend payable')
           ],
           sections: [
             {

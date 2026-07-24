@@ -636,24 +636,26 @@ function updateNested(settings, path, value) {
 }
 
 export function SettingsPage({ initialTab = 'business_identity' } = {}) {
-  const { token, refreshSettings, settings: globalSettings } = useAuth();
-  const [settings, setSettings] = useState(() => merge(FALLBACK_SETTINGS, globalSettings || {}));
-  const [loading, setLoading] = useState(!globalSettings);
+  const { token, refreshSettings, settings: globalSettings, draftSettings, setDraftSettings } = useAuth();
+  const [settings, setSettings] = useState(() => draftSettings || merge(FALLBACK_SETTINGS, globalSettings || {}));
+  const [loading, setLoading] = useState(!globalSettings && !draftSettings);
   const [saving, setSaving] = useState(false);
 
   const branding = useMemo(() => extractBranding(settings || {}), [settings]);
   const businessIdentity = useMemo(() => settings.payload?.companyProfile || FALLBACK_SETTINGS.payload.companyProfile, [settings]);
   const smtp = useMemo(() => settings.smtp || FALLBACK_SETTINGS.smtp, [settings]);
 
-  useEffect(() => {
-    applyBranding(branding);
-  }, [branding, settings]);
+  // branding changes are handled by AuthContext now when draftSettings is updated
+  // We can remove the local applyBranding effect to avoid duplicate calls.
+  // useEffect(() => { applyBranding(branding); }, [branding, settings]);
 
   useEffect(() => {
     let mounted = true;
 
     if (globalSettings) {
-      setSettings(merge(FALLBACK_SETTINGS, globalSettings));
+      if (!draftSettings) {
+        setSettings(merge(FALLBACK_SETTINGS, globalSettings));
+      }
       setLoading(false);
       return () => {
         mounted = false;
@@ -690,7 +692,9 @@ export function SettingsPage({ initialTab = 'business_identity' } = {}) {
     setSaving(true);
     try {
       const response = await api.settings.save(token, settings);
-      setSettings(merge(FALLBACK_SETTINGS, response.data || settings));
+      const newSettings = merge(FALLBACK_SETTINGS, response.data || settings);
+      setSettings(newSettings);
+      if (setDraftSettings) setDraftSettings(null); // Clear draft after save
       
       if (refreshSettings) {
         await refreshSettings();
@@ -705,7 +709,11 @@ export function SettingsPage({ initialTab = 'business_identity' } = {}) {
   }
 
   function setField(path, value) {
-    setSettings((current) => updateNested(current, path, value));
+    setSettings((current) => {
+      const updated = updateNested(current, path, value);
+      if (setDraftSettings) setDraftSettings(updated); // Update global draft preview
+      return updated;
+    });
   }
 
   const SECTION_META = {

@@ -4,10 +4,41 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#ffffff" />
-    <title>CRM</title>
+    <title>Bank</title>
+    <script>
+      (function() {
+        try {
+          var cache = localStorage.getItem('bank_branding_cache');
+          if (cache) {
+            var branding = JSON.parse(cache);
+            var root = document.documentElement;
+            var primary = branding.primaryColor || '#1661F6';
+            var accent = branding.accentColor || '#1661F6';
+            var sidebarBg = branding.sidebarBg || '#090d16';
+            var rCard = (branding.borderRadius && branding.borderRadius.card) || '1.75rem';
+            var rButton = (branding.borderRadius && branding.borderRadius.button) || '1rem';
+            var rInput = (branding.borderRadius && branding.borderRadius.input) || '0.75rem';
+            
+            root.style.setProperty('--primary', primary);
+            root.style.setProperty('--secondary', accent);
+            root.style.setProperty('--accent', accent);
+            root.style.setProperty('--brand-gradient', 'linear-gradient(135deg, ' + primary + ' 0%, ' + accent + ' 100%)');
+            root.style.setProperty('--brand-sidebar-bg', sidebarBg);
+            root.style.setProperty('--brand-sidebar-active', 'color-mix(in srgb, ' + primary + ' 18%, transparent)');
+            root.style.setProperty('--brand-sidebar-hover', 'rgba(255, 255, 255, 0.05)');
+            root.style.setProperty('--brand-sidebar-text', '#f8fafc');
+            root.style.setProperty('--brand-sidebar-muted', '#94a3b8');
+            root.style.setProperty('--brand-sidebar-border', 'rgba(255, 255, 255, 0.08)');
+            root.style.setProperty('--radius-card', rCard);
+            root.style.setProperty('--radius-button', rButton);
+            root.style.setProperty('--radius-input', rInput);
+          }
+        } catch(e) {}
+      })();
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </head>
   <body>
     <div id="root"></div>
   </body>
-  </html>
+</html>

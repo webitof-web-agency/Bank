@@ -1,23 +1,27 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Download, Filter, Printer, Sparkles, ZoomIn, ZoomOut } from 'lucide-react';
+import { Download, Filter, Printer, FileText, Activity, BarChart3, TrendingUp, Wallet, PieChart, DollarSign, Calculator, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../api/api';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
-import { Input, Select } from '../../components/ui/Input';
+import { Input } from '../../components/ui/Input';
+import { Select } from '../../components/ui/Select';
+import { Table } from '../../components/ui/Table';
 import { useAuth } from '../../context/AuthContext';
 import { getReportConfig, getReportDefaultFilters } from './reportDefinitions';
-import { REPORT_LINK_MAP, REPORT_NAV_LINKS } from './reportLinks';
+import { REPORT_NAV_LINKS } from './reportLinks';
 
-function SectionTitle({ title, description }) {
-  return (
-    <div className="space-y-1">
-      <h3 className="text-base font-semibold text-slate-900">{title}</h3>
-      {description ? <p className="text-sm text-slate-500">{description}</p> : null}
-    </div>
-  );
-}
+const SUMMARY_PALETTES = [
+  { color: 'text-blue-600', bg: 'bg-blue-50', Icon: BarChart3 },
+  { color: 'text-emerald-600', bg: 'bg-emerald-50', Icon: TrendingUp },
+  { color: 'text-rose-600', bg: 'bg-rose-50', Icon: Wallet },
+  { color: 'text-purple-600', bg: 'bg-purple-50', Icon: PieChart },
+  { color: 'text-amber-600', bg: 'bg-amber-50', Icon: DollarSign },
+  { color: 'text-cyan-600', bg: 'bg-cyan-50', Icon: Calculator },
+];
+
+
 
 function formatCell(cell) {
   if (cell == null || cell === '') return '-';
@@ -27,50 +31,78 @@ function formatCell(cell) {
   return cell;
 }
 
-function SummaryCard({ label, value }) {
+function SummaryCard({ label, value, subLabel, index = 0 }) {
+  const palette = SUMMARY_PALETTES[index % SUMMARY_PALETTES.length];
+  const Icon = palette.Icon;
+
   return (
-    <div className="rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3">
-      <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">{label}</p>
-      <p className="mt-1 text-lg font-semibold text-slate-900">{value}</p>
-    </div>
+    <Card className="border border-slate-200 bg-white p-4 shadow-sm flex items-center gap-4 rounded-2xl">
+      <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${palette.bg} ${palette.color}`}>
+        <Icon size={22} strokeWidth={1.5} />
+      </div>
+      <div className="min-w-0">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 truncate">{label}</p>
+        <div className="flex items-baseline gap-2 mt-0.5">
+          <p className="text-xl font-bold text-slate-900 truncate">{value}</p>
+        </div>
+        {subLabel && <p className="text-[11px] text-slate-400 mt-0.5 truncate">{subLabel}</p>}
+      </div>
+    </Card>
   );
 }
 
-function ReportTableSection({ section }) {
+function ReportTableSection({ section, headerActions }) {
+  const [search, setSearch] = useState('');
+
+  const columns = useMemo(() => {
+    return (section.headers || []).map((header, index) => ({
+      key: `col_${index}`,
+      label: header,
+      sortable: true,
+      sortValue: (row) => {
+        const val = row[`col_${index}`];
+        if (typeof val === 'string' && /^-?[\d,]+(\.\d+)?$/.test(val)) {
+          const num = Number(val.replace(/,/g, ''));
+          if (!isNaN(num)) return num;
+        }
+        return val;
+      }
+    }));
+  }, [section.headers]);
+
+  const data = useMemo(() => {
+    return (section.rows || []).map((row) => {
+      const rowData = {};
+      row.forEach((cell, index) => {
+        rowData[`col_${index}`] = formatCell(cell);
+      });
+      return rowData;
+    });
+  }, [section.rows]);
+
+  const filteredData = useMemo(() => {
+    if (!search) return data;
+    const lowerSearch = search.toLowerCase();
+    return data.filter((row) => {
+      return Object.values(row).some((val) => 
+        String(val).toLowerCase().includes(lowerSearch)
+      );
+    });
+  }, [data, search]);
+
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="border-b border-slate-100 px-5 py-4">
-        <SectionTitle title={section.title} description={section.description} />
-      </div>
-      <div className="overflow-x-auto">
-        <table className="min-w-full text-left text-[13px]">
-          <thead className="border-b border-slate-200 bg-slate-50/80 text-[11px] font-semibold uppercase tracking-[0.05em] text-slate-500">
-            <tr>
-              {section.headers.map((header) => (
-                <th key={header} className="px-4 py-3.5">{header}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {section.rows?.length ? section.rows.map((row, index) => (
-              <tr key={`${section.title}-${index}`} className="hover:bg-slate-50/50">
-                {row.map((cell, cellIndex) => (
-                  <td key={`${section.title}-${index}-${cellIndex}`} className="px-4 py-3 text-slate-700">
-                    {formatCell(cell)}
-                  </td>
-                ))}
-              </tr>
-            )) : (
-              <tr>
-                <td colSpan={section.headers.length} className="px-4 py-8 text-center text-slate-500">
-                  {section.emptyMessage || 'No records found.'}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
+    <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm p-4">
+      <Table 
+        columns={columns} 
+        data={filteredData} 
+        emptyMessage={section.emptyMessage || 'No records found.'}
+        defaultRowsPerPage={15}
+        headerActions={headerActions}
+        search={search}
+        onSearch={setSearch}
+        searchPlaceholder="Search in table..."
+      />
+    </Card>
   );
 }
 
@@ -114,8 +146,8 @@ export function ReportViewerPage() {
   const [filters, setFilters] = useState(() => getReportDefaultFilters(reportKey, {}));
   const [generatedFilters, setGeneratedFilters] = useState(() => getReportDefaultFilters(reportKey, {}));
   const [payload, setPayload] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [zoom, setZoom] = useState(100);
+  const [loading, setLoading] = useState(false);
+  const [filterDropdownOpen, setFilterDropdownOpen] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -138,7 +170,6 @@ export function ReportViewerPage() {
     const nextDefaults = getReportDefaultFilters(reportKey, lookups);
     setFilters(nextDefaults);
     setGeneratedFilters(nextDefaults);
-    setZoom(100);
   }, [lookups, reportKey]);
 
   useEffect(() => {
@@ -175,12 +206,14 @@ export function ReportViewerPage() {
 
   function showReport() {
     setGeneratedFilters(filters);
+    setFilterDropdownOpen(false);
   }
 
   function resetFilters() {
     const nextDefaults = getReportDefaultFilters(reportKey, lookups);
     setFilters(nextDefaults);
     setGeneratedFilters(nextDefaults);
+    setFilterDropdownOpen(false);
   }
 
   function renderFilters() {
@@ -194,12 +227,15 @@ export function ReportViewerPage() {
         <div className="space-y-4">
           <div className="space-y-1.5">
             <label className="text-[13px] font-semibold text-slate-700">Member</label>
-            <Select value={filters.memberCode || ''} onChange={(event) => setFilters((current) => ({ ...current, memberCode: event.target.value }))}>
-              <option value="">Select member</option>
-              {members.map((member) => (
-                <option key={member.code} value={member.code}>{member.code} - {member.name}</option>
-              ))}
-            </Select>
+            <Select 
+              searchable
+              value={filters.memberCode || ''} 
+              onChange={(value) => setFilters((current) => ({ ...current, memberCode: value }))}
+              options={[
+                { label: 'Select member', value: '' },
+                ...members.map((member) => ({ label: `${member.code} - ${member.name}`, value: member.code }))
+              ]}
+            />
           </div>
           <div className="grid gap-3 md:grid-cols-2">
             <div className="space-y-1.5">
@@ -216,23 +252,36 @@ export function ReportViewerPage() {
     }
 
     if (config.filterMode === 'account-statement') {
+      const ledgers = Array.isArray(lookups.ledgers) ? lookups.ledgers : [];
       return (
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <label className="text-[13px] font-semibold text-slate-700">Search Ledger</label>
-            <Input value={filters.search || ''} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} placeholder="Ledger code / name" />
+            <label className="text-[13px] font-semibold text-slate-700">Select Ledger</label>
+            <Select 
+              searchable
+              value={filters.search || ''} 
+              onChange={(value) => setFilters((current) => ({ ...current, search: value }))}
+              options={[
+                { label: 'All Ledgers', value: '' },
+                ...ledgers.map((ledger) => ({ label: `${ledger.code} - ${ledger.name}`, value: ledger.code }))
+              ]}
+            />
           </div>
           <div className="grid gap-3 md:grid-cols-2">
             <div className="space-y-1.5">
               <label className="text-[13px] font-semibold text-slate-700">Nature</label>
-              <Select value={filters.nature || ''} onChange={(event) => setFilters((current) => ({ ...current, nature: event.target.value }))}>
-                <option value="">All</option>
-                <option value="ASSET">Asset</option>
-                <option value="LIABILITY">Liability</option>
-                <option value="INCOME">Income</option>
-                <option value="EXPENSE">Expense</option>
-                <option value="GENERAL">General</option>
-              </Select>
+              <Select 
+                value={filters.nature || ''} 
+                onChange={(value) => setFilters((current) => ({ ...current, nature: value }))}
+                options={[
+                  { label: 'All', value: '' },
+                  { label: 'Asset', value: 'ASSET' },
+                  { label: 'Liability', value: 'LIABILITY' },
+                  { label: 'Income', value: 'INCOME' },
+                  { label: 'Expense', value: 'EXPENSE' },
+                  { label: 'General', value: 'GENERAL' }
+                ]}
+              />
             </div>
             <div className="space-y-1.5">
               <label className="text-[13px] font-semibold text-slate-700">Upto Date</label>
@@ -249,12 +298,14 @@ export function ReportViewerPage() {
         <div className="grid gap-4">
           <div className="space-y-1.5">
             <label className="text-[13px] font-semibold text-slate-700">Branch</label>
-            <Select value={filters.branchCode || ''} onChange={(event) => setFilters((current) => ({ ...current, branchCode: event.target.value }))}>
-              <option value="">All branches</option>
-              {branches.map((branch) => (
-                <option key={branch.code} value={branch.code}>{branch.code} - {branch.label || branch.place || ''}</option>
-              ))}
-            </Select>
+            <Select 
+              value={filters.branchCode || ''} 
+              onChange={(value) => setFilters((current) => ({ ...current, branchCode: value }))}
+              options={[
+                { label: 'All branches', value: '' },
+                ...branches.map((branch) => ({ label: `${branch.code} - ${branch.label || branch.place || ''}`, value: branch.code }))
+              ]}
+            />
           </div>
           <div className="space-y-1.5">
             <label className="text-[13px] font-semibold text-slate-700">Month</label>
@@ -312,111 +363,74 @@ export function ReportViewerPage() {
     downloadCsv(payload.sections, `${reportKey}.csv`);
   }
 
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-2 text-sm text-slate-500">
-        <button type="button" onClick={() => navigate('/app/reports')} className="inline-flex items-center gap-1.5 hover:text-slate-900">
-          <ArrowLeft size={14} />
-          Back to Reports
-        </button>
-        <span>/</span>
-        <span>{REPORT_LINK_MAP[reportKey]?.label || config.label}</span>
-      </div>
-
-      <Card className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-        <div className="relative bg-gradient-to-r from-[#0f172a] via-[#2563eb] to-[#1661F6] px-6 py-8 text-white md:px-8">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.16),transparent_28%),radial-gradient(circle_at_bottom_left,rgba(255,255,255,0.08),transparent_30%)]" />
-          <div className="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-            <div className="max-w-2xl space-y-3">
-              <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[12px] font-medium text-white/90 backdrop-blur">
-                <Sparkles size={13} />
-                Reports Module
-              </div>
-              <div>
-                <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">{config.label}</h1>
-                <p className="mt-2 max-w-2xl text-sm text-blue-50 md:text-[15px]">{config.description}</p>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="outline" className="gap-2 bg-white/10 text-white hover:bg-white/15" onClick={() => navigate('/app/reports')}>
-                <ArrowLeft size={14} />
-                Reports Hub
-              </Button>
-              <Button type="button" variant="outline" className="gap-2 bg-white/10 text-white hover:bg-white/15" onClick={() => setZoom((value) => Math.max(80, value - 10))}>
-                <ZoomOut size={14} />
-                Zoom Out
-              </Button>
-              <Button type="button" variant="outline" className="gap-2 bg-white/10 text-white hover:bg-white/15" onClick={() => setZoom((value) => Math.min(130, value + 10))}>
-                <ZoomIn size={14} />
-                Zoom In
-              </Button>
-            </div>
+  const filterPopover = (
+    <div className="flex items-center gap-2">
+      <Button type="button" variant="outline" className="gap-2 h-9 px-3 text-[13px] border-slate-200 bg-white hover:bg-slate-50" onClick={() => window.print()}>
+        <Printer size={14} />
+        Print
+      </Button>
+      {hasPermission('reports.export') ? (
+        <Button type="button" variant="outline" className="gap-2 h-9 px-3 text-[13px] border-slate-200 bg-white hover:bg-slate-50" onClick={handleExport}>
+          <Download size={14} />
+          Export
+        </Button>
+      ) : null}
+      <div className="relative">
+        <Button
+          type="button"
+          variant="outline"
+          className="gap-2 h-9 px-3 text-[13px] border-slate-200 bg-white hover:bg-slate-50"
+          onClick={() => setFilterDropdownOpen(!filterDropdownOpen)}
+        >
+          <Filter size={14} />
+          Filter
+        </Button>
+      {filterDropdownOpen && (
+        <div className="absolute right-0 top-full mt-2 w-[320px] sm:w-[400px] z-50 rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">
+          <div className="flex items-center justify-between mb-4">
+            <h4 className="font-semibold text-slate-900 text-sm">Filters</h4>
+            <button type="button" onClick={() => setFilterDropdownOpen(false)} className="text-slate-400 hover:text-slate-600">
+              <X size={16} />
+            </button>
+          </div>
+          <div>
+            {renderFilters()}
+          </div>
+          <div className="mt-6 flex flex-wrap gap-2">
+            <Button
+              type="button"
+              className="flex-1 bg-[var(--primary)] text-white hover:opacity-90"
+              onClick={showReport}
+            >
+              Show Report
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1"
+              onClick={resetFilters}
+            >
+              Reset
+            </Button>
           </div>
         </div>
-      </Card>
+      )}
+    </div>
+    </div>
+  );
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{config.label}</h1>
+      </div>
 
       <div className="report-shell">
-        <aside className="report-params">
-          <div className="field mt0">
-            <label className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Report Type</label>
-            <Select
-              className="mt-2 bg-white"
-              value={reportKey || ''}
-              onChange={(event) => {
-                const next = visibleReports.find((item) => item.key === event.target.value);
-                if (next) navigate(next.path);
-              }}
-            >
-              {visibleReports.map((item) => (
-                <option key={item.key} value={item.key}>{item.label}</option>
-              ))}
-            </Select>
-          </div>
-
-          <div className="space-y-4">
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-              <SectionTitle title="Parameters" description="Choose the filter values and generate the report." />
-              <div className="mt-4 space-y-4">
-                {renderFilters()}
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <Button type="button" className="gap-2" onClick={showReport}>
-                <Filter size={14} />
-                Show Report
-              </Button>
-              <Button type="button" variant="outline" className="gap-2" onClick={resetFilters}>
-                Reset
-              </Button>
-            </div>
-          </div>
-        </aside>
-
-        <div className="report-canvas-wrap">
-          <div className="report-toolbar">
-            <button type="button" className="icon-btn" onClick={() => window.print()} title="Print">
-              <Printer size={14} />
-            </button>
-            {hasPermission('reports.export') ? (
-              <button type="button" className="icon-btn" onClick={handleExport} title="Export CSV">
-                <Download size={14} />
-              </button>
-            ) : null}
-            <div className="spacer" />
-            <span className="text-[11.5px] text-slate-500">{payload?.subtitle || 'Ready'}</span>
-          </div>
-
-          <div className={`report-canvas ${zoom === 100 ? '' : `zoom-${zoom}`}`}>
-            <div className="report-title-block">
-              <div className="rt1">{payload?.title || config.label}</div>
-              <div className="rt2">{payload?.subtitle || config.description}</div>
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-3">
-              {(payload?.summary || []).map((item) => (
-                <SummaryCard key={item.label} label={item.label} value={item.value} />
+        <div className="report-canvas-wrap w-full">
+          <div className="report-canvas">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {(payload?.summary || []).map((item, index) => (
+                <SummaryCard key={item.label} label={item.label} value={item.value} subLabel={item.subLabel} index={index} />
               ))}
             </div>
 
@@ -424,11 +438,13 @@ export function ReportViewerPage() {
               {loading ? (
                 <div className="flex h-40 items-center justify-center text-sm text-slate-500">Loading report...</div>
               ) : payload?.sections?.length ? (
-                payload.sections.map((section) => <ReportTableSection key={section.title} section={section} />)
+                payload.sections.map((section, index) => <ReportTableSection key={section.title} section={section} headerActions={index === 0 ? filterPopover : null} />)
               ) : (
-                <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-slate-500 shadow-sm">
-                  No records found for the selected parameters.
-                </div>
+                <Card className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="mt-4">
+                    <Table columns={[]} data={[]} emptyMessage="No records found for the selected parameters." headerActions={filterPopover} />
+                  </div>
+                </Card>
               )}
             </div>
           </div>

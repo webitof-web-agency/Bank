@@ -6,6 +6,7 @@ import { api } from '../../api/api';
 import { useAuth } from '../../context/AuthContext';
 import { Modal } from './Modal';
 import { Input } from './Input';
+import { Button } from './Button';
 import { cn } from '../../lib/cn';
 
 function getFileIcon(mimeType = '') {
@@ -474,9 +475,9 @@ export function FileBrowser({
         <form onSubmit={submitFolder} className="space-y-4">
           <Input value={newFolderName} onChange={(e) => setNewFolderName(e.target.value)} placeholder="Folder name" autoFocus />
           <div className="flex justify-end gap-3">
-            <button type="button" onClick={() => setNewFolderOpen(false)} className="rounded-[var(--radius-button,9999px)] px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100">
+            <Button type="button" variant="outline" onClick={() => setNewFolderOpen(false)}>
               Cancel
-            </button>
+            </Button>
             <button type="submit" className="rounded-[var(--radius-button,9999px)] bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white hover:opacity-90">
               Create
             </button>
@@ -488,9 +489,9 @@ export function FileBrowser({
         <form onSubmit={submitRename} className="space-y-4">
           <Input value={renameValue} onChange={(e) => setRenameValue(e.target.value)} placeholder="New name" autoFocus />
           <div className="flex justify-end gap-3">
-            <button type="button" onClick={() => setEditingFolder(null)} className="rounded-[var(--radius-button,9999px)] px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100">
+            <Button type="button" variant="outline" onClick={() => setEditingFolder(null)}>
               Cancel
-            </button>
+            </Button>
             <button type="submit" className="rounded-[var(--radius-button,9999px)] bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white hover:opacity-90">
               Save
             </button>
@@ -504,9 +505,9 @@ export function FileBrowser({
             Delete <strong>{deleteTarget?.originalName || deleteTarget?.name}</strong>? {deleteTarget?.originalName ? 'This will permanently remove the file.' : 'This only works when the folder is empty.'}
           </p>
           <div className="flex justify-end gap-3">
-            <button type="button" onClick={() => setDeleteTarget(null)} className="rounded-[var(--radius-button,9999px)] px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100">
+            <Button type="button" variant="outline" onClick={() => setDeleteTarget(null)}>
               Cancel
-            </button>
+            </Button>
             <button type="button" onClick={confirmDelete} className="rounded-[var(--radius-button,9999px)] bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:opacity-90">
               Delete
             </button>

@@ -43,7 +43,7 @@ function SidebarLink({ item, onNavigate, open }) {
         cn(
           'group flex items-center gap-3 px-3 py-2.5 text-[15px] transition-all duration-200 overflow-hidden whitespace-nowrap rounded-[var(--radius-button,1rem)]',
           isActive ? 'font-medium bg-[var(--brand-sidebar-active,#e0e7ff)] text-[var(--primary,#2563eb)]' : 'font-medium text-slate-700 hover:bg-[color-mix(in_srgb,var(--primary)_8%,transparent)] hover:text-[var(--primary,#2563eb)]',
-          !open && 'lg:justify-center lg:px-0'
+          !open && 'lg:justify-center lg:px-0 lg:bg-transparent lg:hover:bg-transparent'
         )
       }
       style={{
@@ -83,7 +83,7 @@ function SidebarDropdown({ item, onNavigate, open, pathname, expanded, onToggle 
         className={cn(
           'group flex w-full items-center justify-between gap-3 px-3 py-2.5 text-[15px] transition-all duration-200 whitespace-nowrap rounded-[var(--radius-button,1rem)]',
           activeChild || activeParent || visible ? 'font-medium text-[var(--primary,#2563eb)]' : 'font-medium text-slate-700 hover:bg-[color-mix(in_srgb,var(--primary)_8%,transparent)] hover:text-[var(--primary,#2563eb)]',
-          !open && 'lg:justify-center lg:px-0'
+          !open && 'lg:justify-center lg:px-0 lg:bg-transparent lg:hover:bg-transparent'
         )}
         title={!open ? item.label : undefined}
       >
@@ -136,7 +136,7 @@ export function Sidebar({ open = false, onClose, onToggleCollapse }) {
       {open ? <div className="fixed inset-0 z-30 bg-slate-900/40 backdrop-blur-sm lg:hidden" onClick={onClose} /> : null}
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-40 flex flex-col overflow-hidden border-r border-slate-200 bg-white shadow-sm transition-all duration-300 lg:translate-x-0 print:hidden',
+          'fixed inset-y-0 left-0 z-40 flex flex-col overflow-hidden border-r border-slate-200 bg-white shadow-sm transition-all duration-300 lg:translate-x-0',
           open ? 'translate-x-0 w-64' : '-translate-x-full w-64 lg:w-20'
         )}
       >

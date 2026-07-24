@@ -496,6 +496,84 @@ async function syncRecordDocumentsFolder(resource, record, createdBy = null) {
   return folderId;
 }
 
+const MEMBER_TRANSACTION_DOCUMENTS = {
+  loanPaidMember: [
+    { key: 'sanctionLetter', label: 'Sanction Letter / Loan Agreement', description: 'Loan approval note or signed agreement.' },
+    { key: 'promissoryNote', label: 'Promissory Note', description: 'Member signed promissory note.' },
+    { key: 'disbursementAdvice', label: 'Disbursement Advice / Cheque', description: 'Cheque or disbursement advice copy.' },
+    { key: 'memberSheet', label: 'Member Calculation Sheet', description: 'Loan calculation or member-wise sheet.' }
+  ],
+  depositPaidMember: [
+    { key: 'voucherAttachment', label: 'Voucher Attachment', description: 'Primary payout support file or scan.' },
+    { key: 'chequeImage', label: 'Cheque Image', description: 'Cheque scan or bank instrument image.' },
+    { key: 'bankAdvice', label: 'Bank Advice', description: 'Bank advice or transfer reference.' }
+  ],
+  insurancePaidMember: [
+    { key: 'voucherAttachment', label: 'Voucher Attachment', description: 'Primary insurance payout support file.' },
+    { key: 'bankAdvice', label: 'Bank Advice', description: 'Bank advice or transfer reference.' },
+    { key: 'receiptCopy', label: 'Receipt Copy', description: 'Receipt acknowledgement or cash memo.' }
+  ],
+  recoveryMember: [
+    { key: 'depositSlip', label: 'Deposit Slip', description: 'Cash or cheque deposit slip.' },
+    { key: 'receiptCopy', label: 'Receipt Copy', description: 'Bank receipt or cash receipt copy.' },
+    { key: 'bankStatement', label: 'Bank Statement', description: 'Statement or online transfer proof.' },
+    { key: 'memberSheet', label: 'Member Recovery Sheet', description: 'Member-wise recovery calculation sheet.' }
+  ]
+};
+
+const BANK_TRANSACTION_DOCUMENTS = {
+  'loan-recv-cash': [
+    { key: 'loanApplication', label: 'Loan Application', description: 'Sanctioned loan application or request form.' },
+    { key: 'disbursementAdvice', label: 'Disbursement Advice', description: 'Advice or cash disbursement note.' },
+    { key: 'bankAdvice', label: 'Bank Advice', description: 'Bank advice or settlement reference.' }
+  ],
+  'loan-recv-saving': [
+    { key: 'loanApplication', label: 'Loan Application', description: 'Sanctioned loan application or request form.' },
+    { key: 'savingPassbook', label: 'Saving Passbook / Proof', description: 'Saving account proof or passbook scan.' },
+    { key: 'bankAdvice', label: 'Bank Advice', description: 'Bank advice or settlement reference.' }
+  ],
+  'deposit-in-bank': [
+    { key: 'depositSlip', label: 'Deposit Slip', description: 'Cash deposit slip or challan.' },
+    { key: 'bankReceipt', label: 'Bank Receipt', description: 'Bank acknowledgment or receipt.' },
+    { key: 'cashBookEntry', label: 'Cash Book Entry', description: 'Cash book or journal evidence.' }
+  ],
+  'cheque-issue-saving': [
+    { key: 'chequeImage', label: 'Cheque Image', description: 'Cheque scan or issued instrument copy.' },
+    { key: 'chequeRegister', label: 'Cheque Register', description: 'Cheque issue register or record.' },
+    { key: 'bankAdvice', label: 'Bank Advice', description: 'Advice or settlement reference.' }
+  ],
+  'cheque-issue-loan': [
+    { key: 'chequeImage', label: 'Cheque Image', description: 'Cheque scan or issued instrument copy.' },
+    { key: 'chequeRegister', label: 'Cheque Register', description: 'Cheque issue register or record.' },
+    { key: 'bankAdvice', label: 'Bank Advice', description: 'Advice or settlement reference.' }
+  ],
+  'transfer-saving': [
+    { key: 'transferAdvice', label: 'Transfer Advice', description: 'Transfer request or advice slip.' },
+    { key: 'rtgsSlip', label: 'RTGS / NEFT Slip', description: 'Transfer proof or bank confirmation.' },
+    { key: 'bankStatement', label: 'Bank Statement', description: 'Statement or transaction proof.' }
+  ],
+  'transfer-cashcredit': [
+    { key: 'transferAdvice', label: 'Transfer Advice', description: 'Transfer request or advice slip.' },
+    { key: 'rtgsSlip', label: 'RTGS / NEFT Slip', description: 'Transfer proof or bank confirmation.' },
+    { key: 'bankStatement', label: 'Bank Statement', description: 'Statement or transaction proof.' }
+  ]
+};
+
+const EMPLOYEE_TRANSACTION_DOCUMENTS = {
+  'advance-paid-emp': [
+    { key: 'advanceApplication', label: 'Advance Application', description: 'Employee advance request or application.' },
+    { key: 'approvalNote', label: 'Approval Note', description: 'Sanction or approval note for advance.' },
+    { key: 'chequeImage', label: 'Cheque / Payment Proof', description: 'Cheque image or cash payment proof.' },
+    { key: 'undertaking', label: 'Employee Undertaking', description: 'Salary adjustment or repayment undertaking.' }
+  ],
+  'advance-recovery-emp': [
+    { key: 'recoverySlip', label: 'Recovery Slip', description: 'Recovery slip or cash deposit note.' },
+    { key: 'salaryDeductionAdvice', label: 'Salary Deduction Advice', description: 'Payroll deduction advice or memo.' },
+    { key: 'receiptCopy', label: 'Receipt Copy', description: 'Receipt acknowledgement or cash memo.' },
+    { key: 'bankTransferProof', label: 'Bank Transfer Proof', description: 'Transfer proof if recovered through bank.' }
+  ]
+};
+
 const TRANSACTION_CATALOG = [
   {
     key: 'member',
@@ -510,7 +588,8 @@ const TRANSACTION_CATALOG = [
         voucherCategory: 'Loan Paid to Member',
         transactionType: 'payment',
         accent: 'pink',
-        mode: 'Cash / Cheque'
+        mode: 'Cash / Cheque',
+        documents: MEMBER_TRANSACTION_DOCUMENTS.loanPaidMember
       },
       {
         key: 'deposit-paid-member',
@@ -519,7 +598,8 @@ const TRANSACTION_CATALOG = [
         voucherCategory: 'Compulsory Deposit Paid to Member',
         transactionType: 'payment',
         accent: 'pink',
-        mode: 'Cash / Cheque'
+        mode: 'Cash / Cheque',
+        documents: MEMBER_TRANSACTION_DOCUMENTS.depositPaidMember
       },
       {
         key: 'insurance-paid-member',
@@ -528,7 +608,8 @@ const TRANSACTION_CATALOG = [
         voucherCategory: 'Insurance Premium Paid to Member',
         transactionType: 'payment',
         accent: 'pink',
-        mode: 'Cash / Cheque'
+        mode: 'Cash / Cheque',
+        documents: MEMBER_TRANSACTION_DOCUMENTS.insurancePaidMember
       },
       {
         key: 'recovery-member',
@@ -537,7 +618,8 @@ const TRANSACTION_CATALOG = [
         voucherCategory: 'Recovery From Member',
         transactionType: 'receipt',
         accent: 'emerald',
-        mode: 'Cash / Transfer'
+        mode: 'Cash / Transfer',
+        documents: MEMBER_TRANSACTION_DOCUMENTS.recoveryMember
       }
     ]
   },
@@ -554,7 +636,8 @@ const TRANSACTION_CATALOG = [
         voucherCategory: 'Loan Received',
         transactionType: 'receipt',
         accent: 'emerald',
-        mode: 'Cash / Credit'
+        mode: 'Cash / Credit',
+        documents: BANK_TRANSACTION_DOCUMENTS['loan-recv-cash']
       },
       {
         key: 'loan-recv-saving',
@@ -563,7 +646,8 @@ const TRANSACTION_CATALOG = [
         voucherCategory: 'Loan Received to Saving A/c',
         transactionType: 'receipt',
         accent: 'emerald',
-        mode: 'Saving A/c'
+        mode: 'Saving A/c',
+        documents: BANK_TRANSACTION_DOCUMENTS['loan-recv-saving']
       },
       {
         key: 'deposit-in-bank',
@@ -572,7 +656,8 @@ const TRANSACTION_CATALOG = [
         voucherCategory: 'Deposit in Bank',
         transactionType: 'transfer',
         accent: 'amber',
-        mode: 'Bank Deposit'
+        mode: 'Bank Deposit',
+        documents: BANK_TRANSACTION_DOCUMENTS['deposit-in-bank']
       },
       {
         key: 'cheque-issue-saving',
@@ -581,7 +666,8 @@ const TRANSACTION_CATALOG = [
         voucherCategory: 'Cheque Issue With Bank (Saving A/c)',
         transactionType: 'payment',
         accent: 'pink',
-        mode: 'Cheque'
+        mode: 'Cheque',
+        documents: BANK_TRANSACTION_DOCUMENTS['cheque-issue-saving']
       },
       {
         key: 'cheque-issue-loan',
@@ -590,7 +676,8 @@ const TRANSACTION_CATALOG = [
         voucherCategory: 'Cheque Issue With Bank (Loan A/c)',
         transactionType: 'payment',
         accent: 'pink',
-        mode: 'Cheque'
+        mode: 'Cheque',
+        documents: BANK_TRANSACTION_DOCUMENTS['cheque-issue-loan']
       },
       {
         key: 'transfer-saving',
@@ -599,7 +686,8 @@ const TRANSACTION_CATALOG = [
         voucherCategory: 'Amount Transfer to Saving A/c',
         transactionType: 'transfer',
         accent: 'amber',
-        mode: 'Transfer'
+        mode: 'Transfer',
+        documents: BANK_TRANSACTION_DOCUMENTS['transfer-saving']
       },
       {
         key: 'transfer-cashcredit',
@@ -608,7 +696,8 @@ const TRANSACTION_CATALOG = [
         voucherCategory: 'Amount Transfer to Cash-Credit A/c',
         transactionType: 'transfer',
         accent: 'amber',
-        mode: 'Transfer'
+        mode: 'Transfer',
+        documents: BANK_TRANSACTION_DOCUMENTS['transfer-cashcredit']
       }
     ]
   },
@@ -625,7 +714,8 @@ const TRANSACTION_CATALOG = [
         voucherCategory: 'Advance Paid by Cash/Cheque',
         transactionType: 'payment',
         accent: 'pink',
-        mode: 'Cash / Cheque'
+        mode: 'Cash / Cheque',
+        documents: EMPLOYEE_TRANSACTION_DOCUMENTS['advance-paid-emp']
       },
       {
         key: 'advance-recovery-emp',
@@ -634,7 +724,8 @@ const TRANSACTION_CATALOG = [
         voucherCategory: 'Advance Recovery by Cash/Transfer',
         transactionType: 'receipt',
         accent: 'emerald',
-        mode: 'Cash / Transfer'
+        mode: 'Cash / Transfer',
+        documents: EMPLOYEE_TRANSACTION_DOCUMENTS['advance-recovery-emp']
       }
     ]
   },
@@ -651,7 +742,12 @@ const TRANSACTION_CATALOG = [
         voucherCategory: 'Transfer Voucher Paid to Member',
         transactionType: 'payment',
         accent: 'pink',
-        mode: 'Transfer'
+        mode: 'Transfer',
+        documents: [
+          { key: 'transferAdvice', label: 'Transfer Advice', description: 'Transfer request or advice slip.' },
+          { key: 'allocationSheet', label: 'Allocation Sheet', description: 'Member allocation breakdown sheet.' },
+          { key: 'memberAcknowledgement', label: 'Member Acknowledgement', description: 'Signed acknowledgement from member.' }
+        ]
       },
       {
         key: 'transfer-voucher-recover',
@@ -660,7 +756,12 @@ const TRANSACTION_CATALOG = [
         voucherCategory: 'Transfer Voucher Recover From Member',
         transactionType: 'receipt',
         accent: 'emerald',
-        mode: 'Transfer'
+        mode: 'Transfer',
+        documents: [
+          { key: 'recoveryAdvice', label: 'Recovery Advice', description: 'Recovery advice or internal note.' },
+          { key: 'allocationSheet', label: 'Allocation Sheet', description: 'Member allocation breakdown sheet.' },
+          { key: 'bankProof', label: 'Bank Proof', description: 'Bank proof or recovery confirmation.' }
+        ]
       }
     ]
   },
@@ -677,7 +778,12 @@ const TRANSACTION_CATALOG = [
         voucherCategory: 'Receipt',
         transactionType: 'receipt',
         accent: 'emerald',
-        mode: 'Receipt'
+        mode: 'Receipt',
+        documents: [
+          { key: 'receiptVoucher', label: 'Receipt Voucher', description: 'Primary receipt voucher copy.' },
+          { key: 'cashReceipt', label: 'Cash Receipt', description: 'Cash receipt or acknowledgment.' },
+          { key: 'bankReceipt', label: 'Bank Receipt', description: 'Bank receipt or transfer confirmation.' }
+        ]
       },
       {
         key: 'interest-paid-member',
@@ -686,7 +792,13 @@ const TRANSACTION_CATALOG = [
         voucherCategory: 'Interest Paid to Member',
         transactionType: 'payment',
         accent: 'pink',
-        mode: 'Interest'
+        mode: 'Interest',
+        documents: [
+          { key: 'interestWorksheet', label: 'Interest Worksheet', description: 'Interest calculation worksheet.' },
+          { key: 'sanctionNote', label: 'Sanction Note', description: 'Interest approval or sanction note.' },
+          { key: 'bankAdvice', label: 'Bank Advice', description: 'Bank advice or payment reference.' },
+          { key: 'receiptCopy', label: 'Receipt Copy', description: 'Receipt copy for interest payout.' }
+        ]
       },
       {
         key: 'no-interest-members',
@@ -713,7 +825,12 @@ const TRANSACTION_CATALOG = [
         voucherCategory: 'Payment',
         transactionType: 'payment',
         accent: 'pink',
-        mode: 'Payment'
+        mode: 'Payment',
+        documents: [
+          { key: 'paymentVoucher', label: 'Payment Voucher', description: 'Primary payment voucher copy.' },
+          { key: 'invoiceBill', label: 'Invoice / Bill', description: 'Bill or invoice attached to payment.' },
+          { key: 'approvalNote', label: 'Approval Note', description: 'Approved note or sanction document.' }
+        ]
       },
       {
         key: 'demand-entry',

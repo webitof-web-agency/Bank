@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarDays, ChevronLeft, ChevronRight, Clock3, ExternalLink, MapPin, Paperclip, Palette, PencilLine, Plus, Sparkles, Trash2, Upload } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, Clock3, ExternalLink, Globe, Lock, MapPin, Paperclip, Palette, PencilLine, Plus, Shield, Sparkles, Trash2, Upload, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../api/api';
 import { useAuth } from '../../context/AuthContext';
@@ -8,6 +8,7 @@ import { Card } from '../../components/ui/Card';
 import { Modal } from '../../components/ui/Modal';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { Input, Textarea } from '../../components/ui/Input';
+import { Select } from '../../components/ui/Select';
 import { cn } from '../../lib/cn';
 
 const STORAGE_KEY = 'webitofCalendarEventsV1';
@@ -71,14 +72,58 @@ function createEventId() {
   return `event_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
 }
 
-function createEmptyForm(date = formatDateKey(new Date()), attachments = []) {
+function normalizeList(values = []) {
+  return Array.from(new Set((Array.isArray(values) ? values : []).map((value) => String(value || '').trim()).filter(Boolean)));
+}
+
+function createDefaultVisibility(ownerUserId = '', scope = 'all') {
+  return {
+    scope,
+    roleIds: [],
+    userIds: [],
+    ownerUserId: String(ownerUserId || '').trim()
+  };
+}
+
+function normalizeVisibility(visibility = {}, fallback = {}) {
+  const scopeValue = String(visibility?.scope || fallback?.scope || 'all').toLowerCase();
+  const scope = ['all', 'roles', 'employees', 'private'].includes(scopeValue) ? scopeValue : 'all';
+  return {
+    scope,
+    roleIds: normalizeList(visibility?.roleIds),
+    userIds: normalizeList(visibility?.userIds),
+    ownerUserId: String(visibility?.ownerUserId || fallback?.ownerUserId || '').trim()
+  };
+}
+
+function normalizeAttachmentList(attachments = []) {
+  return (Array.isArray(attachments) ? attachments : []).map(normalizeAttachment).filter(Boolean);
+}
+
+function normalizeEvent(record = {}) {
+  return {
+    id: String(record.id || createEventId()),
+    title: String(record.title || '').trim(),
+    date: String(record.date || formatDateKey(new Date())).trim(),
+    time: String(record.time || '').trim(),
+    color: String(record.color || COLOR_OPTIONS[0].value),
+    notes: String(record.notes || '').trim(),
+    attachments: normalizeAttachmentList(record.attachments || []),
+    visibility: normalizeVisibility(record.visibility, {
+      ownerUserId: record.ownerUserId || record.createdBy || ''
+    })
+  };
+}
+
+function createEmptyForm(date = formatDateKey(new Date()), attachments = [], visibility = {}) {
   return {
     title: '',
     date,
     time: '',
     color: COLOR_OPTIONS[0].value,
     notes: '',
-    attachments
+    attachments,
+    visibility: normalizeVisibility(visibility, createDefaultVisibility())
   };
 }
 
@@ -113,14 +158,14 @@ function loadEvents() {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    return Array.isArray(parsed) ? parsed.map(normalizeEvent) : [];
   } catch {
     return [];
   }
 }
 
 function saveEvents(events) {
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(events));
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify((Array.isArray(events) ? events : []).map(normalizeEvent)));
 }
 
 function getMonthLabel(date) {
@@ -165,6 +210,118 @@ function getColorMeta(color) {
   return COLOR_OPTIONS.find((item) => item.value.toLowerCase() === String(color || '').toLowerCase()) || COLOR_OPTIONS[0];
 }
 
+function getUserRoleIds(user) {
+  return normalizeList((user?.roles || []).map((role) => role?.id || role?._id || role));
+}
+
+function getVisibilityMeta(event = {}, currentUser = {}, roleLookup = new Map(), employeeLookup = new Map()) {
+  const visibility = normalizeVisibility(event.visibility, event);
+  const currentUserId = String(currentUser?.id || currentUser?._id || '').trim();
+  const currentRoleIds = new Set(getUserRoleIds(currentUser));
+
+  if (currentUser?.isSuperAdmin) {
+    return { label: 'Visible to all', icon: Globe, tone: 'blue' };
+  }
+
+  if (visibility.scope === 'private') {
+    return {
+      label: visibility.ownerUserId && visibility.ownerUserId === currentUserId ? 'Only me' : 'Private',
+      icon: Lock,
+      tone: 'slate'
+    };
+  }
+
+  if (visibility.scope === 'roles') {
+    const roleNames = visibility.roleIds
+      .map((id) => roleLookup.get(String(id))?.name || roleLookup.get(String(id))?.label || '')
+      .filter(Boolean);
+    const matches = visibility.roleIds.some((id) => currentRoleIds.has(String(id)));
+    return {
+      label: roleNames.length ? `Roles: ${roleNames.slice(0, 2).join(', ')}${roleNames.length > 2 ? ' +' : ''}` : 'Specific roles',
+      icon: Shield,
+      tone: matches ? 'emerald' : 'amber'
+    };
+  }
+
+  if (visibility.scope === 'employees') {
+    const employeeNames = visibility.userIds
+      .map((id) => employeeLookup.get(String(id))?.fullName || employeeLookup.get(String(id))?.name || employeeLookup.get(String(id))?.username || '')
+      .filter(Boolean);
+    const matches = visibility.userIds.includes(currentUserId);
+    return {
+      label: employeeNames.length ? `Employees: ${employeeNames.slice(0, 2).join(', ')}${employeeNames.length > 2 ? ' +' : ''}` : 'Specific employees',
+      icon: Users,
+      tone: matches ? 'emerald' : 'amber'
+    };
+  }
+
+  return {
+    label: 'Visible to all',
+    icon: Globe,
+    tone: 'blue'
+  };
+}
+
+function canViewEvent(event = {}, currentUser = {}) {
+  if (!event) return false;
+  if (currentUser?.isSuperAdmin) return true;
+
+  const visibility = normalizeVisibility(event.visibility, event);
+  const currentUserId = String(currentUser?.id || currentUser?._id || '').trim();
+  const currentRoleIds = new Set(getUserRoleIds(currentUser));
+
+  if (visibility.scope === 'private') {
+    return Boolean(visibility.ownerUserId && visibility.ownerUserId === currentUserId);
+  }
+
+  if (visibility.scope === 'roles') {
+    return visibility.roleIds.some((id) => currentRoleIds.has(String(id)));
+  }
+
+  if (visibility.scope === 'employees') {
+    return visibility.userIds.includes(currentUserId);
+  }
+
+  return true;
+}
+
+function getVisibilityChoices(canManageVisibility = false) {
+  if (!canManageVisibility) {
+    return [
+      {
+        value: 'private',
+        label: 'Only me',
+        description: 'Private reminders visible only to you.'
+      }
+    ];
+  }
+
+  return [
+    {
+      value: 'all',
+      label: 'All employees',
+      description: 'Visible to everyone in the system.'
+    },
+    {
+      value: 'employees',
+      label: 'Specific employees',
+      description: 'Visible only to selected employees.'
+    },
+    {
+      value: 'private',
+      label: 'Only me',
+      description: 'Visible only to you.'
+    }
+  ];
+}
+
+function visibilityToneClass(tone = 'slate') {
+  if (tone === 'blue') return 'border-blue-100 bg-blue-50 text-blue-700';
+  if (tone === 'emerald') return 'border-emerald-100 bg-emerald-50 text-emerald-700';
+  if (tone === 'amber') return 'border-amber-100 bg-amber-50 text-amber-700';
+  return 'border-slate-200 bg-slate-50 text-slate-600';
+}
+
 function EventColorPicker({ value, onChange }) {
   return (
     <div className="flex flex-wrap gap-3 mt-2">
@@ -192,7 +349,7 @@ function EventColorPicker({ value, onChange }) {
 }
 
 export function CalendarPage() {
-  const { token } = useAuth();
+  const { token, user, hasPermission } = useAuth();
   const attachmentInputRef = useRef(null);
   const draftEventIdRef = useRef(createEventId());
   const originalAttachmentIdsRef = useRef([]);
@@ -203,6 +360,9 @@ export function CalendarPage() {
   const [editingId, setEditingId] = useState(null);
   const [uploadingAttachments, setUploadingAttachments] = useState(false);
   const [form, setForm] = useState(() => createEmptyForm(formatDateKey(new Date())));
+  const [roleOptions, setRoleOptions] = useState([]);
+  const [employeeOptions, setEmployeeOptions] = useState([]);
+  const canManageVisibility = Boolean(user?.isSuperAdmin || hasPermission('users.manage'));
 
   useEffect(() => {
     saveEvents(events);
@@ -210,41 +370,83 @@ export function CalendarPage() {
 
   const today = useMemo(() => new Date(), []);
   const monthGrid = useMemo(() => buildMonthGrid(currentMonth), [currentMonth]);
+  const visibleEvents = useMemo(
+    () => events.filter((item) => canViewEvent(item, user)),
+    [events, user]
+  );
+  const roleLookup = useMemo(() => new Map(roleOptions.map((role) => [String(role.id || role._id || ''), role])), [roleOptions]);
+  const employeeLookup = useMemo(() => new Map(employeeOptions.map((employee) => [String(employee.id || employee._id || ''), employee])), [employeeOptions]);
   const eventsByDate = useMemo(() => {
-    return events.reduce((acc, item) => {
+    return visibleEvents.reduce((acc, item) => {
       if (!item || !item.date) return acc;
       if (!acc[item.date]) acc[item.date] = [];
       acc[item.date].push(item);
       return acc;
     }, {});
-  }, [events]);
+  }, [visibleEvents]);
   const monthEvents = useMemo(
-    () => sortEvents(events.filter((event) => event?.date?.startsWith(`${currentMonth.getFullYear()}-${pad(currentMonth.getMonth() + 1)}`))),
-    [currentMonth, events]
+    () => sortEvents(visibleEvents.filter((event) => event?.date?.startsWith(`${currentMonth.getFullYear()}-${pad(currentMonth.getMonth() + 1)}`))),
+    [currentMonth, visibleEvents]
   );
   const selectedEvents = useMemo(
     () => sortEvents(eventsByDate[selectedDate] || []),
     [eventsByDate, selectedDate]
   );
   const upcomingEvents = useMemo(
-    () => sortEvents(events).filter((event) => event?.date && event.date >= formatDateKey(today)).slice(0, 6),
-    [events, today]
+    () => sortEvents(visibleEvents).filter((event) => event?.date && event.date >= formatDateKey(today)).slice(0, 6),
+    [visibleEvents, today]
   );
+  const formVisibility = normalizeVisibility(form.visibility, createDefaultVisibility(String(user?.id || ''), canManageVisibility ? 'all' : 'private'));
+
+  useEffect(() => {
+    let mounted = true;
+    if (!canManageVisibility) {
+      setRoleOptions([]);
+      setEmployeeOptions([]);
+      return () => {
+        mounted = false;
+      };
+    }
+
+    Promise.allSettled([
+      api.roles.list(token),
+      api.users.lookup(token)
+    ])
+      .then(([rolesResult, employeesResult]) => {
+        if (!mounted) return;
+
+        if (rolesResult.status === 'fulfilled') {
+          setRoleOptions(Array.isArray(rolesResult.value.data) ? rolesResult.value.data : []);
+        }
+
+        if (employeesResult.status === 'fulfilled') {
+          setEmployeeOptions(Array.isArray(employeesResult.value.data) ? employeesResult.value.data : []);
+        }
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setRoleOptions([]);
+        setEmployeeOptions([]);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [canManageVisibility, token]);
 
   function openNewEvent(prefillDate = selectedDate) {
     const draftId = createEventId();
     draftEventIdRef.current = draftId;
     originalAttachmentIdsRef.current = [];
     setEditingId(null);
-    setForm(createEmptyForm(prefillDate || formatDateKey(today), []));
+    const defaultScope = canManageVisibility ? 'all' : 'private';
+    setForm(createEmptyForm(prefillDate || formatDateKey(today), [], createDefaultVisibility(String(user?.id || ''), defaultScope)));
     setUploadingAttachments(false);
     setIsModalOpen(true);
   }
 
   function openEditEvent(item) {
-    const attachments = Array.isArray(item.attachments)
-      ? item.attachments.map(normalizeAttachment).filter(Boolean)
-      : [];
+    const attachments = normalizeAttachmentList(item.attachments || []);
     draftEventIdRef.current = item.id;
     originalAttachmentIdsRef.current = attachments.map((attachment) => String(attachment.fileId || attachment.id || ''));
     setEditingId(item.id);
@@ -254,7 +456,10 @@ export function CalendarPage() {
       time: item.time || '',
       color: item.color || COLOR_OPTIONS[0].value,
       notes: item.notes || '',
-      attachments
+      attachments,
+      visibility: normalizeVisibility(item.visibility, {
+        ownerUserId: item.ownerUserId || item.createdBy || user?.id || ''
+      })
     });
     setUploadingAttachments(false);
     setIsModalOpen(true);
@@ -371,6 +576,10 @@ export function CalendarPage() {
     }
 
     const eventId = editingId || draftEventIdRef.current || createEventId();
+    const existingEvent = events.find((item) => String(item.id) === String(eventId));
+    const visibility = normalizeVisibility(form.visibility, {
+      ownerUserId: existingEvent?.visibility?.ownerUserId || existingEvent?.ownerUserId || user?.id || ''
+    });
     const payload = {
       id: eventId,
       title: form.title.trim(),
@@ -378,7 +587,8 @@ export function CalendarPage() {
       time: form.time,
       color: form.color,
       notes: form.notes.trim(),
-      attachments: (form.attachments || []).map(normalizeAttachment).filter(Boolean)
+      attachments: normalizeAttachmentList(form.attachments || []),
+      visibility
     };
 
     setEvents((current) => {
@@ -554,24 +764,34 @@ export function CalendarPage() {
                   type="button"
                   onClick={() => openEditEvent(item)}
                   className="group flex w-full items-start gap-3 rounded-[var(--radius-button,1rem)] border border-slate-100 bg-slate-50/50 p-3 text-left transition-all duration-300 hover:-translate-y-0.5 hover:border-slate-200 hover:bg-white hover:shadow-md"
-                >
-                  <span
-                    className="mt-1 h-3.5 w-3.5 shrink-0 rounded-full shadow-sm group-hover:scale-110 transition-transform"
-                    style={{ backgroundColor: item.color }}
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-center justify-between gap-3">
-                      <span className="truncate text-sm font-semibold text-slate-900">{item.title}</span>
-                      {item.time ? (
-                        <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-500">
-                          <Clock3 size={11} />
-                          {item.time}
-                        </span>
-                      ) : null}
+                  >
+                    <span
+                      className="mt-1 h-3.5 w-3.5 shrink-0 rounded-full shadow-sm group-hover:scale-110 transition-transform"
+                      style={{ backgroundColor: item.color }}
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center justify-between gap-3">
+                        <span className="truncate text-sm font-semibold text-slate-900">{item.title}</span>
+                        {item.time ? (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-500">
+                            <Clock3 size={11} />
+                            {item.time}
+                          </span>
+                        ) : null}
+                      </span>
+                      {(() => {
+                        const visibilityMeta = getVisibilityMeta(item, user, roleLookup, employeeLookup);
+                        const VisibilityIcon = visibilityMeta.icon;
+                        return (
+                          <span className={`mt-2 inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] ${visibilityToneClass(visibilityMeta.tone)}`}>
+                            <VisibilityIcon size={10} />
+                            {visibilityMeta.label}
+                          </span>
+                        );
+                      })()}
+                      {item.notes ? <span className="mt-1 block line-clamp-2 text-[12px] leading-5 text-slate-500">{item.notes}</span> : null}
                     </span>
-                    {item.notes ? <span className="mt-1 block line-clamp-2 text-[12px] leading-5 text-slate-500">{item.notes}</span> : null}
-                  </span>
-                </button>
+                  </button>
               )) : (
                 <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-5 text-center">
                   <CalendarDays className="mx-auto text-slate-300" size={28} />
@@ -595,6 +815,8 @@ export function CalendarPage() {
             <div className="mt-4 space-y-3">
               {upcomingEvents.length ? upcomingEvents.map((item) => {
                 const colorMeta = getColorMeta(item.color);
+                const visibilityMeta = getVisibilityMeta(item, user, roleLookup, employeeLookup);
+                const VisibilityIcon = visibilityMeta.icon;
                 return (
                   <button
                     type="button"
@@ -611,6 +833,10 @@ export function CalendarPage() {
                         <span className="text-[11px] font-semibold text-slate-400">
                           {new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric' }).format(parseDateKey(item.date))}
                         </span>
+                      </span>
+                      <span className={`mt-2 inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] ${visibilityToneClass(visibilityMeta.tone)}`}>
+                        <VisibilityIcon size={10} />
+                        {visibilityMeta.label}
                       </span>
                       <span className="mt-1 flex items-center gap-2 text-[12px] text-slate-500">
                         <MapPin size={12} className="text-slate-400" />
@@ -703,6 +929,118 @@ export function CalendarPage() {
                 onChange={(value) => setForm((current) => ({ ...current, color: value }))}
               />
             </div>
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <label className="text-sm font-medium text-slate-700">Visibility</label>
+              <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] ${visibilityToneClass(getVisibilityMeta({ visibility: formVisibility, ownerUserId: formVisibility.ownerUserId }, user, roleLookup, employeeLookup).tone)}`}>
+                {(() => {
+                  const meta = getVisibilityMeta({ visibility: formVisibility, ownerUserId: formVisibility.ownerUserId }, user, roleLookup, employeeLookup);
+                  const MetaIcon = meta.icon;
+                  return (
+                    <>
+                      <MetaIcon size={10} />
+                      {meta.label}
+                    </>
+                  );
+                })()}
+              </span>
+            </div>
+
+            {canManageVisibility ? (
+              <div className="space-y-3">
+                {formVisibility.scope === 'roles' ? (
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                    Legacy role-based visibility is detected. Please switch this event to All employees, Specific employees, or Only me.
+                  </div>
+                ) : null}
+
+                <Select
+                  options={getVisibilityChoices(true)}
+                  value={formVisibility.scope === 'roles' ? 'all' : formVisibility.scope}
+                  onChange={(nextScope) => {
+                    setForm((current) => {
+                      const nextVisibility = normalizeVisibility(current.visibility, {
+                        ownerUserId: current.visibility?.ownerUserId || user?.id || ''
+                      });
+                      return {
+                        ...current,
+                        visibility: {
+                          ...nextVisibility,
+                          scope: nextScope,
+                          userIds: nextScope === 'employees' ? nextVisibility.userIds : [],
+                          ownerUserId: nextVisibility.ownerUserId || String(user?.id || '')
+                        }
+                      };
+                    });
+                  }}
+                />
+
+                {formVisibility.scope === 'employees' ? (
+                  <div className="mt-2">
+                    <div className="flex items-center justify-between mb-2 px-1">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Select employees</p>
+                      <span className="text-[12px] text-slate-400">{employeeOptions.length} available</span>
+                    </div>
+                    <div className="flex flex-col max-h-64 overflow-y-auto rounded-[var(--radius-input,0.75rem)] border border-slate-200 bg-white shadow-sm">
+                      {employeeOptions.length ? employeeOptions.map((employee) => {
+                        const employeeId = String(employee.id || employee._id || '').trim();
+                        if (!employeeId) return null;
+                        const checked = formVisibility.userIds.includes(employeeId);
+                        const label = employee.fullName || employee.name || employee.username || employee.code || employeeId;
+                        const secondary = [employee.code, employee.username].filter(Boolean).join(' • ');
+                        return (
+                          <label key={employeeId} className={`flex cursor-pointer items-center justify-between gap-3 border-b border-slate-100 last:border-0 px-4 py-3 transition-colors ${checked ? 'bg-[color-mix(in_srgb,var(--accent)_4%,transparent)]' : 'hover:bg-slate-50'}`}>
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-600">
+                                {label.charAt(0).toUpperCase()}
+                              </div>
+                              <div className="flex flex-col min-w-0">
+                                <span className="truncate text-[13px] font-medium text-slate-900">{label}</span>
+                                {secondary ? <span className="truncate text-[11px] text-slate-500">{secondary}</span> : null}
+                              </div>
+                            </div>
+                            <div className="flex shrink-0 items-center pl-2">
+                              <input
+                                type="checkbox"
+                                className="h-4 w-4 rounded border-slate-300 text-[var(--accent)] focus:ring-[var(--accent)]"
+                                style={{ accentColor: 'var(--accent)' }}
+                                checked={checked}
+                                onChange={() => {
+                                  setForm((current) => {
+                                    const nextVisibility = normalizeVisibility(current.visibility, { ownerUserId: current.visibility?.ownerUserId || user?.id || '' });
+                                    const nextUserIds = checked
+                                      ? nextVisibility.userIds.filter((item) => item !== employeeId)
+                                      : [...nextVisibility.userIds, employeeId];
+                                    return {
+                                      ...current,
+                                      visibility: {
+                                        ...nextVisibility,
+                                        scope: 'employees',
+                                        userIds: normalizeList(nextUserIds)
+                                      }
+                                    };
+                                  });
+                                }}
+                              />
+                            </div>
+                          </label>
+                        );
+                      }) : (
+                        <div className="px-4 py-5 text-sm text-slate-500 text-center">
+                          No employee list available. Try reloading as an admin user.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3 text-sm text-slate-600">
+                Private reminders only. Admin users can share events with roles or employees.
+              </div>
+            )}
           </div>
 
           <div className="space-y-2">

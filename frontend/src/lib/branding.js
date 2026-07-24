@@ -47,6 +47,10 @@ export function extractBranding(settings = {}) {
 export function applyBranding(branding = DEFAULT_BRANDING) {
   if (typeof document === 'undefined') return;
 
+  try {
+    localStorage.setItem('bank_branding_cache', JSON.stringify(branding));
+  } catch (e) {}
+
   const root = document.documentElement;
   const primary = branding.primaryColor || DEFAULT_BRANDING.primaryColor;
   const accent = branding.accentColor || DEFAULT_BRANDING.accentColor;

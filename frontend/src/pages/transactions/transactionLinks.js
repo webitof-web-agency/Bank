@@ -1,15 +1,6 @@
-import { ArrowLeftRight, Banknote, FileText, Landmark, ReceiptText, Repeat2, Users } from 'lucide-react';
+import { Banknote, FileText, Landmark, ReceiptText, Repeat2, Users } from 'lucide-react';
 
 export const TRANSACTION_SECTIONS = [
-  {
-    key: 'overview',
-    label: 'Overview',
-    path: '/app/transactions/overview',
-    icon: ArrowLeftRight,
-    permission: ['transactions.read', 'bank-transactions.read', 'demands.read', 'no-interest-members.read'],
-    description: 'Open the transaction catalog and jump into each transaction family.',
-    tone: 'blue'
-  },
   {
     key: 'member',
     label: 'Member',

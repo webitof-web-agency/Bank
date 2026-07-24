@@ -228,7 +228,7 @@ export function LedgersPage() {
         width="min(960px, 96vw)"
         footer={
           <div className="flex justify-end gap-3 w-full">
-            <Button variant="secondary" type="button" onClick={closeEditor}>Cancel</Button>
+            <Button variant="outline" type="button" onClick={closeEditor}>Cancel</Button>
             <Button type="submit" form="ledger-form" disabled={saving} className="bg-[var(--primary,#1661F6)] hover:bg-[color-mix(in_srgb,var(--primary)_90%,black)] text-white shadow-sm rounded-[var(--radius-input,0.75rem)] px-6 border-none">
               {saving ? 'Saving...' : (activeRecord ? 'Save Changes' : 'Create Ledger')}
             </Button>

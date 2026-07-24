@@ -38,12 +38,27 @@ function writeUser(user) {
   }
 }
 
+function readCachedSettings() {
+  if (typeof window === 'undefined') return null;
+  try {
+    const cache = window.localStorage.getItem('bank_branding_cache');
+    if (cache) {
+      return { payload: { branding: JSON.parse(cache) } };
+    }
+  } catch (e) {}
+  return null;
+}
+
 export function AuthProvider({ children }) {
   const [token, setToken] = useState(() => readToken());
   const [user, setUser] = useState(() => readUser());
-  const [settings, setSettings] = useState(null);
+  const [settings, setSettings] = useState(() => readCachedSettings());
+  const [draftSettings, setDraftSettings] = useState(null);
   const [loading, setLoading] = useState(() => Boolean(readToken()) && !Boolean(readUser()));
-  const branding = useMemo(() => extractBranding(settings || {}), [settings]);
+  
+  // Use draftSettings if available for instant preview across the app
+  const activeSettings = draftSettings || settings;
+  const branding = useMemo(() => extractBranding(activeSettings || {}), [activeSettings]);
 
   useEffect(() => {
     applyBranding(branding);
@@ -211,10 +226,12 @@ export function AuthProvider({ children }) {
       token,
       user,
       settings,
+      draftSettings,
+      setDraftSettings,
       branding,
       ...actions
     }),
-    [actions, branding, loading, settings, token, user]
+    [actions, branding, loading, settings, draftSettings, token, user]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -85,7 +85,7 @@ function NotificationPreview({ item, compact = false }) {
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-2">
           <span className="truncate text-[14px] font-semibold text-slate-900">{item.title || 'Notification'}</span>
-          {unread ? <span className="h-2.5 w-2.5 rounded-full bg-blue-600" /> : null}
+          {unread ? <span className="h-2.5 w-2.5 rounded-full bg-[var(--primary)]" /> : null}
         </span>
         <span className="mt-1 line-clamp-2 text-[12.5px] leading-6 text-slate-500">{item.message || 'No message provided.'}</span>
       </span>
