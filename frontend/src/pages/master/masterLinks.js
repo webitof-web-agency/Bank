@@ -14,7 +14,7 @@ export const MASTER_LINKS = [
     label: 'Branches',
     path: '/app/master/branches',
     icon: GitBranch,
-    permission: 'branches.read',
+    permission: 'master.branches.view',
     description: 'Branch master and contact details.',
     group: 'Operations',
     tone: 'emerald'
@@ -23,7 +23,7 @@ export const MASTER_LINKS = [
     label: 'Employees',
     path: '/app/master/employees',
     icon: Users,
-    permission: ['employees.read', 'users.manage'],
+    permission: ['master.employees.view', 'admin.users.view'],
     description: 'Employee access, roles, and staff profile.',
     group: 'Operations',
     tone: 'emerald'
@@ -32,7 +32,7 @@ export const MASTER_LINKS = [
     label: 'Members',
     path: '/app/master/members',
     icon: Users,
-    permission: 'members.read',
+    permission: 'master.members.view',
     description: 'Bank member master and identity records.',
     group: 'Operations',
     tone: 'emerald'
@@ -41,7 +41,7 @@ export const MASTER_LINKS = [
     label: 'Committee',
     path: '/app/master/committee',
     icon: ShieldCheck,
-    permission: 'committee.read',
+    permission: 'master.committee.view',
     description: 'Society committee configuration.',
     group: 'Operations',
     tone: 'emerald'
@@ -50,7 +50,7 @@ export const MASTER_LINKS = [
     label: 'Ledgers',
     path: '/app/master/ledgers',
     icon: BookOpen,
-    permission: 'ledgers.read',
+    permission: 'master.ledgers.view',
     description: 'Ledger code, nature, and opening balance.',
     group: 'Accounting',
     tone: 'amber'
@@ -59,7 +59,7 @@ export const MASTER_LINKS = [
     label: 'Rates',
     path: '/app/master/rates',
     icon: Percent,
-    permission: 'rates.read',
+    permission: 'master.rates.view',
     description: 'Interest and scheme rate master.',
     group: 'Accounting',
     tone: 'amber'
@@ -68,7 +68,7 @@ export const MASTER_LINKS = [
     label: 'Bank Accounts',
     path: '/app/master/bank-accounts',
     icon: Landmark,
-    permission: 'bank-accounts.read',
+    permission: 'master.bank-accounts.view',
     description: 'Operating bank accounts and linkages.',
     group: 'Accounting',
     tone: 'amber'
@@ -77,7 +77,7 @@ export const MASTER_LINKS = [
     label: 'Demands',
     path: '/app/master/demands',
     icon: FileText,
-    permission: 'demands.read',
+    permission: 'master.demands.view',
     description: 'Monthly demand master and recovery records.',
     group: 'Accounting',
     tone: 'amber'
@@ -86,7 +86,7 @@ export const MASTER_LINKS = [
     label: 'No Interest Members',
     path: '/app/master/no-interest-members',
     icon: Ban,
-    permission: 'no-interest-members.read',
+    permission: 'master.no-interest-members.view',
     description: 'Members excluded from interest calculations.',
     group: 'Accounting',
     tone: 'amber'

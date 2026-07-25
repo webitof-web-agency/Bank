@@ -202,26 +202,26 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-6 pb-12">
-      <div 
+      <div
         className="relative overflow-hidden shadow-sm"
-        style={{ 
+        style={{
           borderRadius: 'var(--radius-card, 1.75rem)',
           background: 'linear-gradient(135deg, color-mix(in srgb, var(--primary, #1661F6) 85%, white) 0%, color-mix(in srgb, var(--primary, #1661F6) 65%, white) 100%)'
         }}
       >
         {/* Real Bank Image with Theme Blending */}
         <div className="absolute right-0 top-0 h-full w-[60%] pointer-events-none flex items-center justify-end overflow-hidden">
-          <img 
-            src="/assets/images/banner.png" 
-            alt="Bank Building" 
-            className="h-[110%] w-auto max-w-none opacity-40 mix-blend-overlay grayscale contrast-125" 
-            style={{ 
-              maskImage: 'linear-gradient(to right, transparent 0%, black 40%)', 
-              WebkitMaskImage: 'linear-gradient(to right, transparent 0%, black 40%)' 
+          <img
+            src="/assets/images/banner.png"
+            alt="Bank Building"
+            className="h-[110%] w-auto max-w-none opacity-40 mix-blend-overlay grayscale contrast-125"
+            style={{
+              maskImage: 'linear-gradient(to right, transparent 0%, black 40%)',
+              WebkitMaskImage: 'linear-gradient(to right, transparent 0%, black 40%)'
             }}
           />
         </div>
-        
+
         <div className="relative px-6 py-8 md:px-8 text-white flex flex-col justify-between min-h-[160px]">
           <div>
             <p className="text-[11px] font-bold uppercase tracking-wider text-white/80 mb-1">
@@ -245,7 +245,7 @@ export function DashboardPage() {
                 <p className="text-[15px] font-bold text-white leading-none mt-1">{counts.members || 8}</p>
               </div>
             </div>
-            
+
             <div className="flex items-center gap-3 rounded-[var(--radius-button,1rem)] bg-white/15 px-4 py-3 backdrop-blur-md border border-white/20 shadow-sm transition-transform hover:-translate-y-1">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/25">
                 <ShieldCheck size={18} className="text-white" />
@@ -293,7 +293,7 @@ export function DashboardPage() {
               </div>
             </div>
             <p className="mt-4 text-[10.5px] font-medium leading-[1.5] text-slate-500 max-w-[135px] relative z-10">{item.desc}</p>
-            
+
             {/* Sparkline (Decorative) */}
             <div className={cn("absolute bottom-2 right-2 w-24 h-10 opacity-80 group-hover:opacity-100 transition-opacity", item.spark)}>
               <svg viewBox="0 0 100 30" className="w-full h-full drop-shadow-sm text-current" preserveAspectRatio="none">
@@ -340,7 +340,7 @@ export function DashboardPage() {
               />
             </div>
           </div>
-          
+
           <div className="grid lg:grid-cols-2 gap-8">
             {/* Income vs Expense Line Chart */}
             <div className="flex flex-col justify-between">
@@ -409,7 +409,7 @@ export function DashboardPage() {
                     <p className="text-[10px] font-medium text-slate-500">Total Funds</p>
                   </div>
                 </div>
-                
+
                 <div className="flex-1 w-full space-y-4">
                   {selectedFundPosition.map(item => (
                     <div key={item.name} className="flex items-center justify-between text-[12px]">
@@ -549,7 +549,7 @@ export function DashboardPage() {
           </div>
         </div>
       </div>
-      
+
       <div className="mt-6 text-center text-[11px] text-slate-400">
         © 2026 The Raipur Co-operative Employees Thrift Society Ltd. All rights reserved.
       </div>

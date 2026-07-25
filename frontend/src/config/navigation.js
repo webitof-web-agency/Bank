@@ -8,10 +8,10 @@ export const navigationGroups = [
   {
     title: 'Workspace',
     items: [
-      { label: 'Dashboard', path: '/app/dashboard', icon: LayoutDashboard, permission: 'dashboard.view' },
-      { label: 'Calendar', path: '/app/calendar', icon: Calendar },
-      { label: 'Files', path: '/app/files', icon: FolderOpen, permission: 'files.read' },
-      { label: 'Notifications', path: '/app/notifications', icon: Bell }
+      { label: 'Dashboard', path: '/app/dashboard', icon: LayoutDashboard, permission: 'workspace.dashboard.view' },
+      { label: 'Calendar', path: '/app/calendar', icon: Calendar, permission: 'workspace.calendar.view' },
+      { label: 'Files', path: '/app/files', icon: FolderOpen, permission: 'workspace.files.view' },
+      { label: 'Notifications', path: '/app/notifications', icon: Bell, permission: 'workspace.notifications.view' }
     ]
   },
   {
@@ -41,7 +41,7 @@ export const navigationGroups = [
   {
     title: 'Administration',
     items: [
-      { label: 'Roles', path: '/app/roles', icon: ShieldCheck, permission: 'roles.manage' }
+      { label: 'Roles', path: '/app/roles', icon: ShieldCheck, permission: 'admin.roles.view' }
     ]
   }
 ];

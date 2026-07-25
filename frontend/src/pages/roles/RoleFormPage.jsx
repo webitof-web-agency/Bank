@@ -16,34 +16,42 @@ export function RoleFormPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState({ code: '', name: '', description: '', isSystem: false, isActive: true, permissionCodes: [] });
-  const [permissions, setPermissions] = useState([]);
+  const [catalog, setCatalog] = useState({ groups: [] });
 
   useEffect(() => {
     let mounted = true;
+
     Promise.all([
-      api.permissions.list(token),
+      api.permissions.catalog(token),
       isEdit ? api.roles.list(token) : Promise.resolve(null)
-    ]).then(([permissionsRes, rolesRes]) => {
-      if (!mounted) return;
-      setPermissions(permissionsRes.data || []);
-      
-      if (isEdit && rolesRes?.data) {
-        const role = rolesRes.data.find(r => r.id === id);
-        if (role) {
-          setDraft(mapRoleForForm(role));
-        } else {
-          toast.error('Role not found');
-          navigate('/app/roles');
+    ])
+      .then(([permissionsRes, rolesRes]) => {
+        if (!mounted) return;
+
+        setCatalog(permissionsRes.data || { groups: [] });
+
+        if (isEdit && rolesRes?.data) {
+          const role = rolesRes.data.find((item) => item.id === id);
+          if (role) {
+            setDraft(mapRoleForForm(role));
+          } else {
+            toast.error('Role not found');
+            navigate('/app/roles');
+          }
         }
-      }
-    }).catch(error => {
-      if (!mounted) return;
-      toast.error(error.message || 'Unable to load data');
-      navigate('/app/roles');
-    }).finally(() => {
-      if (mounted) setLoading(false);
-    });
-    return () => { mounted = false; };
+      })
+      .catch((error) => {
+        if (!mounted) return;
+        toast.error(error.message || 'Unable to load data');
+        navigate('/app/roles');
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
   }, [id, token, isEdit, navigate]);
 
   async function saveRole(event) {
@@ -82,7 +90,7 @@ export function RoleFormPage() {
       <div className="w-full">
         <RoleForm
           value={draft}
-          permissions={permissions}
+          groups={catalog.groups || []}
           onChange={setDraft}
           onSubmit={saveRole}
           isEdit={isEdit}

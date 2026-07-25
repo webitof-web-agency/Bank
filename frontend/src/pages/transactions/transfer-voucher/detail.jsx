@@ -302,8 +302,8 @@ export function TransferVoucherTransactionDetailPage({ sectionKey }) {
     );
   }
 
-  const title = getTransactionVoucherTitle(record, sectionItems);
-  const templateItem = getVoucherSectionItem(record, sectionItems);
+  const title = getTransactionVoucherTitle(record, sectionItems, sectionKey);
+  const templateItem = getVoucherSectionItem(record, sectionItems, sectionKey);
   const documentDefs = getTransferVoucherDocumentDefinitions(templateItem?.key || record?.details?.key || '');
   const partyLabel = getTransactionPartyLabel(record.partyCode, lookups, record.partyType);
   const settlementLabel = getTransactionLedgerLabel(

@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const { buildAccessProfile } = require('../services/auth.service');
+const { expandPermissionCodes } = require('../config/permissionCatalog');
 
 function getJwtSecret() {
   if (!process.env.JWT_SECRET) {
@@ -43,7 +44,10 @@ async function requireAuth(req, res, next) {
 function hasPermission(user, permission) {
   if (!user) return false;
   if (user.isSuperAdmin) return true;
-  return Array.isArray(user.permissions) && user.permissions.includes(permission);
+
+  const grantedPermissions = new Set(Array.isArray(user.permissions) ? user.permissions : []);
+  const requestedPermissions = expandPermissionCodes([permission]);
+  return requestedPermissions.some((code) => grantedPermissions.has(code));
 }
 
 function requirePermission(...permissions) {

@@ -58,7 +58,7 @@ export function TransferVoucherTransactionsPage({ sectionKey, detailPathBase }) 
   const section = useMemo(() => catalog.find((item) => item.key === sectionKey) || null, [catalog, sectionKey]);
   const sectionItems = useMemo(() => getSectionItems(catalog, sectionKey), [catalog, sectionKey]);
   const visibleRows = useMemo(() => {
-    const baseRows = filterTransactionRows(rows, sectionItems);
+    const baseRows = filterTransactionRows(rows, sectionItems, sectionKey);
     const searchValue = String(search || '').trim().toLowerCase();
 
     return baseRows.filter((row) => {
@@ -271,8 +271,8 @@ export function TransferVoucherTransactionsPage({ sectionKey, detailPathBase }) 
       key: 'type',
       label: 'Type',
       sortable: true,
-      sortValue: (row) => getTransactionVoucherTitle(row, sectionItems),
-      render: (row) => <span className="text-slate-700">{getTransactionVoucherTitle(row, sectionItems)}</span>
+      sortValue: (row) => getTransactionVoucherTitle(row, sectionItems, sectionKey),
+      render: (row) => <span className="text-slate-700">{getTransactionVoucherTitle(row, sectionItems, sectionKey)}</span>
     },
     {
       key: 'narration',

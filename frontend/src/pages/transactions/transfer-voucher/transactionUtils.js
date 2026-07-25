@@ -220,24 +220,39 @@ export function buildTransactionVoucherPayload(draft = {}) {
   };
 }
 
-export function getVoucherSectionItem(voucher = {}, sectionItems = []) {
-  const key = cleanText(voucher?.details?.key || '');
+export function getVoucherSectionItem(voucher = {}, sectionItems = [], sectionKey = '') {
+  const key = cleanText(voucher?.details?.key || voucher?.transactionKey || voucher?.sectionKey || '');
+  const normalizedKey = key.toLowerCase();
+  const normalizedCategory = cleanText(voucher.voucherCategory).toLowerCase();
+  const normalizedSectionKey = cleanText(sectionKey).toLowerCase();
+  const normalizedSectionLabel = normalizedSectionKey.replace(/-/g, ' ');
+
   return getSectionItemByKey(sectionItems, key)
+    || (Array.isArray(sectionItems) ? sectionItems.find((item) => cleanText(item.key).toLowerCase() === normalizedKey) : null)
     || (Array.isArray(sectionItems) ? sectionItems.find((item) => cleanText(voucher.voucherCategory).toLowerCase() === cleanText(item.label).toLowerCase()) : null)
+    || (normalizedSectionKey && (normalizedKey === normalizedSectionKey || normalizedKey.startsWith(`${normalizedSectionKey}-`)) ? (sectionItems[0] || null) : null)
+    || (normalizedSectionLabel && normalizedCategory.includes(normalizedSectionLabel) ? (sectionItems[0] || null) : null)
     || null;
 }
 
-export function filterTransactionRows(rows = [], sectionItems = []) {
-  const itemKeys = new Set((Array.isArray(sectionItems) ? sectionItems : []).map((item) => cleanText(item.key)));
+export function filterTransactionRows(rows = [], sectionItems = [], sectionKey = '') {
+  const normalizedSectionKey = cleanText(sectionKey).toLowerCase();
+  const normalizedSectionLabel = normalizedSectionKey.replace(/-/g, ' ');
+  const itemKeys = new Set((Array.isArray(sectionItems) ? sectionItems : []).map((item) => cleanText(item.key).toLowerCase()));
+
   return (Array.isArray(rows) ? rows : []).filter((row) => {
-    const rowKey = cleanText(row?.details?.key || '');
+    const rowKey = cleanText(row?.details?.key || row?.transactionKey || row?.sectionKey || '').toLowerCase();
+    const rowCategory = cleanText(row.voucherCategory).toLowerCase();
+
     if (rowKey && itemKeys.has(rowKey)) return true;
-    return (Array.isArray(sectionItems) ? sectionItems : []).some((item) => cleanText(row.voucherCategory).toLowerCase() === cleanText(item.label).toLowerCase());
+    if (normalizedSectionKey && (rowKey === normalizedSectionKey || rowKey.startsWith(`${normalizedSectionKey}-`))) return true;
+    if (normalizedSectionLabel && rowCategory.includes(normalizedSectionLabel)) return true;
+    return (Array.isArray(sectionItems) ? sectionItems : []).some((item) => rowCategory === cleanText(item.label).toLowerCase());
   });
 }
 
-export function getTransactionVoucherTitle(voucher = {}, sectionItems = []) {
-  const item = getVoucherSectionItem(voucher, sectionItems);
+export function getTransactionVoucherTitle(voucher = {}, sectionItems = [], sectionKey = '') {
+  const item = getVoucherSectionItem(voucher, sectionItems, sectionKey);
   return item?.label || voucher.voucherCategory || voucher.transactionType || voucher.voucherNo || 'Transaction';
 }
 

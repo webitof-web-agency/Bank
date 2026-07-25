@@ -7,10 +7,14 @@ const {
   DEFAULT_ROLE_DEFINITIONS,
   DEMO_ROLE_DEFINITIONS,
   DEMO_USER_DEFINITIONS,
-  PERMISSIONS,
-  PERMISSION_GROUPS,
   ROLE_TEMPLATES
 } = require('../config/rbac');
+const {
+  PAGE_PERMISSIONS,
+  buildPermissionGroups: buildGranularPermissionGroups,
+  expandPermissionCodes,
+  isKnownPermissionCode
+} = require('../config/permissionCatalog');
 const { sendPasswordResetOtpEmail } = require('./mailer.service');
 const { createNotification } = require('./notification.service');
 const {
@@ -121,8 +125,9 @@ async function notifySafely(payload) {
 
 function mapRoleForResponse(role = {}) {
   const codeList = Array.isArray(role.permissions) ? role.permissions : [];
-  const permissionObjects = codeList
-    .map((code) => PERMISSIONS.find((permission) => permission.code === code))
+  const expandedPermissions = expandPermissionCodes(codeList);
+  const permissionObjects = expandedPermissions
+    .map((code) => PAGE_PERMISSIONS.find((permission) => permission.code === code))
     .filter(Boolean);
 
   return {
@@ -132,7 +137,7 @@ function mapRoleForResponse(role = {}) {
     description: role.description || '',
     isSystem: Boolean(role.isSystem),
     isActive: role.isActive !== false,
-    permissions: codeList,
+    permissions: expandedPermissions,
     permissionObjects,
     payload: role.payload || {}
   };
@@ -148,47 +153,49 @@ function normalizePermissionCodes(permissionCodes = []) {
 
   for (const code of Array.isArray(permissionCodes) ? permissionCodes : []) {
     const value = normalizePermissionCode(code);
-    if (!value || seen.has(value)) {
+    if (!value) {
       continue;
     }
 
-    const exists = PERMISSIONS.some((permission) => permission.code === value);
-    if (!exists) {
+    if (!isKnownPermissionCode(value)) {
       const error = new Error(`Unknown permission: ${value}`);
       error.statusCode = 400;
       throw error;
     }
 
-    seen.add(value);
-    normalized.push(value);
+    for (const resolvedCode of expandPermissionCodes([value])) {
+      if (seen.has(resolvedCode)) {
+        continue;
+      }
+      seen.add(resolvedCode);
+      normalized.push(resolvedCode);
+    }
   }
 
   return normalized;
 }
 
 function buildPermissionGroups() {
-  return PERMISSION_GROUPS.map((group) => ({
-    key: group.key,
-    label: group.label,
-    permissions: group.permissions
-      .map((code) => PERMISSIONS.find((permission) => permission.code === code))
-      .filter(Boolean)
-  }));
+  return buildGranularPermissionGroups();
 }
 
 function buildRolePermissionMatrix(roles = []) {
-  const groups = buildPermissionGroups();
+  const sections = buildPermissionGroups();
 
   return roles.map((role) => {
     const permissionSet = new Set(role.permissions || []);
     return {
       ...role,
-      groupedPermissions: groups.map((group) => ({
-        key: group.key,
-        label: group.label,
-        permissions: group.permissions.map((permission) => ({
-          ...permission,
-          granted: permissionSet.has(permission.code)
+      groupedPermissions: sections.map((section) => ({
+        key: section.key,
+        label: section.label,
+        pages: section.pages.map((page) => ({
+          key: page.key,
+          label: page.label,
+          permissions: page.permissions.map((permission) => ({
+            ...permission,
+            granted: permissionSet.has(permission.code)
+          }))
         }))
       }))
     };
@@ -198,10 +205,11 @@ function buildRolePermissionMatrix(roles = []) {
 function getPermissionTemplates() {
   return ROLE_TEMPLATES.map((template) => ({
     ...template,
-    permissions:
+    permissions: expandPermissionCodes(
       DEFAULT_ROLE_DEFINITIONS.find((role) => role.code === template.code)?.permissions
       || DEMO_ROLE_DEFINITIONS.find((role) => role.code === template.code)?.permissions
       || []
+    )
   }));
 }
 
@@ -288,7 +296,7 @@ async function buildAccessProfile(userDoc) {
   const permissionMap = new Map();
   for (const role of roles) {
     for (const code of role.permissions || []) {
-      const permission = PERMISSIONS.find((item) => item.code === code);
+      const permission = PAGE_PERMISSIONS.find((item) => item.code === code);
       if (permission) {
         permissionMap.set(permission.code, permission);
       }
@@ -588,12 +596,12 @@ async function listRoles(search = '') {
 }
 
 async function listPermissions() {
-  return PERMISSIONS;
+  return PAGE_PERMISSIONS;
 }
 
 async function getPermissionCatalog() {
   return {
-    permissions: PERMISSIONS,
+    permissions: PAGE_PERMISSIONS,
     groups: buildPermissionGroups(),
     roleTemplates: getPermissionTemplates()
   };
@@ -622,7 +630,7 @@ async function upsertRoleDefinition(definition = {}) {
         description: String(definition.description || '').trim(),
         isSystem: Boolean(definition.isSystem),
         isActive: definition.isActive !== false,
-        permissions: Array.isArray(definition.permissions) ? definition.permissions.filter(Boolean) : [],
+        permissions: normalizePermissionCodes(Array.isArray(definition.permissions) ? definition.permissions : []),
         payload: definition.payload || {}
       }
     },

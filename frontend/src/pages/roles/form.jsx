@@ -1,29 +1,46 @@
-import { useMemo } from 'react';
 import { Input } from '../../components/ui/Input';
 import { Card } from '../../components/ui/Card';
-import { groupPermissionsByModule } from '../../lib/rbac';
 
-export function RoleForm({ value, permissions, onChange, onSubmit, onCancel, saving, isEdit }) {
-  const grouped = useMemo(() => groupPermissionsByModule(permissions), [permissions]);
+const ACTION_TITLES = {
+  create: 'Create',
+  delete: 'Delete',
+  edit: 'Edit',
+  export: 'Export',
+  print: 'Print',
+  reverse: 'Reverse',
+  view: 'View'
+};
+
+function formatActionTitle(action = '') {
+  const key = String(action || '').trim().toLowerCase();
+  return ACTION_TITLES[key] || key;
+}
+
+function collectPageCodes(page = {}) {
+  return Array.isArray(page.permissions) ? page.permissions.map((permission) => permission.code).filter(Boolean) : [];
+}
+
+export function RoleForm({ value, groups = [], onChange, onSubmit, onCancel, saving, isEdit }) {
+  const selectedCodes = new Set(value.permissionCodes || []);
   const primary = 'var(--primary, #1661F6)';
 
-  function toggle(code) {
+  function updateCodes(codes = []) {
     const current = new Set(value.permissionCodes || []);
-    if (current.has(code)) current.delete(code);
-    else current.add(code);
+    const allSelected = codes.length > 0 && codes.every((code) => current.has(code));
+
+    if (allSelected) {
+      codes.forEach((code) => current.delete(code));
+    } else {
+      codes.forEach((code) => current.add(code));
+    }
+
     onChange({ ...value, permissionCodes: [...current] });
   }
 
-  function toggleModule(group) {
+  function togglePermission(code) {
     const current = new Set(value.permissionCodes || []);
-    const moduleCodes = group.items.map(item => item.code);
-    const allSelected = moduleCodes.every(code => current.has(code));
-    
-    if (allSelected) {
-      moduleCodes.forEach(code => current.delete(code));
-    } else {
-      moduleCodes.forEach(code => current.add(code));
-    }
+    if (current.has(code)) current.delete(code);
+    else current.add(code);
     onChange({ ...value, permissionCodes: [...current] });
   }
 
@@ -42,19 +59,18 @@ export function RoleForm({ value, permissions, onChange, onSubmit, onCancel, sav
 
   return (
     <form id="role-form" className="flex flex-col lg:flex-row gap-6 h-full items-start" onSubmit={onSubmit}>
-      {/* LEFT COLUMN */}
       <div className="w-full lg:w-1/3 flex flex-col gap-6 shrink-0 sticky top-6 self-start max-h-[calc(100vh-2rem)] overflow-y-auto pb-4" style={{ scrollbarWidth: 'none' }}>
         <Card className="flex flex-col gap-6 p-6 border border-slate-200 bg-white shadow-sm">
           <h3 className="text-[14px] font-bold text-slate-800 mb-2">Role Details</h3>
-          
+
           <div>
             <label className="mb-2 block text-[13px] font-semibold text-slate-700">Role Name <span className="text-rose-500">*</span></label>
-            <Input value={value.name || ''} onChange={(e) => onChange({ ...value, name: e.target.value })} placeholder="e.g. Sales Manager" required />
+            <Input value={value.name || ''} onChange={(e) => onChange({ ...value, name: e.target.value })} placeholder="e.g. Cashier" required />
           </div>
 
           <div>
             <label className="mb-2 block text-[13px] font-semibold text-slate-700">Code <span className="text-rose-500">*</span></label>
-            <Input value={value.code || ''} onChange={(e) => onChange({ ...value, code: e.target.value })} placeholder="e.g. sales-manager" required />
+            <Input value={value.code || ''} onChange={(e) => onChange({ ...value, code: e.target.value })} placeholder="e.g. cashier" required />
             <p className="mt-1.5 text-[11px] text-slate-500">Unique machine readable code.</p>
           </div>
 
@@ -94,7 +110,7 @@ export function RoleForm({ value, permissions, onChange, onSubmit, onCancel, sav
 
         <Card className="p-6 border border-slate-200 bg-white shadow-sm">
           <h4 className="text-[13px] font-bold text-slate-900 mb-1">Notification Preferences</h4>
-          <p className="text-[11px] text-slate-500 mb-4 leading-relaxed">Control which modules generate in-app alerts and email copies for this role.</p>
+          <p className="text-[11px] text-slate-500 mb-4 leading-relaxed">Control which pages generate in-app alerts and email copies for this role.</p>
           <label className="flex items-center gap-2.5 text-[13px] font-medium text-slate-700 cursor-pointer select-none">
             <input
               type="checkbox"
@@ -126,49 +142,88 @@ export function RoleForm({ value, permissions, onChange, onSubmit, onCancel, sav
         </div>
       </div>
 
-      {/* RIGHT COLUMN: PERMISSIONS */}
       <div className="w-full lg:w-2/3 flex flex-col gap-4">
         <Card className="p-6 border border-slate-200 bg-white shadow-sm flex flex-col">
-          <div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-2">
-            <h3 className="text-[14px] font-bold text-slate-800">Permissions Checklist</h3>
+          <div className="flex items-center justify-between gap-3 mb-4 border-b border-slate-100 pb-2">
+            <div>
+              <h3 className="text-[14px] font-bold text-slate-800">Section, Page & Action Permissions</h3>
+              <p className="mt-1 text-[11px] text-slate-500">Expand a section, then pick the page and action permissions separately.</p>
+            </div>
             <span className="text-[13px] font-medium text-[var(--primary,#1661F6)]">{(value.permissionCodes || []).length} Selected</span>
           </div>
 
-          <div className="space-y-4 pb-4">
-            {grouped.map((group) => {
-              const moduleCodes = group.items.map(i => i.code);
-              const isAllSelected = moduleCodes.every(c => (value.permissionCodes || []).includes(c));
-              
+          <div className="space-y-5 pb-4">
+            {groups.map((section) => {
+              const sectionPages = Array.isArray(section.pages) ? section.pages : [];
+              const sectionCodes = sectionPages.flatMap((page) => collectPageCodes(page));
+              const selectedSectionCount = sectionCodes.filter((code) => selectedCodes.has(code)).length;
+              const isSectionSelected = sectionCodes.length > 0 && selectedSectionCount === sectionCodes.length;
+
               return (
-                <Card key={group.module} className="border border-slate-200 bg-white shadow-sm overflow-hidden">
-                  <div className="flex items-center gap-3 border-b border-slate-100 bg-slate-50/50 px-4 py-3">
-                    <input
-                      type="checkbox"
-                      checked={isAllSelected}
-                      onChange={() => toggleModule(group)}
-                      className="w-4 h-4 rounded border-slate-300 cursor-pointer focus:ring-[var(--primary,#1661F6)]"
-                      style={{ accentColor: primary }}
-                    />
-                    <p className="text-[14px] font-bold text-slate-800 capitalize">{group.module} Module</p>
+                <Card key={section.key} className="border border-slate-200 bg-white shadow-sm overflow-hidden">
+                  <div className="flex items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/50 px-4 py-3">
+                    <label className="flex items-center gap-3 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={isSectionSelected}
+                        onChange={() => updateCodes(sectionCodes)}
+                        className="w-4 h-4 rounded border-slate-300 cursor-pointer focus:ring-[var(--primary,#1661F6)]"
+                        style={{ accentColor: primary }}
+                      />
+                      <div>
+                        <p className="text-[14px] font-bold text-slate-800">{section.label}</p>
+                        <p className="text-[11px] text-slate-500">Section access for grouped pages</p>
+                      </div>
+                    </label>
+                    <span className="text-[11px] font-medium text-slate-500">{selectedSectionCount}/{sectionCodes.length} selected</span>
                   </div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-y-4 gap-x-6 p-4">
-                    {group.items.map((permission) => {
-                      const isChecked = (value.permissionCodes || []).includes(permission.code);
+
+                  <div className="space-y-3 p-4">
+                    {sectionPages.map((page) => {
+                      const pageCodes = collectPageCodes(page);
+                      const selectedPageCount = pageCodes.filter((code) => selectedCodes.has(code)).length;
+                      const isPageSelected = pageCodes.length > 0 && selectedPageCount === pageCodes.length;
+
                       return (
-                        <label key={permission.code} className="flex items-start gap-2.5 cursor-pointer group">
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={() => toggle(permission.code)}
-                            className="mt-0.5 w-4 h-4 rounded border-slate-300 cursor-pointer focus:ring-[var(--primary,#1661F6)]"
-                            style={{ accentColor: primary }}
-                          />
-                          <div>
-                            <p className="text-[13px] font-bold text-slate-800 group-hover:text-[var(--primary,#1661F6)] transition-colors leading-tight mb-1">{permission.name}</p>
-                            <p className="text-[11px] text-slate-500 leading-snug">{permission.description}</p>
+                        <Card key={page.key} className="border border-slate-200 bg-slate-50/20 shadow-none overflow-hidden">
+                          <div className="flex items-center justify-between gap-3 border-b border-slate-100 bg-white px-4 py-3">
+                            <label className="flex items-center gap-3 cursor-pointer select-none">
+                              <input
+                                type="checkbox"
+                                checked={isPageSelected}
+                                onChange={() => updateCodes(pageCodes)}
+                                className="w-4 h-4 rounded border-slate-300 cursor-pointer focus:ring-[var(--primary,#1661F6)]"
+                                style={{ accentColor: primary }}
+                              />
+                              <div>
+                                <p className="text-[13px] font-bold text-slate-800">{page.label}</p>
+                                <p className="text-[11px] text-slate-500">{page.description}</p>
+                              </div>
+                            </label>
+                            <span className="text-[11px] font-medium text-slate-500">{selectedPageCount}/{pageCodes.length} selected</span>
                           </div>
-                        </label>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-y-4 gap-x-6 p-4">
+                            {Array.isArray(page.permissions) ? page.permissions.map((permission) => {
+                              const isChecked = selectedCodes.has(permission.code);
+                              return (
+                                <label key={permission.code} className="flex items-start gap-2.5 cursor-pointer group">
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={() => togglePermission(permission.code)}
+                                    className="mt-0.5 w-4 h-4 rounded border-slate-300 cursor-pointer focus:ring-[var(--primary,#1661F6)]"
+                                    style={{ accentColor: primary }}
+                                  />
+                                  <div>
+                                    <p className="text-[13px] font-bold text-slate-800 group-hover:text-[var(--primary,#1661F6)] transition-colors leading-tight mb-1">{formatActionTitle(permission.action)}</p>
+                                    <p className="text-[11px] text-slate-500 leading-snug">{page.description}</p>
+                                  </div>
+                                </label>
+                              );
+                            }) : null}
+                          </div>
+                        </Card>
                       );
                     })}
                   </div>

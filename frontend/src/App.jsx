@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { HashRouter, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
 import { Toaster } from 'sonner';
-import { AuthProvider, useAuth } from './context/AuthContext';
+import { AuthProvider } from './context/AuthContext';
 import { ProtectedRoute } from './components/guards/ProtectedRoute';
 import { PermissionRoute } from './components/guards/PermissionRoute';
 import { AppLayout } from './components/layout/AppLayout';
@@ -60,6 +60,20 @@ import { CalendarPage } from './pages/calendar';
 import { NotFoundPage } from './pages/system/NotFoundPage';
 import { AccessDeniedPage } from './pages/system/AccessDeniedPage';
 
+function readCachedAppName() {
+  if (typeof window === 'undefined') return 'Bank';
+
+  try {
+    const cache = window.localStorage.getItem('bank_branding_cache');
+    if (!cache) return 'Bank';
+
+    const branding = JSON.parse(cache);
+    return branding?.appName || 'Bank';
+  } catch {
+    return 'Bank';
+  }
+}
+
 function LegacyEmployeeRedirect() {
   const { id } = useParams();
   return <Navigate to={id ? `/app/master/employees/${id}` : '/app/master/employees'} replace />;
@@ -71,7 +85,6 @@ function LegacySettingsRedirect() {
 
 function TitleUpdater() {
   const location = useLocation();
-  const { branding } = useAuth();
 
   useEffect(() => {
     const segments = location.pathname.split('/').filter(Boolean);
@@ -80,9 +93,9 @@ function TitleUpdater() {
       : segments[segments.length - 1]
         ? segments[segments.length - 1].replace(/-/g, ' ')
         : 'Dashboard';
-    const appName = branding?.appName || 'Bank';
+    const appName = readCachedAppName();
     document.title = `${label.charAt(0).toUpperCase() + label.slice(1)} - ${appName}`;
-  }, [location.pathname, branding?.appName]);
+  }, [location.pathname]);
 
   return null;
 }
@@ -107,7 +120,7 @@ function AppRoutes() {
         <Route
           path="dashboard"
           element={
-            <PermissionRoute permission="dashboard.view">
+            <PermissionRoute permission="dashboard.read">
               <DashboardPage />
             </PermissionRoute>
           }
@@ -171,9 +184,9 @@ function AppRoutes() {
           }
         />
         <Route path="profile" element={<ProfilePage />} />
-        <Route path="notifications" element={<NotificationsPage />} />
-        <Route path="notifications/:id" element={<NotificationDetailPage />} />
-        <Route path="calendar" element={<CalendarPage />} />
+        <Route path="notifications" element={<PermissionRoute permission="notifications.read"><NotificationsPage /></PermissionRoute>} />
+        <Route path="notifications/:id" element={<PermissionRoute permission="notifications.read"><NotificationDetailPage /></PermissionRoute>} />
+        <Route path="calendar" element={<PermissionRoute permission="calendar.read"><CalendarPage /></PermissionRoute>} />
         <Route path="master" element={<Navigate to="/app/master/overview" replace />} />
         <Route path="master/overview" element={<MasterHomePage />} />
         <Route path="transactions" element={<Navigate to="/app/transactions/overview" replace />} />

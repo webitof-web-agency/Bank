@@ -10,7 +10,7 @@ import { Select } from '../../components/ui/Select';
 import { Table } from '../../components/ui/Table';
 import { useAuth } from '../../context/AuthContext';
 import { getReportConfig, getReportDefaultFilters } from './reportDefinitions';
-import { REPORT_NAV_LINKS } from './reportLinks';
+import { REPORT_LINK_MAP, REPORT_NAV_LINKS } from './reportLinks';
 
 const SUMMARY_PALETTES = [
   { color: 'text-blue-600', bg: 'bg-blue-50', Icon: BarChart3 },
@@ -96,7 +96,7 @@ function ReportTableSection({ section, headerActions }) {
         columns={columns} 
         data={filteredData} 
         emptyMessage={section.emptyMessage || 'No records found.'}
-        defaultRowsPerPage={15}
+        defaultRowsPerPage={10}
         headerActions={headerActions}
         search={search}
         onSearch={setSearch}
@@ -138,6 +138,9 @@ export function ReportViewerPage() {
   const navigate = useNavigate();
   const { token, hasPermission } = useAuth();
   const config = useMemo(() => getReportConfig(reportKey), [reportKey]);
+  const reportPermission = REPORT_LINK_MAP[reportKey]?.permission || '';
+  const exportPermission = reportPermission ? reportPermission.replace(/\\.view$/, '.export') : '';
+  const printPermission = reportPermission ? reportPermission.replace(/\\.view$/, '.print') : '';
   const visibleReports = useMemo(
     () => REPORT_NAV_LINKS.filter((item) => hasPermission(item.permission)),
     [hasPermission]
@@ -365,11 +368,13 @@ export function ReportViewerPage() {
 
   const filterPopover = (
     <div className="flex items-center gap-2">
-      <Button type="button" variant="outline" className="gap-2 h-9 px-3 text-[13px] border-slate-200 bg-white hover:bg-slate-50" onClick={() => window.print()}>
-        <Printer size={14} />
-        Print
-      </Button>
-      {hasPermission('reports.export') ? (
+      {hasPermission(printPermission) ? (
+        <Button type="button" variant="outline" className="gap-2 h-9 px-3 text-[13px] border-slate-200 bg-white hover:bg-slate-50" onClick={() => window.print()}>
+          <Printer size={14} />
+          Print
+        </Button>
+      ) : null}
+      {hasPermission(exportPermission) ? (
         <Button type="button" variant="outline" className="gap-2 h-9 px-3 text-[13px] border-slate-200 bg-white hover:bg-slate-50" onClick={handleExport}>
           <Download size={14} />
           Export

@@ -6,7 +6,7 @@ export const TRANSACTION_SECTIONS = [
     label: 'Member',
     path: '/app/transactions/member',
     icon: Users,
-    permission: 'transactions.read',
+    permission: 'transactions.member.view',
     description: 'Loan paid, compulsory deposit, insurance, and recovery transactions.',
     tone: 'pink'
   },
@@ -15,7 +15,7 @@ export const TRANSACTION_SECTIONS = [
     label: 'Bank',
     path: '/app/transactions/bank',
     icon: Landmark,
-    permission: 'bank-transactions.read',
+    permission: 'transactions.bank.view',
     description: 'Loan receipt, deposit, cheque issue, and transfer entries.',
     tone: 'emerald'
   },
@@ -24,7 +24,7 @@ export const TRANSACTION_SECTIONS = [
     label: 'Employee',
     path: '/app/transactions/employee',
     icon: Banknote,
-    permission: 'transactions.read',
+    permission: 'transactions.employee.view',
     description: 'Advance paid and recovery entries for employees.',
     tone: 'amber'
   },
@@ -33,7 +33,7 @@ export const TRANSACTION_SECTIONS = [
     label: 'Transfer Voucher',
     path: '/app/transactions/transfer-voucher',
     icon: Repeat2,
-    permission: 'transactions.read',
+    permission: 'transactions.transfer-voucher.view',
     description: 'Transfer voucher paid and recovered from member records.',
     tone: 'violet'
   },
@@ -42,7 +42,7 @@ export const TRANSACTION_SECTIONS = [
     label: 'Receipt / Interest',
     path: '/app/transactions/receipt-interest',
     icon: ReceiptText,
-    permission: ['transactions.read', 'no-interest-members.read'],
+    permission: ['transactions.receipt-interest.view', 'master.no-interest-members.view'],
     description: 'Receipt, interest paid, and related member support links.',
     tone: 'sky'
   },
@@ -51,7 +51,7 @@ export const TRANSACTION_SECTIONS = [
     label: 'Supporting',
     path: '/app/transactions/supporting',
     icon: FileText,
-    permission: ['transactions.read', 'demands.read'],
+    permission: ['transactions.supporting.view', 'master.demands.view'],
     description: 'Payment and demand entry helper screens.',
     tone: 'slate'
   }

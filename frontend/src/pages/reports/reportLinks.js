@@ -21,7 +21,7 @@ export const REPORT_LINKS = [
     path: '/app/reports',
     icon: LayoutGrid,
     category: 'hub',
-    permission: 'reports.read',
+    permission: 'reports.account-statement-view.view',
     description: 'Open the reports hub and jump to any report.'
   },
   {
@@ -30,7 +30,7 @@ export const REPORT_LINKS = [
     path: '/app/reports/account-statement-view',
     icon: FileBarChart,
     category: 'financial-statements',
-    permission: 'reports.read',
+    permission: 'reports.account-statement-view.view',
     description: 'Ledger-wise account statement with opening and closing balances.'
   },
   {
@@ -39,7 +39,7 @@ export const REPORT_LINKS = [
     path: '/app/reports/member-ledger',
     icon: Users,
     category: 'member-reports',
-    permission: 'reports.read',
+    permission: 'reports.member-ledger.view',
     description: 'Member ledger with running balance and summary balances.'
   },
   {
@@ -48,7 +48,7 @@ export const REPORT_LINKS = [
     path: '/app/reports/balance-sheet',
     icon: Scale,
     category: 'financial-statements',
-    permission: 'reports.read',
+    permission: 'reports.balance-sheet.view',
     description: 'Liabilities and assets snapshot for the selected date.'
   },
   {
@@ -57,7 +57,7 @@ export const REPORT_LINKS = [
     path: '/app/reports/trial-balance',
     icon: BarChart3,
     category: 'financial-statements',
-    permission: 'reports.read',
+    permission: 'reports.trial-balance.view',
     description: 'Ledger debit and credit balances for trial review.'
   },
   {
@@ -66,7 +66,7 @@ export const REPORT_LINKS = [
     path: '/app/reports/cash-book',
     icon: Banknote,
     category: 'financial-statements',
-    permission: 'reports.read',
+    permission: 'reports.cash-book.view',
     description: 'Cash ledger entries posted for the selected day or date.'
   },
   {
@@ -75,7 +75,7 @@ export const REPORT_LINKS = [
     path: '/app/reports/day-book',
     icon: CalendarRange,
     category: 'financial-statements',
-    permission: 'reports.read',
+    permission: 'reports.day-book.view',
     description: 'Voucher-wise day book with journal line details.'
   },
   {
@@ -84,7 +84,7 @@ export const REPORT_LINKS = [
     path: '/app/reports/voucher-summary',
     icon: ReceiptText,
     category: 'voucher-and-summary',
-    permission: 'reports.read',
+    permission: 'reports.voucher-summary.view',
     description: 'Voucher totals grouped by voucher category.'
   },
   {
@@ -93,7 +93,7 @@ export const REPORT_LINKS = [
     path: '/app/reports/summary-monthly',
     icon: TrendingUp,
     category: 'voucher-and-summary',
-    permission: 'reports.read',
+    permission: 'reports.summary-monthly.view',
     description: 'Monthly transaction summary filtered by branch.'
   },
   {
@@ -102,7 +102,7 @@ export const REPORT_LINKS = [
     path: '/app/reports/demand-list-report',
     icon: FileText,
     category: 'voucher-and-summary',
-    permission: 'reports.read',
+    permission: 'reports.demand-list-report.view',
     description: 'Demand totals, recovery and pending balance.'
   },
   {
@@ -111,7 +111,7 @@ export const REPORT_LINKS = [
     path: '/app/reports/profit-loss',
     icon: Percent,
     category: 'financial-statements',
-    permission: 'reports.read',
+    permission: 'reports.profit-loss.view',
     description: 'Income versus expenditure snapshot.'
   },
   {
@@ -120,7 +120,7 @@ export const REPORT_LINKS = [
     path: '/app/reports/all-member-list',
     icon: Users,
     category: 'member-reports',
-    permission: 'reports.read',
+    permission: 'reports.all-member-list.view',
     description: 'Complete member registry with status.'
   },
   {
@@ -129,7 +129,7 @@ export const REPORT_LINKS = [
     path: '/app/reports/payment-receipt-statement',
     icon: ReceiptText,
     category: 'member-reports',
-    permission: 'reports.read',
+    permission: 'reports.payment-receipt-statement.view',
     description: 'Payment and receipt statement in voucher order.'
   },
   {
@@ -138,7 +138,7 @@ export const REPORT_LINKS = [
     path: '/app/reports/branch-list-report',
     icon: Building2,
     category: 'directory',
-    permission: 'reports.read',
+    permission: 'reports.branch-list-report.view',
     description: 'Branch directory with contact details.'
   },
   {
@@ -147,7 +147,7 @@ export const REPORT_LINKS = [
     path: '/app/reports/dividend-report',
     icon: Landmark,
     category: 'member-reports',
-    permission: 'reports.read',
+    permission: 'reports.dividend-report.view',
     description: 'Dividend calculation based on member share balance.'
   }
 ];

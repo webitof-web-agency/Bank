@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { api } from '../api/api';
 import { toast } from 'sonner';
 import { applyBranding, extractBranding } from '../lib/branding';
+import { expandPermissionCodes } from '../lib/rbac';
 
 const TOKEN_KEY = 'bank-auth-token';
 const USER_KEY = 'bank-auth-user';
@@ -129,38 +130,15 @@ export function AuthProvider({ children }) {
   }, [token]);
 
   const actions = useMemo(() => {
-    const parsePermission = (value) => {
-      const text = String(value || '').trim();
-      const dotIndex = text.lastIndexOf('.');
-      if (dotIndex === -1) {
-        return { module: text, action: '' };
-      }
-      return {
-        module: text.slice(0, dotIndex),
-        action: text.slice(dotIndex + 1)
-      };
-    };
-
-    const satisfiesPermission = (granted = [], requested = '') => {
-      const requestedPermission = String(requested || '').trim();
-      if (!requestedPermission) return false;
-      if (granted.includes(requestedPermission)) return true;
-
-      const requestedParts = parsePermission(requestedPermission);
-      if (requestedParts.action !== 'read') return false;
-
-      return granted.some((permission) => {
-        const grantedParts = parsePermission(permission);
-        return grantedParts.module === requestedParts.module && ['write', 'manage'].includes(grantedParts.action);
-      });
-    };
-
     const hasPermission = (...permissions) => {
       if (!user) return false;
       if (user.isSuperAdmin) return true;
+
+      const grantedPermissions = new Set(Array.isArray(user.permissions) ? user.permissions : []);
       const requestedPermissions = permissions.flat ? permissions.flat(Infinity) : permissions;
-      const grantedPermissions = Array.isArray(user.permissions) ? user.permissions : [];
-      return requestedPermissions.some((permission) => satisfiesPermission(grantedPermissions, permission));
+      const expandedRequestedPermissions = expandPermissionCodes(requestedPermissions);
+
+      return expandedRequestedPermissions.some((permission) => grantedPermissions.has(permission));
     };
 
     return {
@@ -216,7 +194,7 @@ export function AuthProvider({ children }) {
       canManageUsers: () => hasPermission('users.manage'),
       canManageEmployees: () => hasPermission('employees.write', 'users.manage'),
       canManageRoles: () => hasPermission('roles.manage'),
-      canManagePermissions: () => hasPermission('permissions.manage')
+      canManagePermissions: () => hasPermission('roles.manage')
     };
   }, [token, user]);
 

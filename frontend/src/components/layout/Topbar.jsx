@@ -77,6 +77,8 @@ export function Topbar({ title, subtitle, onMenuClick }) {
   const navigate = useNavigate();
   const location = useLocation();
   const isDashboard = location.pathname === '/app/dashboard';
+  const canViewCalendar = hasPermission('workspace.calendar.view');
+  const canViewNotifications = hasPermission('workspace.notifications.view');
 
   function refreshUnreadCount(active = true) {
     if (!user || !token || !api?.notifications?.unreadCount) {
@@ -237,31 +239,35 @@ export function Topbar({ title, subtitle, onMenuClick }) {
 
         <div className="flex items-center gap-3">
 
-          <button
-            type="button"
-            onClick={() => navigate('/app/calendar')}
-            className="flex h-10 w-10 items-center justify-center text-slate-400 transition hover:bg-slate-50 hover:text-slate-600 rounded-full"
-            aria-label="Open calendar"
-            title="Calendar"
-          >
-            <Calendar size={20} strokeWidth={1.8} />
-          </button>
-
-          <div className="relative flex items-center" ref={notificationsDropdownRef}>
+          {canViewCalendar ? (
             <button
               type="button"
-              className="relative flex h-10 w-10 items-center justify-center text-slate-400 transition hover:bg-slate-50 hover:text-slate-600 rounded-full"
-              onClick={() => setNotificationsOpen((current) => !current)}
-              aria-label="Open notifications"
-              title="Notifications"
+              onClick={() => navigate('/app/calendar')}
+              className="flex h-10 w-10 items-center justify-center text-slate-400 transition hover:bg-slate-50 hover:text-slate-600 rounded-full"
+              aria-label="Open calendar"
+              title="Calendar"
             >
-              <Bell size={20} strokeWidth={1.8} />
-              {unreadCount > 0 ? (
-                <span className="absolute right-1 top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[var(--primary,#1661F6)] px-1 text-[10px] font-bold text-white ring-2 ring-white">
-                  {unreadCount > 99 ? '99+' : unreadCount}
-                </span>
-              ) : null}
+              <Calendar size={20} strokeWidth={1.8} />
             </button>
+          ) : null}
+
+          <div className="relative flex items-center" ref={notificationsDropdownRef}>
+            {canViewNotifications ? (
+              <button
+                type="button"
+                className="relative flex h-10 w-10 items-center justify-center text-slate-400 transition hover:bg-slate-50 hover:text-slate-600 rounded-full"
+                onClick={() => setNotificationsOpen((current) => !current)}
+                aria-label="Open notifications"
+                title="Notifications"
+              >
+                <Bell size={20} strokeWidth={1.8} />
+                {unreadCount > 0 ? (
+                  <span className="absolute right-1 top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[var(--primary,#1661F6)] px-1 text-[10px] font-bold text-white ring-2 ring-white">
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                ) : null}
+              </button>
+            ) : null}
 
             {notificationsOpen ? (
               <div className="absolute right-0 top-full z-30 mt-3 w-[min(24rem,calc(100vw-1rem))] overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-[0_24px_80px_-20px_rgba(15,23,42,0.24)]">
