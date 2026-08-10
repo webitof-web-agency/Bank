@@ -1,3 +1,5 @@
+import { api, getImageUrl } from '../../api/api';
+
 export const EMPLOYEE_DOCUMENT_DEFS = [
   { key: 'aadhaarFront', label: 'Aadhaar Card Front', description: 'Front side of the Aadhaar card.' },
   { key: 'aadhaarBack', label: 'Aadhaar Card Back', description: 'Back side of the Aadhaar card.' },
@@ -67,12 +69,11 @@ export function getDocumentFileName(document = {}) {
 
 export function getDocumentFileUrl(document = {}) {
   if (!document) return '';
-  if (document.viewUrl) return document.viewUrl;
-  if (document.fileId) return `/api/files/${document.fileId}/view`;
+  if (document.viewUrl) return getImageUrl(document.viewUrl);
+  if (document.fileId) return api.files.viewUrl(document.fileId);
   return '';
 }
 
 export function isPendingDocument(document = {}) {
   return Boolean(document?.file);
 }
-

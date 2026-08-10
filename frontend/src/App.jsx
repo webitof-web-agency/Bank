@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+﻿import { useEffect } from 'react';
 import { HashRouter, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { AuthProvider } from './context/AuthContext';
@@ -18,6 +18,7 @@ import { FilesPage } from './pages/files/FilesPage';
 import { MasterHomePage } from './pages/master';
 import { BranchesPage } from './pages/master/branches';
 import { BranchDetailPage } from './pages/master/branches/detail';
+import { ManagerMasterPage } from './pages/master/ManagerMasterPage';
 import { MembersPage } from './pages/master/members';
 import { MemberDetailPage } from './pages/master/members/detail';
 import { MemberFormPage } from './pages/master/members/MemberFormPage';
@@ -34,6 +35,11 @@ import { NoInterestMembersPage } from './pages/master/no-interest-members';
 import { NoInterestMemberDetailPage } from './pages/master/no-interest-members/detail';
 import { SettingsHomePage } from './pages/settings/SettingsHomePage';
 import { BusinessIdentityPage } from './pages/settings/BusinessIdentityPage';
+import { SocietyDetailsPage } from './pages/settings/SocietyDetailsPage';
+import { ChangePasswordPage } from './pages/settings/ChangePasswordPage';
+import { UserRightsPage } from './pages/settings/UserRightsPage';
+import { BackupRestorePage } from './pages/settings/BackupRestorePage';
+import { FinancialYearClosingPage } from './pages/settings/FinancialYearClosingPage';
 import { BrandingPage } from './pages/settings/BrandingPage';
 import { UiSettingsPage } from './pages/settings/UiSettingsPage';
 import { SmtpEmailPage } from './pages/settings/SmtpEmailPage';
@@ -53,7 +59,7 @@ import { SupportingTransactionsPage } from './pages/transactions/supporting';
 import { SupportingTransactionDetailPage } from './pages/transactions/supporting/detail';
 import { ReportsHomePage } from './pages/reports';
 import { ReportViewerPage } from './pages/reports/ReportViewerPage';
-import { ProfilePage } from './pages/profile/ProfilePage';
+import ProfilePage from './pages/profile/ProfilePage';
 import { NotificationsPage } from './pages/notifications';
 import { NotificationDetailPage } from './pages/notifications/detail';
 import { CalendarPage } from './pages/calendar';
@@ -186,9 +192,15 @@ function AppRoutes() {
         <Route path="profile" element={<ProfilePage />} />
         <Route path="notifications" element={<PermissionRoute permission="notifications.read"><NotificationsPage /></PermissionRoute>} />
         <Route path="notifications/:id" element={<PermissionRoute permission="notifications.read"><NotificationDetailPage /></PermissionRoute>} />
+        <Route path="settings/society-details" element={<PermissionRoute permission="society.read"><SocietyDetailsPage /></PermissionRoute>} />
+        <Route path="settings/change-password" element={<ChangePasswordPage />} />
+        <Route path="settings/user-rights" element={<PermissionRoute permission="roles.manage"><UserRightsPage /></PermissionRoute>} />
+        <Route path="settings/backup-restore" element={<PermissionRoute permission="settings.read"><BackupRestorePage /></PermissionRoute>} />
+        <Route path="settings/financial-year-closing" element={<PermissionRoute permission="settings.read"><FinancialYearClosingPage /></PermissionRoute>} />
         <Route path="calendar" element={<PermissionRoute permission="calendar.read"><CalendarPage /></PermissionRoute>} />
         <Route path="master" element={<Navigate to="/app/master/overview" replace />} />
         <Route path="master/overview" element={<MasterHomePage />} />
+        <Route path="master/managers" element={<PermissionRoute permission={["employees.read", "users.manage"]}><ManagerMasterPage /></PermissionRoute>} />
         <Route path="transactions" element={<Navigate to="/app/transactions/overview" replace />} />
         <Route
           path="transactions/overview"
@@ -557,3 +569,6 @@ export default function App() {
     </AuthProvider>
   );
 }
+
+
+

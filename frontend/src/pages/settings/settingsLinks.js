@@ -1,19 +1,19 @@
-import { Bell, Building2, Globe, Paintbrush, Mail } from 'lucide-react';
+﻿import { Bell, Building2, CalendarClock, Archive, KeyRound, ShieldCheck, Mail } from 'lucide-react';
 
 export const SETTINGS_LINKS = [
   {
-    label: 'Business Identity',
-    path: '/app/settings/business-identity',
+    label: 'Society Details',
+    path: '/app/settings/society-details',
     icon: Building2,
-    permission: 'settings.read',
-    description: 'Company profile used across the system.',
+    permission: 'society.read',
+    description: 'Society profile, register number, and branding fields.',
     group: 'Configuration',
     tone: 'slate'
   },
   {
     label: 'Branding',
     path: '/app/settings/branding',
-    icon: Paintbrush,
+    icon: Building2,
     permission: 'settings.read',
     description: 'Logos, app title, and visual identity.',
     group: 'Configuration',
@@ -22,7 +22,7 @@ export const SETTINGS_LINKS = [
   {
     label: 'UI Settings',
     path: '/app/settings/ui-settings',
-    icon: Globe,
+    icon: Bell,
     permission: 'settings.read',
     description: 'Browser title and interface preferences.',
     group: 'Configuration',
@@ -44,6 +44,42 @@ export const SETTINGS_LINKS = [
     permission: 'settings.read',
     description: 'In-app alerts and email delivery preferences.',
     group: 'Communication',
+    tone: 'blue'
+  },
+  {
+    label: 'Change Password',
+    path: '/app/settings/change-password',
+    icon: KeyRound,
+    permission: 'settings.read',
+    description: 'Update your account password from a dedicated page.',
+    group: 'Administration',
+    tone: 'slate'
+  },
+  {
+    label: 'User Rights',
+    path: '/app/settings/user-rights',
+    icon: ShieldCheck,
+    permission: 'roles.manage',
+    description: 'Role and permission control center.',
+    group: 'Administration',
+    tone: 'emerald'
+  },
+  {
+    label: 'Backup & Restore',
+    path: '/app/settings/backup-restore',
+    icon: Archive,
+    permission: 'settings.read',
+    description: 'Database backup and restore utilities.',
+    group: 'Administration',
+    tone: 'amber'
+  },
+  {
+    label: 'Financial Year Closing',
+    path: '/app/settings/financial-year-closing',
+    icon: CalendarClock,
+    permission: 'settings.read',
+    description: 'Year-end close metadata and controls.',
+    group: 'Administration',
     tone: 'blue'
   }
 ];

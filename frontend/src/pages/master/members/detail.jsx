@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Edit2, Shield, User, CalendarDays, Home, Coins, Wallet, PiggyBank, Landmark, PieChart, Lock, Star, ShieldCheck, Banknote, Umbrella } from 'lucide-react';
 import { toast } from 'sonner';
@@ -35,7 +35,7 @@ function DetailRow({ label, value }) {
   return (
     <div className="grid grid-cols-[180px_1fr] gap-4 border-b border-slate-100 py-4 last:border-b-0">
       <div className="text-[13px] font-medium text-slate-500">{label}</div>
-      <div className="text-[14px] font-medium text-slate-900">{value || '—'}</div>
+      <div className="text-[14px] font-medium text-slate-900">{value || 'â€”'}</div>
     </div>
   );
 }
@@ -241,6 +241,8 @@ export function MemberDetailPage() {
                   <DetailRow label="Caste" value={member.caste} />
                   <DetailRow label="Occupation / Designation" value={member.designation} />
                   <DetailRow label="Status" value={status} />
+                  <DetailRow label="Dismembered" value={(member.dismembered ?? member.payload?.dismembered) ? "Yes" : "No"} />
+                  <DetailRow label="Dismembered Date" value={member.dismemberedDate || member.payload?.dismemberedDate} />
                 </div>
               </Card>
             )}
@@ -252,8 +254,8 @@ export function MemberDetailPage() {
                   <DetailRow label="Membership Date" value={member.membershipDate} />
                   <DetailRow label="Appointment Date" value={member.appointmentDate} />
                   <DetailRow label="Date of Birth" value={member.dateOfBirth} />
-                  <DetailRow label="Service Name 1" value={member.serviceName1} />
-                  <DetailRow label="Service Name 2" value={member.serviceName2} />
+                  <DetailRow label="Surety 1" value={member.serviceName1} />
+                  <DetailRow label="Surety 2" value={member.serviceName2} />
                 </div>
               </Card>
             )}
@@ -261,10 +263,10 @@ export function MemberDetailPage() {
             {activeTab === 'contact' && (
               <Card className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                 <div className="divide-y divide-slate-100 px-6">
-                  <DetailRow label="Mobile No" value={formatMemberPhone(member.mobileNo || '') || '—'} />
-                  <DetailRow label="Address" value={member.address || '—'} />
-                  <DetailRow label="Nominee Name" value={member.nomineeName || '—'} />
-                  <DetailRow label="Nominee Relation" value={member.nomineeRelation || '—'} />
+                  <DetailRow label="Mobile No" value={formatMemberPhone(member.mobileNo || '') || 'â€”'} />
+                  <DetailRow label="Address" value={member.address || 'â€”'} />
+                  <DetailRow label="Nominee Name" value={member.nomineeName || 'â€”'} />
+                  <DetailRow label="Nominee Relation" value={member.nomineeRelation || "-"} />
                 </div>
               </Card>
             )}
@@ -275,7 +277,7 @@ export function MemberDetailPage() {
                   {[
                     { label: 'Opening Balance', value: formatMoney(member.openingBalance), icon: Wallet, color: 'text-blue-500', bg: 'bg-blue-50' },
                     { label: 'Deposit Balance', value: formatMoney(member.depositBalance ?? balances.compulsoryDeposit), icon: PiggyBank, color: 'text-emerald-500', bg: 'bg-emerald-50' },
-                    { label: 'Loan Outstanding', value: formatMoney(member.loanOutstanding), icon: Landmark, color: 'text-rose-500', bg: 'bg-rose-50' },
+                    { label: 'Regular Loan', value: formatMoney(member.loanOutstanding), icon: Landmark, color: 'text-rose-500', bg: 'bg-rose-50' },
                     { label: 'Share', value: formatMoney(balances.share), icon: PieChart, color: 'text-indigo-500', bg: 'bg-indigo-50' },
                     { label: 'Compulsory Deposit', value: formatMoney(balances.compulsoryDeposit ?? member.depositBalance), icon: Lock, color: 'text-teal-500', bg: 'bg-teal-50' },
                     { label: 'Special Saving', value: formatMoney(balances.specialSaving), icon: Star, color: 'text-amber-500', bg: 'bg-amber-50' },

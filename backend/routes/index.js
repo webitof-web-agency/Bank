@@ -9,6 +9,7 @@ const rolesRoutes = require('./roles.routes');
 const settingsRoutes = require('./settings.routes');
 const usersRoutes = require('./users.routes');
 const { requireAuth } = require('../middlewares/auth');
+const { requireFileViewAccess } = require('../middlewares/fileAccess');
 
 const router = express.Router();
 
@@ -23,7 +24,7 @@ const filesController = require('../controllers/files.controller');
 const settingsController = require('../controllers/settings.controller');
 
 router.use('/auth', authRoutes);
-router.get('/files/:id/view', filesController.viewFile);
+router.get('/files/:id/view', requireFileViewAccess, filesController.viewFile);
 router.get('/settings/public', settingsController.getPublicController);
 router.get('/notifications/stream', notificationsController.streamController);
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Edit2, FileText, RotateCcw, UserRound, Building2, CheckCircle2, AlertCircle, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
@@ -14,7 +14,7 @@ function DetailRow({ label, value }) {
   return (
     <div className="grid grid-cols-[180px_1fr] gap-4 border-b border-slate-100 py-4 last:border-b-0">
       <div className="text-[13px] font-medium text-slate-500">{label}</div>
-      <div className="text-[14px] font-medium text-slate-900">{value || '—'}</div>
+      <div className="text-[14px] font-medium text-slate-900">{value || 'â€”'}</div>
     </div>
   );
 }
@@ -93,6 +93,9 @@ export function DemandDetailPage() {
 
   const branchLookup = useMemo(() => new Map(branches.map((branch) => [String(branch.code || '').toUpperCase(), branch])), [branches]);
   const memberLookup = useMemo(() => new Map(members.map((member) => [String(member.code || '').toUpperCase(), member])), [members]);
+  const allocations = Array.isArray(demand?.allocations) ? demand.allocations : [];
+  const demandListDate = demand?.demandListDate || demand?.dueDate || demand?.payload?.demandListDate || '';
+  const demandYear = demand?.year || demand?.payload?.year || '';
 
   if (loading) {
     return (
@@ -110,7 +113,7 @@ export function DemandDetailPage() {
     );
   }
 
-  const demandNo = demand.demandNo || '—';
+  const demandNo = demand.demandNo || 'â€”';
   const branch = branchLookup.get(String(demand.branchCode || '').trim().toUpperCase());
   const member = memberLookup.get(String(demand.memberCode || '').trim().toUpperCase());
   const status = String(demand.status || 'Pending');
@@ -206,7 +209,8 @@ export function DemandDetailPage() {
                 <DetailRow label="Month" value={demand.month} />
                 <DetailRow label="Branch" value={getBranchLabel(branch) || demand.branchCode} />
                 <DetailRow label="Member" value={getMemberLabel(member) || demand.memberCode} />
-                <DetailRow label="Due Date" value={demand.dueDate} />
+                <DetailRow label="Demand List Date" value={demandListDate} />
+                <DetailRow label="Year" value={demandYear} />
                 <DetailRow label="Status" value={demand.status} />
               </div>
             </Card>
@@ -218,6 +222,25 @@ export function DemandDetailPage() {
                 <DetailRow label="Total" value={formatMoney(demand.total ?? 0)} />
                 <DetailRow label="Recovered" value={formatMoney(demand.recovered ?? 0)} />
                 <DetailRow label="Pending" value={formatMoney(Math.max((Number(demand.total || 0) - Number(demand.recovered || 0)), 0))} />
+                <div className="pt-4">
+                  <p className="mb-3 text-[13px] font-semibold uppercase tracking-wider text-slate-500">Loaded Members</p>
+                  {allocations.length > 0 ? (
+                    <div className="overflow-hidden rounded-xl border border-slate-200">
+                      <div className="grid grid-cols-[1.2fr_0.5fr] gap-0 border-b border-slate-200 bg-slate-50 px-4 py-3 text-[12px] font-semibold uppercase tracking-wider text-slate-500">
+                        <div>Member</div>
+                        <div className="text-right">Amount</div>
+                      </div>
+                      {allocations.map((row, index) => (
+                        <div key={`${row.memberCode || index}`} className="grid grid-cols-[1.2fr_0.5fr] gap-0 border-b border-slate-100 bg-white px-4 py-3 last:border-b-0">
+                          <div className="text-[13px] font-medium text-slate-900">{row.head || row.memberCode || "-"}</div>
+                          <div className="text-right text-[13px] font-medium text-slate-700">{formatMoney(row.amount ?? 0)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-[13px] text-slate-500">No allocations loaded.</div>
+                  )}
+                </div>
                 <DetailRow label="Remarks" value={demand.remarks} />
               </div>
             </Card>
@@ -254,4 +277,5 @@ export function DemandDetailPage() {
 }
 
 export default DemandDetailPage;
+
 

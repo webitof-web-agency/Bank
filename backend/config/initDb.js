@@ -1,6 +1,6 @@
 const Settings = require('../models/settings.model');
 const { DEFAULT_SETTINGS } = require('./defaultSettings');
-const { connectMongo } = require('./mongo');
+const { initializeDatabase } = require('./postgres');
 const { seedBankingData } = require('../services/banking.service');
 const {
   ensureDefaultRoles,
@@ -10,7 +10,7 @@ const {
 } = require('../services/auth.service');
 
 async function ensureDatabase() {
-  await connectMongo();
+  await initializeDatabase();
   const defaultRoles = await ensureDefaultRoles();
   const demoRoles = await ensureDemoRoles();
   const defaultSettings = { ...DEFAULT_SETTINGS };
@@ -42,3 +42,4 @@ async function ensureDatabase() {
 module.exports = {
   ensureDatabase
 };
+

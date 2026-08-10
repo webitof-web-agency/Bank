@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useAuth } from '../../../context/AuthContext';
@@ -21,9 +21,12 @@ export function EmployeeFormPage() {
   const [loading, setLoading] = useState(isEdit);
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState({
-    code: '', fullName: '', name: '', username: '', email: '', password: '',
-    phone: '', mobileNo: '', address: '', gender: '', designation: '', branchCode: '',
-    status: 'Active', isActive: true, roleIds: [], documents: {}
+    code: '', fullName: '', fatherOrHusbandName: '', dateOfBirth: '', appointmentDate: '',
+    category: '', caste: '', qualification: '', name: '', username: '', email: '', password: '',
+    mobileNo: '', address: '', gender: '', designation: '', branchCode: '',
+    basicSalary: '', housingLoan: '', housingSide: 'Dr', vehicleLoan: '', vehicleSide: 'Dr',
+    grainAdvance: '', grainSide: 'Dr', retired: false, retiredDate: '',
+    status: 'Active', isActive: true, roleIds: [], payload: {}, documents: {}
   });
   const [roles, setRoles] = useState([]);
   const [branches, setBranches] = useState([]);
@@ -194,3 +197,5 @@ export function EmployeeFormPage() {
     </div>
   );
 }
+
+

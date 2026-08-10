@@ -1,20 +1,8 @@
-const { Schema, model, models } = require('mongoose');
-const { schemaOptions } = require('../utils/mongoose');
+const { createSqlModel } = require('../utils/sql-model');
+const { TABLE_SCHEMAS } = require('../config/tableSchemas');
 
-const roleSchema = new Schema(
-  {
-    code: { type: String, required: true, unique: true, trim: true, lowercase: true },
-    name: { type: String, required: true, trim: true },
-    description: { type: String, default: '' },
-    isSystem: { type: Boolean, default: false },
-    isActive: { type: Boolean, default: true },
-    permissions: { type: [String], default: [] },
-    payload: { type: Schema.Types.Mixed, default: {} }
-  },
-  schemaOptions()
-);
-
-
-roleSchema.index({ name: 1 });
-
-module.exports = models.Role || model('Role', roleSchema);
+module.exports = createSqlModel('roles', {
+  schema: TABLE_SCHEMAS.roles,
+  modelName: 'Role',
+  uniqueFields: ['code']
+});

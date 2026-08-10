@@ -1,4 +1,4 @@
-const PERMISSIONS = [
+﻿const PERMISSIONS = [
   { code: 'dashboard.read', name: 'View Dashboard', module: 'dashboard', action: 'read', description: 'Access the banking dashboard.' },
   { code: 'society.read', name: 'Read Society Details', module: 'society', action: 'read', description: 'View society profile and branding.' },
   { code: 'society.write', name: 'Write Society Details', module: 'society', action: 'write', description: 'Update society profile and branding.' },
@@ -359,7 +359,6 @@ const DEMO_USER_DEFINITIONS = [
     email: 'relationship.manager@bank.local',
     password: 'Manager@12345',
     roleCodes: ['manager'],
-    phone: '+91 90000 10001',
     mobileNo: '+91 90000 10001',
     address: 'Mumbai Main Branch',
     gender: 'Male',
@@ -378,7 +377,6 @@ const DEMO_USER_DEFINITIONS = [
     email: 'branch.manager@bank.local',
     password: 'Branch@12345',
     roleCodes: ['branch-manager'],
-    phone: '+91 90000 10002',
     mobileNo: '+91 90000 10002',
     address: 'Delhi Central Branch',
     gender: 'Female',
@@ -397,7 +395,6 @@ const DEMO_USER_DEFINITIONS = [
     email: 'teller@bank.local',
     password: 'Teller@12345',
     roleCodes: ['teller'],
-    phone: '+91 90000 10003',
     mobileNo: '+91 90000 10003',
     address: 'Pune City Branch',
     gender: 'Male',
@@ -416,7 +413,6 @@ const DEMO_USER_DEFINITIONS = [
     email: 'auditor@bank.local',
     password: 'Audit@12345',
     roleCodes: ['auditor'],
-    phone: '+91 90000 10004',
     mobileNo: '+91 90000 10004',
     address: 'Head Office',
     gender: 'Female',
@@ -439,3 +435,5 @@ module.exports = {
   PERMISSIONS,
   ROLE_TEMPLATES
 };
+
+

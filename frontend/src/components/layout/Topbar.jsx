@@ -243,7 +243,7 @@ export function Topbar({ title, subtitle, onMenuClick }) {
             <button
               type="button"
               onClick={() => navigate('/app/calendar')}
-              className="flex h-10 w-10 items-center justify-center text-slate-400 transition hover:bg-slate-50 hover:text-slate-600 rounded-full"
+              className="flex h-10 w-10 items-center justify-center text-slate-400 transition hover:bg-[color-mix(in_srgb,var(--primary)_8%,transparent)] hover:text-[var(--primary)] rounded-full"
               aria-label="Open calendar"
               title="Calendar"
             >
@@ -255,7 +255,7 @@ export function Topbar({ title, subtitle, onMenuClick }) {
             {canViewNotifications ? (
               <button
                 type="button"
-                className="relative flex h-10 w-10 items-center justify-center text-slate-400 transition hover:bg-slate-50 hover:text-slate-600 rounded-full"
+                className="relative flex h-10 w-10 items-center justify-center text-slate-400 transition hover:bg-[color-mix(in_srgb,var(--primary)_8%,transparent)] hover:text-[var(--primary)] rounded-full"
                 onClick={() => setNotificationsOpen((current) => !current)}
                 aria-label="Open notifications"
                 title="Notifications"

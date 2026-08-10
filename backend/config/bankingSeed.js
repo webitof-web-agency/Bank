@@ -204,6 +204,12 @@ const EMPLOYEE_SEEDS = [
   { code: 'E0004', name: 'Farida Khan', designation: 'MGR', branchCode: 'BR03', mobileNo: '9826055004', status: 'Active' }
 ];
 
+const MANAGER_SEEDS = [
+  { name: 'Farida Khan', designation: 'General Manager', branchCode: 'BR03', isActive: true },
+  { name: 'Rakesh Sharma', designation: 'Manager', branchCode: 'BR01', isActive: true },
+  { name: 'Anita Verma', designation: 'Branch Manager', branchCode: 'BR02', isActive: true }
+];
+
 const LEDGER_SEEDS = [
   { code: 'L001', name: 'Cash-in-hand', nature: 'ASSET', group: 'CASHBANK', openingBalance: 842300, balanceSide: 'DR', isBankAccount: true },
   { code: 'L002', name: 'Union Bank - CC A/c', nature: 'ASSET', group: 'CASHBANK', openingBalance: 2154000, balanceSide: 'DR', isBankAccount: true },
@@ -238,6 +244,7 @@ const COMMITTEE_SEED = {
   key: 'default',
   chairman: 'Ramesh Chandra Gupta',
   viceChairman: 'Suresh Kumar Verma',
+  viceChairman2: 'Kiran Suresh Verma',
   directors: ['Anita Verma', 'Suresh Patel', 'Kavita Deshmukh', 'Deepak Sinha', 'Meena Yadav']
 };
 
@@ -416,6 +423,7 @@ module.exports = {
   COMMITTEE_SEED,
   DEMAND_SEEDS,
   EMPLOYEE_SEEDS,
+  MANAGER_SEEDS,
   LEDGER_SEEDS,
   MEMBER_SEEDS,
   NO_INTEREST_MEMBER_SEEDS,
@@ -423,3 +431,4 @@ module.exports = {
   SOCIETY_SEED,
   VOUCHER_SEEDS
 };
+

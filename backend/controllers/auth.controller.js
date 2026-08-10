@@ -1,4 +1,4 @@
-const { createPasswordResetRequest, login, resetPasswordWithOtp, buildAccessProfile, changePassword } = require('../services/auth.service');
+const { createPasswordResetRequest, login, resetPasswordWithOtp, buildAccessProfile, changePassword, updateUser } = require('../services/auth.service');
 const User = require('../models/user.model');
 const { deleteFileById } = require('../services/file.service');
 
@@ -74,30 +74,11 @@ async function updateProfileController(req, res, next) {
       return res.status(401).json({ success: false, message: 'Authentication required' });
     }
 
-    const currentUser = await User.findById(userId);
-    if (!currentUser) {
+    const profile = await updateUser(userId, req.body || {});
+    if (!profile) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
-    const { fullName, phone, address, avatarUrl, avatarFileId } = req.body || {};
-    const patch = {};
-    const previousAvatarFileId = currentUser.avatarFileId ? String(currentUser.avatarFileId) : '';
-
-    if (fullName !== undefined) patch.fullName = fullName;
-    if (phone !== undefined) patch.phone = phone;
-    if (address !== undefined) patch.address = address;
-    if (avatarUrl !== undefined) patch.avatarUrl = avatarUrl;
-    if (avatarFileId !== undefined) patch.avatarFileId = avatarFileId;
-
-    currentUser.set(patch);
-    await currentUser.save();
-
-    const nextAvatarFileId = currentUser.avatarFileId ? String(currentUser.avatarFileId) : '';
-    if (previousAvatarFileId && nextAvatarFileId && previousAvatarFileId !== nextAvatarFileId) {
-      await deleteFileById(previousAvatarFileId).catch(() => {});
-    }
-
-    const profile = await buildAccessProfile(userId);
     res.json({ success: true, data: profile });
   } catch (error) {
     next(error);
@@ -163,3 +144,7 @@ module.exports = {
   resetPasswordController,
   updateProfileController
 };
+
+
+
+

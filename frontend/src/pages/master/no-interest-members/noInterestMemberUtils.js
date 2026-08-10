@@ -1,4 +1,4 @@
-function toString(value) {
+﻿function toString(value) {
   return String(value ?? '').trim();
 }
 
@@ -28,21 +28,28 @@ export function createEmptyNoInterestMemberDraft(rows = []) {
   return {
     code: buildNextNoInterestMemberCode(rows),
     memberCode: '',
+    branchCode: '',
+    designation: '',
     reason: '',
     fromDate: '',
     toDate: '',
-    status: 'Active'
+    status: 'Active',
+    payload: {}
   };
 }
 
 export function createNoInterestMemberDraftFromRecord(record = {}) {
+  const payload = record.payload || {};
   return {
     code: toString(record.code),
     memberCode: toString(record.memberCode),
+    branchCode: toString(record.branchCode || payload.branchCode),
+    designation: toString(record.designation || payload.designation),
     reason: toString(record.reason),
     fromDate: toString(record.fromDate),
     toDate: toString(record.toDate),
-    status: toString(record.status) || 'Active'
+    status: toString(record.status) || 'Active',
+    payload
   };
 }
 
@@ -53,7 +60,12 @@ export function buildNoInterestMemberPayload(draft = {}) {
     reason: toString(draft.reason),
     fromDate: toString(draft.fromDate),
     toDate: toString(draft.toDate),
-    status: toString(draft.status) || 'Active'
+    status: toString(draft.status) || 'Active',
+    payload: {
+      ...(draft.payload || {}),
+      branchCode: toString(draft.branchCode),
+      designation: toString(draft.designation)
+    }
   };
 }
 
@@ -61,4 +73,3 @@ export function getMemberLabel(member) {
   if (!member) return '';
   return `${member.code || ''}${member.name ? ` - ${member.name}` : ''}`.trim();
 }
-

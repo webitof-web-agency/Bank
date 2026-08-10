@@ -1,5 +1,6 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import imageCompression from 'browser-image-compression';
+import PhoneInput from 'react-phone-input-2';
 import { Camera, Save, User, Mail, Phone, MapPin, Trash2, Upload, Key } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../context/AuthContext';
@@ -7,15 +8,60 @@ import { api } from '../../api/api';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+import { Select } from '../../components/ui/Select';
 import { UserAvatar } from '../../components/ui/UserAvatar';
+import { stripPhoneDigits } from '../master/employees/employeeUtils';
 
-export function ProfilePage() {
+function unwrapProfileResponse(response) {
+  return response?.data?.data ?? response?.data ?? null;
+}
+
+function ProfilePage() {
   const { user, token, updateProfile, deleteAvatar, changePassword } = useAuth();
   const fileInputRef = useRef(null);
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
   const [avatarPreview, setAvatarPreview] = useState(user?.avatarUrl || '');
   const [avatarFile, setAvatarFile] = useState(null);
+  const [profileForm, setProfileForm] = useState({
+    fullName: user?.fullName || '',
+    mobileNo: user?.mobileNo || '',
+    gender: user?.gender || '',
+    address: user?.address || ''
+  });
+
+  useEffect(() => {
+    let active = true;
+
+    (async () => {
+      try {
+        const response = await api.auth.me(token);
+        const profile = unwrapProfileResponse(response);
+        if (!active || !profile) return;
+        setProfileForm({
+          fullName: profile.fullName || '',
+          mobileNo: profile.mobileNo || '',
+          gender: profile.gender || '',
+          address: profile.address || ''
+        });
+        setAvatarPreview(profile.avatarUrl || '');
+      } catch {
+        if (active) {
+          setProfileForm({
+            fullName: user?.fullName || '',
+            mobileNo: user?.mobileNo || '',
+            gender: user?.gender || '',
+            address: user?.address || ''
+          });
+          setAvatarPreview(user?.avatarUrl || '');
+        }
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [token, user?.fullName, user?.mobileNo, user?.gender, user?.address, user?.avatarUrl]);
 
   async function handleAvatarPick(event) {
     const file = event.target.files?.[0];
@@ -43,11 +89,12 @@ export function ProfilePage() {
     event.preventDefault();
     setSavingProfile(true);
     try {
-      const formData = new FormData(event.currentTarget);
+      const mobileDigits = stripPhoneDigits(profileForm.mobileNo || '');
       const payload = {
-        fullName: formData.get('fullName'),
-        phone: formData.get('phone'),
-        address: formData.get('address')
+        fullName: String(profileForm.fullName || '').trim(),
+        mobileNo: mobileDigits ? `+${mobileDigits}` : '',
+        gender: String(profileForm.gender || '').trim(),
+        address: String(profileForm.address || '').trim()
       };
 
       if (avatarFile) {
@@ -68,6 +115,17 @@ export function ProfilePage() {
       }
 
       await updateProfile(payload);
+      const refreshedResponse = await api.auth.me(token);
+      const savedProfile = unwrapProfileResponse(refreshedResponse);
+      setProfileForm({
+        fullName: savedProfile?.fullName || payload.fullName || '',
+        mobileNo: savedProfile?.mobileNo || payload.mobileNo || '',
+        gender: savedProfile?.gender || payload.gender || '',
+        address: savedProfile?.address || payload.address || ''
+      });
+      if (savedProfile?.avatarUrl) {
+        setAvatarPreview(savedProfile.avatarUrl);
+      }
       toast.success('Profile updated successfully');
       setAvatarFile(null);
     } catch (error) {
@@ -161,7 +219,13 @@ export function ProfilePage() {
               <label className="mb-1.5 block text-[13px] font-medium text-slate-700">Full Name</label>
               <div className="relative">
                 <User size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <Input name="fullName" defaultValue={user?.fullName || ''} className="pl-9" />
+                <Input
+                  name="fullName"
+                  autoComplete="name"
+                  value={profileForm.fullName}
+                  onChange={(event) => setProfileForm((current) => ({ ...current, fullName: event.target.value }))}
+                  className="pl-9"
+                />
               </div>
             </div>
 
@@ -174,18 +238,48 @@ export function ProfilePage() {
             </div>
 
             <div>
-              <label className="mb-1.5 block text-[13px] font-medium text-slate-700">Phone Number</label>
-              <div className="relative">
-                <Phone size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <Input name="phone" defaultValue={user?.phone || ''} className="pl-9" />
-              </div>
+              <label className="mb-1.5 block text-[13px] font-medium text-slate-700">Gender</label>
+              <Select
+                value={profileForm.gender}
+                onChange={(value) => setProfileForm((current) => ({ ...current, gender: value }))}
+                options={[
+                  { label: 'Male', value: 'Male' },
+                  { label: 'Female', value: 'Female' },
+                  { label: 'Other', value: 'Other' }
+                ]}
+                placeholder="Select gender"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-[13px] font-medium text-slate-700">Mobile Number</label>
+              <PhoneInput
+                country="in"
+                preferredCountries={['in']}
+                enableSearch
+                countryCodeEditable={false}
+                placeholder="9876543210"
+                value={stripPhoneDigits(profileForm.mobileNo || '')}
+                onChange={(nextValue) => setProfileForm((current) => ({ ...current, mobileNo: nextValue ? `+${nextValue}` : '' }))}
+                containerClass="employee-phone-input"
+                inputClass="!h-[42px] !w-full !rounded-[var(--radius-input,0.75rem)] !border-slate-200 focus:!border-[var(--primary)] focus:!ring-1 focus:!ring-[var(--primary)]"
+                buttonClass="!border-r !border-slate-200 !rounded-l-[var(--radius-input,0.75rem)] !bg-slate-50"
+                dropdownClass="!z-50"
+                inputProps={{ name: 'mobileNo' }}
+              />
             </div>
 
             <div>
               <label className="mb-1.5 block text-[13px] font-medium text-slate-700">Address</label>
               <div className="relative">
                 <MapPin size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <Input name="address" defaultValue={user?.address || ''} className="pl-9" />
+                <Input
+                  name="address"
+                  autoComplete="street-address"
+                  value={profileForm.address}
+                  onChange={(event) => setProfileForm((current) => ({ ...current, address: event.target.value }))}
+                  className="pl-9"
+                />
               </div>
             </div>
 
@@ -211,17 +305,17 @@ export function ProfilePage() {
           <form className="space-y-5" onSubmit={handlePasswordSubmit}>
             <div>
               <label className="mb-1.5 block text-[13px] font-medium text-slate-700">Current Password</label>
-              <Input name="currentPassword" type="password" required placeholder="••••••••" />
+              <Input name="currentPassword" type="password" required placeholder="********" />
             </div>
 
             <div>
               <label className="mb-1.5 block text-[13px] font-medium text-slate-700">New Password</label>
-              <Input name="newPassword" type="password" required placeholder="••••••••" minLength={8} />
+              <Input name="newPassword" type="password" required placeholder="********" minLength={8} />
             </div>
 
             <div>
               <label className="mb-1.5 block text-[13px] font-medium text-slate-700">Confirm Password</label>
-              <Input name="confirmPassword" type="password" required placeholder="••••••••" minLength={8} />
+              <Input name="confirmPassword" type="password" required placeholder="********" minLength={8} />
             </div>
 
             <div className="flex justify-end pt-2">
@@ -235,3 +329,6 @@ export function ProfilePage() {
     </div>
   );
 }
+
+export { ProfilePage };
+export default ProfilePage;

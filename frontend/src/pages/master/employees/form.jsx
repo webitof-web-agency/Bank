@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+﻿import { useRef, useState } from 'react';
 import { Camera, Trash2, Upload, User, Briefcase, FileText, Lock } from 'lucide-react';
 import PhoneInput from 'react-phone-input-2';
 import { Input, Textarea } from '../../../components/ui/Input';
@@ -215,6 +215,32 @@ export function EmployeeForm({
               </div>
             </div>
           </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:col-span-2">
+            <div className="space-y-1.5">
+              <label className="text-[13px] font-semibold text-slate-700">Father / Husband Name</label>
+              <Input placeholder="e.g. Ramesh Kumar" value={value.fatherOrHusbandName || ""} onChange={(e) => setValue({ ...value, fatherOrHusbandName: e.target.value })} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[13px] font-semibold text-slate-700">Date of Birth</label>
+              <Input type="date" value={value.dateOfBirth || ""} onChange={(e) => setValue({ ...value, dateOfBirth: e.target.value })} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[13px] font-semibold text-slate-700">Appointment Date</label>
+              <Input type="date" value={value.appointmentDate || ""} onChange={(e) => setValue({ ...value, appointmentDate: e.target.value })} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[13px] font-semibold text-slate-700">Category</label>
+              <Input placeholder="e.g. REG" value={value.category || ""} onChange={(e) => setValue({ ...value, category: e.target.value })} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[13px] font-semibold text-slate-700">Caste</label>
+              <Input placeholder="e.g. GEN" value={value.caste || ""} onChange={(e) => setValue({ ...value, caste: e.target.value })} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[13px] font-semibold text-slate-700">Qualification</label>
+              <Input placeholder="e.g. Graduate" value={value.qualification || ""} onChange={(e) => setValue({ ...value, qualification: e.target.value })} />
+            </div>
+          </div>
         </div>
 
         {/* TAB: WORK DETAILS */}
@@ -223,20 +249,20 @@ export function EmployeeForm({
             <h3 className="text-lg font-bold text-slate-900">Work Details</h3>
             <p className="text-[13px] text-slate-500 mt-1">Assign branches, roles, and status for the employee.</p>
           </div>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-1.5">
               <label className="text-[13px] font-semibold text-slate-700">Branch <span className="text-rose-500">*</span></label>
-              <Select 
-                value={value.branchCode || ''} 
-                disabled={branchesLoading && branches.length === 0} 
+              <Select
+                value={value.branchCode || ''}
+                disabled={branchesLoading && branches.length === 0}
                 onChange={(val) => setValue({ ...value, branchCode: val })}
                 searchable={true}
                 placeholder={branchesLoading ? 'Loading branches...' : 'Select branch'}
                 options={branches.map(branch => ({ value: branch.code, label: formatBranchLabel(branch) }))}
               />
             </div>
-            
+
             <div className="space-y-1.5">
               <label className="text-[13px] font-semibold text-slate-700">Designation</label>
               <Input placeholder="e.g. Branch Manager" value={value.designation || ''} onChange={(e) => setValue({ ...value, designation: e.target.value })} />
@@ -244,8 +270,8 @@ export function EmployeeForm({
 
             <div className="space-y-1.5">
               <label className="text-[13px] font-semibold text-slate-700">System Role <span className="text-rose-500">*</span></label>
-              <Select 
-                value={(value.roleIds && value.roleIds[0]) || ''} 
+              <Select
+                value={(value.roleIds && value.roleIds[0]) || ''}
                 onChange={(val) => setValue({ ...value, roleIds: val ? [val] : [] })}
                 placeholder="Select a role"
                 searchable={true}
@@ -255,8 +281,8 @@ export function EmployeeForm({
 
             <div className="space-y-1.5">
               <label className="text-[13px] font-semibold text-slate-700">Account Status</label>
-              <Select 
-                value={value.status || 'Active'} 
+              <Select
+                value={value.status || 'Active'}
                 onChange={(val) => setValue({ ...value, status: val, isActive: val !== 'Inactive' })}
                 options={[
                   { value: 'Active', label: 'Active' },
@@ -268,6 +294,80 @@ export function EmployeeForm({
             <div className="space-y-1.5 md:col-span-2">
               <label className="text-[13px] font-semibold text-slate-700">Residential Address</label>
               <Textarea rows={3} placeholder="Full address..." value={value.address || ''} onChange={(e) => setValue({ ...value, address: e.target.value })} />
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-5">
+            <h4 className="mb-4 text-sm font-semibold text-slate-900">Service / Salary Details</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-1.5">
+                <label className="text-[13px] font-semibold text-slate-700">Basic Salary</label>
+                <Input type="number" min="0" step="1" placeholder="0" value={value.basicSalary || ''} onChange={(e) => setValue({ ...value, basicSalary: e.target.value })} />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[13px] font-semibold text-slate-700">Housing Loan</label>
+                <Input type="number" min="0" step="1" placeholder="0" value={value.housingLoan || ''} onChange={(e) => setValue({ ...value, housingLoan: e.target.value })} />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[13px] font-semibold text-slate-700">Housing Side</label>
+                <Select
+                  value={value.housingSide || 'Dr'}
+                  onChange={(val) => setValue({ ...value, housingSide: val })}
+                  options={[
+                    { value: 'Dr', label: 'Dr' },
+                    { value: 'Cr', label: 'Cr' }
+                  ]}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[13px] font-semibold text-slate-700">Vehicle Loan</label>
+                <Input type="number" min="0" step="1" placeholder="0" value={value.vehicleLoan || ''} onChange={(e) => setValue({ ...value, vehicleLoan: e.target.value })} />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[13px] font-semibold text-slate-700">Vehicle Side</label>
+                <Select
+                  value={value.vehicleSide || 'Dr'}
+                  onChange={(val) => setValue({ ...value, vehicleSide: val })}
+                  options={[
+                    { value: 'Dr', label: 'Dr' },
+                    { value: 'Cr', label: 'Cr' }
+                  ]}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[13px] font-semibold text-slate-700">Grain Advance</label>
+                <Input type="number" min="0" step="1" placeholder="0" value={value.grainAdvance || ''} onChange={(e) => setValue({ ...value, grainAdvance: e.target.value })} />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[13px] font-semibold text-slate-700">Grain Side</label>
+                <Select
+                  value={value.grainSide || 'Dr'}
+                  onChange={(val) => setValue({ ...value, grainSide: val })}
+                  options={[
+                    { value: 'Dr', label: 'Dr' },
+                    { value: 'Cr', label: 'Cr' }
+                  ]}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-1.5">
+              <label className="text-[13px] font-semibold text-slate-700">Retired</label>
+              <label className="flex items-center gap-2 rounded-[var(--radius-input,0.75rem)] border border-slate-200 bg-white px-4 py-3 text-[13px] font-medium text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={Boolean(value.retired)}
+                  onChange={(e) => setValue({ ...value, retired: e.target.checked })}
+                  className="h-4 w-4 rounded border-slate-300 accent-[var(--primary)]"
+                />
+                Mark as retired
+              </label>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[13px] font-semibold text-slate-700">Retired Date</label>
+              <Input type="date" value={value.retiredDate || ''} onChange={(e) => setValue({ ...value, retiredDate: e.target.value })} />
             </div>
           </div>
         </div>
@@ -376,3 +476,6 @@ export function EmployeeForm({
 }
 
 export default EmployeeForm;
+
+
+

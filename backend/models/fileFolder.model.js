@@ -1,16 +1,8 @@
-const { Schema, model, models } = require('mongoose');
-const { schemaOptions } = require('../utils/mongoose');
+const { createSqlModel } = require('../utils/sql-model');
+const { TABLE_SCHEMAS } = require('../config/tableSchemas');
 
-const fileFolderSchema = new Schema(
-  {
-    name: { type: String, required: true, trim: true },
-    parentFolderId: { type: Schema.Types.ObjectId, ref: 'FileFolder', default: null },
-    createdBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
-    payload: { type: Schema.Types.Mixed, default: {} }
-  },
-  schemaOptions()
-);
-
-fileFolderSchema.index({ parentFolderId: 1, name: 1 }, { unique: true });
-
-module.exports = models.FileFolder || model('FileFolder', fileFolderSchema);
+module.exports = createSqlModel('file_folders', {
+  schema: TABLE_SCHEMAS.file_folders,
+  modelName: 'FileFolder',
+  uniqueFields: [['parentFolderId', 'name']]
+});

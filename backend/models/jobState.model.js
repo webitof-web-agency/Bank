@@ -1,14 +1,8 @@
-const { Schema, model, models } = require('mongoose');
-const { schemaOptions } = require('../utils/mongoose');
+const { createSqlModel } = require('../utils/sql-model');
+const { TABLE_SCHEMAS } = require('../config/tableSchemas');
 
-const jobStateSchema = new Schema(
-  {
-    key: { type: String, required: true, unique: true, trim: true, lowercase: true },
-    lastRunAt: { type: Date, default: null },
-    lastRunLabel: { type: String, default: '' },
-    payload: { type: Schema.Types.Mixed, default: {} }
-  },
-  schemaOptions()
-);
-
-module.exports = models.JobState || model('JobState', jobStateSchema);
+module.exports = createSqlModel('job_states', {
+  schema: TABLE_SCHEMAS.job_states,
+  modelName: 'JobState',
+  uniqueFields: ['key']
+});

@@ -6,28 +6,7 @@ import { useAuth } from '../../context/AuthContext';
 import { getImageUrl } from '../../api/api';
 import { cn } from '../../lib/cn';
 
-function hasPermission(user, permission) {
-  if (!permission || user?.isSuperAdmin) return true;
-  const requiredPermissions = Array.isArray(permission) ? permission : [permission];
-  return requiredPermissions.some((code) => user?.permissions?.includes(code));
-}
 
-function filterItem(item, user) {
-  if (item.children?.length) {
-    const children = item.children
-      .map((child) => filterItem(child, user))
-      .filter(Boolean);
-
-    if (!children.length) return null;
-    return { ...item, children };
-  }
-
-  if (!hasPermission(user, item.permission)) {
-    return null;
-  }
-
-  return item;
-}
 
 function isPathActive(pathname, path) {
   if (!path) return false;
@@ -112,7 +91,7 @@ function SidebarDropdown({ item, onNavigate, open, pathname, expanded, onToggle 
 }
 
 export function Sidebar({ open = false, onClose, onToggleCollapse }) {
-  const { user, branding } = useAuth();
+  const { user, branding, hasPermission: checkAuthPermission } = useAuth();
   const { pathname } = useLocation();
   const [expandedGroups, setExpandedGroups] = useState({});
 
@@ -120,16 +99,33 @@ export function Sidebar({ open = false, onClose, onToggleCollapse }) {
     setExpandedGroups({});
   }, [pathname]);
 
-  const visibleGroups = useMemo(() => (
-    navigationGroups
+  const visibleGroups = useMemo(() => {
+    function filterItem(item) {
+      if (item.children?.length) {
+        const children = item.children
+          .map((child) => filterItem(child))
+          .filter(Boolean);
+
+        if (!children.length) return null;
+        return { ...item, children };
+      }
+
+      if (item.permission && !checkAuthPermission(item.permission)) {
+        return null;
+      }
+
+      return item;
+    }
+
+    return navigationGroups
       .map((group) => ({
         ...group,
         items: group.items
-          .map((item) => filterItem(item, user))
+          .map((item) => filterItem(item))
           .filter(Boolean)
       }))
-      .filter((group) => group.items.length > 0)
-  ), [user]);
+      .filter((group) => group.items.length > 0);
+  }, [user, checkAuthPermission]);
 
   return (
     <>
@@ -200,7 +196,7 @@ export function SidebarToggle({ onClick }) {
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex h-10 w-10 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-900"
+      className="inline-flex h-10 w-10 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-[color-mix(in_srgb,var(--primary)_8%,transparent)] hover:text-[var(--primary)]"
       aria-label="Toggle navigation"
     >
       <Menu size={20} strokeWidth={1.8} />

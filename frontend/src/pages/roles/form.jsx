@@ -21,7 +21,11 @@ function collectPageCodes(page = {}) {
 }
 
 export function RoleForm({ value, groups = [], onChange, onSubmit, onCancel, saving, isEdit }) {
-  const selectedCodes = new Set(value.permissionCodes || []);
+  const isAdmin = value?.code === 'admin';
+  const allAvailableCodes = groups.flatMap((section) => 
+    (section.pages || []).flatMap((page) => collectPageCodes(page))
+  );
+  const selectedCodes = new Set(isAdmin ? allAvailableCodes : (value.permissionCodes || []));
   const primary = 'var(--primary, #1661F6)';
 
   function updateCodes(codes = []) {
@@ -114,9 +118,10 @@ export function RoleForm({ value, groups = [], onChange, onSubmit, onCancel, sav
           <label className="flex items-center gap-2.5 text-[13px] font-medium text-slate-700 cursor-pointer select-none">
             <input
               type="checkbox"
-              checked={notificationsEnabled}
+              checked={isAdmin || notificationsEnabled}
+              disabled={isAdmin}
               onChange={toggleNotifications}
-              className="w-4 h-4 rounded border-slate-300 focus:ring-[var(--primary,#1661F6)]"
+              className="w-4 h-4 rounded border-slate-300 focus:ring-[var(--primary,#1661F6)] disabled:opacity-60 disabled:cursor-not-allowed"
               style={{ accentColor: primary }}
             />
             Enable notifications
@@ -166,8 +171,9 @@ export function RoleForm({ value, groups = [], onChange, onSubmit, onCancel, sav
                       <input
                         type="checkbox"
                         checked={isSectionSelected}
+                        disabled={isAdmin}
                         onChange={() => updateCodes(sectionCodes)}
-                        className="w-4 h-4 rounded border-slate-300 cursor-pointer focus:ring-[var(--primary,#1661F6)]"
+                        className="w-4 h-4 rounded border-slate-300 cursor-pointer focus:ring-[var(--primary,#1661F6)] disabled:opacity-60 disabled:cursor-not-allowed"
                         style={{ accentColor: primary }}
                       />
                       <div>
@@ -191,8 +197,9 @@ export function RoleForm({ value, groups = [], onChange, onSubmit, onCancel, sav
                               <input
                                 type="checkbox"
                                 checked={isPageSelected}
+                                disabled={isAdmin}
                                 onChange={() => updateCodes(pageCodes)}
-                                className="w-4 h-4 rounded border-slate-300 cursor-pointer focus:ring-[var(--primary,#1661F6)]"
+                                className="w-4 h-4 rounded border-slate-300 cursor-pointer focus:ring-[var(--primary,#1661F6)] disabled:opacity-60 disabled:cursor-not-allowed"
                                 style={{ accentColor: primary }}
                               />
                               <div>
@@ -211,8 +218,9 @@ export function RoleForm({ value, groups = [], onChange, onSubmit, onCancel, sav
                                   <input
                                     type="checkbox"
                                     checked={isChecked}
+                                    disabled={isAdmin}
                                     onChange={() => togglePermission(permission.code)}
-                                    className="mt-0.5 w-4 h-4 rounded border-slate-300 cursor-pointer focus:ring-[var(--primary,#1661F6)]"
+                                    className="mt-0.5 w-4 h-4 rounded border-slate-300 cursor-pointer focus:ring-[var(--primary,#1661F6)] disabled:opacity-60 disabled:cursor-not-allowed"
                                     style={{ accentColor: primary }}
                                   />
                                   <div>

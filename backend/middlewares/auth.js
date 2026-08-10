@@ -45,7 +45,7 @@ function hasPermission(user, permission) {
   if (!user) return false;
   if (user.isSuperAdmin) return true;
 
-  const grantedPermissions = new Set(Array.isArray(user.permissions) ? user.permissions : []);
+  const grantedPermissions = new Set(expandPermissionCodes(Array.isArray(user.permissions) ? user.permissions : []));
   const requestedPermissions = expandPermissionCodes([permission]);
   return requestedPermissions.some((code) => grantedPermissions.has(code));
 }

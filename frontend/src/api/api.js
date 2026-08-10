@@ -2,9 +2,34 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 const CACHE_PREFIX = 'bank-api-cache:v2';
 const CACHE_TTL_MS = 15 * 60 * 1000;
 const memoryCache = new Map();
+const AUTH_TOKEN_KEYS = ['bank-auth-token', 'webitof-auth-token'];
 
 function isBrowser() {
   return typeof window !== 'undefined';
+}
+
+function readStoredAuthToken() {
+  if (!isBrowser()) return '';
+  for (const key of AUTH_TOKEN_KEYS) {
+    const value = window.localStorage.getItem(key);
+    if (value) return value;
+  }
+  return '';
+}
+
+function appendFileAccessToken(url, token = '') {
+  const safeUrl = String(url || '').trim();
+  if (!safeUrl || safeUrl.includes('token=')) {
+    return safeUrl;
+  }
+
+  const accessToken = String(token || readStoredAuthToken() || '').trim();
+  if (!accessToken) {
+    return safeUrl;
+  }
+
+  const separator = safeUrl.includes('?') ? '&' : '?';
+  return `${safeUrl}${separator}token=${encodeURIComponent(accessToken)}`;
 }
 
 function getCacheKey(method, path, token) {
@@ -133,7 +158,7 @@ function buildQuery(query = {}) {
 export const api = {
   auth: {
     login: (payload) => request('/auth/login', { method: 'POST', body: payload }),
-    me: (token) => request('/auth/me', { token }),
+    me: (token) => request('/auth/me', { token, skipCache: true }),
     forgotPassword: (payload) => request('/auth/forgot-password', { method: 'POST', body: payload }),
     resetPassword: (payload) => request('/auth/reset-password', { method: 'POST', body: payload }),
     changePassword: (token, payload) => request('/auth/change-password', { method: 'POST', token, body: payload }),
@@ -213,7 +238,7 @@ export const api = {
     createFolder: (token, payload) => request('/files/folders', { method: 'POST', token, body: payload }),
     renameFolder: (token, folderId, name) => request(`/files/folders/${folderId}`, { method: 'PUT', token, body: { name } }),
     deleteFolder: (token, folderId) => request(`/files/folders/${folderId}`, { method: 'DELETE', token }),
-    viewUrl: (id) => `${API_BASE_URL}/files/${id}/view`
+    viewUrl: (id, token = readStoredAuthToken()) => appendFileAccessToken(`${API_BASE_URL}/files/${id}/view`, token)
   },
   resources: {
     list: (path, token, search = '', query = {}) => {
@@ -243,6 +268,9 @@ export function getImageUrl(url) {
   if (!url) return '';
   if (url.startsWith('http')) return url;
   if (url.startsWith('/api')) {
+    if (/^\/api\/files\/[^/]+\/view(?:\?.*)?$/i.test(url)) {
+      return appendFileAccessToken(url);
+    }
     const base = API_BASE_URL.endsWith('/api') ? API_BASE_URL.slice(0, -4) : API_BASE_URL;
     return `${base}${url}`;
   }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Edit2, Mail, Phone, Shield, User, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
@@ -35,7 +35,7 @@ function DetailRow({ label, value }) {
   return (
     <div className="grid grid-cols-[180px_1fr] gap-4 border-b border-slate-100 py-4 last:border-b-0">
       <div className="text-[13px] font-medium text-slate-500">{label}</div>
-      <div className="text-[14px] font-medium text-slate-900">{value || '—'}</div>
+      <div className="text-[14px] font-medium text-slate-900">{value || 'â€”'}</div>
     </div>
   );
 }
@@ -137,9 +137,10 @@ export function EmployeeDetailPage() {
 
   const employeeName = user.fullName || user.name || 'Employee';
   const employeeCode = user.code || suggestEmployeeCode(user.fullName || user.name, user.username);
-  const employeeMobile = formatEmployeePhone(user.mobileNo || user.phone || '');
+  const employeeMobile = formatEmployeePhone(user.mobileNo || '');
   const employeeBranch = branchLookup.get(String(user.branchCode || '').trim().toUpperCase());
-  const readableLastLogin = user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString() : '—';
+  const employeePayload = user.payload || {};
+  const readableLastLogin = user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString() : 'â€”';
 
   return (
     <div className="space-y-6">
@@ -227,6 +228,9 @@ export function EmployeeDetailPage() {
               <Card className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                 <div className="divide-y divide-slate-100 px-6">
                   <DetailRow label="Employee Name" value={employeeName} />
+                  <DetailRow label="Father / Husband Name" value={user.fatherOrHusbandName || employeePayload.fatherOrHusbandName} />
+                  <DetailRow label="Date of Birth" value={user.dateOfBirth || employeePayload.dateOfBirth} />
+                  <DetailRow label="Appointment Date" value={user.appointmentDate || employeePayload.appointmentDate} />
                   <DetailRow label="Gender" value={user.gender} />
                   <DetailRow label="Email" value={user.email} />
                   <DetailRow label="Mobile No" value={employeeMobile} />
@@ -241,6 +245,15 @@ export function EmployeeDetailPage() {
                   <DetailRow label="Login Username" value={user.username} />
                   <DetailRow label="Designation" value={user.designation} />
                   <DetailRow label="Branch" value={formatBranchLabel(employeeBranch) || user.branchCode} />
+                  <DetailRow label="Category" value={user.category || employeePayload.category} />
+                  <DetailRow label="Caste" value={user.caste || employeePayload.caste} />
+                  <DetailRow label="Qualification" value={user.qualification || employeePayload.qualification} />
+                  <DetailRow label="Basic Salary" value={String(user.basicSalary ?? employeePayload.basicSalary ?? "")} />
+                  <DetailRow label="Housing Loan" value={String(user.housingLoan ?? employeePayload.housingLoan ?? "")} />
+                  <DetailRow label="Vehicle Loan" value={String(user.vehicleLoan ?? employeePayload.vehicleLoan ?? "")} />
+                  <DetailRow label="Grain Advance" value={String(user.grainAdvance ?? employeePayload.grainAdvance ?? "")} />
+                  <DetailRow label="Retired" value={(user.retired ?? employeePayload.retired) ? "Yes" : "No"} />
+                  <DetailRow label="Retired Date" value={user.retiredDate || employeePayload.retiredDate} />
                   <DetailRow label="Status" value={statusLabel} />
                   <DetailRow
                     label="Assigned Role"
@@ -297,7 +310,7 @@ export function EmployeeDetailPage() {
                             </div>
                             <div className="flex flex-col gap-1">
                               <span className="font-semibold text-slate-700 uppercase tracking-wider text-[10px]">Device & Browser</span>
-                              <span className="font-medium text-slate-600">Windows 11 <span className="text-slate-300 mx-1">•</span> Chrome 120</span>
+                              <span className="font-medium text-slate-600">Windows 11 <span className="text-slate-300 mx-1">â€¢</span> Chrome 120</span>
                             </div>
                           </div>
                         </div>
@@ -339,3 +352,4 @@ export function EmployeeDetailPage() {
 }
 
 export default EmployeeDetailPage;
+

@@ -2,7 +2,7 @@
   "name": "webitof-bank-backend",
   "version": "1.0.0",
   "private": true,
-  "description": "Node.js + MongoDB backend for the Webitof access and file management app",
+  "description": "Node.js + PostgreSQL backend for the Webitof access and file management app",
   "main": "server.js",
   "type": "commonjs",
   "scripts": {
@@ -15,13 +15,14 @@
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",
+    "embedded-postgres": "^18.4.0-beta.17",
     "express": "^4.21.2",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.1",
     "multer": "^2.0.2",
     "nodemailer": "^6.9.16",
-    "mongoose": "^8.17.1"
+    "pg": "^8.12.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.9"

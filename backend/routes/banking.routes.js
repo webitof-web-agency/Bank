@@ -4,14 +4,6 @@ const banking = require('../controllers/banking.controller');
 
 const router = express.Router();
 
-function registerCrud(basePath, controllerGroup, readPermission, writePermission) {
-  router.get(basePath, requirePermission(readPermission), controllerGroup.list);
-  router.post(basePath, requirePermission(writePermission), controllerGroup.create);
-  router.get(`${basePath}/:id`, requirePermission(readPermission), controllerGroup.get);
-  router.put(`${basePath}/:id`, requirePermission(writePermission), controllerGroup.update);
-  router.delete(`${basePath}/:id`, requirePermission(writePermission), controllerGroup.delete);
-}
-
 router.get('/dashboard', requirePermission('dashboard.read'), banking.reports.dashboard);
 router.get('/meta', requirePermission('dashboard.read'), banking.reports.lookups);
 router.get('/lookups', requirePermission('dashboard.read'), banking.reports.lookups);
@@ -22,8 +14,19 @@ router.put('/masters/society', requirePermission('society.write'), banking.resou
 router.get('/masters/committee', requirePermission('committee.read'), banking.resources.committee.get);
 router.put('/masters/committee', requirePermission('committee.write'), banking.resources.committee.update);
 
+function registerCrud(basePath, controllerGroup, readPermission, writePermission) {
+  const readPermissions = Array.isArray(readPermission) ? readPermission : [readPermission];
+  const writePermissions = Array.isArray(writePermission) ? writePermission : [writePermission];
+  router.get(basePath, requirePermission(...readPermissions), controllerGroup.list);
+  router.post(basePath, requirePermission(...writePermissions), controllerGroup.create);
+  router.get(`${basePath}/:id`, requirePermission(...readPermissions), controllerGroup.get);
+  router.put(`${basePath}/:id`, requirePermission(...writePermissions), controllerGroup.update);
+  router.delete(`${basePath}/:id`, requirePermission(...writePermissions), controllerGroup.delete);
+}
+
 registerCrud('/masters/branches', banking.resources.branches, 'branches.read', 'branches.write');
 registerCrud('/masters/employees', banking.resources.employees, 'employees.read', 'employees.write');
+registerCrud('/masters/managers', banking.resources.managers, ['employees.read', 'users.manage'], ['employees.write', 'users.manage']);
 registerCrud('/masters/members', banking.resources.members, 'members.read', 'members.write');
 registerCrud('/masters/ledgers', banking.resources.ledgers, 'ledgers.read', 'ledgers.write');
 registerCrud('/masters/rates', banking.resources.rates, 'rates.read', 'rates.write');
@@ -66,3 +69,4 @@ router.get('/reports/branch-list', requirePermission('reports.read'), banking.re
 router.get('/reports/dividend-report', requirePermission('reports.read'), banking.reports.dividendReport);
 
 module.exports = router;
+

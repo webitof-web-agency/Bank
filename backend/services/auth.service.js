@@ -15,6 +15,7 @@ const {
   expandPermissionCodes,
   isKnownPermissionCode
 } = require('../config/permissionCatalog');
+const { getPasswordHashRounds } = require('../config/security');
 const { sendPasswordResetOtpEmail } = require('./mailer.service');
 const { createNotification } = require('./notification.service');
 const {
@@ -23,6 +24,7 @@ const {
   deleteFolder,
   ensureEntityFolder
 } = require('./file.service');
+const { buildFileViewUrl } = require('../utils/file-url');
 
 function normalizeEmail(value) {
   return String(value || '').trim().toLowerCase();
@@ -43,6 +45,14 @@ function normalizeText(value) {
 function normalizePhone(value = '') {
   const digits = String(value || '').replace(/[^\d]/g, '');
   return digits ? `+${digits}` : '';
+}
+
+function isUniqueConstraintError(error) {
+  return Boolean(error) && (
+    error.code === '23505'
+    || error.code === 11000
+    || error.dbCode === 'ER_DUP_ENTRY'
+  );
 }
 
 function normalizeStatus(value, fallback = 'Active') {
@@ -93,7 +103,7 @@ function signToken(payload) {
 }
 
 async function hashPassword(password) {
-  return bcrypt.hash(String(password), 10);
+  return bcrypt.hash(String(password), getPasswordHashRounds());
 }
 
 async function comparePassword(password, hash) {
@@ -234,10 +244,8 @@ function applyStaffFields(user, data = {}) {
     user.branchCode = normalizeUpper(data.branchCode);
   }
 
-  if (data.mobileNo !== undefined || data.phone !== undefined) {
-    const nextMobile = normalizePhone(data.mobileNo !== undefined ? data.mobileNo : data.phone);
-    user.mobileNo = nextMobile;
-    user.phone = nextMobile;
+  if (data.mobileNo !== undefined) {
+    user.mobileNo = normalizePhone(data.mobileNo);
   }
 
   if (data.status !== undefined) {
@@ -310,14 +318,13 @@ async function buildAccessProfile(userDoc) {
     name: user.name || user.fullName || '',
     username: user.username,
     email: user.email,
-    phone: normalizePhone(user.phone || user.mobileNo || ''),
-    mobileNo: normalizePhone(user.mobileNo || user.phone || ''),
+    mobileNo: normalizePhone(user.mobileNo || ''),
     address: user.address || '',
     gender: user.gender || '',
     designation: user.designation || '',
     branchCode: user.branchCode || '',
     status: user.status || (user.isActive !== false ? 'Active' : 'Inactive'),
-    avatarUrl: user.avatarUrl || '',
+    avatarUrl: buildFileViewUrl(user.avatarFileId || user.avatarUrl || ''),
     avatarFileId: user.avatarFileId ? String(user.avatarFileId) : null,
     documentsFolderId: user.documentsFolderId ? String(user.documentsFolderId) : null,
     documents: user.documents || {},
@@ -385,7 +392,7 @@ async function createPasswordResetRequest(identifier, meta = {}) {
   }
 
   const otp = generatePasswordResetOtp();
-  const otpHash = await bcrypt.hash(otp, 10);
+  const otpHash = await bcrypt.hash(otp, getPasswordHashRounds());
 
   user.passwordReset = {
     otpHash,
@@ -552,7 +559,7 @@ async function listUsers(search = '') {
           { name: { $regex: term, $options: 'i' } },
           { username: { $regex: term, $options: 'i' } },
           { email: { $regex: term, $options: 'i' } },
-          { phone: { $regex: term, $options: 'i' } },
+
           { mobileNo: { $regex: term, $options: 'i' } },
           { code: { $regex: term, $options: 'i' } },
           { branchCode: { $regex: term, $options: 'i' } },
@@ -665,43 +672,87 @@ async function seedUserDefinition(definition = {}) {
   }
 
   const passwordHash = await hashPassword(password);
-  const code = normalizeUpper(definition.code || await generateNextEmployeeCode());
-  const patch = {
-    code,
-    fullName,
-    name: normalizeText(definition.name || fullName),
-    username,
-    email,
-    passwordHash,
-    phone: normalizePhone(definition.phone || ''),
-    mobileNo: normalizePhone(definition.mobileNo || definition.phone || ''),
-    address: String(definition.address || '').trim(),
-    gender: String(definition.gender || '').trim(),
-    designation: normalizeText(definition.designation),
-    branchCode: normalizeUpper(definition.branchCode),
-    status: normalizeStatus(definition.status, definition.isActive === false ? 'Inactive' : 'Active'),
-    avatarUrl: String(definition.avatarUrl || '').trim(),
-    avatarFileId: definition.avatarFileId || null,
-    isActive: definition.isActive !== false,
-    roles: roleIds,
-    payload: definition.payload || {}
+  const explicitCode = definition.code !== undefined ? normalizeUpper(definition.code) : '';
+  const seedCode = explicitCode || await generateNextEmployeeCode();
+
+  const buildPatch = (codeValue, includeCode = true) => {
+    const patch = {
+      fullName,
+      name: normalizeText(definition.name || fullName),
+      username,
+      email,
+      passwordHash,
+
+      mobileNo: definition.mobileNo !== undefined ? normalizePhone(definition.mobileNo) : undefined,
+      address: definition.address !== undefined ? String(definition.address).trim() : undefined,
+      gender: definition.gender !== undefined ? String(definition.gender).trim() : undefined,
+      designation: definition.designation !== undefined ? normalizeText(definition.designation) : undefined,
+      branchCode: definition.branchCode !== undefined ? normalizeUpper(definition.branchCode) : undefined,
+      status: definition.status !== undefined ? normalizeStatus(definition.status, definition.isActive === false ? 'Inactive' : 'Active') : undefined,
+      avatarUrl: String(definition.avatarUrl || '').trim(),
+      avatarFileId: definition.avatarFileId || null,
+      isActive: definition.isActive !== false,
+      roles: roleIds,
+      payload: definition.payload || {}
+    };
+
+    if (includeCode) {
+      patch.code = codeValue;
+    }
+
+    return patch;
   };
 
-  const existing = await User.findOne({
-    $or: [
-      { email },
-      { username }
-    ]
-  });
+  const findSeededUser = async (codeValue) => {
+    const clauses = [{ email }, { username }];
+    if (codeValue) {
+      clauses.push({ code: codeValue });
+    }
+    return User.findOne({ $or: clauses });
+  };
 
+  const existing = await findSeededUser(explicitCode || seedCode);
   if (existing) {
-    existing.set(patch);
+    existing.set(buildPatch(existing.code || seedCode, false));
     await existing.save();
     return buildAccessProfile(existing);
   }
 
-  const user = await User.create(patch);
-  return buildAccessProfile(user);
+  let nextCode = seedCode;
+  const maxAttempts = explicitCode ? 1 : 5;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      const user = await User.create({ ...buildPatch(nextCode), code: nextCode });
+      return buildAccessProfile(user);
+    } catch (error) {
+      if (!isUniqueConstraintError(error)) {
+        throw error;
+      }
+
+      const retryExisting = await findSeededUser(nextCode);
+      if (retryExisting) {
+        retryExisting.set(buildPatch(retryExisting.code || nextCode, false));
+        await retryExisting.save();
+        return buildAccessProfile(retryExisting);
+      }
+
+      if (explicitCode) {
+        throw error;
+      }
+
+      nextCode = await generateNextEmployeeCode();
+    }
+  }
+
+  const fallback = await findSeededUser(nextCode);
+  if (fallback) {
+    fallback.set(buildPatch(fallback.code || nextCode, false));
+    await fallback.save();
+    return buildAccessProfile(fallback);
+  }
+
+  throw new Error('Unable to seed user definition');
 }
 
 async function createUser(data = {}) {
@@ -733,8 +784,8 @@ async function createUser(data = {}) {
     username,
     email,
     passwordHash,
-    phone: normalizePhone(data.phone || data.mobileNo || ''),
-    mobileNo: normalizePhone(data.mobileNo || data.phone || ''),
+
+    mobileNo: data.mobileNo !== undefined ? normalizePhone(data.mobileNo) : undefined,
     address: String(data.address || '').trim(),
     gender: String(data.gender || '').trim(),
     designation: String(data.designation || '').trim(),
@@ -782,7 +833,7 @@ async function updateUser(userId, data = {}) {
   }
   if (data.username !== undefined) user.username = normalizeUsername(data.username);
   if (data.email !== undefined) user.email = normalizeEmail(data.email);
-  if (data.phone !== undefined) user.phone = normalizePhone(data.phone);
+
   if (data.mobileNo !== undefined) user.mobileNo = normalizePhone(data.mobileNo);
   if (data.address !== undefined) user.address = String(data.address || '').trim();
   if (data.gender !== undefined) user.gender = String(data.gender || '').trim();
@@ -987,6 +1038,11 @@ async function seedBootstrapAdmin() {
   const bootstrapUsername = normalizeUsername(process.env.BOOTSTRAP_ADMIN_USERNAME || bootstrapEmail);
   const bootstrapPassword = String(process.env.BOOTSTRAP_ADMIN_PASSWORD || 'Admin@12345').trim();
   const bootstrapName = String(process.env.BOOTSTRAP_ADMIN_NAME || 'System Admin').trim() || 'System Admin';
+  const bootstrapCode = normalizeUpper(process.env.BOOTSTRAP_ADMIN_CODE || 'EMP-1000');
+  const bootstrapMobileNo = String(process.env.BOOTSTRAP_ADMIN_MOBILE_NO || '').trim();
+  const bootstrapAddress = String(process.env.BOOTSTRAP_ADMIN_ADDRESS || '').trim();
+  const bootstrapGender = String(process.env.BOOTSTRAP_ADMIN_GENDER || '').trim();
+  const bootstrapDesignation = String(process.env.BOOTSTRAP_ADMIN_DESIGNATION || 'System Admin').trim();
 
   if (!bootstrapEmail || !bootstrapPassword) {
     return null;
@@ -996,10 +1052,15 @@ async function seedBootstrapAdmin() {
   if (!adminRole) return null;
 
   const profile = await seedUserDefinition({
+    code: bootstrapCode,
     fullName: bootstrapName,
     username: bootstrapUsername,
     email: bootstrapEmail,
     password: bootstrapPassword,
+    mobileNo: bootstrapMobileNo || undefined,
+    address: bootstrapAddress || undefined,
+    gender: bootstrapGender || undefined,
+    designation: bootstrapDesignation || undefined,
     roleCodes: ['admin']
   });
 
@@ -1063,3 +1124,12 @@ module.exports = {
   updateRolePermissions,
   updateUser
 };
+
+
+
+
+
+
+
+
+

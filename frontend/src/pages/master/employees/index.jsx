@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
 import { Plus, Edit2, Trash2, Eye, Key, Users, UserCheck, User, UserX } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
@@ -103,7 +103,7 @@ export function EmployeesPage() {
     api.users.list(token, search)
       .then((usersRes) => {
         if (!mounted) return;
-        setRows((usersRes.data || []).filter((user) => user.email !== 'admin@bank.local'));
+        setRows(usersRes.data || []);
       })
       .catch((error) => {
         if (!mounted) return;
@@ -294,7 +294,7 @@ export function EmployeesPage() {
       )
     },
     { key: 'designation', label: 'Designation', sortable: true, render: (row) => <span className="text-slate-700">{row.designation || '-'}</span> },
-    { key: 'mobileNo', label: 'Mobile No', sortable: true, render: (row) => <span className="text-slate-700">{formatEmployeePhone(row.mobileNo || row.phone || '') || '-'}</span> },
+    { key: 'mobileNo', label: 'Mobile No', sortable: true, render: (row) => <span className="text-slate-700">{formatEmployeePhone(row.mobileNo || '') || '-'}</span> },
     { key: 'username', label: 'Login Username', sortable: true, render: (row) => <span className="text-slate-700">{row.username}</span> },
     {
       key: 'branchCode',
@@ -480,3 +480,4 @@ export function EmployeesPage() {
 }
 
 export default EmployeesPage;
+

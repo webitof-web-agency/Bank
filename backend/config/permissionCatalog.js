@@ -1,4 +1,4 @@
-﻿const ACTION_LABELS = {
+const ACTION_LABELS = {
   create: 'Create',
   delete: 'Delete',
   edit: 'Edit',
@@ -137,25 +137,25 @@ const LEGACY_PERMISSION_ALIASES = {
   'files.write': pageCodes('workspace', 'files', ['view', 'create', 'edit']),
   'files.delete': pageCodes('workspace', 'files', ['delete']),
   'society.read': pageCodes('master', 'society', ['view']),
-  'society.write': pageCodes('master', 'society', ['view', 'edit']),
+  'society.write': pageCodes('master', 'society', ['edit']),
   'branches.read': pageCodes('master', 'branches', ['view']),
-  'branches.write': pageCodes('master', 'branches', ['view', 'create', 'edit', 'delete']),
+  'branches.write': pageCodes('master', 'branches', ['create', 'edit', 'delete']),
   'committee.read': pageCodes('master', 'committee', ['view']),
-  'committee.write': pageCodes('master', 'committee', ['view', 'create', 'edit', 'delete']),
+  'committee.write': pageCodes('master', 'committee', ['create', 'edit', 'delete']),
   'members.read': pageCodes('master', 'members', ['view']),
-  'members.write': pageCodes('master', 'members', ['view', 'create', 'edit', 'delete']),
+  'members.write': pageCodes('master', 'members', ['create', 'edit', 'delete']),
   'employees.read': pageCodes('master', 'employees', ['view']),
-  'employees.write': pageCodes('master', 'employees', ['view', 'create', 'edit', 'delete']),
+  'employees.write': pageCodes('master', 'employees', ['create', 'edit', 'delete']),
   'ledgers.read': pageCodes('master', 'ledgers', ['view']),
-  'ledgers.write': pageCodes('master', 'ledgers', ['view', 'create', 'edit', 'delete']),
+  'ledgers.write': pageCodes('master', 'ledgers', ['create', 'edit', 'delete']),
   'rates.read': pageCodes('master', 'rates', ['view']),
-  'rates.write': pageCodes('master', 'rates', ['view', 'create', 'edit', 'delete']),
+  'rates.write': pageCodes('master', 'rates', ['create', 'edit', 'delete']),
   'bank-accounts.read': pageCodes('master', 'bank-accounts', ['view']),
-  'bank-accounts.write': pageCodes('master', 'bank-accounts', ['view', 'create', 'edit', 'delete']),
+  'bank-accounts.write': pageCodes('master', 'bank-accounts', ['create', 'edit', 'delete']),
   'demands.read': pageCodes('master', 'demands', ['view']),
-  'demands.write': pageCodes('master', 'demands', ['view', 'create', 'edit', 'delete']),
+  'demands.write': pageCodes('master', 'demands', ['create', 'edit', 'delete']),
   'no-interest-members.read': pageCodes('master', 'no-interest-members', ['view']),
-  'no-interest-members.write': pageCodes('master', 'no-interest-members', ['view', 'create', 'edit', 'delete']),
+  'no-interest-members.write': pageCodes('master', 'no-interest-members', ['create', 'edit', 'delete']),
   'transactions.read': [
     ...pageCodes('transactions', 'member', ['view']),
     ...pageCodes('transactions', 'bank', ['view']),
@@ -165,16 +165,16 @@ const LEGACY_PERMISSION_ALIASES = {
     ...pageCodes('transactions', 'supporting', ['view'])
   ],
   'transactions.write': [
-    ...pageCodes('transactions', 'member', ['view', 'create', 'edit', 'delete']),
-    ...pageCodes('transactions', 'bank', ['view', 'create', 'edit', 'delete']),
-    ...pageCodes('transactions', 'employee', ['view', 'create', 'edit', 'delete']),
-    ...pageCodes('transactions', 'transfer-voucher', ['view', 'create', 'edit', 'delete']),
-    ...pageCodes('transactions', 'receipt-interest', ['view', 'create', 'edit', 'delete']),
-    ...pageCodes('transactions', 'supporting', ['view', 'create', 'edit', 'delete'])
+    ...pageCodes('transactions', 'member', ['create', 'edit', 'delete']),
+    ...pageCodes('transactions', 'bank', ['create', 'edit', 'delete']),
+    ...pageCodes('transactions', 'employee', ['create', 'edit', 'delete']),
+    ...pageCodes('transactions', 'transfer-voucher', ['create', 'edit', 'delete']),
+    ...pageCodes('transactions', 'receipt-interest', ['create', 'edit', 'delete']),
+    ...pageCodes('transactions', 'supporting', ['create', 'edit', 'delete'])
   ],
   'transactions.reverse': pageCodes('transactions', 'transfer-voucher', ['reverse']),
   'bank-transactions.read': pageCodes('transactions', 'bank', ['view']),
-  'bank-transactions.write': pageCodes('transactions', 'bank', ['view', 'create', 'edit', 'delete']),
+  'bank-transactions.write': pageCodes('transactions', 'bank', ['create', 'edit', 'delete']),
   'reports.read': [
     ...pageCodes('reports', 'account-statement-view', ['view']),
     ...pageCodes('reports', 'member-ledger', ['view']),
@@ -208,10 +208,10 @@ const LEGACY_PERMISSION_ALIASES = {
     ...pageCodes('reports', 'dividend-report', ['export', 'print'])
   ],
   'audit.read': pageCodes('admin', 'audit-trail', ['view']),
-  'users.manage': pageCodes('admin', 'users', ['view', 'create', 'edit', 'delete']),
-  'roles.manage': pageCodes('admin', 'roles', ['view', 'create', 'edit', 'delete']),
+  'users.manage': pageCodes('admin', 'users', ['create', 'edit', 'delete']),
+  'roles.manage': pageCodes('admin', 'roles', ['create', 'edit', 'delete']),
   'settings.read': pageCodes('admin', 'settings', ['view']),
-  'settings.write': pageCodes('admin', 'settings', ['view', 'edit'])
+  'settings.write': pageCodes('admin', 'settings', ['edit'])
 };
 
 const LEGACY_PERMISSION_CODES = Object.keys(LEGACY_PERMISSION_ALIASES);

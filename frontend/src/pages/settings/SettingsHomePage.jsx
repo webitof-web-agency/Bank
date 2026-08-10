@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom';
+﻿import { useNavigate } from 'react-router-dom';
 import { ArrowRight, Search, Sparkles } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { useAuth } from '../../context/AuthContext';
@@ -21,7 +21,7 @@ export function SettingsHomePage() {
     return acc;
   }, {});
 
-  const groupOrder = ['Overview', 'Configuration', 'Communication', 'Other'];
+  const groupOrder = ['Overview', 'Configuration', 'Communication', 'Administration', 'Other'];
 
   function toneStyles(tone = 'slate') {
     if (tone === 'emerald') return 'bg-emerald-50 text-emerald-600 border-emerald-100';

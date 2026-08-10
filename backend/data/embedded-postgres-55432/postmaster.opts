@@ -1,0 +1,1 @@
+D:/OfficeProject/Bank/backend/node_modules/@embedded-postgres/windows-x64/native/bin/postgres.exe "-D" "./data/embedded-postgres-55432" "-p" "15832"

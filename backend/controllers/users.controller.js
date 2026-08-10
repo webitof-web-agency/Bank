@@ -1,4 +1,4 @@
-const {
+﻿const {
   createUser,
   deleteUser,
   buildAccessProfile,
@@ -27,7 +27,6 @@ async function lookupController(req, res, next) {
         name: user.name,
         username: user.username,
         email: user.email,
-        phone: user.phone,
         mobileNo: user.mobileNo,
         address: user.address,
         gender: user.gender,
@@ -96,3 +95,4 @@ module.exports = {
   lookupController,
   updateController
 };
+

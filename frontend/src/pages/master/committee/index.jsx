@@ -9,25 +9,20 @@ import { CommitteeForm } from './form';
 
 const EMPTY_FORM = {
   chairman: '',
-  viceChairman: '',
-  directors: []
+  viceChairman1: '',
+  viceChairman2: '',
+  directors: [],
+  payload: {}
 };
 
 function buildFormFromRecord(record = {}) {
   return {
     chairman: record.chairman || '',
-    viceChairman: record.viceChairman || '',
-    directors: Array.isArray(record.directors) ? record.directors : []
+    viceChairman1: record.viceChairman || '',
+    viceChairman2: record.viceChairman2 || record.payload?.viceChairman2 || '',
+    directors: Array.isArray(record.directors) ? record.directors : [],
+    payload: record.payload || {}
   };
-}
-
-function InfoRow({ label, value }) {
-  return (
-    <div className="grid grid-cols-[180px_1fr] gap-4 border-b border-slate-100 py-4 last:border-b-0">
-      <div className="text-[13px] font-medium text-slate-500">{label}</div>
-      <div className="text-[14px] font-medium text-slate-900">{value || '-'}</div>
-    </div>
-  );
 }
 
 export function CommitteePage() {
@@ -72,7 +67,8 @@ export function CommitteePage() {
     try {
       const payload = {
         chairman: draft.chairman.trim(),
-        viceChairman: draft.viceChairman.trim(),
+        viceChairman: draft.viceChairman1.trim(),
+        viceChairman2: draft.viceChairman2.trim(),
         directors: draft.directors
       };
       const response = await api.banking.updateMaster('/masters/committee', token, payload);
@@ -148,8 +144,13 @@ export function CommitteePage() {
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Vice Chairman</p>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Vice Chairman 1</p>
               <p className="mt-2 text-sm font-semibold text-slate-900">{record?.viceChairman || '-'}</p>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Vice Chairman 2</p>
+              <p className="mt-2 text-sm font-semibold text-slate-900">{record?.payload?.viceChairman2 || '-'}</p>
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -170,7 +171,6 @@ export function CommitteePage() {
                 )}
               </div>
             </div>
-
             <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-gradient-to-r from-slate-50 to-white p-5 shadow-sm">
               <div className="flex items-center gap-4">
                 <div className="flex h-11 w-11 items-center justify-center rounded-[14px] bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary,#1661F6)]">

@@ -61,7 +61,7 @@ async function uploadFiles(req, res, next) {
     const entityId = String(req.body.entityId || '').trim();
     const documentType = String(req.body.documentType || '').trim();
     const folderId = req.body.folderId || null;
-    const isPublic = String(req.body.isPublic || 'true').toLowerCase() !== 'false';
+    const isPublic = String(req.body.isPublic || 'false').toLowerCase() === 'true';
     const uploaded = await saveUploads(files, {
       folderId,
       moduleName,
@@ -85,7 +85,9 @@ async function viewFile(req, res, next) {
     }
 
     res.setHeader('Content-Type', file.mimeType || 'application/octet-stream');
-    res.setHeader('Cache-Control', 'public, max-age=31536000');
+    res.setHeader('Cache-Control', 'private, no-store, max-age=0, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
     fs.createReadStream(file.localPath).pipe(res);
   } catch (error) {
     next(error);

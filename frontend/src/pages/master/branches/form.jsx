@@ -1,4 +1,4 @@
-import { Input, Textarea } from '../../../components/ui/Input';
+﻿import { Input, Textarea } from '../../../components/ui/Input';
 
 function FieldLabel({ children, required }) {
   return (
@@ -23,7 +23,7 @@ export function BranchForm({ value, setValue, onSubmit }) {
         </div>
 
         <div>
-          <FieldLabel required>Branch Name</FieldLabel>
+          <FieldLabel required>Branch Place</FieldLabel>
           <Input
             value={value.label || ''}
             onChange={(event) => setValue((current) => ({ ...current, label: event.target.value }))}
@@ -50,7 +50,7 @@ export function BranchForm({ value, setValue, onSubmit }) {
         </div>
 
         <div>
-          <FieldLabel>Phone</FieldLabel>
+          <FieldLabel>Phone No</FieldLabel>
           <Input
             value={value.phone || ''}
             onChange={(event) => setValue((current) => ({ ...current, phone: event.target.value }))}
@@ -87,3 +87,4 @@ export function BranchForm({ value, setValue, onSubmit }) {
 }
 
 export default BranchForm;
+

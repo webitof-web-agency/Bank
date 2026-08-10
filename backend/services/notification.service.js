@@ -2,7 +2,7 @@ const Notification = require('../models/notification.model');
 const User = require('../models/user.model');
 const { getSettings } = require('./settings.service');
 const { renderTemplate, sendMail } = require('./mailer.service');
-const { toResponse } = require('../utils/mongoose');
+const { toResponse } = require('../utils/response');
 const { emitNotificationChange } = require('./notificationHub');
 
 function cleanText(value, fallback = '') {

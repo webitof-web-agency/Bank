@@ -1,4 +1,4 @@
-import {
+﻿import {
   GitBranch,
   Users,
   ShieldCheck,
@@ -25,6 +25,15 @@ export const MASTER_LINKS = [
     icon: Users,
     permission: ['master.employees.view', 'admin.users.view'],
     description: 'Employee access, roles, and staff profile.',
+    group: 'Operations',
+    tone: 'emerald'
+  },
+  {
+    label: 'Manager Master',
+    path: '/app/master/managers',
+    icon: Users,
+    permission: ['employees.read', 'users.manage'],
+    description: 'Dedicated manager master view.',
     group: 'Operations',
     tone: 'emerald'
   },

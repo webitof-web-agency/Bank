@@ -32,7 +32,12 @@ function makeSummary(label, value, subLabel = '') {
   return { label, value, subLabel };
 }
 
-export function getReportDefaultFilters(reportKey = '', lookups = {}) {
+function getDefaultBranchCode(user = {}) {
+  if (user && user.isSuperAdmin) return '';
+  return String(user?.branchCode || '').trim().toUpperCase();
+}
+
+export function getReportDefaultFilters(reportKey = '', lookups = {}, user = {}) {
   if (reportKey === 'member-ledger') {
     return {
       memberCode: firstCode(lookups.members),
@@ -51,13 +56,13 @@ export function getReportDefaultFilters(reportKey = '', lookups = {}) {
 
   if (reportKey === 'summary-monthly') {
     return {
-      branchCode: firstBranch(lookups.branches),
+      branchCode: getDefaultBranchCode(user),
       month: currentMonthString()
     };
   }
 
   if (reportKey === 'demand-list-report') {
-    return { month: currentMonthString() };
+    return { branchCode: getDefaultBranchCode(user), month: currentMonthString() };
   }
 
   if (reportKey === 'dividend-report') {
@@ -70,6 +75,10 @@ export function getReportDefaultFilters(reportKey = '', lookups = {}) {
 
   if (['balance-sheet', 'trial-balance', 'cash-book', 'day-book', 'voucher-summary', 'profit-loss'].includes(reportKey)) {
     return { date: todayString() };
+  }
+
+  if (reportKey === 'all-member-list' || reportKey === 'branch-list-report' || reportKey === 'dividend-report') {
+    return { branchCode: getDefaultBranchCode(user) };
   }
 
   return {};
@@ -368,7 +377,7 @@ export function getReportConfig(reportKey = '') {
       description: 'Demand totals, recovery and pending balance.',
       filterMode: 'month-only',
       load: async (api, token, filters) => {
-        const response = await api.banking.reports.demandList(token, { month: filters.month || '' });
+        const response = await api.banking.reports.demandList(token, { month: filters.month || '', branchCode: filters.branchCode || '' });
         const rows = Array.isArray(response.data) ? response.data : [];
         return {
           title: 'Demand List',
@@ -431,7 +440,7 @@ export function getReportConfig(reportKey = '') {
       description: 'Complete member registry with status.',
       filterMode: 'none',
       load: async (api, token) => {
-        const response = await api.banking.reports.allMemberList(token);
+        const response = await api.banking.reports.allMemberList(token, { branchCode: filters.branchCode || '' });
         const rows = Array.isArray(response.data) ? response.data : [];
         const activeCount = rows.filter((row) => String(row.status || '').toLowerCase() === 'active').length;
         return {
@@ -461,7 +470,8 @@ export function getReportConfig(reportKey = '') {
       load: async (api, token, filters) => {
         const response = await api.banking.reports.paymentReceiptStatement(token, {
           dateFrom: filters.dateFrom || '',
-          dateTo: filters.dateTo || ''
+          dateTo: filters.dateTo || '',
+          branchCode: filters.branchCode || ''
         });
         const rows = Array.isArray(response.data) ? response.data : [];
         return {
@@ -489,7 +499,7 @@ export function getReportConfig(reportKey = '') {
       description: 'Branch directory with contact details.',
       filterMode: 'none',
       load: async (api, token) => {
-        const response = await api.banking.reports.branchList(token);
+        const response = await api.banking.reports.branchList(token, { branchCode: filters.branchCode || '' });
         const rows = Array.isArray(response.data) ? response.data : [];
         return {
           title: 'Branch List',
@@ -515,7 +525,7 @@ export function getReportConfig(reportKey = '') {
       description: 'Dividend calculation based on member share balance.',
       filterMode: 'rate',
       load: async (api, token, filters) => {
-        const response = await api.banking.reports.dividendReport(token, { rate: Number(filters.rate || 8) });
+        const response = await api.banking.reports.dividendReport(token, { rate: Number(filters.rate || 8), branchCode: filters.branchCode || '' });
         const rows = Array.isArray(response.data) ? response.data : [];
         const totalDividend = rows.reduce((sum, row) => sum + Number(row.dividendAmount || 0), 0);
         return {

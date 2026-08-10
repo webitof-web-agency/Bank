@@ -1,4 +1,4 @@
-import imageCompression from 'browser-image-compression';
+﻿import imageCompression from 'browser-image-compression';
 import { MEMBER_DOCUMENT_DEFS, createEmptyDocumentMap, hydrateDocumentMap, serializeDocumentMap } from '../../../components/master/documentUtils';
 
 export function stripPhoneDigits(value = '') {
@@ -78,9 +78,9 @@ export function getBranchMap(branches = []) {
 }
 
 export function formatMoney(value) {
-  if (value === '' || value === null || value === undefined) return '—';
+  if (value === '' || value === null || value === undefined) return '-';
   const number = Number(value);
-  if (!Number.isFinite(number)) return '—';
+  if (!Number.isFinite(number)) return '-';
   return new Intl.NumberFormat('en-IN').format(number);
 }
 
@@ -121,7 +121,10 @@ export function createEmptyMemberDraft(rows = []) {
     },
     nomineeName: '',
     nomineeRelation: '',
+    dismembered: false,
+    dismemberedDate: '',
     status: 'Active',
+    payload: {},
     documents: createEmptyDocumentMap(MEMBER_DOCUMENT_DEFS)
   };
 }
@@ -129,6 +132,7 @@ export function createEmptyMemberDraft(rows = []) {
 export function createMemberDraftFromRecord(member = {}) {
   const balances = member.balances || {};
   const depositBalance = member.depositBalance ?? balances.compulsoryDeposit ?? 0;
+  const payload = member.payload || {};
 
   return {
     code: member.code || '',
@@ -161,7 +165,10 @@ export function createMemberDraftFromRecord(member = {}) {
     },
     nomineeName: member.nomineeName || '',
     nomineeRelation: member.nomineeRelation || '',
+    dismembered: member.dismembered ?? payload.dismembered ?? false,
+    dismemberedDate: member.dismemberedDate || payload.dismemberedDate || '',
     status: member.status || 'Active',
+    payload,
     documents: hydrateDocumentMap(MEMBER_DOCUMENT_DEFS, member.documents || {})
   };
 }
@@ -171,6 +178,11 @@ export function buildMemberPayload(draft = {}) {
   const depositBalance = Number(draft.depositBalance);
   const loanOutstanding = Number(draft.loanOutstanding);
   const balances = draft.balances || {};
+  const payload = {
+    ...(draft.payload || {}),
+    dismembered: Boolean(draft.dismembered),
+    dismemberedDate: String(draft.dismemberedDate || '').trim()
+  };
 
   return {
     code: String(draft.code || '').trim().toUpperCase() || undefined,
@@ -205,6 +217,7 @@ export function buildMemberPayload(draft = {}) {
     nomineeRelation: String(draft.nomineeRelation || '').trim(),
     status: String(draft.status || 'Active').trim(),
     isActive: String(draft.status || 'Active').trim() !== 'Inactive',
+    payload,
     documents: serializeDocumentMap(draft.documents || {})
   };
 }

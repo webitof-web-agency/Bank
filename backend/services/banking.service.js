@@ -4,6 +4,7 @@ const {
   BANK_TRANSACTION_SEEDS,
   BRANCH_SEEDS,
   COMMITTEE_SEED,
+  MANAGER_SEEDS,
   DEMAND_SEEDS,
   EMPLOYEE_SEEDS,
   LEDGER_SEEDS,
@@ -18,6 +19,7 @@ const {
   BankTransaction,
   Branch,
   Committee,
+  Manager,
   Demand,
   Ledger,
   Member,
@@ -33,7 +35,8 @@ const {
   ensureEntityFolder
 } = require('./file.service');
 const { createNotification } = require('./notification.service');
-const { toResponse } = require('../utils/mongoose');
+const { toResponse } = require('../utils/response');
+const { buildFileViewUrl } = require('../utils/file-url');
 
 function cleanText(value, fallback = '') {
   const text = String(value ?? fallback).trim();
@@ -63,6 +66,65 @@ function toBool(value, fallback = false) {
     return fallback;
   }
   return Boolean(value);
+}
+
+const BRANCH_SCOPED_RESOURCES = new Set([
+  'branches',
+  'employees',
+  'managers',
+  'members',
+  'demands',
+  'noInterestMembers',
+  'vouchers',
+  'bankTransactions'
+]);
+
+function getScopedBranchCode(user = {}) {
+  if (!user || user.isSuperAdmin) {
+    return '';
+  }
+  return cleanUpper(user.branchCode);
+}
+
+function resolveBranchCode(user = {}, branchCode = '') {
+  const scopedBranchCode = getScopedBranchCode(user);
+  if (scopedBranchCode) {
+    return scopedBranchCode;
+  }
+  return cleanUpper(branchCode);
+}
+
+function isBranchScopedResource(resource) {
+  return BRANCH_SCOPED_RESOURCES.has(resource);
+}
+
+function applyBranchScope(query = {}, resource = '', user = {}) {
+  const branchCode = resolveBranchCode(user);
+  if (!branchCode) {
+    return query;
+  }
+  if (resource === 'branches') {
+    query.code = branchCode;
+    return query;
+  }
+  if (isBranchScopedResource(resource)) {
+    query.branchCode = branchCode;
+  }
+  return query;
+}
+
+function canAccessBranchRecord(resource, record = {}, user = {}) {
+  const branchCode = resolveBranchCode(user);
+  if (!branchCode) {
+    return true;
+  }
+  if (resource === 'branches') {
+    return cleanUpper(record.code || '') === branchCode;
+  }
+  if (!isBranchScopedResource(resource)) {
+    return true;
+  }
+  return cleanUpper(record.branchCode || '') === branchCode;
 }
 
 function toArray(value) {
@@ -123,6 +185,10 @@ function summarizeRecord(resource, record = {}) {
         code: record.code || '',
         name: record.fullName || record.name || ''
       }
+    : resource === 'managers'
+      ? {
+          name: [record.name, record.designation].filter(Boolean).join(' - ') || record.name || record.branchCode || ''
+        }
     : resource === 'members'
       ? {
           code: record.code || '',
@@ -188,6 +254,14 @@ function getResourceMeta(resource) {
       listUrl: '/app/master/committee',
       detailUrl: '/app/master/committee'
     },
+    managers: {
+      label: 'Manager',
+      module: 'master',
+      type: 'master',
+      severity: 'medium',
+      listUrl: '/app/master/managers',
+      detailUrl: '/app/master/managers'
+    },
     branches: {
       label: 'Branch',
       module: 'master',
@@ -196,7 +270,20 @@ function getResourceMeta(resource) {
       listUrl: '/app/master/branches',
       detailUrl: (record) => `/app/master/branches/${record.id}`
     },
-    employees: {
+    managers: {
+    model: Manager,
+    searchFields: ['name', 'designation', 'branchCode'],
+    normalize(data = {}) {
+      return {
+        name: cleanText(data.name),
+        designation: cleanText(data.designation),
+        branchCode: cleanUpper(data.branchCode),
+        isActive: toBool(data.isActive, true),
+        payload: toMixed(data.payload, {})
+      };
+    }
+  },
+  employees: {
       label: 'Employee',
       module: 'master',
       type: 'master',
@@ -434,8 +521,8 @@ function normalizeEmployeeUser(data = {}) {
     username,
     email,
     passwordHash: data.passwordHash || getEmployeePasswordHash(data),
-    phone: normalizePhone(data.phone || data.mobileNo),
-    mobileNo: normalizePhone(data.mobileNo || data.phone),
+    phone: data.phone !== undefined ? normalizePhone(data.phone) : undefined,
+    mobileNo: data.mobileNo !== undefined ? normalizePhone(data.mobileNo) : undefined,
     address: cleanText(data.address),
     gender: cleanText(data.gender),
     designation: cleanText(data.designation),
@@ -454,9 +541,11 @@ function normalizeEmployeeUser(data = {}) {
 function sanitizeEmployeeUserResponse(doc) {
   const response = toResponse(doc);
   if (!response) return null;
-  response.phone = normalizePhone(response.phone || response.mobileNo || '');
-  response.mobileNo = normalizePhone(response.mobileNo || response.phone || '');
+  response.phone = normalizePhone(response.phone || '');
+  response.mobileNo = normalizePhone(response.mobileNo || '');
   response.documentsFolderId = response.documentsFolderId ? String(response.documentsFolderId) : null;
+  response.avatarFileId = response.avatarFileId ? String(response.avatarFileId) : null;
+  response.avatarUrl = buildFileViewUrl(response.avatarFileId || response.avatarUrl || '');
   delete response.passwordHash;
   delete response.passwordReset;
   return response;
@@ -468,6 +557,7 @@ function sanitizeMemberResponse(doc) {
   response.mobileNo = normalizePhone(response.mobileNo || '');
   response.photoFileId = response.photoFileId ? String(response.photoFileId) : null;
   response.documentsFolderId = response.documentsFolderId ? String(response.documentsFolderId) : null;
+  response.photoUrl = buildFileViewUrl(response.photoFileId || response.photoUrl || '');
   return response;
 }
 
@@ -907,13 +997,27 @@ const RESOURCE_DEFS = {
     model: Committee,
     singleton: true,
     uniqueQuery: { key: 'default' },
-    searchFields: ['chairman', 'viceChairman', 'directors'],
+    searchFields: ['chairman', 'viceChairman', 'viceChairman2', 'directors'],
     normalize(data = {}) {
       return {
         key: 'default',
         chairman: cleanText(data.chairman),
         viceChairman: cleanText(data.viceChairman),
+        viceChairman2: cleanText(data.viceChairman2),
         directors: toArray(data.directors).map((item) => cleanText(item)).filter(Boolean),
+        payload: toMixed(data.payload, {})
+      };
+    }
+  },
+  managers: {
+    model: Manager,
+    searchFields: ['name', 'designation', 'branchCode'],
+    normalize(data = {}) {
+      return {
+        name: cleanText(data.name),
+        designation: cleanText(data.designation),
+        branchCode: cleanUpper(data.branchCode),
+        isActive: toBool(data.isActive, true),
         payload: toMixed(data.payload, {})
       };
     }
@@ -1028,7 +1132,7 @@ const RESOURCE_DEFS = {
   },
   bankTransactions: {
     model: BankTransaction,
-    searchFields: ['transactionNo', 'bankAccountCode', 'transactionType', 'linkedClientCode', 'linkedProjectCode', 'linkedInvoiceNo', 'linkedExpenseCode', 'notes', 'voucherNo', 'status'],
+    searchFields: ['transactionNo', 'bankAccountCode', 'transactionType', 'branchCode', 'linkedClientCode', 'linkedProjectCode', 'linkedInvoiceNo', 'linkedExpenseCode', 'notes', 'voucherNo', 'status'],
     normalize(data = {}) {
       return {
         transactionNo: cleanUpper(data.transactionNo),
@@ -1036,6 +1140,7 @@ const RESOURCE_DEFS = {
         bankAccountCode: cleanUpper(data.bankAccountCode),
         transactionType: cleanText(data.transactionType),
         amount: toNumber(data.amount, 0),
+        branchCode: cleanUpper(data.branchCode),
         linkedClientCode: cleanText(data.linkedClientCode),
         linkedProjectCode: cleanText(data.linkedProjectCode),
         linkedInvoiceNo: cleanText(data.linkedInvoiceNo),
@@ -1072,11 +1177,12 @@ const RESOURCE_DEFS = {
   },
   noInterestMembers: {
     model: NoInterestMember,
-    searchFields: ['code', 'memberCode', 'reason', 'status'],
+    searchFields: ['code', 'memberCode', 'branchCode', 'reason', 'status'],
     normalize(data = {}) {
       return {
         code: cleanUpper(data.code),
         memberCode: cleanUpper(data.memberCode),
+        branchCode: cleanUpper(data.branchCode),
         reason: cleanText(data.reason),
         fromDate: cleanText(data.fromDate),
         toDate: cleanText(data.toDate),
@@ -1154,6 +1260,7 @@ async function seedMany(model, filterFn, rows = []) {
 async function seedBankingData() {
   await seedOne(Society, { key: 'default' }, SOCIETY_SEED);
   await seedOne(Committee, { key: 'default' }, COMMITTEE_SEED);
+  await seedMany(Manager, (row) => ({ name: cleanText(row.name), designation: cleanText(row.designation), branchCode: cleanUpper(row.branchCode) }), MANAGER_SEEDS);
   await seedMany(Branch, (row) => ({ code: cleanUpper(row.code) }), BRANCH_SEEDS);
   await seedMany(Member, (row) => ({ code: cleanUpper(row.code) }), MEMBER_SEEDS);
   await seedMany(User, (row) => ({ code: cleanUpper(row.code) }), EMPLOYEE_SEEDS.map((row) => normalizeEmployeeUser({
@@ -1163,8 +1270,6 @@ async function seedBankingData() {
     username: row.username || cleanLower(row.code),
     email: row.email || `${cleanLower(row.code)}@bank.local`,
     password: row.password || row.code || row.name,
-        phone: normalizePhone(row.mobileNo),
-        mobileNo: normalizePhone(row.mobileNo),
     status: row.status || 'Active'
   })));
   await seedMany(Ledger, (row) => ({ code: cleanUpper(row.code) }), LEDGER_SEEDS);
@@ -1177,26 +1282,30 @@ async function seedBankingData() {
   return true;
 }
 
-async function listResource(resource, search = '') {
+async function listResource(resource, search = '', user = {}) {
   const def = getResourceDef(resource);
   if (resource === 'employees') {
-    const baseQuery = { code: { $ne: '' } };
-    const query = buildSearchQuery(def.searchFields, search);
-    const rows = await User.find(query.$or ? { $and: [baseQuery, query] } : baseQuery)
+    const baseQuery = applyBranchScope({ code: { $ne: '' } }, resource, user);
+    const searchQuery = buildSearchQuery(def.searchFields, search);
+    const query = searchQuery.$or ? { $and: [baseQuery, searchQuery] } : baseQuery;
+    const rows = await User.find(query)
       .sort({ updatedAt: -1 })
       .lean();
     return rows.map((row) => sanitizeEmployeeUserResponse(row));
   }
-  const query = buildSearchQuery(def.searchFields, search);
+  const query = applyBranchScope(buildSearchQuery(def.searchFields, search), resource, user);
   const rows = await def.model.find(query).sort({ updatedAt: -1 }).lean();
   return rows.map((row) => (resource === 'members' ? sanitizeMemberResponse(row) : toResponse(row)));
 }
 
-async function getResource(resource, id) {
+async function getResource(resource, id, user = {}) {
   const def = getResourceDef(resource);
   if (resource === 'employees') {
     const record = await User.findOne({ _id: id, code: { $ne: '' } }).lean();
-    return record ? sanitizeEmployeeUserResponse(record) : null;
+    if (!record || !canAccessBranchRecord(resource, record, user)) {
+      return null;
+    }
+    return sanitizeEmployeeUserResponse(record);
   }
   if (def.singleton) {
     const record = await def.model.findOne({ key: 'default' }).lean();
@@ -1204,14 +1313,23 @@ async function getResource(resource, id) {
   }
 
   const record = await def.model.findById(id).lean();
-  if (!record) return null;
+  if (!record || !canAccessBranchRecord(resource, record, user)) return null;
   return resource === 'members' ? sanitizeMemberResponse(record) : toResponse(record);
 }
 
 async function createResource(resource, data = {}, meta = {}) {
   const def = getResourceDef(resource);
+  const actorUser = meta.actorUser || {};
+
+  if (resource === 'branches' && getScopedBranchCode(actorUser)) {
+    const error = new Error('Branch access denied');
+    error.statusCode = 403;
+    throw error;
+  }
+
   if (resource === 'employees') {
     const payload = normalizeEmployeeUser(data);
+    payload.branchCode = resolveBranchCode(actorUser, payload.branchCode);
     if (meta.actorUserId) {
       payload.createdByUserId = meta.actorUserId;
       payload.updatedByUserId = meta.actorUserId;
@@ -1222,28 +1340,29 @@ async function createResource(resource, data = {}, meta = {}) {
     await notifySafely(buildResourceNotificationPayload(resource, 'created', response, meta));
     return response;
   }
+
+  const payload = def.normalize ? def.normalize(data) : clone(data);
+  if (isBranchScopedResource(resource)) {
+    payload.branchCode = resolveBranchCode(actorUser, payload.branchCode);
+  }
   if (resource === 'members') {
-    const payload = def.normalize ? def.normalize(data) : clone(data);
     if (!payload.code) {
       payload.code = await generateNextMemberCode();
     }
     if (!payload.membershipNo) {
       payload.membershipNo = await generateNextMembershipNo();
     }
-    if (meta.actorUserId) {
-      payload.createdByUserId = meta.actorUserId;
-      payload.updatedByUserId = meta.actorUserId;
-    }
-    const record = await def.model.create(payload);
-    await syncRecordDocumentsFolder(resource, record, meta.actorUserId || null);
-    const response = resource === 'members' ? sanitizeMemberResponse(record) : toResponse(record);
-    await notifySafely(buildResourceNotificationPayload(resource, 'created', response, meta));
-    return response;
   }
-  const payload = def.normalize ? def.normalize(data) : clone(data);
   if (meta.actorUserId) {
     payload.createdByUserId = meta.actorUserId;
     payload.updatedByUserId = meta.actorUserId;
+  }
+  if (resource === 'members') {
+    const record = await def.model.create(payload);
+    await syncRecordDocumentsFolder(resource, record, meta.actorUserId || null);
+    const response = sanitizeMemberResponse(record);
+    await notifySafely(buildResourceNotificationPayload(resource, 'created', response, meta));
+    return response;
   }
   if (def.singleton) {
     const record = await def.model.findOneAndUpdate(
@@ -1266,14 +1385,23 @@ async function createResource(resource, data = {}, meta = {}) {
 
 async function updateResource(resource, id, data = {}, meta = {}) {
   const def = getResourceDef(resource);
+  const actorUser = meta.actorUser || {};
+
+  if (resource === 'branches' && getScopedBranchCode(actorUser)) {
+    const error = new Error('Branch access denied');
+    error.statusCode = 403;
+    throw error;
+  }
+
   if (resource === 'employees') {
     const current = await User.findOne({ _id: id, code: { $ne: '' } });
-    if (!current) return null;
+    if (!current || !canAccessBranchRecord(resource, current.toObject(), actorUser)) return null;
     const payload = normalizeEmployeeUser({
       ...current.toObject(),
       ...data,
       passwordHash: current.passwordHash
     });
+    payload.branchCode = resolveBranchCode(actorUser, current.branchCode);
     if (meta.actorUserId) {
       payload.updatedByUserId = meta.actorUserId;
     }
@@ -1284,12 +1412,14 @@ async function updateResource(resource, id, data = {}, meta = {}) {
     await notifySafely(buildResourceNotificationPayload(resource, 'updated', response, meta));
     return response;
   }
+
   if (resource === 'members') {
     const current = await Member.findById(id);
-    if (!current) return null;
+    if (!current || !canAccessBranchRecord(resource, current.toObject(), actorUser)) return null;
 
     const previousPhotoFileId = current.photoFileId ? String(current.photoFileId) : '';
     const payload = def.normalize ? def.normalize({ ...current.toObject(), ...data }) : clone({ ...current.toObject(), ...data });
+    payload.branchCode = resolveBranchCode(actorUser, current.branchCode);
     payload.code = payload.code || current.code || await generateNextMemberCode();
     payload.membershipNo = payload.membershipNo || current.membershipNo || await generateNextMembershipNo();
     if (meta.actorUserId) {
@@ -1306,12 +1436,12 @@ async function updateResource(resource, id, data = {}, meta = {}) {
     await notifySafely(buildResourceNotificationPayload(resource, 'updated', response, meta));
     return response;
   }
-  const payload = def.normalize ? def.normalize({ ...data, ...(def.singleton ? { key: 'default' } : {}) }) : clone(data);
-  if (meta.actorUserId) {
-    payload.updatedByUserId = meta.actorUserId;
-  }
 
   if (def.singleton) {
+    const payload = def.normalize ? def.normalize({ ...data, ...(def.singleton ? { key: 'default' } : {}) }) : clone(data);
+    if (meta.actorUserId) {
+      payload.updatedByUserId = meta.actorUserId;
+    }
     const record = await def.model.findOneAndUpdate(
       def.uniqueQuery || { key: 'default' },
       buildUpsertUpdate(def.uniqueQuery || { key: 'default' }, payload),
@@ -1324,520 +1454,63 @@ async function updateResource(resource, id, data = {}, meta = {}) {
     return response;
   }
 
-  const record = await def.model.findByIdAndUpdate(id, { $set: payload }, { new: true, runValidators: true }).lean();
-  if (!record) return null;
+  const current = await def.model.findById(id);
+  if (!current || !canAccessBranchRecord(resource, current.toObject(), actorUser)) return null;
+  const payload = def.normalize ? def.normalize({ ...current.toObject(), ...data }) : clone({ ...current.toObject(), ...data });
+  if (isBranchScopedResource(resource)) {
+    payload.branchCode = resolveBranchCode(actorUser, current.branchCode);
+  }
+  if (meta.actorUserId) {
+    payload.updatedByUserId = meta.actorUserId;
+  }
+  current.set(payload);
+  await current.save();
+  const record = current.toObject();
   const response = resource === 'members' ? sanitizeMemberResponse(record) : toResponse(record);
   await notifySafely(buildResourceNotificationPayload(resource, 'updated', response, meta));
   return response;
 }
 
-async function deleteResource(resource, id) {
+async function deleteResource(resource, id, meta = {}) {
   const def = getResourceDef(resource);
-  if (resource === 'employees') {
-    const record = await User.findOneAndDelete({ _id: id, code: { $ne: '' } }).lean();
-    if (record) {
-      await deleteDocumentFiles(record.documents || {});
-      if (record.avatarFileId) {
-        await deleteFileById(record.avatarFileId).catch(() => {});
-      }
-      if (record.documentsFolderId) {
-        await deleteFolder(record.documentsFolderId).catch(() => {});
-      }
-      await notifySafely(buildResourceNotificationPayload(resource, 'deleted', toResponse(record), {}));
-    }
-    return Boolean(record);
-  }
-  if (def.singleton) {
-    const error = new Error('This record cannot be deleted');
-    error.statusCode = 400;
+  const actorUser = meta.actorUser || {};
+
+  if (resource === 'branches' && getScopedBranchCode(actorUser)) {
+    const error = new Error('Branch access denied');
+    error.statusCode = 403;
     throw error;
   }
 
-  const record = await def.model.findByIdAndDelete(id).lean();
-  if (record && resource === 'members') {
+  if (resource === 'employees') {
+    const record = await User.findOneAndDelete({ _id: id, code: { $ne: '' } }).lean();
+    if (!record || !canAccessBranchRecord(resource, record, actorUser)) {
+      return false;
+    }
     await deleteDocumentFiles(record.documents || {});
-    if (record.photoFileId) {
-      await deleteFileById(record.photoFileId).catch(() => {});
+    if (record.avatarFileId) {
+      await deleteFileById(record.avatarFileId).catch(() => {});
     }
     if (record.documentsFolderId) {
       await deleteFolder(record.documentsFolderId).catch(() => {});
     }
-  }
-  if (record) {
-    await notifySafely(buildResourceNotificationPayload(resource, 'deleted', toResponse(record), {}));
-  }
-  return Boolean(record);
-}
-
-async function getSingle(resource) {
-  const record = await getResource(resource);
-  return record || null;
-}
-
-function getPartyMemberCode(voucher) {
-  const partyType = cleanLower(voucher.partyType);
-  if (partyType === 'member' || partyType === 'members') {
-    return cleanUpper(voucher.partyCode || voucher.party);
+    await notifySafely(buildResourceNotificationPayload(resource, 'deleted', sanitizeEmployeeUserResponse(record), meta));
+    return true;
   }
 
-  const recoveryLines = Array.isArray(voucher.details?.recoveryLines) ? voucher.details.recoveryLines : [];
-  if (recoveryLines.length) {
-    return cleanUpper(recoveryLines[0].member || recoveryLines[0].memberCode);
-  }
-
-  return '';
-}
-
-function settlementLedger(details = {}, mode = '') {
-  if (details.settlementAccount) return cleanUpper(details.settlementAccount);
-  if (details.depositIn) return cleanUpper(details.depositIn);
-  if (details.savingAcc) return cleanUpper(details.savingAcc);
-  if (String(mode).toLowerCase().includes('cash')) return 'L001';
-  return 'L013';
-}
-
-function headLedger(head) {
-  return {
-    share: 'L007',
-    cd: 'L005',
-    ssa: 'L006',
-    loan: 'L003',
-    loanAmt: 'L003',
-    lad: 'L004',
-    ins: 'L015',
-    insurance: 'L015',
-    interest: 'L016',
-    house: 'L014',
-    vehicle: 'L014',
-    grain: 'L014',
-    suspense: 'L012',
-    admfee: 'L009',
-    pf: 'L017',
-    amt: 'L012'
-  }[head] || 'L012';
-}
-
-function buildJournalLines(voucher) {
-  const details = voucher.details || {};
-  const components = details.components || {};
-  const lines = [];
-  const add = (ledgerCode, dr = 0, cr = 0, memo = '') => {
-    const debit = toNumber(dr, 0);
-    const credit = toNumber(cr, 0);
-    if (debit || credit) {
-      lines.push({ ledgerCode, dr: debit, cr: credit, memo });
+  const current = await def.model.findById(id).lean();
+  if (!current || !canAccessBranchRecord(resource, current, actorUser)) return false;
+  if (resource === 'members') {
+    await deleteDocumentFiles(current.documents || {});
+    if (current.photoFileId) {
+      await deleteFileById(current.photoFileId).catch(() => {});
     }
-  };
-
-  const settle = settlementLedger(details, voucher.mode);
-  const key = cleanLower(details.key);
-
-  if (key === 'loan-paid-member') {
-    add('L003', components.loanAmt, 0, 'Regular loan disbursed');
-    add('L004', components.lad, 0, 'Loan against deposit disbursed');
-    add(settle, 0, voucher.amount, 'Settlement');
-  } else if (key === 'deposit-paid-member') {
-    add('L005', voucher.amount, 0, 'Compulsory deposit paid');
-    add(settle, 0, voucher.amount, 'Settlement');
-  } else if (key === 'insurance-paid-member') {
-    add('L015', voucher.amount, 0, 'Insurance premium paid');
-    add(settle, 0, voucher.amount, 'Settlement');
-  } else if (key === 'loan-recv-cash' || key === 'loan-recv-saving') {
-    add(settle, voucher.amount, 0, 'Loan proceeds received');
-    add('L018', 0, voucher.amount, 'Bank loan liability');
-  } else if (key === 'deposit-in-bank') {
-    add(details.depositIn || 'L002', voucher.amount, 0, 'Deposit in bank');
-    add(details.depositBy === 'CASH' ? 'L001' : 'L013', 0, voucher.amount, 'Deposit source');
-  } else if (key === 'cheque-issue-saving' || key === 'cheque-issue-loan') {
-    add('L012', voucher.amount, 0, details.narration || 'Cheque issue');
-    add(settle, 0, voucher.amount, 'Bank cheque issued');
-  } else if (key === 'transfer-saving' || key === 'transfer-cashcredit') {
-    add(details.toAccount || 'L013', voucher.amount, 0, 'Transfer received');
-    add(details.fromAccount || 'L002', 0, voucher.amount, 'Transfer sent');
-  } else if (key === 'recovery-member') {
-    add(cleanLower(voucher.mode).includes('cash') ? 'L001' : 'L013', voucher.amount, 0, 'Member recovery received');
-    add('L003', 0, voucher.amount, 'Member loan/deposit recovery');
-  } else if (key === 'advance-paid-emp') {
-    add('L014', voucher.amount, 0, 'Employee advance');
-    add(settle, 0, voucher.amount, 'Settlement');
-  } else if (key === 'advance-recovery-emp') {
-    add(settle, voucher.amount, 0, 'Advance recovery received');
-    add('L014', 0, voucher.amount, 'Employee advance recovered');
-  } else if (key === 'payment-voucher') {
-    add(details.ledgerTarget || 'L012', voucher.amount, 0, 'Payment');
-    add(details.settlementAccount || settle, 0, voucher.amount, 'Settlement');
-  } else if (key === 'receipt-voucher') {
-    add(details.receiptBy === 'BANK' ? 'L013' : 'L001', voucher.amount, 0, 'Receipt');
-    add(details.ledgerTarget || 'L012', 0, voucher.amount, 'Receipt ledger');
-  } else if (key === 'interest-paid-member') {
-    add('L016', voucher.amount, 0, 'Interest paid');
-    add(settle, 0, voucher.amount, 'Settlement');
-  } else if (key === 'reversal') {
-    toArray(voucher.journalLines).forEach((line) => add(line.ledgerCode, line.cr, line.dr, line.memo || 'Reversal'));
-  } else {
-    add('L012', voucher.amount, 0, voucher.voucherCategory || voucher.transactionType || 'Voucher');
-    add(settle, 0, voucher.amount, 'Settlement');
-  }
-
-  return lines;
-}
-
-async function loadMember(memberCode) {
-  if (!memberCode) return null;
-  return Member.findOne({ code: cleanUpper(memberCode) });
-}
-
-async function loadBankAccountByLedger(ledgerCode) {
-  if (!ledgerCode) return null;
-  return BankAccount.findOne({ linkedLedgerCode: cleanUpper(ledgerCode) });
-}
-
-async function applyMemberEffects(voucher, direction = 1) {
-  const memberCode = getPartyMemberCode(voucher);
-  const member = await loadMember(memberCode);
-  if (!member) {
-    return null;
-  }
-
-  const details = voucher.details || {};
-  const components = details.components || {};
-  const sign = direction >= 0 ? 1 : -1;
-
-  if (cleanLower(details.key) === 'loan-paid-member') {
-    member.loanOutstanding = Math.max(0, toNumber(member.loanOutstanding, 0) + sign * (toNumber(components.loanAmt, 0) + toNumber(components.lad, 0)));
-    member.balances = member.balances || {};
-    member.balances.loanAgainstDeposit = Math.max(0, toNumber(member.balances.loanAgainstDeposit, 0) + sign * toNumber(components.lad, 0));
-  } else if (cleanLower(details.key) === 'deposit-paid-member') {
-    const nextBalance = Math.max(0, toNumber(member.depositBalance, 0) - sign * voucher.amount);
-    member.depositBalance = nextBalance;
-    member.balances = member.balances || {};
-    member.balances.compulsoryDeposit = nextBalance;
-  } else if (cleanLower(details.key) === 'insurance-paid-member') {
-    member.balances = member.balances || {};
-    member.balances.insurancePremium = Math.max(0, toNumber(member.balances.insurancePremium, 0) - sign * voucher.amount);
-  } else if (cleanLower(details.key) === 'recovery-member') {
-    const recoveryLines = toArray(details.recoveryLines);
-    for (const line of recoveryLines) {
-      if (cleanUpper(line.member || line.memberCode) !== member.code) {
-        continue;
-      }
-      const heads = toMixed(line.heads, {});
-      member.loanOutstanding = Math.max(0, toNumber(member.loanOutstanding, 0) - sign * toNumber(heads.loan, 0) - sign * toNumber(heads.lad, 0));
-      member.balances = member.balances || {};
-      member.balances.share = Math.max(0, toNumber(member.balances.share, 0) + sign * toNumber(heads.share, 0));
-      member.depositBalance = Math.max(0, toNumber(member.depositBalance, 0) + sign * toNumber(heads.cd, 0));
-      member.balances.compulsoryDeposit = member.depositBalance;
-      member.balances.specialSaving = Math.max(0, toNumber(member.balances.specialSaving, 0) + sign * toNumber(heads.ssa, 0));
-      member.balances.insurancePremium = Math.max(0, toNumber(member.balances.insurancePremium, 0) + sign * toNumber(heads.ins, 0));
-      member.balances.providentFund = Math.max(0, toNumber(member.balances.providentFund, 0) + sign * toNumber(heads.pf, 0));
-      member.balances.loanAgainstDeposit = Math.max(0, toNumber(member.balances.loanAgainstDeposit, 0) - sign * toNumber(heads.lad, 0));
-    }
-  } else if (cleanLower(details.key) === 'transfer-voucher-paid' || cleanLower(details.key) === 'transfer-voucher-recover') {
-    const allocations = toArray(details.allocations);
-    for (const allocation of allocations) {
-      const amount = toNumber(allocation.amount, 0) * sign;
-      const side = cleanUpper(allocation.side || 'CR');
-      const effective = side === 'CR' ? amount : -amount;
-      const head = cleanLower(allocation.head);
-      member.balances = member.balances || {};
-
-      if (head === 'share') {
-        member.balances.share = Math.max(0, toNumber(member.balances.share, 0) + effective);
-      } else if (head === 'cd') {
-        member.depositBalance = Math.max(0, toNumber(member.depositBalance, 0) + effective);
-        member.balances.compulsoryDeposit = member.depositBalance;
-      } else if (head === 'ssa') {
-        member.balances.specialSaving = Math.max(0, toNumber(member.balances.specialSaving, 0) + effective);
-      } else if (head === 'loan') {
-        member.loanOutstanding = Math.max(0, toNumber(member.loanOutstanding, 0) - effective);
-      } else if (head === 'lad') {
-        member.balances.loanAgainstDeposit = Math.max(0, toNumber(member.balances.loanAgainstDeposit, 0) - effective);
-      }
-    }
-  } else if (cleanLower(details.key) === 'interest-paid-member') {
-    if (cleanLower(details.accountHead) === 'cd') {
-      member.depositBalance = Math.max(0, toNumber(member.depositBalance, 0) + sign * voucher.amount);
-      member.balances = member.balances || {};
-      member.balances.compulsoryDeposit = member.depositBalance;
+    if (current.documentsFolderId) {
+      await deleteFolder(current.documentsFolderId).catch(() => {});
     }
   }
-
-  await member.save();
-  return member;
-}
-
-async function revertMemberEffects(voucher) {
-  return applyMemberEffects(voucher, -1);
-}
-
-async function applyBankAccountEffects(voucher, direction = 1) {
-  const journalLines = toArray(voucher.journalLines);
-  if (!journalLines.length) {
-    return [];
-  }
-
-  const changed = [];
-  const bankAccounts = await BankAccount.find({
-    linkedLedgerCode: { $in: journalLines.map((line) => cleanUpper(line.ledgerCode)) }
-  });
-
-  for (const bankAccount of bankAccounts) {
-    const delta = journalLines
-      .filter((line) => cleanUpper(line.ledgerCode) === cleanUpper(bankAccount.linkedLedgerCode))
-      .reduce((sum, line) => sum + toNumber(line.dr, 0) - toNumber(line.cr, 0), 0);
-
-    if (delta) {
-      bankAccount.currentBalance = toNumber(bankAccount.currentBalance, 0) + (direction >= 0 ? delta : -delta);
-      if (bankAccount.currentBalance < 0) {
-        bankAccount.currentBalance = 0;
-      }
-      await bankAccount.save();
-      changed.push(bankAccount);
-    }
-  }
-
-  return changed;
-}
-
-async function createVoucher(data = {}, meta = {}) {
-  const payload = clone(data);
-  if (!payload.voucherNo) {
-    payload.voucherNo = await getNextVoucherNo();
-  }
-  payload.voucherNo = cleanUpper(payload.voucherNo);
-  payload.amount = toNumber(payload.amount, 0);
-  payload.status = cleanText(payload.status, 'Posted');
-  payload.documents = toMixed(payload.documents, {});
-  payload.journalLines = toArray(payload.journalLines);
-  if (meta.actorUserId) {
-    payload.createdByUserId = meta.actorUserId;
-    payload.updatedByUserId = meta.actorUserId;
-  }
-
-  if (!payload.journalLines.length) {
-    payload.journalLines = buildJournalLines(payload);
-  }
-
-  const existing = await Voucher.findOne({ voucherNo: payload.voucherNo }).lean();
-  if (existing) {
-    const error = new Error('Voucher number already exists');
-    error.statusCode = 409;
-    throw error;
-  }
-
-  const record = await Voucher.create(payload);
-  if (record.status === 'Posted') {
-    await applyMemberEffects(record, 1);
-    await applyBankAccountEffects(record, 1);
-  }
-  await notifySafely(buildVoucherNotificationPayload('created', toResponse(record), meta));
-  return toResponse(record);
-}
-
-async function updateVoucher(voucherId, data = {}, meta = {}) {
-  const current = await Voucher.findById(voucherId);
-  if (!current) {
-    return null;
-  }
-
-  if (current.status === 'Posted') {
-    const error = new Error('Posted vouchers cannot be edited. Reverse the voucher instead.');
-    error.statusCode = 400;
-    throw error;
-  }
-
-  const previousStatus = current.status;
-  const patch = normalizeVoucherPatch(data);
-  if (meta.actorUserId) {
-    patch.updatedByUserId = meta.actorUserId;
-  }
-  current.set(patch);
-  if (!Array.isArray(current.journalLines) || !current.journalLines.length) {
-    current.journalLines = buildJournalLines(current.toObject());
-  }
-  await current.save();
-  if (previousStatus !== 'Posted' && current.status === 'Posted') {
-    await applyMemberEffects(current, 1);
-    await applyBankAccountEffects(current, 1);
-  }
-  const response = toResponse(current);
-  await notifySafely(buildVoucherNotificationPayload('updated', response, meta));
-  return response;
-}
-
-function normalizeVoucherPatch(data = {}) {
-  const patch = {};
-  const fields = ['voucherNo', 'date', 'voucherCategory', 'transactionType', 'accent', 'partyCode', 'partyType', 'mode', 'status', 'narration', 'referenceNo', 'instrumentNo', 'instrumentDate', 'branchCode', 'fyCode', 'reversalOf', 'approvedBy', 'createdBy'];
-
-  for (const field of fields) {
-    if (data[field] !== undefined) {
-      patch[field] = field.endsWith('Code') || field === 'voucherNo' || field === 'partyCode' || field === 'branchCode' || field === 'fyCode' || field === 'reversalOf' || field === 'approvedBy' || field === 'createdBy'
-        ? cleanUpper(data[field])
-        : cleanText(data[field]);
-    }
-  }
-
-  if (data.amount !== undefined) {
-    patch.amount = toNumber(data.amount, 0);
-  }
-  if (data.details !== undefined) {
-    patch.details = toMixed(data.details, {});
-  }
-  if (data.documents !== undefined) {
-    patch.documents = toMixed(data.documents, {});
-  }
-  if (data.journalLines !== undefined) {
-    patch.journalLines = toArray(data.journalLines).map((line) => ({
-      ledgerCode: cleanUpper(line.ledgerCode || line.ledger),
-      dr: toNumber(line.dr, 0),
-      cr: toNumber(line.cr, 0),
-      memo: cleanText(line.memo)
-    }));
-  }
-
-  return patch;
-}
-
-async function deleteVoucher(voucherId) {
-  const current = await Voucher.findById(voucherId);
-  if (!current) {
-    return false;
-  }
-
-  if (current.status === 'Posted') {
-    const error = new Error('Posted vouchers cannot be deleted. Reverse the voucher instead.');
-    error.statusCode = 400;
-    throw error;
-  }
-
-  await deleteDocumentFiles(current.documents || current.details?.documents || {});
-  await current.deleteOne();
-  await notifySafely(buildVoucherNotificationPayload('deleted', toResponse(current), {}));
-  return true;
-}
-
-async function reverseVoucher(voucherId, meta = {}) {
-  const current = await Voucher.findById(voucherId).lean();
-  if (!current) {
-    return null;
-  }
-
-  if (current.status !== 'Posted') {
-    const error = new Error('Only posted vouchers can be reversed');
-    error.statusCode = 400;
-    throw error;
-  }
-
-  const reversalNo = await getNextVoucherNo();
-  const reversal = {
-    voucherNo: reversalNo,
-    date: new Date().toISOString().slice(0, 10),
-    voucherCategory: `Reversal of ${current.voucherNo}`,
-    transactionType: 'reversal',
-    accent: 'neutral',
-    partyCode: current.partyCode,
-    partyType: current.partyType,
-    amount: current.amount,
-    mode: 'Reversal',
-    status: 'Posted',
-    narration: `Reversal of ${current.voucherNo}`,
-    reversalOf: current.voucherNo,
-    branchCode: current.branchCode,
-    fyCode: current.fyCode,
-    details: {
-      key: 'reversal',
-      original: current.voucherNo,
-      narration: `Reversal of ${current.voucherNo}`
-    },
-    createdByUserId: meta.actorUserId || null,
-    updatedByUserId: meta.actorUserId || null,
-    reversedByUserId: meta.actorUserId || null,
-    journalLines: toArray(current.journalLines).map((line) => ({
-      ledgerCode: cleanUpper(line.ledgerCode),
-      dr: toNumber(line.cr, 0),
-      cr: toNumber(line.dr, 0),
-      memo: `Reversal of ${current.voucherNo}`
-    }))
-  };
-
-  const record = await Voucher.create(reversal);
-  await Voucher.updateOne({ _id: current._id }, { $set: { status: 'Reversed' } });
-  await revertMemberEffects(current);
-  await applyBankAccountEffects(record, 1);
-  await notifySafely(buildVoucherNotificationPayload('reversed', toResponse(record), meta));
-  return toResponse(record);
-}
-
-async function getNextVoucherNo(prefix = 'V') {
-  const latest = await Voucher.findOne({ voucherNo: { $regex: '^V[-0-9]*$', $options: 'i' } })
-    .sort({ createdAt: -1 })
-    .lean();
-
-  if (!latest?.voucherNo) {
-    return `${prefix}-24001`;
-  }
-
-  const match = String(latest.voucherNo).match(/(\d+)(?!.*\d)/);
-  const next = match ? Number(match[1]) + 1 : 24001;
-  return `${prefix}-${String(next)}`;
-}
-
-async function getNextTransactionNo(prefix = 'BT') {
-  const latest = await BankTransaction.findOne({ transactionNo: { $regex: '^BT[-0-9]*$', $options: 'i' } })
-    .sort({ createdAt: -1 })
-    .lean();
-
-  if (!latest?.transactionNo) {
-    return `${prefix}-24001`;
-  }
-
-  const match = String(latest.transactionNo).match(/(\d+)(?!.*\d)/);
-  const next = match ? Number(match[1]) + 1 : 24001;
-  return `${prefix}-${String(next)}`;
-}
-
-async function createBankTransaction(data = {}, meta = {}) {
-  const payload = normalizeResourcePayload('bankTransactions', data);
-  if (!payload.transactionNo) {
-    payload.transactionNo = await getNextTransactionNo();
-  }
-  if (meta.actorUserId) {
-    payload.createdByUserId = meta.actorUserId;
-    payload.updatedByUserId = meta.actorUserId;
-  }
-
-  const existing = await BankTransaction.findOne({ transactionNo: payload.transactionNo }).lean();
-  if (existing) {
-    const error = new Error('Bank transaction number already exists');
-    error.statusCode = 409;
-    throw error;
-  }
-
-  const record = await BankTransaction.create(payload);
-  const response = toResponse(record);
-  await notifySafely(buildBankTransactionNotificationPayload('created', response, meta));
-  return response;
-}
-
-async function updateBankTransaction(transactionId, data = {}, meta = {}) {
-  const current = await BankTransaction.findById(transactionId);
-  if (!current) return null;
-  const patch = normalizeResourcePayload('bankTransactions', data);
-  if (meta.actorUserId) {
-    patch.updatedByUserId = meta.actorUserId;
-  }
-  current.set(patch);
-  await current.save();
-  const response = toResponse(current);
-  await notifySafely(buildBankTransactionNotificationPayload('updated', response, meta));
-  return response;
-}
-
-async function deleteBankTransaction(transactionId) {
-  const current = await BankTransaction.findById(transactionId);
-  if (!current) return false;
-  await current.deleteOne();
-  await notifySafely(buildBankTransactionNotificationPayload('deleted', toResponse(current), {}));
+  await def.model.findByIdAndDelete(id);
+  const response = resource === 'members' ? sanitizeMemberResponse(current) : toResponse(current);
+  await notifySafely(buildResourceNotificationPayload(resource, 'deleted', response, meta));
   return true;
 }
 
@@ -1902,17 +1575,23 @@ function ledgerSnapshotFromDocuments(ledgers = [], vouchers = []) {
   }).sort((a, b) => a.code.localeCompare(b.code));
 }
 
-async function getLedgerSnapshots({ uptoDate = '' } = {}) {
+async function getLedgerSnapshots({ uptoDate = '', branchCode = '' } = {}) {
   const ledgers = await Ledger.find({}).lean();
   const query = { status: 'Posted' };
   if (uptoDate) {
     query.date = { $lte: uptoDate };
   }
+  if (branchCode) {
+    query.branchCode = cleanUpper(branchCode);
+  }
   const vouchers = await Voucher.find(query).lean();
   return ledgerSnapshotFromDocuments(ledgers, vouchers);
 }
 
-async function getDashboardSummary() {
+async function getDashboardSummary(user = {}) {
+  const branchCode = resolveBranchCode(user);
+  const branchQuery = branchCode ? { code: branchCode } : {};
+  const userQuery = branchCode ? { code: { $ne: '' }, branchCode } : { code: { $ne: '' } };
   const [
     society,
     branches,
@@ -1927,16 +1606,16 @@ async function getDashboardSummary() {
     bankTransactions
   ] = await Promise.all([
     Society.findOne({ key: 'default' }).lean(),
-    Branch.countDocuments({}),
-    Member.countDocuments({}),
-    User.countDocuments({ code: { $ne: '' } }),
+    Branch.countDocuments(branchQuery),
+    Member.countDocuments(branchCode ? { branchCode } : {}),
+    User.countDocuments(userQuery),
     Ledger.countDocuments({}),
     Rate.countDocuments({}),
     BankAccount.countDocuments({}),
-    Demand.countDocuments({}),
-    NoInterestMember.countDocuments({}),
-    Voucher.find({}).sort({ createdAt: -1 }).limit(10).lean(),
-    BankTransaction.find({}).sort({ createdAt: -1 }).limit(10).lean()
+    Demand.countDocuments(branchCode ? { branchCode } : {}),
+    NoInterestMember.countDocuments(branchCode ? { branchCode } : {}),
+    Voucher.find(branchCode ? { branchCode } : {}).sort({ createdAt: -1 }).limit(10).lean(),
+    BankTransaction.find(branchCode ? { branchCode } : {}).sort({ createdAt: -1 }).limit(10).lean()
   ]);
 
   return {
@@ -1950,15 +1629,15 @@ async function getDashboardSummary() {
       bankAccounts,
       demands,
       noInterestMembers,
-      vouchers: await Voucher.countDocuments({}),
-      bankTransactions: await BankTransaction.countDocuments({})
+      vouchers: await Voucher.countDocuments(branchCode ? { branchCode } : {}),
+      bankTransactions: await BankTransaction.countDocuments(branchCode ? { branchCode } : {})
     },
     recentVouchers: vouchers.map((voucher) => toResponse(voucher)),
     recentBankTransactions: bankTransactions.map((transaction) => toResponse(transaction))
   };
 }
 
-async function getLookups() {
+async function getLookups(user = {}) {
   const [
     branches,
     members,
@@ -1969,14 +1648,14 @@ async function getLookups() {
     demands,
     noInterestMembers
   ] = await Promise.all([
-    listResource('branches'),
-    listResource('members'),
-    listResource('employees'),
+    listResource('branches', '', user),
+    listResource('members', '', user),
+    listResource('employees', '', user),
     listResource('ledgers'),
     listResource('rates'),
     listResource('bankAccounts'),
-    listResource('demands'),
-    listResource('noInterestMembers')
+    listResource('demands', '', user),
+    listResource('noInterestMembers', '', user)
   ]);
 
   return {
@@ -2002,8 +1681,9 @@ async function buildVoucherRows(filter = {}) {
   if (filter.partyType) {
     query.partyType = cleanText(filter.partyType);
   }
-  if (filter.branchCode) {
-    query.branchCode = cleanUpper(filter.branchCode);
+  const branchCode = resolveBranchCode(filter.user, filter.branchCode);
+  if (branchCode) {
+    query.branchCode = branchCode;
   }
   if (filter.dateFrom || filter.dateTo) {
     query.date = {};
@@ -2026,6 +1706,10 @@ async function buildBankTransactionRows(filter = {}) {
   if (filter.bankAccountCode) {
     query.bankAccountCode = cleanUpper(filter.bankAccountCode);
   }
+  const branchCode = resolveBranchCode(filter.user, filter.branchCode);
+  if (branchCode) {
+    query.branchCode = branchCode;
+  }
   if (filter.dateFrom || filter.dateTo) {
     query.date = {};
     if (filter.dateFrom) query.date.$gte = cleanText(filter.dateFrom);
@@ -2036,13 +1720,17 @@ async function buildBankTransactionRows(filter = {}) {
   return rows.map((row) => toResponse(row));
 }
 
-async function buildMemberLedgerReport({ memberCode, dateFrom = '', dateTo = '' }) {
+async function buildMemberLedgerReport({ memberCode, dateFrom = '', dateTo = '', user = {} } = {}) {
   const member = await Member.findOne({ code: cleanUpper(memberCode) }).lean();
-  if (!member) {
+  if (!member || !canAccessBranchRecord('members', member, user)) {
     return null;
   }
 
+  const branchCode = resolveBranchCode(user, member.branchCode);
   const query = { status: 'Posted' };
+  if (branchCode) {
+    query.branchCode = branchCode;
+  }
   if (dateFrom || dateTo) {
     query.date = {};
     if (dateFrom) query.date.$gte = cleanText(dateFrom);
@@ -2070,7 +1758,7 @@ async function buildMemberLedgerReport({ memberCode, dateFrom = '', dateTo = '' 
     if (lineMatch) {
       const lineTotal = toNumber(lineMatch.total, 0);
       credit = lineTotal;
-      particulars = `${particulars} - Recovery`;
+      particulars = particulars + ' - Recovery';
     } else if (cleanLower(voucher.accent) === 'pink') {
       debit = voucher.amount;
     } else if (cleanLower(voucher.accent) === 'green') {
@@ -2108,8 +1796,8 @@ async function buildMemberLedgerReport({ memberCode, dateFrom = '', dateTo = '' 
   };
 }
 
-async function buildAccountStatementReport({ search = '', nature = '', uptoDate = '' } = {}) {
-  const snapshots = await getLedgerSnapshots({ uptoDate });
+async function buildAccountStatementReport({ search = '', nature = '', uptoDate = '', user = {} } = {}) {
+  const snapshots = await getLedgerSnapshots({ uptoDate, branchCode: resolveBranchCode(user) });
   const filtered = snapshots.filter((row) => {
     const matchesNature = !nature || cleanUpper(row.nature) === cleanUpper(nature);
     const matchesSearch = !search || [row.code, row.name, row.group].some((value) => cleanLower(value).includes(cleanLower(search)));
@@ -2128,8 +1816,8 @@ async function buildAccountStatementReport({ search = '', nature = '', uptoDate 
   }));
 }
 
-async function buildTrialBalanceReport({ uptoDate = '' } = {}) {
-  const snapshots = await getLedgerSnapshots({ uptoDate });
+async function buildTrialBalanceReport({ uptoDate = '', user = {} } = {}) {
+  const snapshots = await getLedgerSnapshots({ uptoDate, branchCode: resolveBranchCode(user) });
   return snapshots.map((row) => ({
     ledgerCode: row.code,
     ledgerName: row.name,
@@ -2138,8 +1826,8 @@ async function buildTrialBalanceReport({ uptoDate = '' } = {}) {
   }));
 }
 
-async function buildBalanceSheetReport({ uptoDate = '' } = {}) {
-  const snapshots = await getLedgerSnapshots({ uptoDate });
+async function buildBalanceSheetReport({ uptoDate = '', user = {} } = {}) {
+  const snapshots = await getLedgerSnapshots({ uptoDate, branchCode: resolveBranchCode(user) });
   const liabilities = snapshots.filter((row) => row.nature === 'LIABILITY');
   const assets = snapshots.filter((row) => row.nature === 'ASSET');
 
@@ -2151,8 +1839,8 @@ async function buildBalanceSheetReport({ uptoDate = '' } = {}) {
   };
 }
 
-async function buildProfitLossReport({ uptoDate = '' } = {}) {
-  const snapshots = await getLedgerSnapshots({ uptoDate });
+async function buildProfitLossReport({ uptoDate = '', user = {} } = {}) {
+  const snapshots = await getLedgerSnapshots({ uptoDate, branchCode: resolveBranchCode(user) });
   const income = snapshots.filter((row) => row.nature === 'INCOME');
   const expense = snapshots.filter((row) => row.nature === 'EXPENSE');
 
@@ -2164,8 +1852,13 @@ async function buildProfitLossReport({ uptoDate = '' } = {}) {
   };
 }
 
-async function buildCashBookReport({ date = '' } = {}) {
-  const vouchers = await Voucher.find(date ? { status: 'Posted', date } : { status: 'Posted' }).sort({ date: 1, createdAt: 1 }).lean();
+async function buildCashBookReport({ date = '', user = {} } = {}) {
+  const query = date ? { status: 'Posted', date } : { status: 'Posted' };
+  const branchCode = resolveBranchCode(user);
+  if (branchCode) {
+    query.branchCode = branchCode;
+  }
+  const vouchers = await Voucher.find(query).sort({ date: 1, createdAt: 1 }).lean();
   const rows = [];
 
   for (const voucher of vouchers) {
@@ -2185,8 +1878,13 @@ async function buildCashBookReport({ date = '' } = {}) {
   return rows;
 }
 
-async function buildDayBookReport({ date = '' } = {}) {
-  const vouchers = await Voucher.find(date ? { status: 'Posted', date } : { status: 'Posted' }).sort({ date: 1, createdAt: 1 }).lean();
+async function buildDayBookReport({ date = '', user = {} } = {}) {
+  const query = date ? { status: 'Posted', date } : { status: 'Posted' };
+  const branchCode = resolveBranchCode(user);
+  if (branchCode) {
+    query.branchCode = branchCode;
+  }
+  const vouchers = await Voucher.find(query).sort({ date: 1, createdAt: 1 }).lean();
   const rows = [];
 
   for (const voucher of vouchers) {
@@ -2205,8 +1903,13 @@ async function buildDayBookReport({ date = '' } = {}) {
   return rows;
 }
 
-async function buildVoucherSummaryReport({ date = '' } = {}) {
-  const vouchers = await Voucher.find(date ? { status: 'Posted', date } : { status: 'Posted' }).lean();
+async function buildVoucherSummaryReport({ date = '', user = {} } = {}) {
+  const query = date ? { status: 'Posted', date } : { status: 'Posted' };
+  const branchCode = resolveBranchCode(user);
+  if (branchCode) {
+    query.branchCode = branchCode;
+  }
+  const vouchers = await Voucher.find(query).lean();
   const totals = new Map();
 
   for (const voucher of vouchers) {
@@ -2217,10 +1920,11 @@ async function buildVoucherSummaryReport({ date = '' } = {}) {
   return [...totals.entries()].map(([voucherCategory, amount]) => ({ voucherCategory, amount })).sort((a, b) => a.voucherCategory.localeCompare(b.voucherCategory));
 }
 
-async function buildMonthlySummaryReport({ branchCode = '', month = '' } = {}) {
+async function buildMonthlySummaryReport({ branchCode = '', month = '', user = {} } = {}) {
   const query = { status: 'Posted' };
-  if (branchCode) {
-    query.branchCode = cleanUpper(branchCode);
+  const effectiveBranchCode = resolveBranchCode(user, branchCode);
+  if (effectiveBranchCode) {
+    query.branchCode = effectiveBranchCode;
   }
   const vouchers = await Voucher.find(query).lean();
   const totals = new Map();
@@ -2239,10 +1943,14 @@ async function buildMonthlySummaryReport({ branchCode = '', month = '' } = {}) {
   return [...totals.values()].sort((a, b) => a.transactionType.localeCompare(b.transactionType));
 }
 
-async function buildDemandListReport({ month = '' } = {}) {
+async function buildDemandListReport({ month = '', branchCode = '', user = {} } = {}) {
   const query = {};
+  const effectiveBranchCode = resolveBranchCode(user, branchCode);
   if (month) {
     query.month = cleanText(month);
+  }
+  if (effectiveBranchCode) {
+    query.branchCode = effectiveBranchCode;
   }
   const rows = await Demand.find(query).sort({ updatedAt: -1 }).lean();
   return rows.map((row) => ({
@@ -2256,8 +1964,10 @@ async function buildDemandListReport({ month = '' } = {}) {
   }));
 }
 
-async function buildAllMemberListReport() {
-  const rows = await Member.find({}).sort({ updatedAt: -1 }).lean();
+async function buildAllMemberListReport({ branchCode = '', user = {} } = {}) {
+  const effectiveBranchCode = resolveBranchCode(user, branchCode);
+  const query = effectiveBranchCode ? { branchCode: effectiveBranchCode } : {};
+  const rows = await Member.find(query).sort({ updatedAt: -1 }).lean();
   return rows.map((row) => ({
     code: row.code,
     name: row.name,
@@ -2268,8 +1978,12 @@ async function buildAllMemberListReport() {
   }));
 }
 
-async function buildPaymentReceiptStatementReport({ dateFrom = '', dateTo = '' } = {}) {
+async function buildPaymentReceiptStatementReport({ dateFrom = '', dateTo = '', branchCode = '', user = {} } = {}) {
   const query = { status: 'Posted' };
+  const effectiveBranchCode = resolveBranchCode(user, branchCode);
+  if (effectiveBranchCode) {
+    query.branchCode = effectiveBranchCode;
+  }
   if (dateFrom || dateTo) {
     query.date = {};
     if (dateFrom) query.date.$gte = cleanText(dateFrom);
@@ -2287,8 +2001,10 @@ async function buildPaymentReceiptStatementReport({ dateFrom = '', dateTo = '' }
   }));
 }
 
-async function buildBranchListReport() {
-  const rows = await Branch.find({}).sort({ code: 1 }).lean();
+async function buildBranchListReport({ branchCode = '', user = {} } = {}) {
+  const effectiveBranchCode = resolveBranchCode(user, branchCode);
+  const query = effectiveBranchCode ? { code: effectiveBranchCode } : {};
+  const rows = await Branch.find(query).sort({ code: 1 }).lean();
   return rows.map((row) => ({
     code: row.code,
     place: row.place,
@@ -2298,8 +2014,10 @@ async function buildBranchListReport() {
   }));
 }
 
-async function buildDividendReport({ rate = 8 } = {}) {
-  const rows = await Member.find({}).sort({ code: 1 }).lean();
+async function buildDividendReport({ rate = 8, branchCode = '', user = {} } = {}) {
+  const effectiveBranchCode = resolveBranchCode(user, branchCode);
+  const query = effectiveBranchCode ? { branchCode: effectiveBranchCode } : {};
+  const rows = await Member.find(query).sort({ code: 1 }).lean();
   return rows
     .filter((row) => row.status !== 'Exited')
     .map((row) => {
@@ -2314,11 +2032,11 @@ async function buildDividendReport({ rate = 8 } = {}) {
     });
 }
 
-async function buildDashboardQuickSummary() {
-  const summary = await getDashboardSummary();
+async function buildDashboardQuickSummary(user = {}) {
+  const summary = await getDashboardSummary(user);
   const reports = await Promise.all([
-    buildAccountStatementReport(),
-    buildTrialBalanceReport()
+    buildAccountStatementReport({ user }),
+    buildTrialBalanceReport({ user })
   ]);
   return {
     ...summary,
@@ -2329,9 +2047,164 @@ async function buildDashboardQuickSummary() {
   };
 }
 
+async function getNextVoucherNo(branchCode = '') {
+  const query = branchCode ? { branchCode: cleanUpper(branchCode) } : {};
+  const last = await Voucher.findOne(query).sort({ createdAt: -1 }).select('voucherNo').lean();
+  if (!last?.voucherNo) return 'V0001';
+  const match = String(last.voucherNo).match(/(\d+)$/);
+  if (!match) return 'V0001';
+  return `V${String(Number(match[1]) + 1).padStart(4, '0')}`;
+}
+
+async function getNextTransactionNo(branchCode = '') {
+  const query = branchCode ? { branchCode: cleanUpper(branchCode) } : {};
+  const last = await BankTransaction.findOne(query).sort({ createdAt: -1 }).select('transactionNo').lean();
+  if (!last?.transactionNo) return 'BT0001';
+  const match = String(last.transactionNo).match(/(\d+)$/);
+  if (!match) return 'BT0001';
+  return `BT${String(Number(match[1]) + 1).padStart(4, '0')}`;
+}
+
+function normalizeVoucher(data = {}) {
+  return {
+    voucherNo: cleanText(data.voucherNo),
+    date: cleanText(data.date),
+    voucherCategory: cleanText(data.voucherCategory),
+    transactionType: cleanText(data.transactionType),
+    accent: cleanText(data.accent),
+    mode: cleanText(data.mode),
+    partyType: cleanText(data.partyType),
+    partyCode: cleanText(data.partyCode),
+    partyName: cleanText(data.partyName),
+    branchCode: cleanUpper(data.branchCode),
+    amount: toNumber(data.amount, 0),
+    narration: cleanText(data.narration),
+    status: cleanText(data.status || 'Draft'),
+    journalLines: toArray(data.journalLines),
+    details: toMixed(data.details, {}),
+    documents: toMixed(data.documents, {}),
+    payload: toMixed(data.payload, {})
+  };
+}
+
+function normalizeBankTransaction(data = {}) {
+  return {
+    transactionNo: cleanText(data.transactionNo),
+    date: cleanText(data.date),
+    voucherCategory: cleanText(data.voucherCategory),
+    transactionType: cleanText(data.transactionType),
+    accent: cleanText(data.accent),
+    bankAccountCode: cleanUpper(data.bankAccountCode),
+    branchCode: cleanUpper(data.branchCode),
+    amount: toNumber(data.amount, 0),
+    narration: cleanText(data.narration),
+    status: cleanText(data.status || 'Draft'),
+    documents: toMixed(data.documents, {}),
+    payload: toMixed(data.payload, {})
+  };
+}
+
+async function getSingle(resource) {
+  const def = getResourceDef(resource);
+  if (!def.singleton) {
+    const error = new Error(`${resource} is not a singleton resource`);
+    error.statusCode = 400;
+    throw error;
+  }
+  const record = await def.model.findOne(def.uniqueQuery || { key: 'default' }).lean();
+  return record ? toResponse(record) : null;
+}
+
+async function createVoucher(data = {}, meta = {}) {
+  const branchCode = resolveBranchCode(meta.actorUser || {}, data.branchCode);
+  const voucherNo = cleanText(data.voucherNo) || await getNextVoucherNo(branchCode);
+  const payload = normalizeVoucher({ ...data, voucherNo, branchCode });
+  if (meta.actorUserId) {
+    payload.createdByUserId = meta.actorUserId;
+    payload.updatedByUserId = meta.actorUserId;
+  }
+  const record = await Voucher.create(payload);
+  const response = toResponse(record);
+  await notifySafely(buildVoucherNotificationPayload('created', response, meta));
+  return response;
+}
+
+async function updateVoucher(id, data = {}, meta = {}) {
+  const current = await Voucher.findById(id);
+  if (!current) return null;
+  const payload = normalizeVoucher({ ...current.toObject(), ...data });
+  payload.branchCode = resolveBranchCode(meta.actorUser || {}, current.branchCode);
+  if (meta.actorUserId) {
+    payload.updatedByUserId = meta.actorUserId;
+  }
+  current.set(payload);
+  await current.save();
+  const response = toResponse(current.toObject());
+  await notifySafely(buildVoucherNotificationPayload('updated', response, meta));
+  return response;
+}
+
+async function deleteVoucher(id) {
+  const record = await Voucher.findByIdAndDelete(id).lean();
+  if (!record) return false;
+  await deleteDocumentFiles(record.documents || {});
+  return true;
+}
+
+async function reverseVoucher(id, meta = {}) {
+  const current = await Voucher.findById(id);
+  if (!current) return null;
+  if (current.status !== 'Posted') {
+    const error = new Error('Only posted vouchers can be reversed');
+    error.statusCode = 400;
+    throw error;
+  }
+  current.status = 'Reversed';
+  if (meta.actorUserId) current.updatedByUserId = meta.actorUserId;
+  await current.save();
+  const response = toResponse(current.toObject());
+  await notifySafely(buildVoucherNotificationPayload('reversed', response, meta));
+  return response;
+}
+
+async function createBankTransaction(data = {}, meta = {}) {
+  const branchCode = resolveBranchCode(meta.actorUser || {}, data.branchCode);
+  const transactionNo = cleanText(data.transactionNo) || await getNextTransactionNo(branchCode);
+  const payload = normalizeBankTransaction({ ...data, transactionNo, branchCode });
+  if (meta.actorUserId) {
+    payload.createdByUserId = meta.actorUserId;
+    payload.updatedByUserId = meta.actorUserId;
+  }
+  const record = await BankTransaction.create(payload);
+  const response = toResponse(record);
+  await notifySafely(buildBankTransactionNotificationPayload('created', response, meta));
+  return response;
+}
+
+async function updateBankTransaction(id, data = {}, meta = {}) {
+  const current = await BankTransaction.findById(id);
+  if (!current) return null;
+  const payload = normalizeBankTransaction({ ...current.toObject(), ...data });
+  payload.branchCode = resolveBranchCode(meta.actorUser || {}, current.branchCode);
+  if (meta.actorUserId) {
+    payload.updatedByUserId = meta.actorUserId;
+  }
+  current.set(payload);
+  await current.save();
+  const response = toResponse(current.toObject());
+  await notifySafely(buildBankTransactionNotificationPayload('updated', response, meta));
+  return response;
+}
+
+async function deleteBankTransaction(id) {
+  const record = await BankTransaction.findByIdAndDelete(id).lean();
+  if (!record) return false;
+  await deleteDocumentFiles(record.documents || {});
+  return true;
+}
+
+
 module.exports = {
-  applyBankAccountEffects,
-  applyMemberEffects,
   buildAccountStatementReport,
   buildAllMemberListReport,
   buildBalanceSheetReport,
@@ -2342,7 +2215,6 @@ module.exports = {
   buildDashboardQuickSummary,
   buildDemandListReport,
   buildDividendReport,
-  buildJournalLines,
   buildMonthlySummaryReport,
   buildMemberLedgerReport,
   buildPaymentReceiptStatementReport,
@@ -2367,10 +2239,16 @@ module.exports = {
   listResource,
   normalizeResourcePayload,
   reverseVoucher,
-  revertMemberEffects,
   seedBankingData,
-  settlementLedger,
   updateBankTransaction,
   updateResource,
   updateVoucher
 };
+
+
+
+
+
+
+
+

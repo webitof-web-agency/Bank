@@ -40,7 +40,6 @@ export function RateForm({ value, setValue, onSubmit, ledgers = [] }) {
             value={value.ledgerCode || ''} 
             onChange={handleLedgerChange}
             options={ledgers.map((ledger) => ({ label: getLedgerLabel(ledger), value: ledger.code }))}
-            searchable
             placeholder="Select ledger..."
           />
         </div>
@@ -93,4 +92,3 @@ export function RateForm({ value, setValue, onSubmit, ledgers = [] }) {
 }
 
 export default RateForm;
-

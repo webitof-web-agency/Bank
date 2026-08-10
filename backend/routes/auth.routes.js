@@ -9,12 +9,13 @@ const {
   changePasswordController
 } = require('../controllers/auth.controller');
 const { requireAuth } = require('../middlewares/auth');
+const { authRateLimit } = require('../middlewares/rateLimit');
 
 const router = express.Router();
 
-router.post('/login', loginController);
-router.post('/forgot-password', forgotPasswordController);
-router.post('/reset-password', resetPasswordController);
+router.post('/login', authRateLimit, loginController);
+router.post('/forgot-password', authRateLimit, forgotPasswordController);
+router.post('/reset-password', authRateLimit, resetPasswordController);
 router.get('/me', requireAuth, meController);
 router.patch('/profile', requireAuth, updateProfileController);
 router.delete('/avatar', requireAuth, deleteAvatarController);

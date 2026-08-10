@@ -39,6 +39,10 @@ function writeUser(user) {
   }
 }
 
+function unwrapApiData(response) {
+  return response?.data?.data ?? response?.data ?? null;
+}
+
 function readCachedSettings() {
   if (typeof window === 'undefined') return null;
   try {
@@ -74,7 +78,7 @@ export function AuthProvider({ children }) {
       
       api.settings.getPublic()
         .then((res) => {
-          if (mounted) setSettings(res.data);
+          if (mounted) setSettings(unwrapApiData(res));
         })
         .catch(() => {
           if (mounted) {
@@ -102,8 +106,9 @@ export function AuthProvider({ children }) {
         if (!mounted) return;
 
         if (meResult.status === 'fulfilled') {
-          setUser(meResult.value.data);
-          writeUser(meResult.value.data);
+          const profile = unwrapApiData(meResult.value);
+          setUser(profile);
+          writeUser(profile);
         } else {
           window.localStorage.removeItem(TOKEN_KEY);
           writeUser(null);
@@ -115,7 +120,7 @@ export function AuthProvider({ children }) {
         }
 
         if (settingsResult.status === 'fulfilled') {
-          setSettings(settingsResult.value.data || null);
+          setSettings(unwrapApiData(settingsResult.value));
         } else {
           setSettings(null);
         }
@@ -134,7 +139,7 @@ export function AuthProvider({ children }) {
       if (!user) return false;
       if (user.isSuperAdmin) return true;
 
-      const grantedPermissions = new Set(Array.isArray(user.permissions) ? user.permissions : []);
+      const grantedPermissions = new Set(expandPermissionCodes(Array.isArray(user.permissions) ? user.permissions : []));
       const requestedPermissions = permissions.flat ? permissions.flat(Infinity) : permissions;
       const expandedRequestedPermissions = expandPermissionCodes(requestedPermissions);
 
@@ -164,31 +169,37 @@ export function AuthProvider({ children }) {
       refresh: async () => {
         if (!token) return null;
         const response = await api.auth.me(token);
-        setUser(response.data);
-        writeUser(response.data);
-        return response.data;
+        const profile = unwrapApiData(response);
+        setUser(profile);
+        writeUser(profile);
+        return profile;
       },
       refreshSettings: async () => {
         if (!token) return null;
         const response = await api.settings.get(token);
-        setSettings(response.data || null);
-        return response.data || null;
+        const nextSettings = unwrapApiData(response);
+        setSettings(nextSettings);
+        return nextSettings;
       },
       forgotPassword: async (identifier) => api.auth.forgotPassword({ identifier }),
       resetPassword: async (identifier, otp, password, confirmPassword) =>
         api.auth.resetPassword({ identifier, otp, password, confirmPassword }),
       changePassword: async (payload) => api.auth.changePassword(token, payload),
       updateProfile: async (payload) => {
-        const response = await api.auth.updateProfile(token, payload);
-        setUser(response.data);
-        writeUser(response.data);
-        return response.data;
+        await api.auth.updateProfile(token, payload);
+        const refreshed = await api.auth.me(token);
+        const profile = unwrapApiData(refreshed);
+        setUser(profile);
+        writeUser(profile);
+        return profile;
       },
       deleteAvatar: async () => {
-        const response = await api.auth.deleteAvatar(token);
-        setUser(response.data);
-        writeUser(response.data);
-        return response.data;
+        await api.auth.deleteAvatar(token);
+        const refreshed = await api.auth.me(token);
+        const profile = unwrapApiData(refreshed);
+        setUser(profile);
+        writeUser(profile);
+        return profile;
       },
       hasPermission,
       canManageUsers: () => hasPermission('users.manage'),
@@ -222,3 +233,6 @@ export function useAuth() {
   }
   return context;
 }
+
+
+

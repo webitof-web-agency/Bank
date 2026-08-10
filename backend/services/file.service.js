@@ -4,7 +4,8 @@ const path = require('path');
 const { randomUUID } = require('crypto');
 const FileAsset = require('../models/fileAsset.model');
 const FileFolder = require('../models/fileFolder.model');
-const { toResponse } = require('../utils/mongoose');
+const { toResponse } = require('../utils/response');
+const { buildFileViewUrl } = require('../utils/file-url');
 
 const UPLOAD_ROOT = path.join(__dirname, '..', 'uploads');
 const MODULE_ROOT_NAMES = {
@@ -238,7 +239,7 @@ async function listFiles({ folderId = null, moduleName = '', entityId = '', sear
   return files.map((file) => ({
     ...file,
     id: String(file._id),
-    viewUrl: `/api/files/${file._id}/view`
+    viewUrl: buildFileViewUrl(file._id)
   }));
 }
 
@@ -248,7 +249,7 @@ async function getFileById(fileId) {
   return {
     ...file,
     id: String(file._id),
-    viewUrl: `/api/files/${file._id}/view`
+    viewUrl: buildFileViewUrl(file._id)
   };
 }
 
@@ -283,7 +284,7 @@ async function deleteFolder(folderId) {
   return Boolean(deleted);
 }
 
-async function saveUploads(files = [], { folderId = null, moduleName = 'general', entityId = '', documentType = '', isPublic = true, createdBy = null } = {}) {
+async function saveUploads(files = [], { folderId = null, moduleName = 'general', entityId = '', documentType = '', isPublic = false, createdBy = null } = {}) {
   if (!files.length) {
     const error = new Error('No files uploaded');
     error.statusCode = 400;
@@ -315,7 +316,7 @@ async function saveUploads(files = [], { folderId = null, moduleName = 'general'
 
     saved.push({
       ...toResponse(doc),
-      viewUrl: `/api/files/${doc.id}/view`
+      viewUrl: buildFileViewUrl(doc.id)
     });
   }
 
@@ -330,7 +331,7 @@ async function archiveFile(fileId, archivedBy = null) {
   );
   return file ? {
     ...toResponse(file),
-    viewUrl: `/api/files/${file.id}/view`
+    viewUrl: buildFileViewUrl(file.id)
   } : null;
 }
 

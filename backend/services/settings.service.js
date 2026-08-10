@@ -21,26 +21,21 @@ async function getSettings() {
 async function updateSettings(patch = {}) {
   const current = await getSettings();
   const next = mergeDeep(current, patch);
-  
+
   const { _id, key, createdAt, updatedAt, __v, ...updateData } = next;
-  
-  let doc = await Settings.findOne({ key: 'default' });
-  if (!doc) {
-    doc = new Settings({ key: 'default' });
-  }
-  
-  Object.keys(updateData).forEach(k => {
-    doc[k] = updateData[k];
-  });
-  
-  doc.markModified('payload');
-  doc.markModified('smtp');
-  doc.markModified('emailTemplates');
-  doc.markModified('notifications');
-  
-  await doc.save();
-  
-  return doc.toObject();
+
+  await Settings.updateOne(
+    { key: 'default' },
+    {
+      $setOnInsert: {
+        key: 'default'
+      },
+      $set: updateData
+    },
+    { upsert: true }
+  );
+
+  return getSettings();
 }
 
 module.exports = {

@@ -11,7 +11,7 @@ import { formatBranchLabel, stripPhoneDigits } from './memberUtils';
 const BALANCE_FIELDS = [
   { name: 'openingBalance', label: 'Opening Balance' },
   { name: 'depositBalance', label: 'Deposit Balance' },
-  { name: 'loanOutstanding', label: 'Loan Outstanding' },
+  { name: 'loanOutstanding', label: 'Regular Loan' },
   { name: 'balances.share', label: 'Share Balance' },
   { name: 'balances.compulsoryDeposit', label: 'Compulsory Deposit' },
   { name: 'balances.specialSaving', label: 'Special Saving' },
@@ -253,7 +253,8 @@ export function MemberForm({
             <h3 className="text-lg font-bold text-slate-900">Membership Details</h3>
             <p className="text-[13px] text-slate-500 mt-1">Branch assignment and membership status.</p>
           </div>
-          
+
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-1.5">
               <label className="text-[13px] font-semibold text-slate-700">Member Code</label>
@@ -267,13 +268,13 @@ export function MemberForm({
 
             <div className="space-y-1.5">
               <label className="text-[13px] font-semibold text-slate-700">Branch <span className="text-rose-500">*</span></label>
-              <Select 
-                value={value.branchCode || ''} 
-                disabled={branchesLoading && branches.length === 0} 
+              <Select
+                value={value.branchCode || ''}
+                disabled={branchesLoading && branches.length === 0}
                 onChange={(val) => setValue({ ...value, branchCode: val })}
                 searchable={true}
                 placeholder={branchesLoading ? 'Loading branches...' : 'Select branch'}
-                options={branches.map(branch => ({ value: branch.code, label: formatBranchLabel(branch) }))}
+                options={branches.map((branch) => ({ value: branch.code, label: formatBranchLabel(branch) }))}
               />
             </div>
 
@@ -293,19 +294,19 @@ export function MemberForm({
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-[13px] font-semibold text-slate-700">Service Name 1</label>
+              <label className="text-[13px] font-semibold text-slate-700">Surety 1</label>
               <Input value={value.serviceName1 || ''} onChange={(e) => setValue({ ...value, serviceName1: e.target.value })} />
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-[13px] font-semibold text-slate-700">Service Name 2</label>
+              <label className="text-[13px] font-semibold text-slate-700">Surety 2</label>
               <Input value={value.serviceName2 || ''} onChange={(e) => setValue({ ...value, serviceName2: e.target.value })} />
             </div>
 
             <div className="space-y-1.5">
               <label className="text-[13px] font-semibold text-slate-700">Account Status</label>
-              <Select 
-                value={value.status || 'Active'} 
+              <Select
+                value={value.status || 'Active'}
                 onChange={(val) => setValue({ ...value, status: val })}
                 options={[
                   { value: 'Active', label: 'Active' },
@@ -313,6 +314,25 @@ export function MemberForm({
                   { value: 'Exited', label: 'Exited' }
                 ]}
               />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-1.5">
+              <label className="text-[13px] font-semibold text-slate-700">Dismembered</label>
+              <label className="flex items-center gap-2 rounded-[var(--radius-input,0.75rem)] border border-slate-200 bg-white px-4 py-3 text-[13px] font-medium text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={Boolean(value.dismembered)}
+                  onChange={(e) => setValue({ ...value, dismembered: e.target.checked })}
+                  className="h-4 w-4 rounded border-slate-300 accent-[var(--primary)]"
+                />
+                Mark as dismembered
+              </label>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[13px] font-semibold text-slate-700">Dismembered Date</label>
+              <Input type="date" value={value.dismemberedDate || ''} onChange={(e) => setValue({ ...value, dismemberedDate: e.target.value })} />
             </div>
           </div>
         </div>
@@ -379,9 +399,17 @@ export function MemberForm({
             </div>
             <div className="space-y-1.5">
               <label className="text-[13px] font-semibold text-slate-700">Nominee Relation</label>
-              <Input value={value.nomineeRelation || ''} onChange={(e) => setValue({ ...value, nomineeRelation: e.target.value })} />
+              <Select
+                value={value.nomineeRelation || ""}
+                onChange={(val) => setValue({ ...value, nomineeRelation: val })}
+                options={[
+                  { value: "Spouse", label: "Spouse" },
+                  { value: "Parent", label: "Parent" },
+                  { value: "Child", label: "Child" },
+                  { value: "Other", label: "Other" }
+                ]}
+              />
             </div>
-          </div>
         </div>
 
       </div>
@@ -428,8 +456,12 @@ export function MemberForm({
           )}
         </div>
       </div>
+      </div>
     </form>
   );
 }
 
 export default MemberForm;
+
+
+

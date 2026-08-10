@@ -117,7 +117,6 @@ export function BankAccountForm({ value, setValue, onSubmit, ledgers = [] }) {
             value={value.linkedLedgerCode || ''}
             onChange={(val) => setValue((current) => ({ ...current, linkedLedgerCode: val }))}
             options={ledgers.map((ledger) => ({ label: getLedgerLabel(ledger), value: ledger.code }))}
-            searchable
             placeholder="Select ledger..."
           />
         </div>

@@ -1,5 +1,6 @@
-require('dotenv').config({ path: '../.env' });
-const mongoose = require('mongoose');
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '..', '.env') });
+const { initializeDatabase, closeDatabase } = require('../config/postgres');
 const { NoInterestMember } = require('../models/banking.models');
 
 const dummyData = [
@@ -39,21 +40,27 @@ const dummyData = [
 
 async function seed() {
   try {
-    await mongoose.connect('mongodb://localhost:27017/bank_system');
-    console.log('Connected to MongoDB');
-    
+    await initializeDatabase();
     await NoInterestMember.deleteMany({});
-    console.log('Cleared existing records');
-    
-    await NoInterestMember.insertMany(dummyData);
-    console.log('Inserted 4 dummy records');
-    
-    await mongoose.disconnect();
-    console.log('Disconnected');
+    console.log('Local PostgreSQL database ready');
+
+    for (const record of dummyData) {
+      const existing = await NoInterestMember.findOne({ code: record.code }).lean();
+      if (existing) {
+        await NoInterestMember.findByIdAndUpdate(existing.id, { $set: record }, { new: true });
+      } else {
+        await NoInterestMember.create(record);
+      }
+    }
+
+    console.log('Inserted/updated 4 dummy records');
   } catch (err) {
     console.error(err);
     process.exit(1);
+  } finally {
+    await closeDatabase();
   }
 }
 
 seed();
+

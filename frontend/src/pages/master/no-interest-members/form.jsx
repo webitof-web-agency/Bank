@@ -1,3 +1,4 @@
+﻿import { useMemo } from 'react';
 import { Input, Textarea } from '../../../components/ui/Input';
 import { Select } from '../../../components/ui/Select';
 import { getMemberLabel } from './noInterestMemberUtils';
@@ -12,6 +13,11 @@ function FieldLabel({ children, required }) {
 }
 
 export function NoInterestMemberForm({ value, setValue, onSubmit, members = [] }) {
+  const memberLookup = useMemo(
+    () => new Map(members.map((member) => [String(member.code || '').trim().toUpperCase(), member])),
+    [members]
+  );
+
   return (
     <form id="no-interest-member-form" onSubmit={onSubmit} className="space-y-6">
       <div className="grid gap-6 md:grid-cols-2">
@@ -29,7 +35,15 @@ export function NoInterestMemberForm({ value, setValue, onSubmit, members = [] }
           <Select
             searchable
             value={value.memberCode || ''}
-            onChange={(val) => setValue((current) => ({ ...current, memberCode: val }))}
+            onChange={(val) => {
+              const selected = memberLookup.get(String(val || '').trim().toUpperCase()) || {};
+              setValue((current) => ({
+                ...current,
+                memberCode: val,
+                branchCode: selected.branchCode || '',
+                designation: selected.designation || ''
+              }));
+            }}
             options={[
               { value: '', label: 'Select member' },
               ...members.map((member) => ({
@@ -41,7 +55,25 @@ export function NoInterestMemberForm({ value, setValue, onSubmit, members = [] }
         </div>
 
         <div>
-          <FieldLabel>From Date</FieldLabel>
+          <FieldLabel>Branch</FieldLabel>
+          <Input
+            value={value.branchCode || memberLookup.get(String(value.memberCode || '').trim().toUpperCase())?.branchCode || ''}
+            readOnly
+            placeholder="Auto-filled from member"
+          />
+        </div>
+
+        <div>
+          <FieldLabel>Designation</FieldLabel>
+          <Input
+            value={value.designation || memberLookup.get(String(value.memberCode || '').trim().toUpperCase())?.designation || ''}
+            readOnly
+            placeholder="Auto-filled from member"
+          />
+        </div>
+
+        <div>
+          <FieldLabel>Set As On Date</FieldLabel>
           <Input
             type="date"
             value={value.fromDate || ''}
@@ -49,7 +81,7 @@ export function NoInterestMemberForm({ value, setValue, onSubmit, members = [] }
           />
         </div>
 
-        <div>
+        <div className="hidden">
           <FieldLabel>To Date</FieldLabel>
           <Input
             type="date"
@@ -72,12 +104,12 @@ export function NoInterestMemberForm({ value, setValue, onSubmit, members = [] }
         </div>
 
         <div className="md:col-span-2">
-          <FieldLabel>Reason</FieldLabel>
+          <FieldLabel>Narration</FieldLabel>
           <Textarea
             rows={4}
             value={value.reason || ''}
             onChange={(event) => setValue((current) => ({ ...current, reason: event.target.value }))}
-            placeholder="Reason for no-interest tagging"
+            placeholder="Narration for no-interest tagging"
           />
         </div>
       </div>
@@ -90,4 +122,3 @@ export function NoInterestMemberForm({ value, setValue, onSubmit, members = [] }
 }
 
 export default NoInterestMemberForm;
-

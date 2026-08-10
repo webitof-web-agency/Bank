@@ -1,4 +1,4 @@
-function toString(value) {
+﻿function toString(value) {
   return String(value ?? '').trim();
 }
 
@@ -32,28 +32,37 @@ export function buildNextDemandNo(rows = []) {
 export function createEmptyDemandDraft(rows = []) {
   return {
     demandNo: buildNextDemandNo(rows),
+    demandListDate: '',
     month: '',
+    year: '',
     branchCode: '',
     memberCode: '',
     dueDate: '',
     total: '',
     recovered: '',
     status: 'Pending',
-    remarks: ''
+    remarks: '',
+    allocations: [],
+    payload: {}
   };
 }
 
 export function createDemandDraftFromRecord(record = {}) {
+  const payload = record.payload || {};
   return {
     demandNo: toString(record.demandNo),
+    demandListDate: toString(record.dueDate || payload.demandListDate),
     month: toString(record.month),
+    year: toString(payload.year),
     branchCode: toString(record.branchCode),
     memberCode: toString(record.memberCode),
     dueDate: toString(record.dueDate),
     total: record.total ?? '',
     recovered: record.recovered ?? '',
     status: toString(record.status) || 'Pending',
-    remarks: toString(record.remarks)
+    remarks: toString(record.remarks),
+    allocations: Array.isArray(record.allocations) ? record.allocations : [],
+    payload
   };
 }
 
@@ -63,11 +72,23 @@ export function buildDemandPayload(draft = {}) {
     month: toString(draft.month),
     branchCode: toUpper(draft.branchCode),
     memberCode: toUpper(draft.memberCode),
-    dueDate: toString(draft.dueDate),
+    dueDate: toString(draft.demandListDate || draft.dueDate),
     total: draft.total === '' || draft.total === null || draft.total === undefined ? undefined : toNumber(draft.total, 0),
     recovered: draft.recovered === '' || draft.recovered === null || draft.recovered === undefined ? undefined : toNumber(draft.recovered, 0),
     status: toString(draft.status) || 'Pending',
-    remarks: toString(draft.remarks)
+    remarks: toString(draft.remarks),
+    allocations: Array.isArray(draft.allocations)
+      ? draft.allocations.map((item) => ({
+          memberCode: toUpper(item.memberCode),
+          head: toString(item.head),
+          amount: toNumber(item.amount, 0)
+        }))
+      : [],
+    payload: {
+      ...(draft.payload || {}),
+      demandListDate: toString(draft.demandListDate || draft.dueDate),
+      year: toString(draft.year)
+    }
   };
 }
 
@@ -88,4 +109,3 @@ export function getMemberLabel(member) {
   if (!member) return '';
   return `${member.code || ''}${member.name ? ` - ${member.name}` : ''}`.trim();
 }
-
