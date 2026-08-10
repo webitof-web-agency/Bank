@@ -439,8 +439,8 @@ export function getReportConfig(reportKey = '') {
       label: 'All Member List',
       description: 'Complete member registry with status.',
       filterMode: 'none',
-      load: async (api, token) => {
-        const response = await api.banking.reports.allMemberList(token, { branchCode: filters.branchCode || '' });
+      load: async (api, token, filters) => {
+        const response = await api.banking.reports.allMemberList(token, { branchCode: filters?.branchCode || '' });
         const rows = Array.isArray(response.data) ? response.data : [];
         const activeCount = rows.filter((row) => String(row.status || '').toLowerCase() === 'active').length;
         return {
@@ -498,8 +498,8 @@ export function getReportConfig(reportKey = '') {
       label: 'Branch List',
       description: 'Branch directory with contact details.',
       filterMode: 'none',
-      load: async (api, token) => {
-        const response = await api.banking.reports.branchList(token, { branchCode: filters.branchCode || '' });
+      load: async (api, token, filters) => {
+        const response = await api.banking.reports.branchList(token, { branchCode: filters?.branchCode || '' });
         const rows = Array.isArray(response.data) ? response.data : [];
         return {
           title: 'Branch List',

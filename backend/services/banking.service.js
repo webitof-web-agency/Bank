@@ -1588,10 +1588,26 @@ async function getLedgerSnapshots({ uptoDate = '', branchCode = '' } = {}) {
   return ledgerSnapshotFromDocuments(ledgers, vouchers);
 }
 
-async function getDashboardSummary(user = {}) {
+async function getDashboardSummary({ user = {}, fyStart = '', fyEnd = '' } = {}) {
   const branchCode = resolveBranchCode(user);
   const branchQuery = branchCode ? { code: branchCode } : {};
   const userQuery = branchCode ? { code: { $ne: '' }, branchCode } : { code: { $ne: '' } };
+  
+  const voucherQuery = branchCode ? { branchCode } : {};
+  const txQuery = branchCode ? { branchCode } : {};
+  
+  if (fyStart || fyEnd) {
+    voucherQuery.date = {};
+    txQuery.date = {};
+    if (fyStart) {
+      voucherQuery.date.$gte = cleanText(fyStart);
+      txQuery.date.$gte = cleanText(fyStart);
+    }
+    if (fyEnd) {
+      voucherQuery.date.$lte = cleanText(fyEnd);
+      txQuery.date.$lte = cleanText(fyEnd);
+    }
+  }
   const [
     society,
     branches,
@@ -1614,8 +1630,8 @@ async function getDashboardSummary(user = {}) {
     BankAccount.countDocuments({}),
     Demand.countDocuments(branchCode ? { branchCode } : {}),
     NoInterestMember.countDocuments(branchCode ? { branchCode } : {}),
-    Voucher.find(branchCode ? { branchCode } : {}).sort({ createdAt: -1 }).limit(10).lean(),
-    BankTransaction.find(branchCode ? { branchCode } : {}).sort({ createdAt: -1 }).limit(10).lean()
+    Voucher.find(voucherQuery).sort({ createdAt: -1 }).limit(10).lean(),
+    BankTransaction.find(txQuery).sort({ createdAt: -1 }).limit(10).lean()
   ]);
 
   return {
@@ -1629,8 +1645,8 @@ async function getDashboardSummary(user = {}) {
       bankAccounts,
       demands,
       noInterestMembers,
-      vouchers: await Voucher.countDocuments(branchCode ? { branchCode } : {}),
-      bankTransactions: await BankTransaction.countDocuments(branchCode ? { branchCode } : {})
+      vouchers: await Voucher.countDocuments(voucherQuery),
+      bankTransactions: await BankTransaction.countDocuments(txQuery)
     },
     recentVouchers: vouchers.map((voucher) => toResponse(voucher)),
     recentBankTransactions: bankTransactions.map((transaction) => toResponse(transaction))
@@ -2032,11 +2048,11 @@ async function buildDividendReport({ rate = 8, branchCode = '', user = {} } = {}
     });
 }
 
-async function buildDashboardQuickSummary(user = {}) {
-  const summary = await getDashboardSummary(user);
+async function buildDashboardQuickSummary({ user = {}, fyStart = '', fyEnd = '' } = {}) {
+  const summary = await getDashboardSummary({ user, fyStart, fyEnd });
   const reports = await Promise.all([
-    buildAccountStatementReport({ user }),
-    buildTrialBalanceReport({ user })
+    buildAccountStatementReport({ user, uptoDate: fyEnd }),
+    buildTrialBalanceReport({ user, uptoDate: fyEnd })
   ]);
   return {
     ...summary,

@@ -10,6 +10,7 @@ import { ConfirmDialog } from '../../../components/overlays/ConfirmDialog';
 import { Table } from '../../../components/ui/Table';
 import { Select } from '../../../components/ui/Select';
 import { useAuth } from '../../../context/AuthContext';
+import { useFY } from '../../../context/FYContext';
 import { uploadDocumentMap } from '../../master/documentUpload';
 import { BankTransactionForm } from './form';
 import {
@@ -36,6 +37,7 @@ function getStatusBadge(status = '') {
 export function BankTransactionsPage({ sectionKey, detailPathBase }) {
   const navigate = useNavigate();
   const { token, hasPermission } = useAuth();
+  const { activeFY } = useFY();
   const [catalog, setCatalog] = useState([]);
   const [rows, setRows] = useState([]);
   const [lookups, setLookups] = useState({});
@@ -105,7 +107,7 @@ export function BankTransactionsPage({ sectionKey, detailPathBase }) {
     return () => {
       mounted = false;
     };
-  }, [token]);
+  }, [token, activeFY]);
 
   function openCreate(itemKey) {
     const item = sectionItems.find((entry) => entry.key === itemKey) || sectionItems[0] || null;

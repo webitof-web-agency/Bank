@@ -25,6 +25,7 @@ import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Select } from '../../components/ui/Select';
 import { useAuth } from '../../context/AuthContext';
+import { useFY } from '../../context/FYContext';
 import { cn } from '../../lib/cn';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart as RechartsPieChart, Pie, Cell } from 'recharts';
 
@@ -60,6 +61,7 @@ function statusTone(value = '') {
 
 export function DashboardPage() {
   const { token, user, hasPermission } = useAuth();
+  const { activeFY } = useFY();
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
   const [analyticsPeriod, setAnalyticsPeriod] = useState('thisMonth');
@@ -84,7 +86,7 @@ export function DashboardPage() {
         if (mounted) setLoading(false);
       });
     return () => { mounted = false; };
-  }, [hasPermission, token]);
+  }, [hasPermission, token, activeFY]);
 
   const society = dashboard?.society || null;
   const counts = dashboard?.counts || {};

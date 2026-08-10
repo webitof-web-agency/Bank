@@ -16,9 +16,11 @@ import {
   Settings,
   Settings2,
   ShieldAlert,
-  UserRound
+  UserRound,
+  CalendarDays
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useFY } from '../../context/FYContext';
 import { api } from '../../api/api';
 import { SidebarToggle } from './Sidebar';
 import { UserAvatar } from '../ui/UserAvatar';
@@ -64,15 +66,18 @@ function NotificationIcon({ item, size = 16 }) {
 
 export function Topbar({ title, subtitle, onMenuClick }) {
   const { user, token, logout, hasPermission } = useAuth();
+  const { activeFY, setActiveFY, fyList } = useFY();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [reportsOpen, setReportsOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [fyDropdownOpen, setFyDropdownOpen] = useState(false);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [latestNotifications, setLatestNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const userDropdownRef = useRef(null);
   const reportsDropdownRef = useRef(null);
   const notificationsDropdownRef = useRef(null);
+  const fyDropdownRef = useRef(null);
   const notificationsOpenRef = useRef(false);
   const navigate = useNavigate();
   const location = useLocation();
@@ -107,6 +112,9 @@ export function Topbar({ title, subtitle, onMenuClick }) {
       if (notificationsDropdownRef.current && !notificationsDropdownRef.current.contains(event.target)) {
         setNotificationsOpen(false);
       }
+      if (fyDropdownRef.current && !fyDropdownRef.current.contains(event.target)) {
+        setFyDropdownOpen(false);
+      }
     }
 
     document.addEventListener('mousedown', handleClickOutside);
@@ -117,6 +125,7 @@ export function Topbar({ title, subtitle, onMenuClick }) {
     setDropdownOpen(false);
     setReportsOpen(false);
     setNotificationsOpen(false);
+    setFyDropdownOpen(false);
   }, [location.pathname]);
 
   useEffect(() => {
@@ -238,6 +247,44 @@ export function Topbar({ title, subtitle, onMenuClick }) {
         </div>
 
         <div className="flex items-center gap-3">
+          
+          <div className="relative flex items-center" ref={fyDropdownRef}>
+            <button
+              type="button"
+              className="flex items-center gap-1.5 rounded-full border border-slate-200/60 bg-slate-50/50 px-3 py-1.5 text-[13px] font-semibold text-slate-700 shadow-sm transition hover:border-[var(--primary)] hover:bg-[color-mix(in_srgb,var(--primary)_4%,transparent)] hover:text-[var(--primary)]"
+              onClick={() => setFyDropdownOpen((current) => !current)}
+              aria-label="Select Financial Year"
+            >
+              <CalendarDays size={14} className="text-slate-400" />
+              FY: {activeFY?.label}
+              <ChevronDown size={14} className="text-slate-400" />
+            </button>
+
+            {fyDropdownOpen ? (
+              <div className="absolute right-0 top-full z-30 mt-2 w-40 overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-[0_10px_40px_-10px_rgba(0,0,0,0.1)]">
+                <div className="p-1">
+                  {fyList.map((fy) => (
+                    <button
+                      key={fy.label}
+                      type="button"
+                      className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-[13px] font-medium transition ${
+                        activeFY?.label === fy.label
+                          ? 'bg-[color-mix(in_srgb,var(--primary)_8%,transparent)] text-[var(--primary)]'
+                          : 'text-slate-700 hover:bg-slate-50'
+                      }`}
+                      onClick={() => {
+                        setActiveFY(fy);
+                        setFyDropdownOpen(false);
+                      }}
+                    >
+                      {fy.label}
+                      {activeFY?.label === fy.label && <CheckCircle2 size={14} />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
 
           {canViewCalendar ? (
             <button

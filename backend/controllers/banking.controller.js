@@ -120,8 +120,8 @@ const transactions = {
         status: req.query.status || '',
         partyType: req.query.partyType || '',
         branchCode: req.query.branchCode || '',
-        dateFrom: req.query.dateFrom || '',
-        dateTo: req.query.dateTo || ''
+        dateFrom: req.query.dateFrom || req.query.fyStart || '',
+        dateTo: req.query.dateTo || req.query.fyEnd || ''
       });
       res.json({ success: true, data: rows });
     } catch (error) {
@@ -196,8 +196,8 @@ const transactions = {
         search: req.query.search || '',
         status: req.query.status || '',
         bankAccountCode: req.query.bankAccountCode || '',
-        dateFrom: req.query.dateFrom || '',
-        dateTo: req.query.dateTo || ''
+        dateFrom: req.query.dateFrom || req.query.fyStart || '',
+        dateTo: req.query.dateTo || req.query.fyEnd || ''
       });
       res.json({ success: true, data: rows });
     } catch (error) {
@@ -245,7 +245,11 @@ const transactions = {
 const reports = {
   async dashboard(req, res, next) {
     try {
-      const data = await bankingService.buildDashboardQuickSummary(req.user || {});
+      const data = await bankingService.buildDashboardQuickSummary({
+        user: req.user || {},
+        fyStart: req.query.fyStart || '',
+        fyEnd: req.query.fyEnd || ''
+      });
       res.json({ success: true, data });
     } catch (error) {
       next(error);
@@ -264,8 +268,8 @@ const reports = {
       const data = await bankingService.buildMemberLedgerReport({
         user: req.user || {},
         memberCode: req.query.memberCode || req.query.code || '',
-        dateFrom: req.query.dateFrom || req.query.from || '',
-        dateTo: req.query.dateTo || req.query.to || ''
+        dateFrom: req.query.dateFrom || req.query.from || req.query.fyStart || '',
+        dateTo: req.query.dateTo || req.query.to || req.query.fyEnd || ''
       });
       if (!data) {
         return res.status(404).json({ success: false, message: 'Member not found' });
@@ -281,7 +285,7 @@ const reports = {
         user: req.user || {},
         search: req.query.search || '',
         nature: req.query.nature || '',
-        uptoDate: req.query.date || req.query.uptoDate || ''
+        uptoDate: req.query.date || req.query.uptoDate || req.query.fyEnd || ''
       });
       res.json({ success: true, data });
     } catch (error) {
@@ -292,7 +296,7 @@ const reports = {
     try {
       const data = await bankingService.buildTrialBalanceReport({
         user: req.user || {},
-        uptoDate: req.query.date || req.query.uptoDate || ''
+        uptoDate: req.query.date || req.query.uptoDate || req.query.fyEnd || ''
       });
       res.json({ success: true, data });
     } catch (error) {
@@ -303,7 +307,7 @@ const reports = {
     try {
       const data = await bankingService.buildBalanceSheetReport({
         user: req.user || {},
-        uptoDate: req.query.date || req.query.uptoDate || ''
+        uptoDate: req.query.date || req.query.uptoDate || req.query.fyEnd || ''
       });
       res.json({ success: true, data });
     } catch (error) {
@@ -314,7 +318,7 @@ const reports = {
     try {
       const data = await bankingService.buildProfitLossReport({
         user: req.user || {},
-        uptoDate: req.query.date || req.query.uptoDate || ''
+        uptoDate: req.query.date || req.query.uptoDate || req.query.fyEnd || ''
       });
       res.json({ success: true, data });
     } catch (error) {
@@ -323,7 +327,7 @@ const reports = {
   },
   async cashBook(req, res, next) {
     try {
-      const data = await bankingService.buildCashBookReport({ date: req.query.date || '', user: req.user || {} });
+      const data = await bankingService.buildCashBookReport({ date: req.query.date || req.query.fyEnd || '', user: req.user || {} });
       res.json({ success: true, data });
     } catch (error) {
       next(error);
@@ -331,7 +335,7 @@ const reports = {
   },
   async dayBook(req, res, next) {
     try {
-      const data = await bankingService.buildDayBookReport({ date: req.query.date || '', user: req.user || {} });
+      const data = await bankingService.buildDayBookReport({ date: req.query.date || req.query.fyEnd || '', user: req.user || {} });
       res.json({ success: true, data });
     } catch (error) {
       next(error);
@@ -339,7 +343,7 @@ const reports = {
   },
   async voucherSummary(req, res, next) {
     try {
-      const data = await bankingService.buildVoucherSummaryReport({ date: req.query.date || '', user: req.user || {} });
+      const data = await bankingService.buildVoucherSummaryReport({ date: req.query.date || req.query.fyEnd || '', user: req.user || {} });
       res.json({ success: true, data });
     } catch (error) {
       next(error);
@@ -377,8 +381,8 @@ const reports = {
     try {
       const data = await bankingService.buildPaymentReceiptStatementReport({
         user: req.user || {},
-        dateFrom: req.query.dateFrom || req.query.from || '',
-        dateTo: req.query.dateTo || req.query.to || ''
+        dateFrom: req.query.dateFrom || req.query.from || req.query.fyStart || '',
+        dateTo: req.query.dateTo || req.query.to || req.query.fyEnd || ''
       });
       res.json({ success: true, data });
     } catch (error) {

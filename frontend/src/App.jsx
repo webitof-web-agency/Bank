@@ -1,7 +1,8 @@
-﻿import { useEffect } from 'react';
-import { HashRouter, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
+import { useEffect } from 'react';
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { AuthProvider } from './context/AuthContext';
+import { FYProvider } from './context/FYContext';
 import { ProtectedRoute } from './components/guards/ProtectedRoute';
 import { PermissionRoute } from './components/guards/PermissionRoute';
 import { AppLayout } from './components/layout/AppLayout';
@@ -560,13 +561,15 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <HashRouter>
-        <TitleUpdater />
-        <AppRoutes />
-        <Toaster richColors position="top-right" closeButton />
-      </HashRouter>
-    </AuthProvider>
+    <FYProvider>
+      <AuthProvider>
+        <BrowserRouter>
+          <TitleUpdater />
+          <AppRoutes />
+          <Toaster richColors position="top-right" closeButton />
+        </BrowserRouter>
+      </AuthProvider>
+    </FYProvider>
   );
 }
 

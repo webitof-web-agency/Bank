@@ -9,6 +9,7 @@ import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
 import { Table } from '../../components/ui/Table';
 import { useAuth } from '../../context/AuthContext';
+import { useFY } from '../../context/FYContext';
 import { getReportConfig, getReportDefaultFilters } from './reportDefinitions';
 import { REPORT_LINK_MAP, REPORT_NAV_LINKS } from './reportLinks';
 
@@ -137,6 +138,7 @@ export function ReportViewerPage() {
   const { reportKey } = useParams();
   const navigate = useNavigate();
   const { token, hasPermission } = useAuth();
+  const { activeFY } = useFY();
   const config = useMemo(() => getReportConfig(reportKey), [reportKey]);
   const reportPermission = REPORT_LINK_MAP[reportKey]?.permission || '';
   const exportPermission = reportPermission ? reportPermission.replace(/\\.view$/, '.export') : '';
@@ -197,7 +199,7 @@ export function ReportViewerPage() {
     return () => {
       mounted = false;
     };
-  }, [config, generatedFilters, lookups, token]);
+  }, [config, generatedFilters, lookups, token, activeFY]);
 
   if (!config) {
     return (

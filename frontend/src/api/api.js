@@ -126,6 +126,24 @@ export async function request(path, { method = 'GET', body, token, headers = {},
     }
   };
 
+  let finalPath = path;
+  if (isBrowser() && (path.startsWith('/banking/reports') || path.startsWith('/banking/transactions') || path.startsWith('/banking/dashboard'))) {
+    try {
+      const stored = window.localStorage.getItem('bank-active-fy');
+      if (stored) {
+        const fy = JSON.parse(stored);
+        if (fy && fy.start && fy.end) {
+          const separator = finalPath.includes('?') ? '&' : '?';
+          if (!finalPath.includes('fyStart=')) {
+            finalPath = `${finalPath}${separator}fyStart=${encodeURIComponent(fy.start)}&fyEnd=${encodeURIComponent(fy.end)}`;
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   if (formData) {
     init.body = formData;
   } else if (body != null) {
@@ -133,13 +151,13 @@ export async function request(path, { method = 'GET', body, token, headers = {},
     init.body = JSON.stringify(body);
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, init);
+  const response = await fetch(`${API_BASE_URL}${finalPath}`, init);
   const data = await parseResponse(response);
 
   if (method === 'GET' && !skipCache) {
     writeStoredCache(cacheKey, data);
   } else {
-    invalidateStoredCache(path.split('?')[0]);
+    invalidateStoredCache(finalPath.split('?')[0]);
   }
 
   return data;
