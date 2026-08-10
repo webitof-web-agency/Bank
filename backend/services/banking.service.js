@@ -1735,7 +1735,12 @@ async function buildBankTransactionRows(filter = {}) {
   const rows = await BankTransaction.find(query).sort({ date: -1, createdAt: -1 }).lean();
   return rows.map((row) => toResponse(row));
 }
-
+function getPartyMemberCode(voucher) {
+  if (cleanLower(voucher.partyType) === 'member') {
+    return cleanUpper(voucher.partyCode);
+  }
+  return '';
+}
 async function buildMemberLedgerReport({ memberCode, dateFrom = '', dateTo = '', user = {} } = {}) {
   const member = await Member.findOne({ code: cleanUpper(memberCode) }).lean();
   if (!member || !canAccessBranchRecord('members', member, user)) {
