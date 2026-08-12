@@ -1,4 +1,4 @@
-﻿const fs = require('fs/promises');
+const fs = require('fs/promises');
 const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
@@ -61,11 +61,21 @@ function getConnectionConfig(overrides = {}) {
 }
 
 async function loadBinaryPaths() {
-  if (process.platform !== 'win32') {
-    throw new Error('Embedded PostgreSQL binaries are configured for Windows in this project.');
+  const osPlatform = os.platform();
+  const osArch = os.arch();
+  
+  let modName;
+  if (osPlatform === 'win32') {
+    modName = '@embedded-postgres/windows-x64';
+  } else if (osPlatform === 'linux') {
+    modName = `@embedded-postgres/linux-${osArch}`;
+  } else if (osPlatform === 'darwin') {
+    modName = `@embedded-postgres/darwin-${osArch}`;
+  } else {
+    throw new Error(`Embedded PostgreSQL is not supported on platform: ${osPlatform} ${osArch}`);
   }
 
-  const mod = await import('@embedded-postgres/windows-x64');
+  const mod = await import(modName);
   return {
     initdb: mod.initdb,
     postgres: mod.postgres
@@ -137,11 +147,20 @@ async function ensureEmbeddedServer() {
     const user = process.env.PG_USER || 'postgres';
     const password = process.env.PG_PASSWORD || 'postgres';
     const port = Number(process.env.PG_PORT || 5432);
-    const databaseDir = process.env.PG_DATA_DIR || path.join(__dirname, '..', 'data', 'embedded-postgres');
+    let defaultDataDir = path.join(__dirname, '..', 'data', 'embedded-postgres');
+    if (process.platform === 'linux' && __dirname.startsWith('/mnt/')) {
+      defaultDataDir = path.join(os.homedir(), '.webitof-bank-embedded-postgres');
+    }
+    const databaseDir = process.env.PG_DATA_DIR || defaultDataDir;
     const persistent = String(process.env.PG_PERSISTENT || 'true').trim().toLowerCase() !== 'false';
     const pgVersionFile = path.join(databaseDir, 'PG_VERSION');
 
-    await fs.mkdir(databaseDir, { recursive: true });
+    await fs.mkdir(databaseDir, { recursive: true, mode: 0o700 });
+    try {
+      await fs.chmod(databaseDir, 0o700);
+    } catch {
+      // Ignore chmod errors if not supported
+    }
 
     let needsInit = false;
     try {

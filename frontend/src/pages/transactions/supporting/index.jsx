@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight, CalendarDays, ChevronDown, Filter, Plus, Search, X } from 'lucide-react';
 import { toast } from 'sonner';
@@ -22,7 +22,7 @@ function normalizeMonth(value = '') {
 }
 
 function formatDate(value = '') {
-  if (!value) return '�';
+  if (!value) return '—';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
   return new Intl.DateTimeFormat('en-GB', {
@@ -148,7 +148,7 @@ export function SupportingTransactionsPage({ sectionKey, detailPathBase = '/app/
 
   const branchOptions = useMemo(() => ([
     { value: '', label: 'Branch Name' },
-    ...branches.map((branch) => ({ value: String(branch.code || ''), label: getBranchLabel(branch) || branch.code || '�' }))
+    ...branches.map((branch) => ({ value: String(branch.code || ''), label: getBranchLabel(branch) || branch.code || '—' }))
   ]), [branches]);
 
   const monthOptions = useMemo(() => {
@@ -301,7 +301,7 @@ export function SupportingTransactionsPage({ sectionKey, detailPathBase = '/app/
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.35em] text-blue-600">Supporting</p>
           <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">Demand List</h1>
-          <p className="mt-1 text-sm text-slate-500">Transactions ? Supporting ? Demand List</p>
+          <p className="mt-1 text-sm text-slate-500">Transactions → Supporting → Demand List</p>
         </div>
         <Button type="button" onClick={openCreate} className="gap-2 bg-amber-500 text-white hover:bg-amber-600">
           <Plus size={16} />

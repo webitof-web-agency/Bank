@@ -359,7 +359,7 @@ export function ReceiptInterestTransactionsPage({ sectionKey, detailPathBase }) 
               <ChevronDown size={14} className="ml-1 opacity-70" />
             </Button>
             {dropdownOpen && (
-              <div className="absolute right-0 top-full z-50 mt-2 w-72 origin-top-right rounded-2xl border border-slate-200 bg-white p-2 shadow-xl ring-1 ring-slate-900/5">
+              <div className="absolute right-0 top-full z-50 mt-2 w-max min-w-[18rem] origin-top-right rounded-2xl border border-slate-200 bg-white p-2 shadow-xl ring-1 ring-slate-900/5">
                 {editableItems.map((item) => (
                   <button
                     key={item.key}
@@ -372,7 +372,7 @@ export function ReceiptInterestTransactionsPage({ sectionKey, detailPathBase }) 
                     <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary)]">
                       <Plus size={14} strokeWidth={2.5} />
                     </div>
-                    <span className="line-clamp-1">{item.label}</span>
+                    <span>{item.label}</span>
                   </button>
                 ))}
               </div>
