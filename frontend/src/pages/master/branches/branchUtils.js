@@ -6,6 +6,16 @@ function toUpper(value) {
   return toString(value).toUpperCase();
 }
 
+function getDefaultHeadOfficeCode(rows = []) {
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const code = toUpper(row?.headOfficeCode);
+    if (code) {
+      return code;
+    }
+  }
+  return 'HO01';
+}
+
 export function buildNextBranchCode(rows = []) {
   let maxNumber = 0;
 
@@ -25,6 +35,7 @@ export function buildNextBranchCode(rows = []) {
 export function createEmptyBranchDraft(rows = []) {
   return {
     code: buildNextBranchCode(rows),
+    headOfficeCode: getDefaultHeadOfficeCode(rows),
     label: '',
     place: '',
     address: '',
@@ -37,6 +48,7 @@ export function createEmptyBranchDraft(rows = []) {
 export function createBranchDraftFromRecord(record = {}) {
   return {
     code: toString(record.code),
+    headOfficeCode: toString(record.headOfficeCode) || 'HO01',
     label: toString(record.label),
     place: toString(record.place),
     address: toString(record.address),
@@ -49,6 +61,7 @@ export function createBranchDraftFromRecord(record = {}) {
 export function buildBranchPayload(draft = {}) {
   return {
     code: toUpper(draft.code) || undefined,
+    headOfficeCode: toUpper(draft.headOfficeCode) || undefined,
     label: toString(draft.label),
     place: toString(draft.place),
     address: toString(draft.address),
@@ -57,4 +70,3 @@ export function buildBranchPayload(draft = {}) {
     isActive: draft.isActive !== false
   };
 }
-

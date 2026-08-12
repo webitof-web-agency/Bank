@@ -277,10 +277,10 @@ export function BankTransactionsPage({ sectionKey, detailPathBase }) {
     },
     {
       key: 'party',
-      label: 'Instrument No/Ref',
+      label: 'Reference / Instrument',
       sortable: true,
-      sortValue: (row) => getTransactionPartyLabel(row.partyCode, lookups, row.partyType),
-      render: (row) => <span className="text-slate-700">{getTransactionPartyLabel(row.partyCode, lookups, row.partyType)}</span>
+      sortValue: (row) => row.referenceNo || row.instrumentNo || '',
+      render: (row) => <span className="text-slate-700">{row.referenceNo || row.instrumentNo || '-'}</span>
     },
     {
       key: 'settlement',
@@ -566,3 +566,4 @@ export function BankTransactionsPage({ sectionKey, detailPathBase }) {
 }
 
 export default BankTransactionsPage;
+

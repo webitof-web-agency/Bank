@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Building2, FileImage, Paintbrush, Save, Type } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../api/api';
@@ -8,6 +8,7 @@ import { Input, Textarea } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 
 const EMPTY_FORM = {
+  code: 'HO01',
   name: '',
   prefix: '',
   regNo: '',
@@ -47,6 +48,7 @@ export function SocietyDetailsPage() {
         if (!mounted) return;
         const record = response.data || {};
         setDraft({
+          code: record.code || 'HO01',
           name: record.name || '',
           prefix: record.prefix || '',
           regNo: record.regNo || '',
@@ -60,7 +62,7 @@ export function SocietyDetailsPage() {
       })
       .catch((error) => {
         if (!mounted) return;
-        toast.error(error.message || 'Unable to load society details');
+        toast.error(error.message || 'Unable to load head office details');
       })
       .finally(() => {
         if (mounted) setLoading(false);
@@ -76,15 +78,15 @@ export function SocietyDetailsPage() {
     setSaving(true);
     try {
       await api.banking.updateMaster('/masters/society', token, draft);
-      toast.success('Society details saved');
+      toast.success('Head office details saved');
     } catch (error) {
-      toast.error(error.message || 'Unable to save society details');
+      toast.error(error.message || 'Unable to save head office details');
     } finally {
       setSaving(false);
     }
   }
 
-  const previewTitle = useMemo(() => draft.name || 'Society', [draft.name]);
+  const previewTitle = useMemo(() => draft.name || 'Head Office', [draft.name]);
 
   if (loading) {
     return <div className="flex h-48 items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--primary)] border-t-transparent" /></div>;
@@ -93,14 +95,17 @@ export function SocietyDetailsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Society Details</h1>
-        <p className="mt-1 text-sm text-slate-500">Prototype ke society, branding, aur footer fields.</p>
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Head Office Details</h1>
+        <p className="mt-1 text-sm text-slate-500">Manage the main office identity that sits above every branch.</p>
       </div>
 
       <Card className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <form className="space-y-6" onSubmit={saveDetails}>
           <div className="grid gap-6 md:grid-cols-2">
-            <Field label="Society Name" icon={Building2}>
+            <Field label="Head Office Code" icon={Building2}>
+              <Input value={draft.code} onChange={(event) => setDraft((current) => ({ ...current, code: event.target.value }))} />
+            </Field>
+            <Field label="Head Office Name" icon={Building2}>
               <Input value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} />
             </Field>
             <Field label="Prefix" icon={Type}>
@@ -112,14 +117,14 @@ export function SocietyDetailsPage() {
             <Field label="Email" icon={FileImage}>
               <Input type="email" value={draft.email} onChange={(event) => setDraft((current) => ({ ...current, email: event.target.value }))} />
             </Field>
+            <Field label="Main Branch Code">
+              <Input value={draft.branchCode} onChange={(event) => setDraft((current) => ({ ...current, branchCode: event.target.value }))} />
+            </Field>
             <div className="md:col-span-2">
               <Field label="Address" icon={Paintbrush}>
                 <Textarea rows={4} value={draft.address} onChange={(event) => setDraft((current) => ({ ...current, address: event.target.value }))} />
               </Field>
             </div>
-            <Field label="Branch Code">
-              <Input value={draft.branchCode} onChange={(event) => setDraft((current) => ({ ...current, branchCode: event.target.value }))} />
-            </Field>
             <Field label="Footer Text">
               <Input value={draft.footerText} onChange={(event) => setDraft((current) => ({ ...current, footerText: event.target.value }))} />
             </Field>
@@ -133,13 +138,13 @@ export function SocietyDetailsPage() {
 
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[13px] text-slate-600">
             <span>Preview title: {previewTitle}</span>
-            <span>Read only prototype shape aligned to society master</span>
+            <span>Head office data used across branches and reports</span>
           </div>
 
           <div className="flex justify-end">
             <Button type="submit" disabled={!canEdit || saving} className="gap-2">
               <Save size={16} />
-              {saving ? 'Saving...' : 'Save Society Details'}
+              {saving ? 'Saving...' : 'Save Head Office Details'}
             </Button>
           </div>
         </form>

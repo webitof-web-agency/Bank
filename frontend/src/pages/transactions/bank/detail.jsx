@@ -302,10 +302,12 @@ export function BankTransactionDetailPage({ sectionKey }) {
     );
   }
 
+  const isBankSection = sectionKey === 'bank';
   const title = getTransactionVoucherTitle(record, sectionItems);
   const templateItem = getVoucherSectionItem(record, sectionItems);
   const documentDefs = getBankDocumentDefinitions(templateItem?.key || record?.details?.key || '');
   const partyLabel = getTransactionPartyLabel(record.partyCode, lookups, record.partyType);
+  const referenceLabel = record.referenceNo || record.instrumentNo || '-';
   const settlementLabel = getTransactionLedgerLabel(
     record.details?.settlementAccount || record.details?.ledgerTarget || record.details?.depositIn || record.details?.fromAccount || '',
     lookups
@@ -427,7 +429,8 @@ export function BankTransactionDetailPage({ sectionKey }) {
               <DetailRow label="Category" value={record.voucherCategory} />
               <DetailRow label="Transaction Type" value={record.transactionType} />
               <DetailRow label="Party Type" value={record.partyType} />
-              <DetailRow label="Instrument No/Ref" value={partyLabel} />
+              <DetailRow label="Party" value={partyLabel} />
+              <DetailRow label="Reference / Instrument" value={referenceLabel} />
               <DetailRow label="Bank A/c" value={settlementLabel} />
               <DetailRow label="Branch" value={record.branchCode} />
               <DetailRow label="FY Code" value={record.fyCode} />
@@ -465,6 +468,16 @@ export function BankTransactionDetailPage({ sectionKey }) {
               <DetailRow label="Account Head" value={details.accountHead} />
               <DetailRow label="Component Loan Amt" value={details.components?.loanAmt} />
               <DetailRow label="Component LAD" value={details.components?.lad} />
+              {isBankSection ? (
+                <>
+                  <DetailRow label="Fixed Settlement" value={details.fixedSettlement} />
+                  <DetailRow label="Fixed From" value={details.fixedFrom} />
+                  <DetailRow label="Fixed To" value={details.fixedTo} />
+                  <DetailRow label="Self Use" value={details.selfUse ? 'Yes' : 'No'} />
+                  <DetailRow label="Transfer Type" value={details.transferType} />
+                  <DetailRow label="Receipt To" value={details.receiptTo} />
+                </>
+              ) : null}
             </div>
           </Card>
 
@@ -665,3 +678,5 @@ export function BankTransactionDetailPage({ sectionKey }) {
 }
 
 export default BankTransactionDetailPage;
+
+

@@ -263,7 +263,7 @@ export function getNotificationNavigationMeta(notification = {}) {
       return { path: path || '/app/master/ledgers', label: 'Open ledgers', modulePath, moduleLabel, iconKind };
     }
     if (entityType.includes('rate') || action.includes('rate') || title.includes('rate')) {
-      return { path: path || '/app/master/rates', label: 'Open rates', modulePath, moduleLabel, iconKind };
+      return { path: path || '/app/master/rates', label: 'Open rates config', modulePath, moduleLabel, iconKind };
     }
     if (entityType.includes('bank account') || entityType.includes('bankaccount') || action.includes('bank account') || title.includes('bank account')) {
       return { path: path || '/app/master/bank-accounts', label: 'Open bank accounts', modulePath, moduleLabel, iconKind };
@@ -294,3 +294,4 @@ export function notifyNotificationsChanged() {
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new Event('notifications:changed'));
 }
+

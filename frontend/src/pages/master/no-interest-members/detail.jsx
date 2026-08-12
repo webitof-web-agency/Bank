@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Edit2, Ban, AlertCircle, Calendar, UserRound, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -14,12 +14,12 @@ function DetailRow({ label, value }) {
   return (
     <div className="grid grid-cols-[180px_1fr] gap-4 border-b border-slate-100 py-4 last:border-b-0">
       <div className="text-[13px] font-medium text-slate-500">{label}</div>
-      <div className="text-[14px] font-medium text-slate-900">{value || 'â€”'}</div>
+      <div className="text-[14px] font-medium text-slate-900">{value || '—'}</div>
     </div>
   );
 }
 
-export function NoInterestMemberDetailPage() {
+export function NoInterestMemberDetailPage({ basePath = '/app/master/no-interest-members' } = {}) {
   const { id } = useParams();
   const navigate = useNavigate();
   const { token, hasPermission } = useAuth();
@@ -89,8 +89,8 @@ export function NoInterestMemberDetailPage() {
   }
 
   const memberLookup = useMemo(() => new Map(members.map((member) => [String(member.code || '').toUpperCase(), member])), [members]);
-  const branchCode = record?.branchCode || record?.payload?.branchCode || member?.branchCode || '—';
-  const designation = record?.designation || record?.payload?.designation || member?.designation || '—';
+  const branchCode = record?.branchCode || record?.payload?.branchCode || member?.branchCode || '�';
+  const designation = record?.designation || record?.payload?.designation || member?.designation || '�';
   const statusBadge = String(record?.status || 'Active').toLowerCase() === 'active'
     ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
     : 'border-rose-200 bg-rose-50 text-rose-700';
@@ -111,13 +111,13 @@ export function NoInterestMemberDetailPage() {
     );
   }
 
-  const recordCode = record.code || 'â€”';
+  const recordCode = record.code || '—';
   const member = memberLookup.get(String(record.memberCode || '').trim().toUpperCase());
 
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2 text-[13px] font-medium text-slate-500">
-        <button type="button" onClick={() => navigate(-1)} className="flex items-center gap-1.5 transition-colors hover:text-slate-900">
+        <button type="button" onClick={() => navigate(basePath)} className="flex items-center gap-1.5 transition-colors hover:text-slate-900">
           <ArrowLeft size={14} /> Back
         </button>
         <span className="text-slate-300">/</span>
@@ -157,12 +157,12 @@ export function NoInterestMemberDetailPage() {
             <div className="flex items-center gap-5 mt-1 bg-slate-50/80 border border-slate-100 rounded-[14px] px-5 py-3 shadow-sm">
               <div>
                 <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Set As On Date</p>
-                <p className="text-base font-bold text-slate-900 leading-tight mt-0.5">{record.fromDate || 'â€”'}</p>
+                <p className="text-base font-bold text-slate-900 leading-tight mt-0.5">{record.fromDate || '—'}</p>
               </div>
               <div className="w-px h-8 bg-slate-200"></div>
               <div>
                 <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">To Date</p>
-                <p className="text-base font-bold text-slate-900 leading-tight mt-0.5">{record.toDate || 'â€”'}</p>
+                <p className="text-base font-bold text-slate-900 leading-tight mt-0.5">{record.toDate || '—'}</p>
               </div>
             </div>
           </div>
@@ -213,7 +213,7 @@ export function NoInterestMemberDetailPage() {
               <div className="divide-y divide-slate-100 px-6">
                 <DetailRow label="Record Status" value={record.status} />
                 <DetailRow label="Member Code" value={record.memberCode} />
-                <DetailRow label="Period" value={`${record.fromDate || 'â€”'} to ${record.toDate || 'â€”'}`} />
+                <DetailRow label="Period" value={`${record.fromDate || '—'} to ${record.toDate || '—'}`} />
                 <DetailRow label="Narration Tag" value={record.reason} />
               </div>
             </Card>
@@ -249,5 +249,6 @@ export function NoInterestMemberDetailPage() {
 }
 
 export default NoInterestMemberDetailPage;
+
 
 

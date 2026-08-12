@@ -1,12 +1,11 @@
-﻿import {
+import {
   GitBranch,
   Users,
   ShieldCheck,
   BookOpen,
   Percent,
   Landmark,
-  FileText,
-  Ban
+  FileText
 } from 'lucide-react';
 
 export const MASTER_LINKS = [
@@ -65,11 +64,11 @@ export const MASTER_LINKS = [
     tone: 'amber'
   },
   {
-    label: 'Rates',
+    label: 'Rates Config',
     path: '/app/master/rates',
     icon: Percent,
     permission: 'master.rates.view',
-    description: 'Interest and scheme rate master.',
+    description: 'Global interest, limits, and demand configuration.',
     group: 'Accounting',
     tone: 'amber'
   },
@@ -82,22 +81,7 @@ export const MASTER_LINKS = [
     group: 'Accounting',
     tone: 'amber'
   },
-  {
-    label: 'Demands',
-    path: '/app/master/demands',
-    icon: FileText,
-    permission: 'master.demands.view',
-    description: 'Monthly demand master and recovery records.',
-    group: 'Accounting',
-    tone: 'amber'
-  },
-  {
-    label: 'No Interest Members',
-    path: '/app/master/no-interest-members',
-    icon: Ban,
-    permission: 'master.no-interest-members.view',
-    description: 'Members excluded from interest calculations.',
-    group: 'Accounting',
-    tone: 'amber'
-  }
 ];
+
+
+

@@ -117,6 +117,7 @@ export function BranchesPage() {
 
   const columns = [
     { key: 'code', label: 'Code', sortable: true, render: (row) => <span className="font-medium text-slate-900">{row.code || '-'}</span> },
+    { key: 'headOfficeCode', label: 'Head Office', sortable: true, render: (row) => <span className="text-slate-700">{row.headOfficeCode || 'HO01'}</span> },
     { key: 'label', label: 'Branch Name', sortable: true, render: (row) => <span className="text-slate-700">{row.label || '-'}</span> },
     { key: 'place', label: 'Place', sortable: true, render: (row) => <span className="text-slate-700">{row.place || '-'}</span> },
     { key: 'district', label: 'District', sortable: true, render: (row) => <span className="text-slate-700">{row.district || '-'}</span> },
@@ -244,3 +245,4 @@ export function BranchesPage() {
 }
 
 export default BranchesPage;
+

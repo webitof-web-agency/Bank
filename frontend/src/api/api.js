@@ -219,6 +219,7 @@ export const api = {
     getTransactionCatalog: (token) => request('/banking/transactions/catalog', { token, skipCache: true }),
     getLookups: (token) => request('/banking/lookups', { token, skipCache: true }),
     listTransactionVouchers: (token, query = {}) => request(`/banking/transactions/vouchers${buildQuery(query)}`, { token, skipCache: true }),
+    getNextVoucherNo: (token, branchCode = '') => request(`/banking/transactions/vouchers/next?branchCode=${encodeURIComponent(branchCode)}`, { token, skipCache: true }),
     getTransactionVoucher: (token, id) => request(`/banking/transactions/vouchers/${id}`, { token, skipCache: true }),
     createTransactionVoucher: (token, payload) => request('/banking/transactions/vouchers', { method: 'POST', token, body: payload }),
     updateTransactionVoucher: (token, id, payload) => request(`/banking/transactions/vouchers/${id}`, { method: 'PUT', token, body: payload }),

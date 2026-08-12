@@ -19,12 +19,14 @@ import {
   createTransactionDraftFromRecord,
   filterTransactionRows,
   formatTransactionAmount,
+  formatTransactionModeLabel,
   getSectionItems,
   getTransactionLedgerLabel,
   getTransactionPartyLabel,
   getTransactionVoucherTitle
 } from './transactionUtils';
 import { toneClassName } from './transactionUtils';
+import { getMemberTransactionTypeByKey } from './memberConfig';
 
 function getStatusBadge(status = '') {
   const value = String(status || '').toLowerCase();
@@ -34,7 +36,7 @@ function getStatusBadge(status = '') {
   return 'border-slate-200 bg-slate-50 text-slate-700';
 }
 
-export function MemberTransactionsPage({ sectionKey, detailPathBase }) {
+export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '' }) {
   const navigate = useNavigate();
   const { token, hasPermission } = useAuth();
   const { activeFY } = useFY();
@@ -58,8 +60,11 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase }) {
   const [filterDropdownOpen, setFilterDropdownOpen] = useState(false);
   const section = useMemo(() => catalog.find((item) => item.key === sectionKey) || null, [catalog, sectionKey]);
   const sectionItems = useMemo(() => getSectionItems(catalog, sectionKey), [catalog, sectionKey]);
+  const activeItem = useMemo(() => getMemberTransactionTypeByKey(itemKey), [itemKey]);
+  const activeSectionItems = useMemo(() => (activeItem ? sectionItems.filter((entry) => entry.key === activeItem.key) : sectionItems), [activeItem, sectionItems]);
+  const currentItemKey = activeItem?.key || '';
   const visibleRows = useMemo(() => {
-    const baseRows = filterTransactionRows(rows, sectionItems);
+    const baseRows = filterTransactionRows(rows, activeSectionItems, currentItemKey);
     const searchValue = String(search || '').trim().toLowerCase();
 
     return baseRows.filter((row) => {
@@ -77,7 +82,7 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase }) {
       const matchesTo = !filterDateTo || String(row.date || '') <= filterDateTo;
       return matchesSearch && matchesStatus && matchesPartyType && matchesFrom && matchesTo;
     });
-  }, [rows, sectionItems, search, filterStatus, filterPartyType, filterDateFrom, filterDateTo]);
+  }, [rows, activeSectionItems, currentItemKey, search, filterStatus, filterPartyType, filterDateFrom, filterDateTo]);
   const canWrite = hasPermission('transactions.write');
   const canReverse = hasPermission('transactions.reverse');
 
@@ -110,10 +115,11 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase }) {
   }, [token, activeFY]);
 
   function openCreate(itemKey) {
-    const item = sectionItems.find((entry) => entry.key === itemKey) || sectionItems[0] || null;
+    const key = currentItemKey || itemKey;
+    const item = activeSectionItems.find((entry) => entry.key === key) || activeSectionItems[0] || null;
     setActiveRecord(null);
     setDraft(() => {
-      const next = createEmptyTransactionDraft(sectionKey, sectionItems);
+      const next = createEmptyTransactionDraft(sectionKey, activeSectionItems, key);
       return {
         ...next,
         voucherCategory: item?.label || next.voucherCategory,
@@ -129,14 +135,14 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase }) {
 
   function openEdit(record) {
     setActiveRecord(record);
-    setDraft(createTransactionDraftFromRecord(record, sectionItems, sectionKey));
+    setDraft(createTransactionDraftFromRecord(record, activeSectionItems, sectionKey, currentItemKey));
     setEditorOpen(true);
   }
 
   function closeEditor() {
     setEditorOpen(false);
     setActiveRecord(null);
-    setDraft(createEmptyTransactionDraft(sectionKey, sectionItems));
+    setDraft(createEmptyTransactionDraft(sectionKey, activeSectionItems, currentItemKey));
     setRemovedDocumentIds([]);
   }
 
@@ -252,60 +258,15 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase }) {
     amount: visibleRows.reduce((sum, row) => sum + Number(row.amount || 0), 0)
   }), [visibleRows]);
 
-  const linkedItems = useMemo(() => (sectionItems || []).filter((item) => item.route), [sectionItems]);
-  const editableItems = useMemo(() => (sectionItems || []).filter((item) => !item.route), [sectionItems]);
+  const linkedItems = useMemo(() => (activeSectionItems || []).filter((item) => item.route), [activeSectionItems]);
+  const editableItems = useMemo(() => (activeSectionItems || []).filter((item) => !item.route), [activeSectionItems]);
 
-  const columns = [
-    {
-      key: 'voucherNo',
-      label: 'Voucher No',
-      sortable: true,
-      render: (row) => <span className="font-medium text-slate-900">{row.voucherNo || '-'}</span>
-    },
-    {
-      key: 'date',
-      label: 'Date',
-      sortable: true,
-      render: (row) => <span className="text-slate-700">{row.date || '-'}</span>
-    },
-    {
-      key: 'type',
-      label: 'Type',
-      sortable: true,
-      sortValue: (row) => getTransactionVoucherTitle(row, sectionItems),
-      render: (row) => <span className="text-slate-700">{getTransactionVoucherTitle(row, sectionItems)}</span>
-    },
-    {
-      key: 'party',
-      label: 'Member',
-      sortable: true,
-      sortValue: (row) => getTransactionPartyLabel(row.partyCode, lookups, row.partyType),
-      render: (row) => <span className="text-slate-700">{getTransactionPartyLabel(row.partyCode, lookups, row.partyType)}</span>
-    },
-    {
-      key: 'settlement',
-      label: 'Settlement A/c',
-      sortable: true,
-      sortValue: (row) => getTransactionLedgerLabel(row.details?.settlementAccount || row.details?.ledgerTarget || row.details?.depositIn || row.details?.fromAccount || '', lookups),
-      render: (row) => <span className="text-slate-700">{getTransactionLedgerLabel(row.details?.settlementAccount || row.details?.ledgerTarget || row.details?.depositIn || row.details?.fromAccount || '', lookups)}</span>
-    },
-    {
-      key: 'amount',
-      label: 'Amount',
-      sortable: true,
-      render: (row) => <span className="text-slate-700">{formatTransactionAmount(row.amount ?? 0)}</span>
-    },
-    {
-      key: 'status',
-      label: 'Status',
-      sortable: true,
-      render: (row) => (
-        <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${getStatusBadge(row.status)}`}>
-          {row.status || 'Draft'}
-        </span>
-      )
-    },
-    {
+  const columns = useMemo(() => {
+    const getMember = (code) => (lookups.members || []).find((row) => String(row.code || row.value || '').toUpperCase() === String(code || '').toUpperCase()) || null;
+    const getBranch = (code) => getMember(code)?.branch || getMember(code)?.branchCode || '-';
+    const getDesignation = (code) => getMember(code)?.designation || '-';
+
+    const actionsColumn = {
       key: 'actions',
       label: 'Actions',
       sortable: false,
@@ -332,14 +293,99 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase }) {
           ) : null}
         </div>
       )
+    };
+
+    const statusColumn = {
+      key: 'status',
+      label: 'Status',
+      sortable: true,
+      render: (row) => <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${getStatusBadge(row.status)}`}>{row.status || 'Draft'}</span>
+    };
+
+    if (currentItemKey === 'ssa-paid-member') {
+      return [
+        { key: 'voucherNo', label: 'Voucher No', sortable: true, render: (row) => <span className="font-medium text-slate-900">{row.voucherNo || '-'}</span> },
+        { key: 'date', label: 'Date', sortable: true, render: (row) => <span className="text-slate-700">{row.date || '-'}</span> },
+        { key: 'member', label: 'Member', sortable: true, sortValue: (row) => getTransactionPartyLabel(row.partyCode, lookups, row.partyType), render: (row) => <span className="text-slate-700">{getTransactionPartyLabel(row.partyCode, lookups, row.partyType)}</span> },
+        { key: 'branch', label: 'Branch', sortable: true, sortValue: (row) => getBranch(row.partyCode), render: (row) => <span className="text-slate-700">{getBranch(row.partyCode)}</span> },
+        { key: 'designation', label: 'Designation', sortable: true, sortValue: (row) => getDesignation(row.partyCode), render: (row) => <span className="text-slate-700">{getDesignation(row.partyCode)}</span> },
+        { key: 'mode', label: 'Paymode', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionModeLabel(row.details?.payMode || row.mode)}</span> },
+        { key: 'instrument', label: 'Cheque No.', sortable: true, render: (row) => <span className="text-slate-700">{row.instrumentNo || '-'}</span> },
+        { key: 'amount', label: 'Amount', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionAmount(row.amount ?? 0)}</span> },
+        statusColumn,
+        actionsColumn
+      ];
     }
-  ];
+
+    if (currentItemKey === 'recovery-member') {
+      return [
+        { key: 'voucherNo', label: 'Voucher No', sortable: true, render: (row) => <span className="font-medium text-slate-900">{row.voucherNo || '-'}</span> },
+        { key: 'date', label: 'Date', sortable: true, render: (row) => <span className="text-slate-700">{row.date || '-'}</span> },
+        { key: 'member', label: 'Member', sortable: true, sortValue: (row) => getTransactionPartyLabel(row.partyCode, lookups, row.partyType), render: (row) => <span className="text-slate-700">{getTransactionPartyLabel(row.partyCode, lookups, row.partyType)}</span> },
+        { key: 'mode', label: 'Mode', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionModeLabel(row.details?.payMode || row.mode)}</span> },
+        { key: 'instrument', label: 'Instrument', sortable: true, render: (row) => <span className="text-slate-700">{row.instrumentNo || '-'}</span> },
+        { key: 'amount', label: 'Amount', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionAmount(row.amount ?? 0)}</span> },
+        statusColumn,
+        actionsColumn
+      ];
+    }
+
+    if (currentItemKey === 'loan-paid-member') {
+      return [
+        { key: 'voucherNo', label: 'Voucher No', sortable: true, render: (row) => <span className="font-medium text-slate-900">{row.voucherNo || '-'}</span> },
+        { key: 'date', label: 'Date', sortable: true, render: (row) => <span className="text-slate-700">{row.date || '-'}</span> },
+        { key: 'member', label: 'Member', sortable: true, sortValue: (row) => getTransactionPartyLabel(row.partyCode, lookups, row.partyType), render: (row) => <span className="text-slate-700">{getTransactionPartyLabel(row.partyCode, lookups, row.partyType)}</span> },
+        { key: 'settlement', label: 'Settlement A/c', sortable: true, sortValue: (row) => getTransactionLedgerLabel(row.details?.settlementAccount || row.details?.ledgerTarget || '', lookups), render: (row) => <span className="text-slate-700">{getTransactionLedgerLabel(row.details?.settlementAccount || row.details?.ledgerTarget || '', lookups)}</span> },
+        { key: 'loan', label: 'Loan Amount', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionAmount(Number(row.details?.components?.loanAmt || 0))}</span> },
+        { key: 'lad', label: 'LAD', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionAmount(Number(row.details?.components?.lad || 0))}</span> },
+        statusColumn,
+        actionsColumn
+      ];
+    }
+
+    if (currentItemKey === 'deposit-paid-member') {
+      return [
+        { key: 'voucherNo', label: 'Voucher No', sortable: true, render: (row) => <span className="font-medium text-slate-900">{row.voucherNo || '-'}</span> },
+        { key: 'date', label: 'Date', sortable: true, render: (row) => <span className="text-slate-700">{row.date || '-'}</span> },
+        { key: 'member', label: 'Member', sortable: true, sortValue: (row) => getTransactionPartyLabel(row.partyCode, lookups, row.partyType), render: (row) => <span className="text-slate-700">{getTransactionPartyLabel(row.partyCode, lookups, row.partyType)}</span> },
+        { key: 'settlement', label: 'Settlement A/c', sortable: true, sortValue: (row) => getTransactionLedgerLabel(row.details?.settlementAccount || row.details?.ledgerTarget || '', lookups), render: (row) => <span className="text-slate-700">{getTransactionLedgerLabel(row.details?.settlementAccount || row.details?.ledgerTarget || '', lookups)}</span> },
+        { key: 'amount', label: 'Amount', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionAmount(row.amount ?? 0)}</span> },
+        statusColumn,
+        actionsColumn
+      ];
+    }
+
+    if (currentItemKey === 'insurance-paid-member') {
+      return [
+        { key: 'voucherNo', label: 'Voucher No', sortable: true, render: (row) => <span className="font-medium text-slate-900">{row.voucherNo || '-'}</span> },
+        { key: 'date', label: 'Date', sortable: true, render: (row) => <span className="text-slate-700">{row.date || '-'}</span> },
+        { key: 'member', label: 'Member', sortable: true, sortValue: (row) => getTransactionPartyLabel(row.partyCode, lookups, row.partyType), render: (row) => <span className="text-slate-700">{getTransactionPartyLabel(row.partyCode, lookups, row.partyType)}</span> },
+        { key: 'policy', label: 'Policy No', sortable: true, render: (row) => <span className="text-slate-700">{row.details?.policyNo || '-'}</span> },
+        { key: 'claim', label: 'Claim Ref', sortable: true, render: (row) => <span className="text-slate-700">{row.details?.claimRef || '-'}</span> },
+        { key: 'amount', label: 'Amount', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionAmount(row.amount ?? 0)}</span> },
+        statusColumn,
+        actionsColumn
+      ];
+    }
+
+    return [
+      { key: 'voucherNo', label: 'Voucher No', sortable: true, render: (row) => <span className="font-medium text-slate-900">{row.voucherNo || '-'}</span> },
+      { key: 'date', label: 'Date', sortable: true, render: (row) => <span className="text-slate-700">{row.date || '-'}</span> },
+      { key: 'type', label: 'Type', sortable: true, sortValue: (row) => getTransactionVoucherTitle(row, activeSectionItems, currentItemKey), render: (row) => <span className="text-slate-700">{getTransactionVoucherTitle(row, activeSectionItems, currentItemKey)}</span> },
+      { key: 'party', label: 'Member', sortable: true, sortValue: (row) => getTransactionPartyLabel(row.partyCode, lookups, row.partyType), render: (row) => <span className="text-slate-700">{getTransactionPartyLabel(row.partyCode, lookups, row.partyType)}</span> },
+      { key: 'settlement', label: 'Settlement A/c', sortable: true, sortValue: (row) => getTransactionLedgerLabel(row.details?.settlementAccount || row.details?.ledgerTarget || row.details?.depositIn || row.details?.fromAccount || '', lookups), render: (row) => <span className="text-slate-700">{getTransactionLedgerLabel(row.details?.settlementAccount || row.details?.ledgerTarget || row.details?.depositIn || row.details?.fromAccount || '', lookups)}</span> },
+      { key: 'amount', label: 'Amount', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionAmount(row.amount ?? 0)}</span> },
+      statusColumn,
+      actionsColumn
+    ];
+  }, [activeSectionItems, canReverse, canWrite, currentItemKey, detailPathBase, lookups, navigate]);
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">{section?.label || sectionKey} Transactions</h1>
+          <p className="text-[12px] font-semibold uppercase tracking-[0.22em] text-[var(--primary)]">Member Transactions</p>
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">{activeItem?.label || section?.label || sectionKey} Transactions</h1>
         </div>
 
         <div className="flex flex-wrap gap-2">
@@ -347,37 +393,44 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase }) {
             Export CSV
           </Button>
           
-          <div className="relative">
-            <Button
-              type="button"
-              className="gap-2 bg-[var(--primary,#1661F6)] text-white hover:opacity-90"
-              onClick={() => setDropdownOpen(!dropdownOpen)}
-              onBlur={() => setTimeout(() => setDropdownOpen(false), 200)}
-            >
+          {activeItem ? (
+            <Button type="button" className="gap-2 bg-[var(--primary,#1661F6)] text-white hover:opacity-90" onClick={() => openCreate(activeItem.key)}>
               <Plus size={16} />
-              Create Transaction
-              <ChevronDown size={14} className="ml-1 opacity-70" />
+              Create {activeItem.label}
             </Button>
-            {dropdownOpen && (
-              <div className="absolute right-0 top-full z-50 mt-2 w-72 origin-top-right rounded-2xl border border-slate-200 bg-white p-2 shadow-xl ring-1 ring-slate-900/5">
-                {editableItems.map((item) => (
-                  <button
-                    key={item.key}
-                    onClick={() => {
-                      setDropdownOpen(false);
-                      openCreate(item.key);
-                    }}
-                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 hover:bg-[color-mix(in_srgb,var(--primary)_8%,transparent)] hover:text-[var(--primary)] transition-colors"
-                  >
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary)]">
-                      <Plus size={14} strokeWidth={2.5} />
-                    </div>
-                    <span className="line-clamp-1">{item.label}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          ) : (
+            <div className="relative">
+              <Button
+                type="button"
+                className="gap-2 bg-[var(--primary,#1661F6)] text-white hover:opacity-90"
+                onClick={() => setDropdownOpen(!dropdownOpen)}
+                onBlur={() => setTimeout(() => setDropdownOpen(false), 200)}
+              >
+                <Plus size={16} />
+                Create Transaction
+                <ChevronDown size={14} className="ml-1 opacity-70" />
+              </Button>
+              {dropdownOpen && (
+                <div className="absolute right-0 top-full z-50 mt-2 w-72 origin-top-right rounded-2xl border border-slate-200 bg-white p-2 shadow-xl ring-1 ring-slate-900/5">
+                  {editableItems.map((item) => (
+                    <button
+                      key={item.key}
+                      onClick={() => {
+                        setDropdownOpen(false);
+                        openCreate(item.key);
+                      }}
+                      className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 hover:bg-[color-mix(in_srgb,var(--primary)_8%,transparent)] hover:text-[var(--primary)] transition-colors"
+                    >
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary)]">
+                        <Plus size={14} strokeWidth={2.5} />
+                      </div>
+                      <span className="line-clamp-1">{item.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -520,17 +573,17 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase }) {
 
       <Modal
         open={editorOpen}
-        title={activeRecord ? `Edit ${draft?.voucherCategory || 'Transaction'}` : `Create ${draft?.voucherCategory || 'Transaction'}`}
+        title={activeRecord ? `Edit ${draft?.voucherCategory || activeItem?.label || 'Transaction'}` : `Create ${draft?.voucherCategory || activeItem?.label || 'Transaction'}` }
         subtitle={null}
         onClose={closeEditor}
         width="min(1100px, 96vw)"
         footer={
           (() => {
             const saveLabel = saving ? 'Saving...' : (activeRecord ? 'Save Changes' : (
-              draft?.voucherCategory?.toLowerCase().includes('loan') ? 'Save Loan Details' :
-              draft?.voucherCategory?.toLowerCase().includes('recovery') ? 'Save Recovery' :
-              draft?.voucherCategory?.toLowerCase().includes('deposit') ? 'Save Deposit Details' :
-              draft?.voucherCategory?.toLowerCase().includes('insurance') ? 'Save Insurance Details' :
+              (activeItem?.key || draft?.voucherCategory || '').toLowerCase().includes('loan') ? 'Save Loan Details' :
+              (activeItem?.key || draft?.voucherCategory || '').toLowerCase().includes('recovery') ? 'Save Recovery' :
+              (activeItem?.key || draft?.voucherCategory || '').toLowerCase().includes('deposit') ? 'Save Deposit Details' :
+              (activeItem?.key || draft?.voucherCategory || '').toLowerCase().includes('insurance') ? 'Save Insurance Details' :
               'Create Voucher'
             ));
             
@@ -550,6 +603,7 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase }) {
           lookups={lookups}
           value={draft}
           setValue={setDraft}
+          activeKey={currentItemKey}
           onSubmit={saveVoucher}
           onDocumentRemove={handleDocumentRemove}
         />

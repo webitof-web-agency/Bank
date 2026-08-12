@@ -1,4 +1,4 @@
-﻿import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { ArrowRight, Search, Sparkles } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { useAuth } from '../../context/AuthContext';
@@ -44,7 +44,7 @@ export function SettingsHomePage() {
               <div>
                 <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">Settings</h1>
                 <p className="mt-2 max-w-2xl text-sm text-blue-50 md:text-[15px]">
-                  Manage company identity, branding, UI preferences, and email configuration from one dedicated area.
+                  Manage head office identity, branding, UI preferences, and email configuration from one dedicated area.
                 </p>
               </div>
             </div>
@@ -121,3 +121,4 @@ export function SettingsHomePage() {
 }
 
 export default SettingsHomePage;
+

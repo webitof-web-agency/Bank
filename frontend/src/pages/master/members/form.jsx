@@ -11,13 +11,13 @@ import { formatBranchLabel, stripPhoneDigits } from './memberUtils';
 const BALANCE_FIELDS = [
   { name: 'openingBalance', label: 'Opening Balance' },
   { name: 'depositBalance', label: 'Deposit Balance' },
-  { name: 'loanOutstanding', label: 'Regular Loan' },
-  { name: 'balances.share', label: 'Share Balance' },
-  { name: 'balances.compulsoryDeposit', label: 'Compulsory Deposit' },
-  { name: 'balances.specialSaving', label: 'Special Saving' },
-  { name: 'balances.providentFund', label: 'Provident Fund' },
-  { name: 'balances.loanAgainstDeposit', label: 'Loan Against Deposit' },
-  { name: 'balances.insurancePremium', label: 'Insurance Premium' }
+  { name: 'loanOutstanding', label: 'Regular Loan', sideName: 'balances.loanOutstandingSide' },
+  { name: 'balances.share', label: 'Share Balance', sideName: 'balances.shareSide' },
+  { name: 'balances.compulsoryDeposit', label: 'Compulsory Deposit', sideName: 'balances.compulsoryDepositSide' },
+  { name: 'balances.specialSaving', label: 'Special Saving', sideName: 'balances.specialSavingSide' },
+  { name: 'balances.providentFund', label: 'Provident Fund', sideName: 'balances.providentFundSide' },
+  { name: 'balances.loanAgainstDeposit', label: 'Loan Against Deposit', sideName: 'balances.loanAgainstDepositSide' },
+  { name: 'balances.insurancePremium', label: 'Insurance Premium', sideName: 'balances.insurancePremiumSide' }
 ];
 
 function getNestedValue(value = {}, path = '') {
@@ -240,6 +240,11 @@ export function MemberForm({
               <Input value={value.caste || ''} onChange={(e) => setValue({ ...value, caste: e.target.value })} />
             </div>
 
+            <div className="space-y-1.5">
+              <label className="text-[13px] font-semibold text-slate-700">Basic Salary</label>
+              <Input type="number" min="0" step="1" value={value.basicSalary || ''} onChange={(e) => setValue({ ...value, basicSalary: e.target.value })} />
+            </div>
+
             <div className="space-y-1.5 md:col-span-2">
               <label className="text-[13px] font-semibold text-slate-700">Residential Address</label>
               <Textarea rows={3} placeholder="Full address..." value={value.address || ''} onChange={(e) => setValue({ ...value, address: e.target.value })} />
@@ -379,14 +384,29 @@ export function MemberForm({
               {BALANCE_FIELDS.map((field) => (
                 <div key={field.name} className="space-y-1.5">
                   <label className="text-[13px] font-medium text-slate-700">{field.label}</label>
-                  <Input
-                    type="number"
-                    min="0"
-                    step="1"
-                    className="bg-white"
-                    value={getNestedValue(value, field.name) ?? ''}
-                    onChange={(e) => setNestedValue(setValue, value, field.name, e.target.value)}
-                  />
+                  <div className="flex gap-2">
+                    <Input
+                      type="number"
+                      min="0"
+                      step="1"
+                      className="bg-white flex-1"
+                      value={getNestedValue(value, field.name) ?? ''}
+                      onChange={(e) => setNestedValue(setValue, value, field.name, e.target.value)}
+                    />
+                    {field.sideName && (
+                      <div className="w-[90px]">
+                        <Select
+                          value={getNestedValue(value, field.sideName) || 'Cr'}
+                          onChange={(val) => setNestedValue(setValue, value, field.sideName, val)}
+                          options={[
+                            { value: 'Dr', label: 'Dr' },
+                            { value: 'Cr', label: 'Cr' }
+                          ]}
+                          className="bg-white"
+                        />
+                      </div>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>

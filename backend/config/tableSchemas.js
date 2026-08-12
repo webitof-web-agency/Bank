@@ -122,6 +122,7 @@ const TABLE_SCHEMAS = {
 
   societies: schema({
     key: T.string(120),
+    code: T.string(40),
     name: T.string(255),
     prefix: T.string(80),
     regNo: T.string(120),
@@ -138,6 +139,7 @@ const TABLE_SCHEMAS = {
 
   branches: schema({
     code: T.string(80),
+    headOfficeCode: T.string(40),
     label: T.string(191),
     place: T.string(191),
     address: T.text,
@@ -186,6 +188,7 @@ const TABLE_SCHEMAS = {
     membershipNo: T.string(80),
     address: T.text,
     mobileNo: T.string(40),
+    basicSalary: T.number,
     openingBalance: T.number,
     balances: T.json,
     loanOutstanding: T.number,
@@ -339,6 +342,7 @@ module.exports = {
   getTableSchema,
   schema
 };
+
 
 
 

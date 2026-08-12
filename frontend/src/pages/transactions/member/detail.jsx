@@ -11,11 +11,13 @@ import { useAuth } from '../../../context/AuthContext';
 import { DocumentSection } from '../../../components/master/DocumentSection';
 import { MemberTransactionForm } from './form';
 import { getMemberDocumentDefinitions } from './memberDocumentUtils';
+import { getMemberTransactionTypeByKey } from './memberConfig';
 import { uploadDocumentMap } from '../../master/documentUpload';
 import {
   buildTransactionVoucherPayload,
   createTransactionDraftFromRecord,
   formatTransactionAmount,
+  formatTransactionModeLabel,
   getSectionItems,
   getTransactionLedgerLabel,
   getTransactionPartyLabel,
@@ -24,16 +26,16 @@ import {
 } from './transactionUtils';
 import { toneClassName } from './transactionUtils';
 
-function DetailRow({ label, value }) {
+export function DetailRow({ label, value }) {
   return (
     <div className="grid grid-cols-[180px_1fr] gap-4 border-b border-slate-100 py-4 last:border-b-0">
       <div className="text-[13px] font-medium text-slate-500">{label}</div>
-      <div className="text-[14px] font-medium text-slate-900">{value || '—'}</div>
+      <div className="text-[14px] font-medium text-slate-900">{value || 'ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â'}</div>
     </div>
   );
 }
 
-function StatusBadge({ status = '' }) {
+export function StatusBadge({ status = '' }) {
   const value = String(status || '').toLowerCase();
   const className =
     value === 'posted' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' :
@@ -76,7 +78,7 @@ function EmptyState({ title, description }) {
   );
 }
 
-function SimpleTable({ headers = [], rows = [], emptyMessage = 'No records found.' }) {
+export function SimpleTable({ headers = [], rows = [], emptyMessage = 'No records found.' }) {
   return (
     <div className="overflow-x-auto">
       <table className="min-w-full text-left text-[13px]">
@@ -134,7 +136,14 @@ function toTitleCase(value = '') {
     .replace(/^\w/, (match) => match.toUpperCase());
 }
 
-export function MemberTransactionDetailPage({ sectionKey }) {
+export function MemberTransactionDetailPage({ 
+  sectionKey, 
+  itemKey = '', 
+  detailPathBase = '/app/transactions/member',
+  customTabs = null,
+  customHeaderCards = null,
+  renderCustomTab = null
+}) {
   const { id } = useParams();
   const navigate = useNavigate();
   const { token, hasPermission } = useAuth();
@@ -305,6 +314,9 @@ export function MemberTransactionDetailPage({ sectionKey }) {
     }
   }
 
+  const activeItem = useMemo(() => getVoucherSectionItem(record || {}, sectionItems, itemKey) || getMemberTransactionTypeByKey(record?.details?.key || itemKey) || null, [record, sectionItems, itemKey]);
+  const memberRecord = useMemo(() => (Array.isArray(lookups.members) ? lookups.members.find((row) => String(row.code || row.value || "").toUpperCase() === String(record?.partyCode || "").toUpperCase()) : null), [lookups.members, record?.partyCode]);
+
   if (loading) {
     return (
       <div className="flex h-64 items-center justify-center">
@@ -321,47 +333,111 @@ export function MemberTransactionDetailPage({ sectionKey }) {
     );
   }
 
-  const title = getTransactionVoucherTitle(record, sectionItems);
-  const templateItem = getVoucherSectionItem(record, sectionItems);
-  const documentDefs = getMemberDocumentDefinitions(templateItem?.key || record?.details?.key || '');
-  const partyLabel = getTransactionPartyLabel(record.partyCode, lookups, record.partyType);
+  const currentItemKey = activeItem?.key || record?.details?.key || "";
+  const title = activeItem?.label || getTransactionVoucherTitle(record, sectionItems, currentItemKey);
+  const templateItem = getVoucherSectionItem(record, sectionItems, currentItemKey);
+  const documentDefs = getMemberDocumentDefinitions(currentItemKey || templateItem?.key || record?.details?.key || "");
+  const partyLabel = getTransactionPartyLabel(record?.partyCode, lookups, record?.partyType);
+  const memberBranch = memberRecord?.branchName || memberRecord?.branch || memberRecord?.branchCode || record.branchCode || '-';
+  const memberDesignation = memberRecord?.designation || "-";
   const settlementLabel = getTransactionLedgerLabel(
-    record.details?.settlementAccount || record.details?.ledgerTarget || record.details?.depositIn || record.details?.fromAccount || '',
+    record.details?.settlementAccount || record.details?.ledgerTarget || record.details?.depositIn || record.details?.fromAccount || "",
     lookups
   );
   const mainAmount = formatTransactionAmount(record.amount ?? 0);
   const details = record.details || {};
+  const primitiveEntries = getPrimitiveEntries(details);
   const recoveryLines = Array.isArray(details.recoveryLines) ? details.recoveryLines : [];
   const allocations = Array.isArray(details.allocations) ? details.allocations : [];
+  const recoveryTableRows = recoveryLines.length ? recoveryLines : allocations;
   const journalLines = Array.isArray(record.journalLines) ? record.journalLines : [];
-  const primitiveEntries = getPrimitiveEntries(details);
-  const tabs = [
-    { id: 'overview', label: 'Overview', icon: Sparkles },
-    { id: 'meta', label: 'Meta Details', icon: Layers3 },
-    { id: 'breakdown', label: 'Member Breakdown', icon: Layers3, badge: recoveryLines.length || allocations.length ? String(recoveryLines.length + allocations.length) : '' },
+  const documentCount = Object.keys(record.documents || {}).length;
+  const payModeLabel = formatTransactionModeLabel(details.payMode || record.mode);
+  const instrumentNoLabel = record.instrumentNo || details.instrumentNo || '-';
+  const instrumentDateLabel = record.instrumentDate || details.instrumentDate || '-';
+  const smsLabel = details.sms ? 'Yes' : 'No';
+    const fixedSettlementLabel = details.fixedSettlement || '-';
+  const dateLabel = record.date ? record.date.split('T')[0] : '-';
+  const isLoan = currentItemKey === 'loan-paid-member';
+  const isDeposit = currentItemKey === 'deposit-paid-member';
+  const isInsurance = currentItemKey === 'insurance-paid-member';
+  const isSsa = currentItemKey === 'ssa-paid-member';
+  const isRecovery = currentItemKey === 'recovery-member';
+  const tabs = customTabs || (isLoan ? [
+    { id: 'overview', label: 'Loan Summary', icon: Sparkles },
+    { id: 'meta', label: 'Loan Details', icon: Layers3 },
+    { id: 'breakdown', label: 'Loan Breakdown', icon: Layers3 },
     { id: 'journal', label: 'Journal', icon: FileText, badge: journalLines.length ? String(journalLines.length) : '' },
-    { id: 'attachments', label: 'Attachments', icon: FileText, badge: Object.keys(record.documents || {}).length ? String(Object.keys(record.documents || {}).length) : '' },
+    { id: 'attachments', label: 'Loan Docs', icon: FileText, badge: documentCount ? String(documentCount) : '' },
     { id: 'audit', label: 'Audit', icon: ShieldCheck }
-  ];
+  ] : isDeposit ? [
+    { id: 'overview', label: 'Deposit Summary', icon: Sparkles },
+    { id: 'meta', label: 'Deposit Details', icon: Layers3 },
+    { id: 'breakdown', label: 'Deposit References', icon: Layers3 },
+    { id: 'journal', label: 'Journal', icon: FileText, badge: journalLines.length ? String(journalLines.length) : '' },
+    { id: 'attachments', label: 'Deposit Docs', icon: FileText, badge: documentCount ? String(documentCount) : '' },
+    { id: 'audit', label: 'Audit', icon: ShieldCheck }
+  ] : isInsurance ? [
+    { id: 'overview', label: 'Insurance Summary', icon: Sparkles },
+    { id: 'meta', label: 'Insurance Details', icon: Layers3 },
+    { id: 'breakdown', label: 'Insurance References', icon: Layers3 },
+    { id: 'journal', label: 'Journal', icon: FileText, badge: journalLines.length ? String(journalLines.length) : '' },
+    { id: 'attachments', label: 'Insurance Docs', icon: FileText, badge: documentCount ? String(documentCount) : '' },
+    { id: 'audit', label: 'Audit', icon: ShieldCheck }
+  ] : isSsa ? [
+    { id: 'overview', label: 'SSA Summary', icon: Sparkles },
+    { id: 'meta', label: 'Member & Payment', icon: Layers3 },
+    { id: 'breakdown', label: 'Payment Notes', icon: Layers3 },
+    { id: 'journal', label: 'Journal', icon: FileText, badge: journalLines.length ? String(journalLines.length) : '' },
+    { id: 'attachments', label: 'SSA Docs', icon: FileText, badge: documentCount ? String(documentCount) : '' },
+    { id: 'audit', label: 'Audit', icon: ShieldCheck }
+  ] : [
+    { id: 'overview', label: 'Recovery Summary', icon: Sparkles },
+    { id: 'meta', label: 'Voucher & Member', icon: Layers3 },
+    { id: 'breakdown', label: 'Recovery Lines', icon: Layers3, badge: recoveryLines.length || allocations.length ? String(recoveryLines.length + allocations.length) : '' },
+    { id: 'journal', label: 'Journal', icon: FileText, badge: journalLines.length ? String(journalLines.length) : '' },
+    { id: 'attachments', label: 'Recovery Docs', icon: FileText, badge: documentCount ? String(documentCount) : '' },
+    { id: 'audit', label: 'Audit', icon: ShieldCheck }
+  ]);
 
-  const headerCards = [
+  const headerCards = isLoan ? [
+    { label: 'Loan Amt', value: formatTransactionAmount(Number(details.components?.loanAmt || 0)) },
+    { label: 'LAD', value: formatTransactionAmount(Number(details.components?.lad || 0)) },
+    { label: 'Mode', value: formatTransactionModeLabel(record.mode) },
+    { label: 'Docs', value: String(documentCount) }
+  ] : isDeposit ? [
     { label: 'Amount', value: mainAmount },
-    { label: 'Status', value: record.status || 'Draft' },
-    { label: 'Type', value: record.transactionType || 'payment' },
-    { label: 'Rows', value: String(journalLines.length || recoveryLines.length || allocations.length || 0) }
+    { label: 'Settlement', value: settlementLabel || '—' },
+    { label: 'Mode', value: formatTransactionModeLabel(record.mode) },
+    { label: 'Docs', value: String(documentCount) }
+  ] : isInsurance ? [
+    { label: 'Amount', value: mainAmount },
+    { label: 'Policy No', value: details.policyNo || '—' },
+    { label: 'Claim Ref', value: details.claimRef || '—' },
+    { label: 'Docs', value: String(documentCount) }
+  ] : isSsa ? [
+    { label: 'Amount', value: mainAmount },
+    { label: 'Paymode', value: payModeLabel },
+    { label: 'SMS', value: smsLabel },
+    { label: 'Docs', value: String(documentCount) }
+  ] : [
+    { label: 'Amount', value: mainAmount },
+    { label: 'Mode', value: formatTransactionModeLabel(record.mode) },
+    { label: 'Docs', value: String(documentCount) }
   ];
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-2 text-[13px] font-medium text-slate-500 print:hidden">
-        <button type="button" onClick={() => navigate(`/app/transactions/${sectionKey}`)} className="flex items-center gap-1.5 transition-colors hover:text-slate-900">
-          <ArrowLeft size={14} /> Back
-        </button>
-        <span className="text-slate-300">/</span>
-        <span className="text-slate-900">{section?.label || sectionKey} Detail</span>
-      </div>
+    <>
+      <div className="space-y-6">
+        <div className="flex items-center gap-2 text-[13px] font-medium text-slate-500 print:hidden">
+          <button type="button" onClick={() => navigate(detailPathBase || `/app/transactions/${sectionKey}`)} className="flex items-center gap-1.5 transition-colors hover:text-slate-900">
+            <ArrowLeft size={14} /> Back
+          </button>
+          <span className="text-slate-300">/</span>
+          <span className="text-slate-900">{activeItem?.label || section?.label || sectionKey} Detail</span>
+        </div>
 
-      <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+        <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-col gap-6 bg-white px-8 py-10 text-slate-900 border-b border-slate-100">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-5">
@@ -392,8 +468,7 @@ export function MemberTransactionDetailPage({ sectionKey }) {
                 ) : null}
                 {canWrite ? (
                   <Button type="button" variant="outline" onClick={openEditor} className="gap-2 border-slate-200 shadow-sm rounded-[var(--radius-input,0.75rem)] hover:bg-slate-50 text-slate-700 font-semibold text-sm h-10 px-4 bg-slate-50">
-                    <Edit2 size={16} />
-                    Edit Transaction
+                    <Edit2 size={16} />Edit
                   </Button>
                 ) : null}
               </div>
@@ -437,101 +512,277 @@ export function MemberTransactionDetailPage({ sectionKey }) {
         </div>
 
         <div className="p-8 space-y-6">
-
-      {activeTab === 'overview' ? (
-          <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="divide-y divide-slate-100 px-6">
-              <DetailRow label="Voucher No" value={record.voucherNo} />
-              <DetailRow label="Date" value={record.date} />
-              <DetailRow label="Category" value={record.voucherCategory} />
-              <DetailRow label="Transaction Type" value={record.transactionType} />
-              <DetailRow label="Party Type" value={record.partyType} />
-              <DetailRow label="Member Name" value={partyLabel} />
-              <DetailRow label="Settlement A/c" value={settlementLabel} />
-              <DetailRow label="Branch" value={record.branchCode} />
-              <DetailRow label="FY Code" value={record.fyCode} />
-              <DetailRow label="Status" value={<StatusBadge status={record.status} />} />
-            </div>
-          </Card>
+      {activeTab === "overview" ? (
+        renderCustomTab ? renderCustomTab("overview", record, details) : (
+        <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="divide-y divide-slate-100 px-6">
+            {isSsa ? (
+              <>
+                <DetailRow label="Voucher No" value={record.voucherNo} />
+                <DetailRow label="Date" value={dateLabel} />
+                <DetailRow label="Member Code" value={record.partyCode} />
+                <DetailRow label="Member Name" value={partyLabel} />
+                <DetailRow label="Branch" value={memberBranch} />
+                <DetailRow label="Designation" value={memberDesignation} />
+              </>
+) : isRecovery ? (
+              <>
+                <DetailRow label="Voucher No" value={record.voucherNo} />
+                <DetailRow label="Date" value={dateLabel} />
+                <DetailRow label="Member Code" value={record.partyCode} />
+                <DetailRow label="Member Name" value={partyLabel} />
+                <DetailRow label="Branch" value={memberBranch} />
+                <DetailRow label="Lines" value={String(recoveryTableRows.length || 0)} />
+              </>
+            ) : isLoan ? (
+              <>
+                <DetailRow label="Voucher No" value={record.voucherNo} />
+                <DetailRow label="Date" value={dateLabel} />
+                <DetailRow label="Transaction Type" value={record.transactionType} />
+                <DetailRow label="Party Type" value={record.partyType} />
+                <DetailRow label="Member Name" value={partyLabel} />
+                <DetailRow label="Settlement A/c" value={settlementLabel} />
+                <DetailRow label="Branch" value={record.branchCode} />
+                <DetailRow label="FY Code" value={record.fyCode} />
+                <DetailRow label="Status" value={<StatusBadge status={record.status} />} />
+              </>
+            ) : isDeposit ? (
+              <>
+                <DetailRow label="Voucher No" value={record.voucherNo} />
+                <DetailRow label="Date" value={dateLabel} />
+                <DetailRow label="Transaction Type" value={record.transactionType} />
+                <DetailRow label="Party Type" value={record.partyType} />
+                <DetailRow label="Member Name" value={partyLabel} />
+                <DetailRow label="Settlement A/c" value={settlementLabel} />
+                <DetailRow label="Branch" value={record.branchCode} />
+                <DetailRow label="FY Code" value={record.fyCode} />
+                <DetailRow label="Status" value={<StatusBadge status={record.status} />} />
+              </>
+            ) : isInsurance ? (
+              <>
+                <DetailRow label="Voucher No" value={record.voucherNo} />
+                <DetailRow label="Date" value={dateLabel} />
+                <DetailRow label="Transaction Type" value={record.transactionType} />
+                <DetailRow label="Party Type" value={record.partyType} />
+                <DetailRow label="Member Name" value={partyLabel} />
+                <DetailRow label="Settlement A/c" value={settlementLabel} />
+                <DetailRow label="Branch" value={record.branchCode} />
+                <DetailRow label="FY Code" value={record.fyCode} />
+                <DetailRow label="Status" value={<StatusBadge status={record.status} />} />
+              </>
+            ) : (
+              <>
+                <DetailRow label="Voucher No" value={record.voucherNo} />
+                <DetailRow label="Date" value={dateLabel} />
+                <DetailRow label="Category" value={record.voucherCategory} />
+                <DetailRow label="Transaction Type" value={record.transactionType} />
+                <DetailRow label="Party Type" value={record.partyType} />
+                <DetailRow label="Member Name" value={partyLabel} />
+                <DetailRow label="Settlement A/c" value={settlementLabel} />
+                <DetailRow label="Branch" value={record.branchCode} />
+                <DetailRow label="FY Code" value={record.fyCode} />
+                <DetailRow label="Status" value={<StatusBadge status={record.status} />} />
+              </>
+            )}
+          </div>
+        </Card>
+        )
       ) : null}
 
-      {activeTab === 'meta' ? (
-          <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="divide-y divide-slate-100 px-6">
-              <DetailRow label="Amount" value={mainAmount} />
-              <DetailRow label="Mode" value={record.mode} />
-              <DetailRow label="Reference No" value={record.referenceNo} />
-              <DetailRow label="Instrument No" value={record.instrumentNo} />
-              <DetailRow label="Instrument Date" value={record.instrumentDate} />
-              <DetailRow label="Approved By" value={record.approvedBy} />
-              <DetailRow label="Created By" value={record.createdBy} />
-              <DetailRow label="Narration" value={record.narration} />
-            </div>
-          </Card>
+      {activeTab === "meta" ? (
+        renderCustomTab ? renderCustomTab("meta", record, details) : (
+        <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="divide-y divide-slate-100 px-6">
+            {isSsa ? (
+              <>
+                <DetailRow label="Amount" value={mainAmount} />
+                <DetailRow label="Paymode" value={payModeLabel} />
+                <DetailRow label="Cheque No" value={instrumentNoLabel} />
+                <DetailRow label="Cheque Date" value={instrumentDateLabel} />
+                <DetailRow label="Total Amount" value={mainAmount} />
+                <DetailRow label="Fixed Settlement" value={fixedSettlementLabel} />
+                <DetailRow label="Send SMS" value={smsLabel} />
+                <DetailRow label="Narration" value={record.narration || details.narration || '-'} />
+                <DetailRow label="Status" value={<StatusBadge status={record.status} />} />
+              </>
+            ) : isRecovery ? (
+              <>
+                <DetailRow label="Amount" value={mainAmount} />
+                <DetailRow label="Mode" value={formatTransactionModeLabel(record.mode)} />
+                <DetailRow label="Instrument No" value={instrumentNoLabel} />
+                <DetailRow label="Instrument Date" value={instrumentDateLabel} />
+                <DetailRow label="Settlement Account" value={details.settlementAccount || '-'} />
+                <DetailRow label="Narration" value={record.narration || details.narration || '-'} />
+                <DetailRow label="Status" value={<StatusBadge status={record.status} />} />
+              </>
+            ) : isLoan ? (
+              <>
+                <DetailRow label="Settlement Account" value={details.settlementAccount || '-'} />
+                <DetailRow label="Loan Amount" value={formatTransactionAmount(details.components?.loanAmt || 0)} />
+                <DetailRow label="LAD Amount" value={formatTransactionAmount(details.components?.lad || 0)} />
+                <DetailRow label="Total Amount" value={mainAmount} />
+                <DetailRow label="Mode" value={formatTransactionModeLabel(record.mode)} />
+                <DetailRow label="Instrument No" value={instrumentNoLabel} />
+                <DetailRow label="Instrument Date" value={instrumentDateLabel} />
+                <DetailRow label="Narration" value={record.narration || details.narration || '-'} />
+              </>
+            ) : isDeposit ? (
+              <>
+                <DetailRow label="Settlement Account" value={details.settlementAccount || '-'} />
+                <DetailRow label="Deposit Amount" value={mainAmount} />
+                <DetailRow label="Mode" value={formatTransactionModeLabel(record.mode)} />
+                <DetailRow label="Instrument No" value={instrumentNoLabel} />
+                <DetailRow label="Instrument Date" value={instrumentDateLabel} />
+                <DetailRow label="Narration" value={record.narration || details.narration || '-'} />
+              </>
+            ) : isInsurance ? (
+              <>
+                <DetailRow label="Settlement Account" value={details.settlementAccount || '-'} />
+                <DetailRow label="Premium Amount" value={mainAmount} />
+                <DetailRow label="Policy No" value={details.policyNo || '-'} />
+                <DetailRow label="Claim Ref" value={details.claimRef || '-'} />
+                <DetailRow label="Mode" value={formatTransactionModeLabel(record.mode)} />
+                <DetailRow label="Instrument No" value={instrumentNoLabel} />
+                <DetailRow label="Instrument Date" value={instrumentDateLabel} />
+                <DetailRow label="Narration" value={record.narration || details.narration || '-'} />
+              </>
+            ) : (
+              <>
+                <DetailRow label="Amount" value={mainAmount} />
+                <DetailRow label="Mode" value={formatTransactionModeLabel(record.mode)} />
+                <DetailRow label="Reference No" value={record.referenceNo} />
+                <DetailRow label="Instrument No" value={record.instrumentNo} />
+                <DetailRow label="Instrument Date" value={record.instrumentDate} />
+                <DetailRow label="Approved By" value={record.approvedBy} />
+                <DetailRow label="Created By" value={record.createdBy} />
+                <DetailRow label="Narration" value={record.narration} />
+              </>
+            )}
+          </div>
+        </Card>
+        )
       ) : null}
 
       {activeTab === 'breakdown' ? (
-        <div className="grid gap-6 xl:grid-cols-2">
+        isSsa ? (
           <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="divide-y divide-slate-100 px-6">
-              <DetailRow label="Settlement Account" value={details.settlementAccount} />
-              <DetailRow label="Ledger Target" value={details.ledgerTarget} />
-              <DetailRow label="Receipt By" value={details.receiptBy} />
-              <DetailRow label="Deposit By" value={details.depositBy} />
-              <DetailRow label="Deposit In" value={details.depositIn} />
-              <DetailRow label="From Account" value={details.fromAccount} />
-              <DetailRow label="To Account" value={details.toAccount} />
-              <DetailRow label="Account Head" value={details.accountHead} />
-              <DetailRow label="Component Loan Amt" value={details.components?.loanAmt} />
-              <DetailRow label="Component LAD" value={details.components?.lad} />
+              <DetailRow label="Paymode" value={payModeLabel} />
+              <DetailRow label="Cheque No" value={instrumentNoLabel} />
+              <DetailRow label="Cheque Date" value={instrumentDateLabel} />
+              <DetailRow label="Fixed Settlement" value={fixedSettlementLabel} />
+              <DetailRow label="Send SMS" value={smsLabel} />
+              <DetailRow label="Narration" value={record.narration || details.narration || '-'} />
             </div>
           </Card>
+        ) : isRecovery ? (
+          <div className="grid gap-6 xl:grid-cols-[0.85fr_1.15fr]">
+            <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <div className="divide-y divide-slate-100 px-6">
+                <DetailRow label="Amount" value={mainAmount} />
+                <DetailRow label="Lines" value={String(recoveryTableRows.length || 0)} />
+                <DetailRow label="Mode" value={formatTransactionModeLabel(record.mode)} />
+                <DetailRow label="Instrument" value={instrumentNoLabel} />
+                <DetailRow label="Instrument Date" value={instrumentDateLabel} />
+                <DetailRow label="Settlement" value={details.settlementAccount || '-'} />
+              </div>
+            </Card>
 
-          <div className="space-y-6">
-            {recoveryLines.length ? (
-              <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-                <SimpleTable
-                  headers={['Member', 'Head', 'Amount', 'Memo']}
-                  rows={recoveryLines.map((line, index) => ({
-                    key: `${line.memberCode || line.member || index}`,
+            <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <SimpleTable
+                headers={['Member', 'Share', 'Cmp. Dep.', 'SSA', 'Loan', 'LAD', 'Ins.', 'Other', 'Total']}
+                rows={recoveryTableRows.map((line, index) => {
+                  const heads = line?.heads || {};
+                  const share = Number(heads.share || 0);
+                  const cd = Number(heads.cd || heads.compulsoryDeposit || 0);
+                  const ssa = Number(heads.ssa || 0);
+                  const loan = Number(heads.loan || 0);
+                  const lad = Number(heads.lad || 0);
+                  const ins = Number(heads.ins || heads.insurance || 0);
+                  const other = Number(heads.other || 0);
+                  const total = share + cd + ssa + loan + lad + ins + other;
+                  return {
+                    key: `${line.member || line.memberCode || index}`,
                     cells: [
-                      line.memberCode || line.member || '—',
-                      line.head || '—',
-                      formatTransactionAmount(line.amount ?? line.total ?? 0),
-                      line.memo || '—'
+                      line.member || line.memberCode || '-',
+                      formatTransactionAmount(share),
+                      formatTransactionAmount(cd),
+                      formatTransactionAmount(ssa),
+                      formatTransactionAmount(loan),
+                      formatTransactionAmount(lad),
+                      formatTransactionAmount(ins),
+                      formatTransactionAmount(other),
+                      formatTransactionAmount(total)
                     ]
-                  }))}
-                  emptyMessage="No recovery lines found."
-                />
-              </Card>
-            ) : null}
-
-            {allocations.length ? (
-              <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-                <SimpleTable
-                  headers={['Member', 'Head', 'Side', 'Amount']}
-                  rows={allocations.map((line, index) => ({
-                    key: `${line.memberCode || line.member || index}`,
-                    cells: [
-                      line.memberCode || line.member || '—',
-                      line.head || '—',
-                      line.side || '—',
-                      formatTransactionAmount(line.amount ?? 0)
-                    ]
-                  }))}
-                  emptyMessage="No allocations found."
-                />
-              </Card>
-            ) : null}
-
-            {!recoveryLines.length && !allocations.length ? (
-              <EmptyState
-                title="No member-specific breakdown"
-                description="This voucher template does not carry row-based member data."
+                  };
+                })}
+                emptyMessage="No recovery lines found."
               />
-            ) : null}
+            </Card>
           </div>
-        </div>
+        ) : (
+          <div className="grid gap-6 xl:grid-cols-2">
+            <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <div className="divide-y divide-slate-100 px-6">
+                <DetailRow label="Settlement Account" value={details.settlementAccount} />
+                <DetailRow label="Ledger Target" value={details.ledgerTarget} />
+                <DetailRow label="Receipt By" value={details.receiptBy} />
+                <DetailRow label="Deposit By" value={details.depositBy} />
+                <DetailRow label="Deposit In" value={details.depositIn} />
+                <DetailRow label="From Account" value={details.fromAccount} />
+                <DetailRow label="To Account" value={details.toAccount} />
+                <DetailRow label="Account Head" value={details.accountHead} />
+                <DetailRow label="Component Loan Amt" value={details.components?.loanAmt} />
+                <DetailRow label="Component LAD" value={details.components?.lad} />
+              </div>
+            </Card>
+
+            <div className="space-y-6">
+              {recoveryLines.length ? (
+                <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+                  <SimpleTable
+                    headers={['Member', 'Head', 'Amount', 'Memo']}
+                    rows={recoveryLines.map((line, index) => ({
+                      key: `${line.memberCode || line.member || index}`,
+                      cells: [
+                        line.memberCode || line.member || 'ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â',
+                        line.head || 'ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â',
+                        formatTransactionAmount(line.amount ?? line.total ?? 0),
+                        line.memo || 'ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â'
+                      ]
+                    }))}
+                    emptyMessage="No recovery lines found."
+                  />
+                </Card>
+              ) : null}
+
+              {allocations.length ? (
+                <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+                  <SimpleTable
+                    headers={['Member', 'Head', 'Side', 'Amount']}
+                    rows={allocations.map((line, index) => ({
+                      key: `${line.memberCode || line.member || index}`,
+                      cells: [
+                        line.memberCode || line.member || 'ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â',
+                        line.head || 'ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â',
+                        line.side || 'ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â',
+                        formatTransactionAmount(line.amount ?? 0)
+                      ]
+                    }))}
+                    emptyMessage="No allocations found."
+                  />
+                </Card>
+              ) : null}
+
+              {!recoveryLines.length && !allocations.length ? (
+                <EmptyState
+                  title="No member-specific breakdown"
+                  description="This voucher template does not carry row-based member data."
+                />
+              ) : null}
+            </div>
+          </div>
+        )
       ) : null}
 
       {activeTab === 'journal' ? (
@@ -541,7 +792,7 @@ export function MemberTransactionDetailPage({ sectionKey }) {
               <DetailRow label="Journal Lines" value={journalLines.length} />
               <DetailRow label="Main Amount" value={mainAmount} />
               <DetailRow label="Posted Status" value={<StatusBadge status={record.status} />} />
-              <DetailRow label="Reversal Of" value={record.reversalOf || '—'} />
+                <DetailRow label="Reversal Of" value={record.reversalOf || '-'} />
             </div>
           </Card>
 
@@ -598,13 +849,13 @@ export function MemberTransactionDetailPage({ sectionKey }) {
               <DetailRow label="Voucher No" value={record.voucherNo} />
               <DetailRow label="Category" value={record.voucherCategory} />
               <DetailRow label="Status" value={<StatusBadge status={record.status} />} />
-              <DetailRow label="Created By" value={record.createdBy || '—'} />
-              <DetailRow label="Approved By" value={record.approvedBy || '—'} />
+                <DetailRow label="Created By" value={record.createdBy || '-'} />
+                <DetailRow label="Approved By" value={record.approvedBy || '-'} />
               <DetailRow label="Party Type" value={record.partyType} />
-              <DetailRow label="Branch" value={record.branchCode || '—'} />
-              <DetailRow label="FY Code" value={record.fyCode || '—'} />
-              <DetailRow label="Transaction Type" value={record.transactionType || '—'} />
-              <DetailRow label="Reversal Of" value={record.reversalOf || '—'} />
+                <DetailRow label="Branch" value={record.branchCode || '-'} />
+                <DetailRow label="FY Code" value={record.fyCode || '-'} />
+                <DetailRow label="Transaction Type" value={record.transactionType || '-'} />
+                <DetailRow label="Reversal Of" value={record.reversalOf || '-'} />
             </div>
           </Card>
 
@@ -634,7 +885,7 @@ export function MemberTransactionDetailPage({ sectionKey }) {
 
       <Modal
         open={editorOpen}
-        title="Edit Transaction"
+        title="Edit"
         subtitle={section?.description || 'Update transaction voucher details.'}
         onClose={closeEditor}
         width="min(1100px, 96vw)"
@@ -679,7 +930,21 @@ export function MemberTransactionDetailPage({ sectionKey }) {
         onClose={() => setDeleteOpen(false)}
       />
     </div>
+    </>
   );
 }
 
 export default MemberTransactionDetailPage;
+
+
+
+
+
+
+
+
+
+
+
+
+

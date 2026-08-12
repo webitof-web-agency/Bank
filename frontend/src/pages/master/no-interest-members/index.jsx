@@ -16,7 +16,7 @@ function isActive(record) {
   return String(record?.status || 'Active').toLowerCase() !== 'inactive';
 }
 
-export function NoInterestMembersPage() {
+export function NoInterestMembersPage({ basePath = '/app/master/no-interest-members' } = {}) {
   const navigate = useNavigate();
   const { token, hasPermission } = useAuth();
   const [rows, setRows] = useState([]);
@@ -265,4 +265,5 @@ export function NoInterestMembersPage() {
 }
 
 export default NoInterestMembersPage;
+
 

@@ -1,4 +1,4 @@
-﻿import imageCompression from 'browser-image-compression';
+import imageCompression from 'browser-image-compression';
 import { MEMBER_DOCUMENT_DEFS, createEmptyDocumentMap, hydrateDocumentMap, serializeDocumentMap } from '../../../components/master/documentUtils';
 
 export function stripPhoneDigits(value = '') {
@@ -108,16 +108,24 @@ export function createEmptyMemberDraft(rows = []) {
     mobileNo: '',
     photoUrl: '',
     photoFileId: null,
+    basicSalary: 0,
     openingBalance: 0,
     depositBalance: 0,
     loanOutstanding: 0,
     balances: {
       share: 0,
+      shareSide: 'Cr',
       compulsoryDeposit: 0,
+      compulsoryDepositSide: 'Cr',
       specialSaving: 0,
+      specialSavingSide: 'Cr',
       providentFund: 0,
+      providentFundSide: 'Cr',
       loanAgainstDeposit: 0,
-      insurancePremium: 0
+      loanAgainstDepositSide: 'Dr',
+      insurancePremium: 0,
+      insurancePremiumSide: 'Cr',
+      loanOutstandingSide: 'Dr'
     },
     nomineeName: '',
     nomineeRelation: '',
@@ -152,16 +160,24 @@ export function createMemberDraftFromRecord(member = {}) {
     mobileNo: member.mobileNo || '',
     photoUrl: member.photoUrl || '',
     photoFileId: member.photoFileId || null,
+    basicSalary: member.basicSalary ?? 0,
     openingBalance: member.openingBalance ?? 0,
     depositBalance,
     loanOutstanding: member.loanOutstanding ?? 0,
     balances: {
       share: toNumber(balances.share, 0),
+      shareSide: balances.shareSide || 'Cr',
       compulsoryDeposit: toNumber(balances.compulsoryDeposit, depositBalance),
+      compulsoryDepositSide: balances.compulsoryDepositSide || 'Cr',
       specialSaving: toNumber(balances.specialSaving, 0),
+      specialSavingSide: balances.specialSavingSide || 'Cr',
       providentFund: toNumber(balances.providentFund, 0),
+      providentFundSide: balances.providentFundSide || 'Cr',
       loanAgainstDeposit: toNumber(balances.loanAgainstDeposit, 0),
-      insurancePremium: toNumber(balances.insurancePremium, 0)
+      loanAgainstDepositSide: balances.loanAgainstDepositSide || 'Dr',
+      insurancePremium: toNumber(balances.insurancePremium, 0),
+      insurancePremiumSide: balances.insurancePremiumSide || 'Cr',
+      loanOutstandingSide: balances.loanOutstandingSide || 'Dr'
     },
     nomineeName: member.nomineeName || '',
     nomineeRelation: member.nomineeRelation || '',
@@ -177,6 +193,7 @@ export function buildMemberPayload(draft = {}) {
   const openingBalance = Number(draft.openingBalance);
   const depositBalance = Number(draft.depositBalance);
   const loanOutstanding = Number(draft.loanOutstanding);
+  const basicSalary = Number(draft.basicSalary);
   const balances = draft.balances || {};
   const payload = {
     ...(draft.payload || {}),
@@ -202,16 +219,24 @@ export function buildMemberPayload(draft = {}) {
     mobileNo: String(draft.mobileNo || '').trim(),
     photoUrl: String(draft.photoUrl || '').trim(),
     photoFileId: draft.photoFileId || null,
+    basicSalary: Number.isFinite(basicSalary) ? basicSalary : 0,
     openingBalance: Number.isFinite(openingBalance) ? openingBalance : 0,
     depositBalance: Number.isFinite(depositBalance) ? depositBalance : 0,
     loanOutstanding: Number.isFinite(loanOutstanding) ? loanOutstanding : 0,
     balances: {
       share: toNumber(balances.share, 0),
+      shareSide: String(balances.shareSide || 'Cr'),
       compulsoryDeposit: Number.isFinite(depositBalance) ? depositBalance : toNumber(balances.compulsoryDeposit, 0),
+      compulsoryDepositSide: String(balances.compulsoryDepositSide || 'Cr'),
       specialSaving: toNumber(balances.specialSaving, 0),
+      specialSavingSide: String(balances.specialSavingSide || 'Cr'),
       providentFund: toNumber(balances.providentFund, 0),
+      providentFundSide: String(balances.providentFundSide || 'Cr'),
       loanAgainstDeposit: toNumber(balances.loanAgainstDeposit, 0),
-      insurancePremium: toNumber(balances.insurancePremium, 0)
+      loanAgainstDepositSide: String(balances.loanAgainstDepositSide || 'Dr'),
+      insurancePremium: toNumber(balances.insurancePremium, 0),
+      insurancePremiumSide: String(balances.insurancePremiumSide || 'Cr'),
+      loanOutstandingSide: String(balances.loanOutstandingSide || 'Dr')
     },
     nomineeName: String(draft.nomineeName || '').trim(),
     nomineeRelation: String(draft.nomineeRelation || '').trim(),

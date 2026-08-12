@@ -12,6 +12,45 @@ const DEFAULT_SETTINGS = {
       accentColor: '#1d4ed8',
       sidebarBg: '#090d16'
     },
+    ratesConfig: {
+      interestRates: {
+        paid: {
+          compulsoryDeposit: 7,
+          specialSaving: 8,
+          cashCredit: 0,
+          dividend: 5
+        },
+        receive: {
+          loan: 9,
+          loanAgainstDeposit: 9,
+          houseLoanStaff: 9,
+          vehicleLoanStaff: 7
+        }
+      },
+      limits: {
+        loan: {
+          maxAmount: 1000000,
+          multipliers: {
+            coOpBankBasic: 8,
+            ldBankBasic: 10,
+            jilaSanghBasic: 10
+          }
+        },
+        loanAgainstDeposit: {
+          compulsoryDepositPercent: 200
+        }
+      },
+      demandListAmount: {
+        compulsoryDeposit: 10,
+        coOpBankBasic: 10,
+        ldBankBasic: 10,
+        jilaSanghBasic: 10
+      },
+      syncOptions: {
+        applyChangesInAllMembers: false,
+        applyChangesInCompulsoryDeposit: true
+      }
+    },
     companyProfile: {
       name: 'Sahakari Bank',
       legalName: 'Sahakari Cooperative Bank Ltd.',
@@ -81,3 +120,4 @@ const DEFAULT_SETTINGS = {
 module.exports = {
   DEFAULT_SETTINGS
 };
+

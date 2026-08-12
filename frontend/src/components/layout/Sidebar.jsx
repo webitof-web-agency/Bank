@@ -43,10 +43,28 @@ function SidebarLink({ item, onNavigate, open }) {
   );
 }
 
+function isItemActive(pathname, item) {
+  if (isPathActive(pathname, item.path)) return true;
+  if (item.children) {
+    return item.children.some(child => isItemActive(pathname, child));
+  }
+  return false;
+}
+
 function SidebarDropdown({ item, onNavigate, open, pathname, expanded, onToggle }) {
-  const activeChild = item.children.some((child) => isPathActive(pathname, child.path));
+  const [localExpanded, setLocalExpanded] = useState(false);
+  const activeChild = item.children.some((child) => isItemActive(pathname, child));
   const activeParent = isPathActive(pathname, item.path);
-  const visible = expanded ?? (activeChild || activeParent);
+  const visible = expanded ?? localExpanded ?? (activeChild || activeParent);
+
+  const handleToggle = (next, childLabel) => {
+    if (childLabel) {
+      if (onToggle) onToggle(next, childLabel);
+    } else {
+      setLocalExpanded(next);
+      if (onToggle) onToggle(next, item.label);
+    }
+  };
 
   return (
     <div
@@ -58,7 +76,7 @@ function SidebarDropdown({ item, onNavigate, open, pathname, expanded, onToggle 
     >
       <button
         type="button"
-        onClick={() => onToggle(!visible)}
+        onClick={() => handleToggle(!visible)}
         className={cn(
           'group flex w-full items-center justify-between gap-3 px-3 py-2.5 text-[15px] transition-all duration-200 whitespace-nowrap rounded-[var(--radius-button,1rem)]',
           activeChild || activeParent || visible ? 'font-medium text-[var(--primary,#2563eb)]' : 'font-medium text-slate-700 hover:bg-[color-mix(in_srgb,var(--primary)_8%,transparent)] hover:text-[var(--primary,#2563eb)]',
@@ -80,8 +98,19 @@ function SidebarDropdown({ item, onNavigate, open, pathname, expanded, onToggle 
       {visible ? (
         <div className={cn('mt-1 space-y-1 pb-2', !open && 'lg:hidden')}>
           {item.children.map((child) => (
-            <div key={child.path} className="pl-4">
-              <SidebarLink item={child} onNavigate={onNavigate} open={open} />
+            <div key={child.label || child.path} className="pl-4">
+              {child.children ? (
+                <SidebarDropdown
+                  item={child}
+                  onNavigate={onNavigate}
+                  open={open}
+                  pathname={pathname}
+                  expanded={undefined}
+                  onToggle={(next) => onToggle(next, child.label)}
+                />
+              ) : (
+                <SidebarLink item={child} onNavigate={onNavigate} open={open} />
+              )}
             </div>
           ))}
         </div>

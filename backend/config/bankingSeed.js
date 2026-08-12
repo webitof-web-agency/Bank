@@ -1,5 +1,6 @@
 const SOCIETY_SEED = {
   key: 'default',
+  code: 'HO01',
   name: 'The Raipur Co-operative Employees Thrift Society Ltd.',
   prefix: 'RCETSL',
   regNo: 'CG/RPR/CS/00417',
@@ -12,10 +13,10 @@ const SOCIETY_SEED = {
 };
 
 const BRANCH_SEEDS = [
-  { code: 'BR01', label: 'Main Branch - Raipur', place: 'Raipur', address: 'Civil Lines, Raipur', district: 'Raipur', phone: '0771-2234011' },
-  { code: 'BR02', label: 'Bhilai Branch', place: 'Bhilai', address: 'Sector 6, Bhilai', district: 'Durg', phone: '0788-2245022' },
-  { code: 'BR03', label: 'Durg Branch', place: 'Durg', address: 'Station Road, Durg', district: 'Durg', phone: '0788-2311033' },
-  { code: 'BR04', label: 'Bilaspur Branch', place: 'Bilaspur', address: 'Link Road, Bilaspur', district: 'Bilaspur', phone: '07752-401044' }
+  { code: 'BR01', headOfficeCode: 'HO01', label: 'Main Branch - Raipur', place: 'Raipur', address: 'Civil Lines, Raipur', district: 'Raipur', phone: '0771-2234011' },
+  { code: 'BR02', headOfficeCode: 'HO01', label: 'Bhilai Branch', place: 'Bhilai', address: 'Sector 6, Bhilai', district: 'Durg', phone: '0788-2245022' },
+  { code: 'BR03', headOfficeCode: 'HO01', label: 'Durg Branch', place: 'Durg', address: 'Station Road, Durg', district: 'Durg', phone: '0788-2311033' },
+  { code: 'BR04', headOfficeCode: 'HO01', label: 'Bilaspur Branch', place: 'Bilaspur', address: 'Link Road, Bilaspur', district: 'Bilaspur', phone: '07752-401044' }
 ];
 
 const MEMBER_SEEDS = [
@@ -431,4 +432,5 @@ module.exports = {
   SOCIETY_SEED,
   VOUCHER_SEEDS
 };
+
 

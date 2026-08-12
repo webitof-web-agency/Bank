@@ -1,4 +1,4 @@
-import {
+﻿import {
   createEmptyTransactionDocumentMap,
   hydrateTransactionDocumentMap,
   serializeTransactionDocumentMap
@@ -112,8 +112,9 @@ export function createEmptyTransactionDraft(sectionKey = '', sectionItems = []) 
       toAccount: '',
       accountHead: '',
       components: {
-        loanAmt: '',
-        lad: ''
+        house: '',
+        vehicle: '',
+        grain: ''
       },
       recoveryLines: [],
       allocations: [],
@@ -158,8 +159,9 @@ export function createTransactionDraftFromRecord(record = {}, sectionItems = [],
       toAccount: details.toAccount || '',
       accountHead: details.accountHead || '',
       components: {
-        loanAmt: details.components?.loanAmt ?? '',
-        lad: details.components?.lad ?? ''
+        house: details.components?.house ?? details.components?.loanAmt ?? '',
+        vehicle: details.components?.vehicle ?? '',
+        grain: details.components?.grain ?? ''
       },
       recoveryLines: Array.isArray(details.recoveryLines) ? details.recoveryLines : [],
       allocations: Array.isArray(details.allocations) ? details.allocations : [],
@@ -188,13 +190,16 @@ export function buildTransactionVoucherPayload(draft = {}) {
   const details = deepMerge(advancedDetails, baseDetails);
   details.key = cleanText(details.key || baseDetails.key);
   details.components = {
-    loanAmt: toNumberOrZero(details.components?.loanAmt),
-    lad: toNumberOrZero(details.components?.lad)
+    house: toNumberOrZero(details.components?.house ?? details.components?.loanAmt),
+    vehicle: toNumberOrZero(details.components?.vehicle),
+    grain: toNumberOrZero(details.components?.grain)
   };
   details.recoveryLines = buildDetailArray(details.recoveryLines || baseDetails.recoveryLinesJson || details.recoveryLinesJson, []);
   details.allocations = buildDetailArray(details.allocations || baseDetails.allocationsJson || details.allocationsJson, []);
   delete details.recoveryLinesJson;
   delete details.allocationsJson;
+
+  const componentTotal = toNumberOrZero(details.components.house) + toNumberOrZero(details.components.vehicle) + toNumberOrZero(details.components.grain);
 
   return {
     voucherNo: cleanUpper(draft.voucherNo) || undefined,
@@ -204,7 +209,7 @@ export function buildTransactionVoucherPayload(draft = {}) {
     accent: cleanText(draft.accent, 'neutral'),
     partyCode: cleanUpper(draft.partyCode),
     partyType: cleanText(draft.partyType, 'ledger'),
-    amount: toNumberOrZero(draft.amount),
+    amount: toNumberOrZero(draft.amount || componentTotal),
     mode: cleanText(draft.mode),
     status: cleanText(draft.status, 'Draft'),
     narration: cleanText(draft.narration),
@@ -241,15 +246,20 @@ export function getTransactionVoucherTitle(voucher = {}, sectionItems = []) {
   return item?.label || voucher.voucherCategory || voucher.transactionType || voucher.voucherNo || 'Transaction';
 }
 
+export function getEmployeeComponentTotal(value = {}) {
+  const components = value?.details?.components || {};
+  return toNumberOrZero(components.house) + toNumberOrZero(components.vehicle) + toNumberOrZero(components.grain);
+}
+
 export function formatTransactionAmount(value) {
   const number = Number(value);
-  if (!Number.isFinite(number)) return '—';
+  if (!Number.isFinite(number)) return 'â€”';
   return new Intl.NumberFormat('en-IN').format(number);
 }
 
 export function getTransactionPartyLabel(value = '', lookups = {}, partyType = '') {
   const code = cleanUpper(value);
-  if (!code) return '—';
+  if (!code) return 'â€”';
 
   if (partyType === 'member') {
     const member = (lookups.members || []).find((row) => cleanUpper(row.code) === code);
@@ -276,7 +286,7 @@ export function getTransactionPartyLabel(value = '', lookups = {}, partyType = '
 
 export function getTransactionLedgerLabel(value = '', lookups = {}) {
   const code = cleanUpper(value);
-  if (!code) return '—';
+  if (!code) return 'â€”';
   const ledger = (lookups.ledgers || []).find((row) => cleanUpper(row.code) === code);
   if (ledger) return `${ledger.code} - ${ledger.name || ''}`.trim();
   const bank = (lookups.bankAccounts || []).find((row) => cleanUpper(row.code) === code);
@@ -286,6 +296,9 @@ export function getTransactionLedgerLabel(value = '', lookups = {}) {
 
 export function toCurrency(value) {
   const number = Number(value);
-  if (!Number.isFinite(number)) return '—';
+  if (!Number.isFinite(number)) return 'â€”';
   return new Intl.NumberFormat('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(number);
 }
+
+
+

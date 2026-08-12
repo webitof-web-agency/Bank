@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Edit2, FileText, Layers3, RotateCcw, Sparkles, ShieldCheck, Trash2 } from 'lucide-react';
+import { ArrowLeft, Edit2, FileText, Layers3, RotateCcw, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../api/api';
 import { Button } from '../../../components/ui/Button';
@@ -8,27 +8,14 @@ import { Card } from '../../../components/ui/Card';
 import { Modal } from '../../../components/ui/Modal';
 import { ConfirmDialog } from '../../../components/overlays/ConfirmDialog';
 import { useAuth } from '../../../context/AuthContext';
-import { DocumentSection } from '../../../components/master/DocumentSection';
-import { SupportingTransactionForm } from './form';
-import { getSupportingDocumentDefinitions } from './supportingDocumentUtils';
-import { uploadDocumentMap } from '../../master/documentUpload';
-import {
-  buildTransactionVoucherPayload,
-  createTransactionDraftFromRecord,
-  formatTransactionAmount,
-  getSectionItems,
-  getTransactionLedgerLabel,
-  getTransactionPartyLabel,
-  getVoucherSectionItem,
-  getTransactionVoucherTitle
-} from './transactionUtils';
-import { toneClassName } from './transactionUtils';
+import { DemandForm } from '../../master/demands/form';
+import { buildDemandPayload, createDemandDraftFromRecord, formatMoney, getBranchLabel, getMemberLabel } from '../../master/demands/demandUtils';
 
 function DetailRow({ label, value }) {
   return (
     <div className="grid grid-cols-[180px_1fr] gap-4 border-b border-slate-100 py-4 last:border-b-0">
       <div className="text-[13px] font-medium text-slate-500">{label}</div>
-      <div className="text-[14px] font-medium text-slate-900">{value || '—'}</div>
+      <div className="text-[14px] font-medium text-slate-900">{value || '�'}</div>
     </div>
   );
 }
@@ -36,24 +23,15 @@ function DetailRow({ label, value }) {
 function StatusBadge({ status = '' }) {
   const value = String(status || '').toLowerCase();
   const className =
-    value === 'posted' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' :
-    value === 'reversed' ? 'border-rose-200 bg-rose-50 text-rose-700' :
-    value === 'draft' ? 'border-amber-200 bg-amber-50 text-amber-700' :
-    'border-slate-200 bg-slate-50 text-slate-700';
+    value === 'recovered' || value === 'fully recovered'
+      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+      : value === 'partially recovered'
+        ? 'border-amber-200 bg-amber-50 text-amber-700'
+        : 'border-slate-200 bg-slate-50 text-slate-700';
   return (
     <span className={`inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-medium ${className}`}>
-      {status || 'Draft'}
+      {status || 'Pending'}
     </span>
-  );
-}
-
-
-function EmptyState({ title, description }) {
-  return (
-    <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/50 p-8 text-center">
-      <p className="text-sm font-semibold text-slate-900">{title}</p>
-      <p className="mt-1 text-sm text-slate-500">{description}</p>
-    </div>
   );
 }
 
@@ -88,72 +66,40 @@ function SimpleTable({ headers = [], rows = [], emptyMessage = 'No records found
   );
 }
 
-function getPrimitiveEntries(details = {}) {
-  const entries = [];
-  Object.entries(details || {}).forEach(([key, value]) => {
-    if (key === 'components' || key === 'recoveryLines' || key === 'allocations') return;
-    if (value == null || value === '') return;
-    if (typeof value === 'object') return;
-    entries.push({ label: key, value: String(value) });
-  });
-
-  const components = details.components || {};
-  Object.entries(components).forEach(([key, value]) => {
-    if (value === '' || value == null) return;
-    entries.push({ label: `components.${key}`, value: String(value) });
-  });
-
-  return entries;
-}
-
-function toTitleCase(value = '') {
-  return String(value || '')
-    .replace(/([a-z])([A-Z])/g, '$1 $2')
-    .replace(/[_-]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/^\w/, (match) => match.toUpperCase());
-}
-
-export function SupportingTransactionDetailPage({ sectionKey }) {
+export function SupportingTransactionDetailPage({ basePath = '/app/transactions/supporting' }) {
   const { id } = useParams();
   const navigate = useNavigate();
   const { token, hasPermission } = useAuth();
-  const [catalog, setCatalog] = useState([]);
-  const [lookups, setLookups] = useState({});
   const [record, setRecord] = useState(null);
+  const [branches, setBranches] = useState([]);
+  const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [editorOpen, setEditorOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
   const [draft, setDraft] = useState(null);
-  const [reverseOpen, setReverseOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState('overview');
-  const [removedDocumentIds, setRemovedDocumentIds] = useState([]);
+  const [activeTab, setActiveTab] = useState('info');
 
-  const section = useMemo(() => catalog.find((item) => item.key === sectionKey) || null, [catalog, sectionKey]);
-  const sectionItems = useMemo(() => getSectionItems(catalog, sectionKey), [catalog, sectionKey]);
-  const canWrite = hasPermission('transactions.write');
-  const canReverse = hasPermission('transactions.reverse');
+  const canManage = hasPermission('demands.write');
 
   useEffect(() => {
     let mounted = true;
     setLoading(true);
 
     Promise.all([
-      api.banking.getTransactionCatalog(token),
-      api.banking.getTransactionVoucher(token, id),
-      api.banking.getLookups(token)
+      api.resources.get('/banking/masters/demands', id, token),
+      api.resources.list('/banking/masters/branches', token),
+      api.resources.list('/banking/masters/members', token)
     ])
-      .then(([catalogRes, recordRes, lookupsRes]) => {
+      .then(([demandRes, branchesRes, membersRes]) => {
         if (!mounted) return;
-        setCatalog(Array.isArray(catalogRes.data) ? catalogRes.data : []);
-        setRecord(recordRes.data || null);
-        setLookups(lookupsRes.data || {});
+        setRecord(demandRes.data || null);
+        setBranches(Array.isArray(branchesRes.data) ? branchesRes.data : []);
+        setMembers(Array.isArray(membersRes.data) ? membersRes.data : []);
       })
       .catch((error) => {
         if (!mounted) return;
-        toast.error(error.message || 'Unable to load transaction');
+        toast.error(error.message || 'Unable to load demand');
       })
       .finally(() => {
         if (mounted) setLoading(false);
@@ -166,123 +112,43 @@ export function SupportingTransactionDetailPage({ sectionKey }) {
 
   function openEditor() {
     if (!record) return;
-    setDraft(createTransactionDraftFromRecord(record, sectionItems, sectionKey));
-    setRemovedDocumentIds([]);
+    setDraft(createDemandDraftFromRecord(record));
     setEditorOpen(true);
   }
 
   function closeEditor() {
     setEditorOpen(false);
     setDraft(null);
-    setRemovedDocumentIds([]);
   }
 
-  async function saveVoucher(event) {
+  async function saveDemand(event) {
     event.preventDefault();
     if (!record || !draft) return;
 
     setSaving(true);
     try {
-      const payload = buildTransactionVoucherPayload(draft);
-      const response = await api.banking.updateTransactionVoucher(token, record.id, payload);
-      let nextRecord = response.data || response;
-      const uploadedDocuments = await uploadDocumentMap(token, draft.documents || {}, {
-        moduleName: 'transactions',
-        entityId: nextRecord.id
-      });
-      if (Object.keys(uploadedDocuments).length || removedDocumentIds.length) {
-        const updateResponse = await api.banking.updateTransactionVoucher(token, nextRecord.id, { documents: uploadedDocuments });
-        nextRecord = updateResponse.data || nextRecord;
-      }
-      if (removedDocumentIds.length > 0) {
-        await Promise.allSettled(removedDocumentIds.map((fileId) => api.files.remove(token, fileId)));
-      }
-      setRecord(nextRecord);
-      toast.success('Transaction updated');
+      const payload = buildDemandPayload(draft);
+      const response = await api.resources.update('/banking/masters/demands', record.id, payload, token);
+      setRecord(response.data || response);
+      toast.success('Demand updated');
       closeEditor();
     } catch (error) {
-      toast.error(error.message || 'Unable to save transaction');
+      toast.error(error.message || 'Unable to save demand');
     } finally {
       setSaving(false);
-    }
-  }
-
-  async function confirmReverse() {
-    if (!record) return;
-    try {
-      const response = await api.banking.reverseTransactionVoucher(token, record.id);
-      setRecord(response.data || response);
-      toast.success('Transaction reversed');
-    } catch (error) {
-      toast.error(error.message || 'Unable to reverse transaction');
-    } finally {
-      setReverseOpen(false);
     }
   }
 
   async function confirmDelete() {
     if (!record) return;
     try {
-      await api.banking.deleteTransactionVoucher(token, record.id);
-      toast.success('Transaction deleted');
-      navigate(`/app/transactions/${sectionKey}`);
+      await api.resources.remove('/banking/masters/demands', record.id, token);
+      toast.success('Demand deleted');
+      navigate(basePath);
     } catch (error) {
-      toast.error(error.message || 'Unable to delete transaction');
+      toast.error(error.message || 'Unable to delete demand');
     } finally {
       setDeleteOpen(false);
-    }
-  }
-
-  function exportCsv() {
-    const headers = ['Field', 'Value'];
-    const rows = [
-      ['Voucher No', record.voucherNo],
-      ['Date', record.date],
-      ['Category', record.voucherCategory],
-      ['Transaction Type', record.transactionType],
-      ['Party Type', record.partyType],
-      ['Party', getTransactionPartyLabel(record.partyCode, lookups, record.partyType)],
-      ['Settlement', getTransactionLedgerLabel(record.details?.settlementAccount || record.details?.ledgerTarget || record.details?.depositIn || record.details?.fromAccount || '', lookups)],
-      ['Branch', record.branchCode],
-      ['FY Code', record.fyCode],
-      ['Amount', formatTransactionAmount(record.amount ?? 0)],
-      ['Status', record.status],
-      ['Mode', record.mode],
-      ['Reference No', record.referenceNo],
-      ['Instrument No', record.instrumentNo],
-      ['Instrument Date', record.instrumentDate],
-      ['Approved By', record.approvedBy],
-      ['Created By', record.createdBy],
-      ['Narration', record.narration]
-    ];
-    const escape = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
-    const csv = [headers.map(escape).join(','), ...rows.map((row) => row.map(escape).join(','))].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${record.voucherNo || 'transaction'}-detail.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
-  }
-
-  async function handleDeleteAttachment(key, document) {
-    if (!canWrite || !document?.fileId || !record) return;
-    try {
-      await api.files.remove(token, document.fileId);
-      const nextDocuments = { ...(record.documents || {}) };
-      delete nextDocuments[key];
-      const response = await api.banking.updateTransactionVoucher(token, record.id, { documents: nextDocuments });
-      setRecord(response.data || { ...record, documents: nextDocuments });
-      toast.success('Attachment removed');
-    } catch (error) {
-      toast.error(error.message || 'Unable to remove attachment');
-    }
-  }
-
-  function handleDocumentRemove(_key, document) {
-    if (document?.fileId) {
-      setRemovedDocumentIds((current) => (current.includes(document.fileId) ? current : [...current, document.fileId]));
     }
   }
 
@@ -297,365 +163,187 @@ export function SupportingTransactionDetailPage({ sectionKey }) {
   if (!record) {
     return (
       <div className="rounded-3xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
-        Transaction not found
+        Demand not found
       </div>
     );
   }
 
-  const title = getTransactionVoucherTitle(record, sectionItems);
-  const templateItem = getVoucherSectionItem(record, sectionItems);
-  const documentDefs = getSupportingDocumentDefinitions(templateItem?.key || record?.details?.key || '');
-  const partyLabel = getTransactionPartyLabel(record.partyCode, lookups, record.partyType);
-  const settlementLabel = getTransactionLedgerLabel(
-    record.details?.settlementAccount || record.details?.ledgerTarget || record.details?.depositIn || record.details?.fromAccount || '',
-    lookups
-  );
-  const mainAmount = formatTransactionAmount(record.amount ?? 0);
-  const details = record.details || {};
-  const recoveryLines = Array.isArray(details.recoveryLines) ? details.recoveryLines : [];
-  const allocations = Array.isArray(details.allocations) ? details.allocations : [];
-  const journalLines = Array.isArray(record.journalLines) ? record.journalLines : [];
-  const primitiveEntries = getPrimitiveEntries(details);
-  const tabs = [
-    { id: 'overview', label: 'Overview', icon: Sparkles },
-    { id: 'breakdown', label: 'Breakdown', icon: Layers3, badge: recoveryLines.length || allocations.length ? String(recoveryLines.length + allocations.length) : '' },
-    { id: 'journal', label: 'Journal', icon: FileText, badge: journalLines.length ? String(journalLines.length) : '' },
-    { id: 'attachments', label: 'Attachments', icon: FileText, badge: Object.keys(record.documents || {}).length ? String(Object.keys(record.documents || {}).length) : '' },
-    { id: 'audit', label: 'Audit', icon: ShieldCheck }
-  ];
-
-  const headerCards = [
-    { label: 'Amount', value: mainAmount },
-    { label: 'Status', value: record.status || 'Draft' },
-    { label: 'Type', value: record.transactionType || 'payment' },
-    { label: 'Rows', value: String(journalLines.length || recoveryLines.length || allocations.length || 0) }
-  ];
+  const branchLookup = new Map(branches.map((branch) => [String(branch.code || '').trim().toUpperCase(), branch]));
+  const memberLookup = new Map(members.map((member) => [String(member.code || '').trim().toUpperCase(), member]));
+  const branch = branchLookup.get(String(record.branchCode || '').trim().toUpperCase());
+  const member = memberLookup.get(String(record.memberCode || '').trim().toUpperCase());
+  const allocations = Array.isArray(record.allocations) ? record.allocations : [];
+  const demandListDate = record.dueDate || record.payload?.demandListDate || '';
+  const yearValue = record.payload?.year || new Date(record.dueDate || record.updatedAt || Date.now()).getFullYear();
+  const pendingAmount = Math.max(Number(record.total || 0) - Number(record.recovered || 0), 0);
+  const statusValue = String(record.status || 'Pending').toLowerCase();
+  const statusBadge = statusValue === 'recovered' || statusValue === 'fully recovered'
+    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+    : statusValue === 'partially recovered'
+      ? 'border-amber-200 bg-amber-50 text-amber-700'
+      : 'border-slate-200 bg-slate-50 text-slate-700';
 
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2 text-[13px] font-medium text-slate-500 print:hidden">
-        <button type="button" onClick={() => navigate(`/app/transactions/${sectionKey}`)} className="flex items-center gap-1.5 transition-colors hover:text-slate-900">
+        <button type="button" onClick={() => navigate(basePath)} className="flex items-center gap-1.5 transition-colors hover:text-slate-900">
           <ArrowLeft size={14} /> Back
         </button>
         <span className="text-slate-300">/</span>
-        <span className="text-slate-900">{section?.label || sectionKey} Detail</span>
+        <span className="text-slate-900">Demand Detail</span>
       </div>
 
       <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-6 bg-white px-8 py-10 text-slate-900 border-b border-slate-100">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-5">
-              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary)]">
-                <FileText size={28} strokeWidth={1.8} />
-              </div>
-              <div>
-                <p className="mb-1 text-[13px] font-semibold tracking-wider text-[var(--primary)] uppercase">
-                  {record.voucherNo || 'Voucher Detail'}
-                </p>
-                <h1 className="text-3xl font-bold tracking-tight">{title}</h1>
-              </div>
+        <div className="flex flex-col gap-6 px-8 py-8 md:flex-row md:items-start md:justify-between border-b border-slate-100">
+          <div className="flex items-center gap-5">
+            <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-[18px] bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary,#1661F6)] shadow-sm">
+              <FileText size={36} strokeWidth={1.5} />
             </div>
-
-            <div className="flex flex-col md:items-end gap-4 print:hidden">
-              <div className="flex flex-wrap items-center gap-2">
-                <Button type="button" variant="outline" onClick={exportCsv} className="gap-2 border-slate-200 shadow-sm rounded-[var(--radius-input,0.75rem)] hover:bg-slate-50 text-slate-700 font-semibold text-sm h-10 px-4">
-                  Export CSV
-                </Button>
-                <Button type="button" variant="outline" onClick={() => window.print()} className="gap-2 border-slate-200 shadow-sm rounded-[var(--radius-input,0.75rem)] hover:bg-slate-50 text-slate-700 font-semibold text-sm h-10 px-4">
-                  Print
-                </Button>
-                {canReverse && String(record.status || '').toLowerCase() === 'posted' ? (
-                  <Button type="button" variant="outline" onClick={() => setReverseOpen(true)} className="gap-2 border-slate-200 shadow-sm rounded-[var(--radius-input,0.75rem)] hover:bg-slate-50 text-slate-700 font-semibold text-sm h-10 px-4">
-                    <RotateCcw size={16} />
-                    Reverse
-                  </Button>
-                ) : null}
-
-                {canWrite ? (
-                  <Button type="button" variant="outline" onClick={openEditor} className="gap-2 border-slate-200 shadow-sm rounded-[var(--radius-input,0.75rem)] hover:bg-slate-50 text-slate-700 font-semibold text-sm h-10 px-4 bg-slate-50">
-                    <Edit2 size={16} />
-                    Edit Transaction
-                  </Button>
-                ) : null}
-              </div>
-
-              <div className="flex items-center gap-5 mt-1 bg-slate-50/80 border border-slate-100 rounded-[14px] px-5 py-3 shadow-sm overflow-x-auto">
-                {headerCards.map((item, index) => (
-                  <div key={item.label} className="flex items-center gap-5 shrink-0">
-                    <div>
-                      <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">{item.label}</p>
-                      <p className="text-base font-bold text-slate-900 leading-tight mt-0.5 capitalize">{item.value}</p>
-                    </div>
-                    {index < headerCards.length - 1 && (
-                      <div className="w-px h-8 bg-slate-200"></div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex border-b border-slate-200 px-8 pt-4 overflow-x-auto hide-scrollbar">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`relative flex items-center gap-2 whitespace-nowrap px-4 py-3 text-[14px] font-medium transition-colors ${
-                activeTab === tab.id ? 'text-[var(--primary)]' : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              {tab.icon && <tab.icon size={15} className="mb-0.5" />}
-              {tab.label}
-              {tab.badge ? (
-                <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${activeTab === tab.id ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'}`}>
-                  {tab.badge}
+            <div>
+              <p className="mb-1 text-[13px] font-bold text-[var(--primary,#1661F6)] tracking-wide">{record.demandNo || '�'}</p>
+              <h1 className="text-2xl font-bold text-slate-900 tracking-tight">{record.month || 'Demand'}</h1>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[12px] font-semibold ${statusBadge}`}>
+                  {record.status || 'Pending'}
                 </span>
-              ) : null}
-              {activeTab === tab.id && <div className="absolute bottom-0 left-0 right-0 h-[3px] rounded-t-full bg-[var(--primary)]" />}
-            </button>
-          ))}
-        </div>
-
-        <div className="p-8 space-y-6">
-
-      {activeTab === 'overview' ? (
-        <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-          <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="divide-y divide-slate-100 px-6">
-              <DetailRow label="Voucher No" value={record.voucherNo} />
-              <DetailRow label="Date" value={record.date} />
-              <DetailRow label="Category" value={record.voucherCategory} />
-              <DetailRow label="Transaction Type" value={record.transactionType} />
-              <DetailRow label="Party Type" value={record.partyType} />
-              <DetailRow label="Linked Party" value={partyLabel} />
-              <DetailRow label="Settlement A/c" value={settlementLabel} />
-              <DetailRow label="Branch" value={record.branchCode} />
-              <DetailRow label="FY Code" value={record.fyCode} />
-              <DetailRow label="Status" value={<StatusBadge status={record.status} />} />
-            </div>
-          </Card>
-
-          <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="divide-y divide-slate-100 px-6">
-              <DetailRow label="Amount" value={mainAmount} />
-              <DetailRow label="Mode" value={record.mode} />
-              <DetailRow label="Reference No" value={record.referenceNo} />
-              <DetailRow label="Instrument No" value={record.instrumentNo} />
-              <DetailRow label="Instrument Date" value={record.instrumentDate} />
-              <DetailRow label="Approved By" value={record.approvedBy} />
-              <DetailRow label="Created By" value={record.createdBy} />
-              <DetailRow label="Narration" value={record.narration} />
-            </div>
-          </Card>
-        </div>
-      ) : null}
-
-      {activeTab === 'breakdown' ? (
-        <div className="grid gap-6 xl:grid-cols-2">
-          <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="divide-y divide-slate-100 px-6">
-              <DetailRow label="Settlement Account" value={details.settlementAccount} />
-              <DetailRow label="Ledger Target" value={details.ledgerTarget} />
-              <DetailRow label="Receipt By" value={details.receiptBy} />
-              <DetailRow label="Deposit By" value={details.depositBy} />
-              <DetailRow label="Deposit In" value={details.depositIn} />
-              <DetailRow label="From Account" value={details.fromAccount} />
-              <DetailRow label="To Account" value={details.toAccount} />
-              <DetailRow label="Account Head" value={details.accountHead} />
-              <DetailRow label="Component Loan Amt" value={details.components?.loanAmt} />
-              <DetailRow label="Component LAD" value={details.components?.lad} />
-            </div>
-          </Card>
-
-          <div className="space-y-6">
-            {recoveryLines.length ? (
-              <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-                <SimpleTable
-                  headers={['Member', 'Head', 'Amount', 'Memo']}
-                  rows={recoveryLines.map((line, index) => ({
-                    key: `${line.memberCode || line.member || index}`,
-                    cells: [
-                      line.memberCode || line.member || '—',
-                      line.head || '—',
-                      formatTransactionAmount(line.amount ?? line.total ?? 0),
-                      line.memo || '—'
-                    ]
-                  }))}
-                  emptyMessage="No recovery lines found."
-                />
-              </Card>
-            ) : null}
-
-            {allocations.length ? (
-              <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-                <SimpleTable
-                  headers={['Member', 'Head', 'Side', 'Amount']}
-                  rows={allocations.map((line, index) => ({
-                    key: `${line.memberCode || line.member || index}`,
-                    cells: [
-                      line.memberCode || line.member || '—',
-                      line.head || '—',
-                      line.side || '—',
-                      formatTransactionAmount(line.amount ?? 0)
-                    ]
-                  }))}
-                  emptyMessage="No allocations found."
-                />
-              </Card>
-            ) : null}
-
-            {!recoveryLines.length && !allocations.length ? (
-              <EmptyState
-                title="No structured breakdown"
-                description="This voucher template does not carry row-based breakdown data."
-              />
-            ) : null}
-          </div>
-        </div>
-      ) : null}
-
-      {activeTab === 'journal' ? (
-        <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-          <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="divide-y divide-slate-100 px-6">
-              <DetailRow label="Journal Lines" value={journalLines.length} />
-              <DetailRow label="Main Amount" value={mainAmount} />
-              <DetailRow label="Posted Status" value={<StatusBadge status={record.status} />} />
-              <DetailRow label="Reversal Of" value={record.reversalOf || '—'} />
-            </div>
-          </Card>
-
-          <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-left text-[13px]">
-                <thead className="border-b border-slate-200 bg-slate-50/80 text-slate-500 font-semibold uppercase tracking-[0.05em] text-[11px]">
-                  <tr>
-                    <th className="px-4 py-3.5">Ledger</th>
-                    <th className="px-4 py-3.5">Debit</th>
-                    <th className="px-4 py-3.5">Credit</th>
-                    <th className="px-4 py-3.5">Memo</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {journalLines.length ? journalLines.map((line, index) => (
-                    <tr key={`${line.ledgerCode}-${index}`} className="hover:bg-slate-50/50">
-                      <td className="px-4 py-3 text-slate-700">{line.ledgerCode}</td>
-                      <td className="px-4 py-3 text-slate-700">{formatTransactionAmount(line.dr || 0)}</td>
-                      <td className="px-4 py-3 text-slate-700">{formatTransactionAmount(line.cr || 0)}</td>
-                      <td className="px-4 py-3 text-slate-700">{line.memo || '-'}</td>
-                    </tr>
-                  )) : (
-                    <tr>
-                      <td colSpan={4} className="px-4 py-8 text-center text-slate-500">No journal lines available.</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-        </div>
-      ) : null}
-
-      {activeTab === 'attachments' ? (
-        <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm p-6">
-          <div className="mt-5">
-            <DocumentSection
-              title=""
-              description=""
-              definitions={documentDefs}
-              documents={record.documents || {}}
-              editable={false}
-              onDeleteFile={handleDeleteAttachment}
-            />
-          </div>
-        </Card>
-      ) : null}
-
-      {activeTab === 'audit' ? (
-        <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-          <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="divide-y divide-slate-100 px-6">
-              <DetailRow label="Voucher No" value={record.voucherNo} />
-              <DetailRow label="Category" value={record.voucherCategory} />
-              <DetailRow label="Status" value={<StatusBadge status={record.status} />} />
-              <DetailRow label="Created By" value={record.createdBy || '—'} />
-              <DetailRow label="Approved By" value={record.approvedBy || '—'} />
-              <DetailRow label="Party Type" value={record.partyType} />
-              <DetailRow label="Branch" value={record.branchCode || '—'} />
-              <DetailRow label="FY Code" value={record.fyCode || '—'} />
-              <DetailRow label="Transaction Type" value={record.transactionType || '—'} />
-              <DetailRow label="Reversal Of" value={record.reversalOf || '—'} />
-            </div>
-          </Card>
-
-          <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="px-6">
-              <div className="grid gap-4 md:grid-cols-2">
-                {primitiveEntries.length ? primitiveEntries.map((entry) => (
-                  <div key={entry.label} className="rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3">
-                    <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">{toTitleCase(entry.label)}</p>
-                    <p className="mt-1 text-[14px] font-semibold text-slate-900">{entry.value}</p>
-                  </div>
-                )) : (
-                  <div className="md:col-span-2">
-                    <EmptyState
-                      title="No extra payload"
-                      description="This voucher currently has no additional nested payload fields."
-                    />
-                  </div>
-                )}
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[12px] font-semibold text-slate-600">
+                  <RotateCcw size={14} />
+                  {formatMoney(record.recovered ?? 0)} Recovered
+                </span>
               </div>
             </div>
-          </Card>
+          </div>
+
+          <div className="flex flex-col md:items-end gap-4">
+            {canManage ? (
+              <Button type="button" variant="outline" onClick={openEditor} className="gap-2 border-slate-200 shadow-sm rounded-[var(--radius-input,0.75rem)] hover:bg-slate-50 text-slate-700 font-semibold">
+                <Edit2 size={16} />
+                Edit Demand
+              </Button>
+            ) : null}
+                <Button type="button" variant="outline" onClick={() => setDeleteOpen(true)} className="gap-2 border-slate-200 shadow-sm rounded-[var(--radius-input,0.75rem)] hover:bg-slate-50 text-slate-700 font-semibold">
+                  <Trash2 size={16} />
+                  Delete Demand
+                </Button>
+
+            <div className="flex items-center gap-5 mt-1 bg-slate-50/80 border border-slate-100 rounded-[14px] px-5 py-3 shadow-sm overflow-x-auto">
+              <div>
+                <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Total Amount</p>
+                <p className="text-base font-bold text-slate-900 leading-tight mt-0.5">{formatMoney(record.total ?? 0)}</p>
+              </div>
+              <div className="w-px h-8 bg-slate-200"></div>
+              <div>
+                <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Balance</p>
+                <p className="text-base font-bold text-slate-900 leading-tight mt-0.5">{formatMoney(pendingAmount)}</p>
+              </div>
+            </div>
+          </div>
         </div>
-      ) : null}
+
+        <div className="flex border-b border-slate-100 bg-slate-50/50 px-6">
+          {[
+            { id: 'info', label: 'Demand Info', icon: FileText },
+            { id: 'amounts', label: 'Amounts', icon: Layers3 }
+          ].map((tab) => {
+            const Icon = tab.icon;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-2 border-b-2 px-6 py-4 text-sm font-medium transition-colors ${
+                  activeTab === tab.id
+                    ? 'border-[var(--primary,#1661F6)] text-[var(--primary,#1661F6)]'
+                    : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700'
+                }`}
+              >
+                <Icon size={16} />
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="p-8 bg-slate-50/30">
+          {activeTab === 'info' ? (
+            <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm py-2">
+              <div className="divide-y divide-slate-100 px-6">
+                <DetailRow label="Demand No" value={record.demandNo} />
+                <DetailRow label="Month" value={record.month} />
+                <DetailRow label="Branch" value={getBranchLabel(branch) || record.branchCode} />
+                <DetailRow label="Member" value={getMemberLabel(member) || record.memberCode} />
+                <DetailRow label="Demand List Date" value={demandListDate} />
+                <DetailRow label="Year" value={yearValue} />
+                <DetailRow label="Status" value={<StatusBadge status={record.status} />} />
+                <DetailRow label="Remarks" value={record.remarks} />
+              </div>
+            </Card>
+          ) : null}
+
+          {activeTab === 'amounts' ? (
+            <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm py-2">
+              <div className="divide-y divide-slate-100 px-6">
+                <DetailRow label="Total" value={formatMoney(record.total ?? 0)} />
+                <DetailRow label="Recovered" value={formatMoney(record.recovered ?? 0)} />
+                <DetailRow label="Pending" value={formatMoney(pendingAmount)} />
+                <div className="pt-4">
+                  <p className="mb-3 text-[13px] font-semibold uppercase tracking-wider text-slate-500">Loaded Members</p>
+                  {allocations.length > 0 ? (
+                    <div className="overflow-hidden rounded-xl border border-slate-200">
+                      <SimpleTable
+                        headers={['Member', 'Head', 'Amount']}
+                        rows={allocations.map((row, index) => ({
+                          key: `${row.memberCode || index}`,
+                          cells: [
+                            row.memberCode || '�',
+                            row.head || '�',
+                            formatMoney(row.amount ?? 0)
+                          ]
+                        }))}
+                        emptyMessage="No allocations loaded."
+                      />
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-[13px] text-slate-500">No allocations loaded.</div>
+                  )}
+                </div>
+              </div>
+            </Card>
+          ) : null}
         </div>
       </div>
 
       <Modal
         open={editorOpen}
-        title="Edit Transaction"
-        subtitle={section?.description || 'Update transaction voucher details.'}
+        title="Edit Demand"
         onClose={closeEditor}
-        width="min(1100px, 96vw)"
+        width="min(1000px, 96vw)"
         footer={
-          <div className="flex w-full justify-end gap-3">
+          <div className="flex justify-end gap-3 w-full">
             <Button variant="outline" type="button" onClick={closeEditor}>Cancel</Button>
-            <Button type="submit" form="transaction-voucher-form" disabled={saving || !canWrite} className="bg-[#1661F6] text-white hover:bg-blue-700">
+            <Button type="submit" form="demand-form" disabled={saving} className="bg-[var(--primary,#1661F6)] hover:bg-[color-mix(in_srgb,var(--primary)_90%,black)] text-white shadow-sm rounded-[var(--radius-input,0.75rem)] px-6 border-none">
               {saving ? 'Saving...' : 'Save Changes'}
             </Button>
           </div>
         }
       >
         {draft ? (
-          <SupportingTransactionForm
-            section={section}
-            lookups={lookups}
+          <DemandForm
             value={draft}
             setValue={setDraft}
-            onSubmit={saveVoucher}
-            onDocumentRemove={handleDocumentRemove}
+            onSubmit={saveDemand}
+            branches={branches}
+            members={members}
           />
         ) : null}
       </Modal>
 
       <ConfirmDialog
-        open={reverseOpen}
-        title="Reverse transaction"
-        description={`Reverse ${record.voucherNo || 'this transaction'}?`}
-        confirmLabel="Reverse"
-        tone="outline"
-        onConfirm={confirmReverse}
-        onClose={() => setReverseOpen(false)}
-      />
-
-      <ConfirmDialog
         open={deleteOpen}
-        title="Delete transaction"
-        description={`Delete ${record.voucherNo || 'this transaction'}?`}
+        title="Delete demand"
+        description={`Delete ${record.demandNo || 'this demand'}?`}
         confirmLabel="Delete"
-        tone="destructive"
+        confirmVariant="danger"
         onConfirm={confirmDelete}
         onClose={() => setDeleteOpen(false)}
       />
@@ -664,3 +352,4 @@ export function SupportingTransactionDetailPage({ sectionKey }) {
 }
 
 export default SupportingTransactionDetailPage;
+

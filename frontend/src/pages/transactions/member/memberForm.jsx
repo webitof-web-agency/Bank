@@ -1,28 +1,8 @@
-import { useMemo } from 'react';
-import {
-  Banknote,
-  CalendarDays,
-  ChevronRight,
-  FileText,
-  Layers3,
-  Plus,
-  Repeat2,
-  Sparkles,
-  Trash2,
-  Users,
-  WalletCards
-} from 'lucide-react';
-import { Button } from '../../../components/ui/Button';
-import { Card } from '../../../components/ui/Card';
-import { Input, Select, Textarea } from '../../../components/ui/Input';
+import { useMemo, useRef, useState, useEffect } from 'react';
+import { useAuth } from '../../../context/AuthContext';
+import { api } from '../../../api/api';
+import { Input, Textarea } from '../../../components/ui/Input';
 import { Select as CustomSelect } from '../../../components/ui/Select';
-import { DocumentSection } from '../../../components/master/DocumentSection';
-import {
-  formatTransactionAmount,
-  getTransactionLedgerLabel,
-  getTransactionPartyLabel
-} from './transactionUtils';
-import { toneClassName } from './transactionUtils';
 import { getMemberDocumentDefinitions } from './memberDocumentUtils';
 
 function deepClone(value) {
@@ -35,28 +15,37 @@ function setPath(target, path, nextValue) {
 
   for (let index = 0; index < parts.length - 1; index += 1) {
     const key = parts[index];
-    if (!cursor[key] || typeof cursor[key] !== 'object') {
-      cursor[key] = {};
-    }
+    if (!cursor[key] || typeof cursor[key] !== 'object') cursor[key] = {};
     cursor = cursor[key];
   }
 
   cursor[parts[parts.length - 1]] = nextValue;
 }
 
+function setDetailsValue(setValue, path, nextValue) {
+  setValue((current) => {
+    const next = deepClone(current);
+    if (!next.details || typeof next.details !== 'object') next.details = {};
+    setPath(next.details, path, nextValue);
+    return next;
+  });
+}
+
+function setRootValue(setValue, key, nextValue) {
+  setValue((current) => ({ ...(current || {}), [key]: nextValue }));
+}
+
 function formatLookupLabel(item = {}) {
-  return `${item.code || item.value || ''}${item.name || item.label ? ` - ${item.name || item.label}` : ''}`.trim();
+  const code = item.code || item.value || '';
+  const name = item.name || item.label || '';
+  return `${code}${name ? ` - ${name}` : ''}`.trim();
 }
 
 function buildGroups(items = [], label = '') {
   const rows = (Array.isArray(items) ? items : [])
     .filter(Boolean)
-    .map((item) => ({
-      value: item.code || item.value || '',
-      label: formatLookupLabel(item)
-    }))
+    .map((item) => ({ value: item.code || item.value || '', label: formatLookupLabel(item) }))
     .filter((item) => item.value);
-
   return rows.length ? [{ label, items: rows }] : [];
 }
 
@@ -64,96 +53,64 @@ function getMemberLookupGroups(lookups = {}) {
   return buildGroups(lookups.members, 'Members');
 }
 
-function getSettlementLookupGroups(lookups = {}) {
+function getBranchLabel(lookups = {}, code = '') {
+  const branches = Array.isArray(lookups.branches) ? lookups.branches : [];
+  const branch = branches.find((item) => String(item.value || item.code || '').toUpperCase() === String(code || '').toUpperCase());
+  return branch?.label || branch?.name || code || '-';
+}
+
+function getMemberRecord(lookups = {}, code = '') {
+  const members = Array.isArray(lookups.members) ? lookups.members : [];
+  return members.find((item) => String(item.code || item.value || '').toUpperCase() === String(code || '').toUpperCase()) || null;
+}
+
+function getDesignationLabel(member = {}) {
+  return member?.designation || '-';
+}
+
+function getPaymentOptions(activeKey = '') {
+  if (activeKey === 'recovery-member') {
+    return [
+      { label: 'Cash', value: 'CASH' },
+      { label: 'DD', value: 'DD' },
+      { label: 'Cheque', value: 'CHEQUE' }
+    ];
+  }
+
+  if (activeKey === 'ssa-paid-member') {
+    return [
+      { label: 'Cash-in-Hand', value: 'CASH-IN-HAND' },
+      { label: 'Cheque', value: 'CHEQUE' },
+      { label: 'Transfer', value: 'TRANSFER' }
+    ];
+  }
+
   return [
-    ...buildGroups(lookups.ledgers, 'Ledgers'),
-    ...buildGroups(lookups.bankAccounts, 'Bank Accounts')
+    { label: 'Cash', value: 'CASH' },
+    { label: 'Cheque', value: 'CHEQUE' },
+    { label: 'Transfer', value: 'TRANSFER' }
   ];
 }
 
-function getMemberTemplateIcon(key = '') {
-  const value = String(key || '').toLowerCase();
-  if (value === 'loan-paid-member') return Banknote;
-  if (value === 'recovery-member') return Repeat2;
-  if (value === 'deposit-paid-member') return WalletCards;
-  if (value === 'insurance-paid-member') return FileText;
-  return Users;
+function FieldLabel({ children, required = false }) {
+  return <label className="text-[13px] font-semibold text-slate-700">{children}{required ? <span className="text-rose-500"> *</span> : null}</label>;
 }
 
-function getMemberNotes(activeKey = '') {
-  const key = String(activeKey || '').toLowerCase();
-  if (key === 'loan-paid-member') return ['Choose a member, settlement account, and loan component values.'];
-  if (key === 'recovery-member') return ['Recovery rows stay member-wise so balances can update cleanly.'];
-  if (key === 'deposit-paid-member') return ['Use settlement account and deposit details for compulsory deposit payouts.'];
-  if (key === 'insurance-paid-member') return ['Use settlement account and insurance payout details for member disbursement.'];
-  return ['Keep the voucher linked to a member master code and structured details.'];
-}
-
-function OptionCard({ title, description, active = false, onClick, badge, tone = 'slate', icon: Icon }) {
+function SectionTitle({ children, subtitle = '' }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`w-full rounded-2xl border p-4 text-left transition ${
-        active ? 'border-blue-300 bg-blue-50/70 shadow-sm ring-2 ring-blue-100' : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
-      }`}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-start gap-3">
-          <div className={`flex h-10 w-10 items-center justify-center rounded-xl border ${toneClassName(tone)}`}>
-            {Icon ? <Icon size={18} strokeWidth={1.9} /> : <Layers3 size={18} strokeWidth={1.9} />}
-          </div>
-          <div>
-            <div className="text-[14px] font-semibold text-slate-900">{title}</div>
-            <div className="mt-1 text-[12px] leading-5 text-slate-500">{description}</div>
-          </div>
-        </div>
-        {badge ? (
-          <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${toneClassName(tone)}`}>
-            {badge}
-          </span>
-        ) : null}
-      </div>
-    </button>
-  );
-}
-
-function SectionHeader({ title, description }) {
-  return (
-    <div>
-      <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
-      {description ? <p className="mt-1 text-sm text-slate-500">{description}</p> : null}
+    <div className="space-y-1">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">{children}</div>
+      {subtitle ? <p className="text-sm text-slate-500">{subtitle}</p> : null}
     </div>
   );
 }
 
-function FieldLabel({ children, required = false }) {
-  return (
-    <label className="text-[13px] font-semibold text-slate-700">
-      {children}
-      {required ? <span className="text-rose-500"> *</span> : null}
-    </label>
-  );
-}
-
-function LookupSelect({
-  label,
-  value,
-  onChange,
-  groups = [],
-  placeholder = 'Select...',
-  helper = '',
-  required = false,
-  disabled = false
-}) {
+function LookupSelect({ label, value, onChange, groups = [], placeholder = 'Select...', required = false, disabled = false }) {
   const flatOptions = useMemo(() => {
     const opts = [];
     groups.forEach((group) => {
       group.items.forEach((item) => {
-        opts.push({
-          label: group.label ? `${item.label} (${group.label})` : item.label,
-          value: item.value
-        });
+        opts.push({ label: group.label ? `${item.label} (${group.label})` : item.label, value: item.value });
       });
     });
     return opts;
@@ -162,162 +119,287 @@ function LookupSelect({
   return (
     <div className="space-y-1.5">
       {label ? <FieldLabel required={required}>{label}</FieldLabel> : null}
-      <CustomSelect 
-        value={value || ''} 
-        onChange={onChange} 
+      <CustomSelect
+        value={value || ''}
+        onChange={onChange}
         disabled={disabled || !groups.length}
         placeholder={placeholder}
         options={flatOptions}
         searchable
       />
-      {helper ? <p className="text-[12px] text-slate-500">{helper}</p> : null}
     </div>
   );
 }
 
-function ArrayRowsEditor({
-  title,
-  description,
-  rows = [],
-  onChange,
-  fields = [],
-  emptyRow = {},
-  addLabel = 'Add Row',
-  icon: Icon = FileText,
-  rowTone = 'slate'
-}) {
-  const safeRows = Array.isArray(rows) ? rows : [];
+const RECOVERY_HEADS = [
+  ['share', 'Share'],
+  ['cd', 'Cmp. Dep.'],
+  ['ssa', 'SSA'],
+  ['loan', 'Loan'],
+  ['lad', 'LAD'],
+  ['ins', 'Ins.'],
+  ['other', 'Other']
+];
 
-  function updateRow(index, key, nextValue) {
-    const next = safeRows.map((row, rowIndex) => (rowIndex === index ? { ...(row || {}), [key]: nextValue } : row));
-    onChange(next);
-  }
-
-  function addRow() {
-    onChange([...safeRows, deepClone(emptyRow)]);
-  }
-
-  function removeRow(index) {
-    const next = safeRows.filter((_, rowIndex) => rowIndex !== index);
-    onChange(next);
-  }
-
-  return (
-    <Card className="rounded-[var(--radius-card,1.75rem)] border border-slate-200 bg-white p-6 shadow-sm">
-      <div className="mb-4">
-        <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
-        {description ? <p className="text-sm text-slate-500">{description}</p> : null}
-      </div>
-
-      <div className="mt-5 space-y-4">
-        {safeRows.length ? safeRows.map((row, index) => (
-          <div key={`${title}-${index}`} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] ${toneClassName(rowTone)}`}>
-                Row {index + 1}
-              </span>
-              <button
-                type="button"
-                onClick={() => removeRow(index)}
-                className="inline-flex items-center gap-1.5 rounded-full border border-rose-100 bg-white px-3 py-1.5 text-[12px] font-medium text-rose-600 hover:bg-rose-50"
-              >
-                <Trash2 size={13} />
-                Remove
-              </button>
-            </div>
-
-            <div className={`grid gap-4 ${fields.length >= 4 ? 'md:grid-cols-4' : fields.length === 3 ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
-              {fields.map((field) => (
-                <div key={field.key} className="space-y-1.5">
-                  <FieldLabel>{field.label}</FieldLabel>
-                  <Input
-                    type={field.type || 'text'}
-                    value={row?.[field.key] ?? ''}
-                    onChange={(e) => updateRow(index, field.key, e.target.value)}
-                    placeholder={field.placeholder || field.label}
-                    step={field.step}
-                    min={field.min}
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
-        )) : null}
-
-        {!safeRows.length ? (
-          <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/50 p-5 text-sm text-slate-500">
-            No rows added yet. Use the button below to add structured entries.
-          </div>
-        ) : null}
-
-        <div className="flex justify-start">
-          <Button type="button" variant="outline" className="gap-2" onClick={addRow}>
-            <Plus size={16} />
-            {addLabel}
-          </Button>
-        </div>
-      </div>
-    </Card>
-  );
+function getRowHeads(row = {}) {
+  const heads = row?.heads || {};
+  return {
+    share: heads.share ?? '',
+    cd: heads.cd ?? heads.compulsoryDeposit ?? '',
+    ssa: heads.ssa ?? '',
+    loan: heads.loan ?? '',
+    lad: heads.lad ?? '',
+    ins: heads.ins ?? heads.insurance ?? '',
+    other: heads.other ?? (Number(heads.suspense || 0) + Number(heads.admfee || 0) || '')
+  };
 }
 
-function setDetailsValue(setValue, path, nextValue) {
-  setValue((current) => {
-    const next = deepClone(current);
-    if (!next.details || typeof next.details !== 'object') {
-      next.details = {};
-    }
-    setPath(next.details, path, nextValue);
-    return next;
-  });
+function getRecoveryRowTotal(row = {}) {
+  const heads = getRowHeads(row);
+  return RECOVERY_HEADS.reduce((sum, [key]) => sum + Number(heads[key] || 0), 0);
 }
 
-function setRootValue(setValue, key, nextValue) {
-  setValue((current) => ({
-    ...(current || {}),
-    [key]: nextValue
+function normalizeRecoveryRows(rows = []) {
+  return (Array.isArray(rows) ? rows : []).map((row) => ({
+    ...(row || {}),
+    heads: getRowHeads(row)
   }));
 }
 
-function selectTemplate(current, item) {
-  const next = deepClone(current);
-  next.voucherCategory = item?.label || next.voucherCategory || '';
-  next.transactionType = item?.transactionType || next.transactionType || 'payment';
-  next.accent = item?.accent || next.accent || 'neutral';
-  next.mode = item?.mode || next.mode || '';
-  next.partyType = 'member';
-  next.details = {
-    ...(next.details || {}),
-    key: item?.key || next.details?.key || '',
-    settlementAccount: next.details?.settlementAccount || '',
-    accountHead: next.details?.accountHead || '',
-    components: {
-      loanAmt: next.details?.components?.loanAmt ?? '',
-      lad: next.details?.components?.lad ?? ''
-    },
-    recoveryLines: Array.isArray(next.details?.recoveryLines) ? next.details.recoveryLines : [],
-    allocations: Array.isArray(next.details?.allocations) ? next.details.allocations : [],
-    recoveryLinesJson: next.details?.recoveryLinesJson || '',
-    allocationsJson: next.details?.allocationsJson || ''
-  };
-  return next;
+function RecoveryLinesEditor({ rows = [], onChange, memberGroups = [], demandRows = [] }) {
+  const safeRows = Array.isArray(rows) ? rows : [];
+  const [draftLine, setDraftLine] = useState({
+    member: '',
+    heads: { suspense: '', admfee: '', share: '', cd: '', ssa: '', loan: '', lad: '', ins: '' }
+  });
+
+  function updateDraftHead(key, value) {
+    setDraftLine((curr) => ({ ...curr, heads: { ...curr.heads, [key]: value } }));
+  }
+
+  function addRow() {
+    if (!draftLine.member) {
+      alert("Please select a member");
+      return;
+    }
+    onChange([...safeRows, { member: draftLine.member, heads: { ...draftLine.heads } }]);
+    setDraftLine({ member: '', heads: { suspense: '', admfee: '', share: '', cd: '', ssa: '', loan: '', lad: '', ins: '' } });
+  }
+
+  function addFromDemandList() {
+    const demand = Array.isArray(demandRows) ? demandRows.find((item) => String(item?.memberCode || '').trim()) || demandRows[0] : null;
+    if (demand) {
+      onChange([...safeRows, {
+        member: demand.memberCode || '',
+        heads: { other: demand.pending ?? '' }
+      }]);
+    }
+  }
+
+  function removeRow(index) {
+    onChange(safeRows.filter((_, rowIndex) => rowIndex !== index));
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="space-y-4">
+        <SectionTitle>Add Recovery Line</SectionTitle>
+        <div className="grid gap-4 md:grid-cols-3">
+          <div className="space-y-1.5 md:col-span-3">
+            <LookupSelect
+              label="Member Code *"
+              value={draftLine.member}
+              onChange={(val) => setDraftLine((curr) => ({ ...curr, member: val }))}
+              placeholder="Search member..."
+              groups={memberGroups}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel>Suspense A/C</FieldLabel>
+            <Input type="number" min="0" step="0.01" value={draftLine.heads.suspense} onChange={(e) => updateDraftHead('suspense', e.target.value)} placeholder="0" />
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel>Admission Fee</FieldLabel>
+            <Input type="number" min="0" step="0.01" value={draftLine.heads.admfee} onChange={(e) => updateDraftHead('admfee', e.target.value)} placeholder="0" />
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel>Share</FieldLabel>
+            <Input type="number" min="0" step="0.01" value={draftLine.heads.share} onChange={(e) => updateDraftHead('share', e.target.value)} placeholder="0" />
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel>Compulsory Deposit</FieldLabel>
+            <Input type="number" min="0" step="0.01" value={draftLine.heads.cd} onChange={(e) => updateDraftHead('cd', e.target.value)} placeholder="0" />
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel>Special Saving A/C</FieldLabel>
+            <Input type="number" min="0" step="0.01" value={draftLine.heads.ssa} onChange={(e) => updateDraftHead('ssa', e.target.value)} placeholder="0" />
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel>Regular Loan</FieldLabel>
+            <Input type="number" min="0" step="0.01" value={draftLine.heads.loan} onChange={(e) => updateDraftHead('loan', e.target.value)} placeholder="0" />
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel>Loan Against Deposit</FieldLabel>
+            <Input type="number" min="0" step="0.01" value={draftLine.heads.lad} onChange={(e) => updateDraftHead('lad', e.target.value)} placeholder="0" />
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel>Insurance Premium</FieldLabel>
+            <Input type="number" min="0" step="0.01" value={draftLine.heads.ins} onChange={(e) => updateDraftHead('ins', e.target.value)} placeholder="0" />
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 pt-2">
+          <button type="button" onClick={addFromDemandList} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+            Add From Demand List
+          </button>
+          <button type="button" onClick={addRow} className="rounded-lg bg-[var(--primary,#2563eb)] px-4 py-2 text-sm font-medium text-white hover:bg-[color-mix(in_srgb,var(--primary)_85%,black)]">
+            + Add Line
+          </button>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <SectionTitle>Recovery Lines</SectionTitle>
+        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+          <table className="min-w-full text-left text-[13px]">
+            <thead className="bg-slate-50 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+              <tr>
+                <th className="px-3 py-3">Member</th>
+                {RECOVERY_HEADS.map(([_, label]) => <th key={label} className="px-3 py-3">{label}</th>)}
+                <th className="px-3 py-3">Total</th>
+                <th className="px-3 py-3"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 bg-white">
+              {safeRows.length ? safeRows.map((row, index) => {
+                const heads = getRowHeads(row);
+                return (
+                  <tr key={`recovery-row-${index}`}>
+                    <td className="px-3 py-3 align-top font-medium text-slate-700">{row.member}</td>
+                    {RECOVERY_HEADS.map(([key]) => (
+                      <td key={`${index}-${key}`} className="px-3 py-3 align-top text-slate-600">
+                        {heads[key] || '-'}
+                      </td>
+                    ))}
+                    <td className="px-3 py-3 align-top font-semibold text-slate-700">{getRecoveryRowTotal(row) || 0}</td>
+                    <td className="px-3 py-3 align-top text-right">
+                      <button type="button" onClick={() => removeRow(index)} className="text-rose-500 hover:text-rose-700 font-medium">
+                        Remove
+                      </button>
+                    </td>
+                  </tr>
+                );
+              }) : (
+                <tr>
+                  <td colSpan={RECOVERY_HEADS.length + 3} className="px-3 py-6 text-center text-slate-500">
+                    No lines added yet
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
 }
 
-export function MemberTransactionForm({ section, lookups = {}, value, setValue, onSubmit, onDocumentRemove }) {
+function SimpleDocumentList({ definitions = [], documents = {}, onPickFile, onClearFile }) {
+  const inputRefs = useRef({});
+
+  function triggerPicker(key) {
+    inputRefs.current[key]?.click();
+  }
+
+  function handlePick(key, event) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || !onPickFile) return;
+    onPickFile(key, file);
+  }
+
+  return (
+    <div className="space-y-3">
+      {definitions.map((definition) => {
+        const document = documents?.[definition.key] || null;
+        const fileName = document?.fileName || document?.originalName || '';
+        return (
+          <div key={definition.key} className="rounded-xl border border-slate-200 bg-white p-3">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-slate-900">{definition.label}</p>
+                {definition.description ? <p className="text-xs text-slate-500">{definition.description}</p> : null}
+                <p className="mt-1 text-xs text-slate-700">{fileName || 'No file selected'}</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <input
+                  ref={(node) => {
+                    inputRefs.current[definition.key] = node;
+                  }}
+                  type="file"
+                  accept="image/*,.pdf"
+                  className="hidden"
+                  onChange={(event) => handlePick(definition.key, event)}
+                />
+                <button type="button" onClick={() => triggerPicker(definition.key)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                  {document ? 'Replace file' : 'Select file'}
+                </button>
+                {document ? (
+                  <button type="button" onClick={() => onClearFile?.(definition.key, document)} className="rounded-lg border border-rose-200 px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50">
+                    Remove
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+export function MemberTransactionForm({ section, lookups = {}, value, setValue, onSubmit, onDocumentRemove, activeKey: forcedActiveKey = '' }) {
+  const { token } = useAuth();
   const draft = value || {};
+
+  useEffect(() => {
+    let mounted = true;
+    if (!draft.voucherNo && !draft.id) {
+      api.banking.getNextVoucherNo(token, draft.branchCode)
+        .then((res) => {
+          if (!mounted) return;
+          if (res?.success && res?.data?.voucherNo) {
+            setValue((prev) => ({ ...prev, voucherNo: res.data.voucherNo }));
+          } else {
+            setValue((prev) => ({ ...prev, voucherNo: 'Err: ' + JSON.stringify(res) }));
+          }
+        })
+        .catch((err) => {
+          if (mounted) setValue((prev) => ({ ...prev, voucherNo: 'Error: ' + err.message }));
+        });
+    }
+    return () => {
+      mounted = false;
+    };
+  }, [draft.id, draft.voucherNo, draft.branchCode, setValue, token]);
+
   const editableItems = useMemo(() => (section?.items || []).filter((item) => !item.route), [section]);
-  const activeKey = draft?.details?.key || editableItems[0]?.key || '';
+  const activeKey = draft?.details?.key || forcedActiveKey || editableItems[0]?.key || '';
   const activeItem = editableItems.find((item) => item.key === activeKey) || editableItems[0] || null;
-  const partyGroups = useMemo(() => getMemberLookupGroups(lookups), [lookups]);
-  const settlementGroups = useMemo(() => getSettlementLookupGroups(lookups), [lookups]);
-  const branches = Array.isArray(lookups.branches) ? lookups.branches : [];
-  const members = Array.isArray(lookups.members) ? lookups.members : [];
-  const ledgers = Array.isArray(lookups.ledgers) ? lookups.ledgers : [];
-  const bankAccounts = Array.isArray(lookups.bankAccounts) ? lookups.bankAccounts : [];
-  const documentDefs = getMemberDocumentDefinitions(activeKey);
-  const showLoanComponents = activeKey === 'loan-paid-member';
-  const showRecoveryLines = activeKey === 'recovery-member';
-  const showMemberPayoutPanel = activeKey === 'deposit-paid-member' || activeKey === 'insurance-paid-member';
+  const memberGroups = useMemo(() => getMemberLookupGroups(lookups), [lookups]);
+  const paymentOptions = useMemo(() => getPaymentOptions(activeKey), [activeKey]);
+  const documentDefs = useMemo(() => getMemberDocumentDefinitions(activeKey), [activeKey]);
+  const memberRecord = getMemberRecord(lookups, draft.partyCode);
+  const demandRows = Array.isArray(lookups.demands) ? lookups.demands : [];
+  const isLoan = activeKey === 'loan-paid-member';
+  const isDeposit = activeKey === 'deposit-paid-member';
+  const isInsurance = activeKey === 'insurance-paid-member';
+  const isSsa = activeKey === 'ssa-paid-member';
+  const isRecovery = activeKey === 'recovery-member';
+  const recoveryRows = normalizeRecoveryRows(Array.isArray(draft.details?.recoveryLines) ? draft.details.recoveryLines : []);
+  const loanAmount = Number(draft.details?.components?.loanAmt || 0);
+  const ladAmount = Number(draft.details?.components?.lad || 0);
+  const recoveryTotal = recoveryRows.reduce((sum, row) => sum + getRecoveryRowTotal(row), 0);
+  const amountValue = isLoan ? loanAmount + ladAmount : isRecovery ? recoveryTotal : Number(draft.amount || 0);
 
   function updateDetails(path, nextValue) {
     setDetailsValue(setValue, path, nextValue);
@@ -327,261 +409,363 @@ export function MemberTransactionForm({ section, lookups = {}, value, setValue, 
     setDetailsValue(setValue, ['components', path], nextValue);
   }
 
-  function updateRows(path, nextValue) {
-    setDetailsValue(setValue, path, nextValue);
+  function updateRecoveryRows(nextRows) {
+    setDetailsValue(setValue, 'recoveryLines', nextRows);
+    const nextTotal = nextRows.reduce((sum, row) => sum + getRecoveryRowTotal(row), 0);
+    setRootValue(setValue, 'amount', nextTotal > 0 ? nextTotal : '');
   }
 
-  const notes = getMemberNotes(activeKey);
+  function setAmount(nextValue) {
+    setRootValue(setValue, 'amount', nextValue);
+  }
 
-  return (
-    <form id="transaction-voucher-form" className="mx-auto w-full space-y-6" onSubmit={onSubmit}>
-      <Card className="rounded-[var(--radius-card,1.75rem)] border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="grid gap-6 md:grid-cols-2">
-          <div className="space-y-1.5 md:col-span-2">
-            <LookupSelect
-              label="Select Member"
-              value={draft.partyCode || ''}
-              onChange={(next) => setRootValue(setValue, 'partyCode', next.toUpperCase())}
-              placeholder="Search or select member"
-              groups={partyGroups}
-              required
-            />
+  function setPartyCode(nextValue) {
+    const code = String(nextValue || '').toUpperCase();
+    const mem = getMemberRecord(lookups, code);
+    const branch = mem?.branchName || mem?.branch || mem?.branchCode || '';
+    setValue((current) => ({
+      ...(current || {}),
+      partyCode: code,
+      branchCode: branch
+    }));
+  }
+
+  function updateDocumentMap(key, file) {
+    setValue((current) => ({
+      ...(current || {}),
+      documents: {
+        ...(current?.documents || {}),
+        [key]: {
+          file,
+          fileName: file.name,
+          originalName: file.name,
+          mimeType: file.type,
+          sizeBytes: file.size,
+          documentType: key
+        }
+      }
+    }));
+  }
+
+  function clearDocument(key, document) {
+    onDocumentRemove?.(key, document);
+    setValue((current) => ({
+      ...(current || {}),
+      documents: {
+        ...(current?.documents || {}),
+        [key]: null
+      }
+    }));
+  }
+
+  function renderCommonHeader() {
+    return (
+      <section className="space-y-4">
+        <SectionTitle>
+          Voucher and Member
+        </SectionTitle>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-1.5">
+            <FieldLabel>Voucher No.</FieldLabel>
+            <Input value={draft.voucherNo || ''} readOnly placeholder="Generating..." />
           </div>
-
           <div className="space-y-1.5">
             <FieldLabel required>Date</FieldLabel>
-            <Input
-              type="date"
-              value={draft.date || ''}
-              onChange={(e) => setRootValue(setValue, 'date', e.target.value)}
-            />
+            <Input type="date" value={draft.date || ''} onChange={(event) => setRootValue(setValue, 'date', event.target.value)} />
           </div>
 
+          <LookupSelect
+            label="Member Code"
+            value={draft.partyCode || ''}
+            onChange={setPartyCode}
+            placeholder="Search member by code or name"
+            groups={memberGroups}
+            required
+          />
           <div className="space-y-1.5">
-            <FieldLabel required>{showLoanComponents ? 'Loan Amount' : 'Total Amount'}</FieldLabel>
+            <FieldLabel>Member Name</FieldLabel>
+            <Input value={memberRecord?.name || '-'} readOnly />
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel>Branch</FieldLabel>
+            <Input value={getBranchLabel(lookups, memberRecord?.branchName || memberRecord?.branch || memberRecord?.branchCode)} readOnly />
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel>Designation</FieldLabel>
+            <Input value={getDesignationLabel(memberRecord)} readOnly />
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  function renderLoanForm() {
+    return (
+      <section className="space-y-4">
+        <SectionTitle>Loan Disbursement</SectionTitle>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-1.5 md:col-span-2">
+            <FieldLabel>Settlement Account</FieldLabel>
+            <Input value={draft.details?.settlementAccount || ''} onChange={(event) => updateDetails('settlementAccount', event.target.value)} placeholder="Settlement account or ledger" />
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel required>Loan Amount</FieldLabel>
             <Input
               type="number"
               min="0"
               step="0.01"
-              value={showLoanComponents ? (draft.details?.components?.loanAmt ?? '') : (draft.amount ?? '')}
-              onChange={(e) => {
-                if (showLoanComponents) {
-                  updateComponents('loanAmt', e.target.value);
-                  setRootValue(setValue, 'amount', e.target.value);
-                } else {
-                  setRootValue(setValue, 'amount', e.target.value);
-                }
+              value={draft.details?.components?.loanAmt ?? ''}
+              onChange={(event) => {
+                updateComponents('loanAmt', event.target.value);
+                setAmount(Number(event.target.value || 0) + Number(draft.details?.components?.lad || 0));
               }}
               placeholder="0.00"
             />
           </div>
-
-          {showMemberPayoutPanel || showLoanComponents ? (
-            <div className="space-y-1.5">
-              <FieldLabel required>Settlement Account</FieldLabel>
-              <LookupSelect
-                label=""
-                value={draft.details?.settlementAccount || ''}
-                onChange={(next) => updateDetails('settlementAccount', next)}
-                placeholder="Select bank / cash ledger"
-                groups={settlementGroups}
-              />
-            </div>
-          ) : null}
-
-          {showLoanComponents ? (
-            <div className="space-y-1.5">
-              <FieldLabel>LAD (Loan Against Deposit)</FieldLabel>
-              <Input
-                type="number"
-                min="0"
-                step="0.01"
-                value={draft.details?.components?.lad ?? ''}
-                onChange={(e) => updateComponents('lad', e.target.value)}
-                placeholder="0.00"
-              />
-            </div>
-          ) : null}
-
-          {showMemberPayoutPanel ? (
-            <div className="space-y-1.5">
-              <FieldLabel>Account Head (Optional)</FieldLabel>
-              <Input
-                value={draft.details?.accountHead || ''}
-                onChange={(e) => updateDetails('accountHead', e.target.value)}
-                placeholder="Specific payout head"
-              />
-            </div>
-          ) : null}
-
+          <div className="space-y-1.5">
+            <FieldLabel>LAD (Loan Against Deposit)</FieldLabel>
+            <Input
+              type="number"
+              min="0"
+              step="0.01"
+              value={draft.details?.components?.lad ?? ''}
+              onChange={(event) => {
+                updateComponents('lad', event.target.value);
+                setAmount(Number(draft.details?.components?.loanAmt || 0) + Number(event.target.value || 0));
+              }}
+              placeholder="0.00"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel required>Payment Mode</FieldLabel>
+            <CustomSelect value={draft.mode || ''} onChange={(next) => setRootValue(setValue, 'mode', next)} options={paymentOptions} placeholder="Select mode" searchable={false} />
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel>Cheque No.</FieldLabel>
+            <Input value={draft.instrumentNo || ''} onChange={(event) => setRootValue(setValue, 'instrumentNo', event.target.value)} placeholder="Cheque number" />
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel>Cheque Date</FieldLabel>
+            <Input type="date" value={draft.instrumentDate || ''} onChange={(event) => setRootValue(setValue, 'instrumentDate', event.target.value)} />
+          </div>
+          <div className="space-y-1.5 md:col-span-2">
+            <FieldLabel>Total Amount</FieldLabel>
+            <Input value={amountValue || ''} readOnly />
+          </div>
+          <label className="flex items-center gap-2 text-sm text-slate-700 md:col-span-2">
+            <input type="checkbox" checked={!!draft.details?.sms} onChange={(event) => updateDetails('sms', event.target.checked)} />
+            Send SMS to member
+          </label>
           <div className="space-y-1.5 md:col-span-2">
             <FieldLabel>Narration</FieldLabel>
-            <Textarea
-              rows={2}
-              value={draft.narration || ''}
-              onChange={(e) => setRootValue(setValue, 'narration', e.target.value)}
-              placeholder="Brief narration for this transaction"
-            />
+            <Textarea rows={3} value={draft.narration || ''} onChange={(event) => setRootValue(setValue, 'narration', event.target.value)} placeholder="Loan disbursement remarks" />
           </div>
         </div>
-      </Card>
+      </section>
+    );
+  }
 
-      {showRecoveryLines ? (
-        <ArrayRowsEditor
-          title="Recovery Breakdown"
-          description="Add member-wise recovery lines for the voucher."
-          rows={draft.details?.recoveryLines || []}
-          onChange={(next) => {
-            updateRows('recoveryLines', next);
-            const total = next.reduce((sum, row) => sum + Number(row.amount || 0), 0);
-            if (total > 0) {
-              setRootValue(setValue, 'amount', total);
-            }
-          }}
-          emptyRow={{ memberCode: '', head: '', amount: '', memo: '' }}
-          addLabel="Add Recovery Line"
-          icon={Repeat2}
-          rowTone="emerald"
-          fields={[
-            { key: 'memberCode', label: 'Member Code', placeholder: 'M0001' },
-            { key: 'head', label: 'Head', placeholder: 'Recovery Head' },
-            { key: 'amount', label: 'Amount', type: 'number', step: '0.01', placeholder: '0.00' },
-            { key: 'memo', label: 'Memo', placeholder: 'Optional memo' }
-          ]}
-        />
-      ) : null}
-
-          <Card className="rounded-[var(--radius-card,1.75rem)] border border-slate-200 bg-white p-6 shadow-sm">
-        <SectionHeader
-          title="Attachments"
-          description={showLoanComponents
-            ? 'Loan agreements, promissory notes, and disbursement proof.'
-            : showRecoveryLines
-              ? 'Deposit slips, receipt copies, and bank proof for recovery.'
-              : 'Member payout supporting files and proof.'}
-        />
-        <div className="mt-5">
-          <DocumentSection
-            title=""
-            description=""
-            definitions={documentDefs}
-            documents={draft.documents || {}}
-            editable
-            onPickFile={(key, file) => {
-              setValue((current) => ({
-                ...(current || {}),
-                documents: {
-                  ...(current?.documents || {}),
-                  [key]: {
-                    file,
-                    fileName: file.name,
-                    originalName: file.name,
-                    mimeType: file.type,
-                    sizeBytes: file.size,
-                    documentType: key
-                  }
-                }
-              }));
-            }}
-            onClearFile={(key, document) => {
-              onDocumentRemove?.(key, document);
-              setValue((current) => ({
-                ...(current || {}),
-                documents: {
-                  ...(current?.documents || {}),
-                  [key]: null
-                }
-              }));
-            }}
-          />
+  function renderDepositForm() {
+    return (
+      <section className="space-y-4">
+        <SectionTitle>Compulsory Deposit</SectionTitle>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-1.5 md:col-span-2">
+            <FieldLabel>Settlement Account</FieldLabel>
+            <Input value={draft.details?.settlementAccount || ''} onChange={(event) => updateDetails('settlementAccount', event.target.value)} placeholder="Settlement account or ledger" />
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel required>Amount</FieldLabel>
+            <Input type="number" min="0" step="0.01" value={draft.amount ?? ''} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" />
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel>Account Head</FieldLabel>
+            <Input value={draft.details?.accountHead || ''} onChange={(event) => updateDetails('accountHead', event.target.value)} placeholder="Deposit account head" />
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel required>Paymode</FieldLabel>
+            <CustomSelect value={draft.mode || ''} onChange={(next) => setRootValue(setValue, 'mode', next)} options={paymentOptions} placeholder="Select mode" searchable={false} />
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel>Cheque No.</FieldLabel>
+            <Input value={draft.instrumentNo || ''} onChange={(event) => setRootValue(setValue, 'instrumentNo', event.target.value)} placeholder="Cheque number" />
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel>Cheque Date</FieldLabel>
+            <Input type="date" value={draft.instrumentDate || ''} onChange={(event) => setRootValue(setValue, 'instrumentDate', event.target.value)} />
+          </div>
+          <div className="space-y-1.5 md:col-span-2">
+            <FieldLabel>Total Amount</FieldLabel>
+            <Input value={amountValue || ''} readOnly />
+          </div>
+          <label className="flex items-center gap-2 text-sm text-slate-700 md:col-span-2">
+            <input type="checkbox" checked={!!draft.details?.sms} onChange={(event) => updateDetails('sms', event.target.checked)} />
+            Send SMS to member
+          </label>
+          <div className="space-y-1.5 md:col-span-2">
+            <FieldLabel>Narration</FieldLabel>
+            <Textarea rows={3} value={draft.narration || ''} onChange={(event) => setRootValue(setValue, 'narration', event.target.value)} placeholder="Deposit payout remarks" />
+          </div>
         </div>
-      </Card>
+      </section>
+    );
+  }
 
-      <div className="rounded-[var(--radius-card,1.75rem)] border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="mb-6 border-b border-slate-100 pb-5">
-          <h3 className="text-lg font-semibold text-slate-900">Advanced Details</h3>
+  function renderInsuranceForm() {
+    return (
+      <section className="space-y-4">
+        <SectionTitle>Insurance Premium</SectionTitle>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-1.5 md:col-span-2">
+            <FieldLabel>Settlement Account</FieldLabel>
+            <Input value={draft.details?.settlementAccount || ''} onChange={(event) => updateDetails('settlementAccount', event.target.value)} placeholder="Settlement account or ledger" />
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel required>Amount</FieldLabel>
+            <Input type="number" min="0" step="0.01" value={draft.amount ?? ''} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" />
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel>Policy No.</FieldLabel>
+            <Input value={draft.details?.policyNo || ''} onChange={(event) => updateDetails('policyNo', event.target.value)} placeholder="Insurance policy number" />
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel>Claim Ref.</FieldLabel>
+            <Input value={draft.details?.claimRef || ''} onChange={(event) => updateDetails('claimRef', event.target.value)} placeholder="Claim or reference number" />
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel required>Payment</FieldLabel>
+            <CustomSelect value={draft.mode || ''} onChange={(next) => setRootValue(setValue, 'mode', next)} options={paymentOptions} placeholder="Select mode" searchable={false} />
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel>Cheque No.</FieldLabel>
+            <Input value={draft.instrumentNo || ''} onChange={(event) => setRootValue(setValue, 'instrumentNo', event.target.value)} placeholder="Cheque number" />
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel>Cheque Date</FieldLabel>
+            <Input type="date" value={draft.instrumentDate || ''} onChange={(event) => setRootValue(setValue, 'instrumentDate', event.target.value)} />
+          </div>
+          <div className="space-y-1.5 md:col-span-2">
+            <FieldLabel>Total Amount</FieldLabel>
+            <Input value={amountValue || ''} readOnly />
+          </div>
+          <label className="flex items-center gap-2 text-sm text-slate-700 md:col-span-2">
+            <input type="checkbox" checked={!!draft.details?.sms} onChange={(event) => updateDetails('sms', event.target.checked)} />
+            Send SMS to member
+          </label>
+          <div className="space-y-1.5 md:col-span-2">
+            <FieldLabel>Narration</FieldLabel>
+            <Textarea rows={3} value={draft.narration || ''} onChange={(event) => setRootValue(setValue, 'narration', event.target.value)} placeholder="Insurance payout remarks" />
+          </div>
         </div>
-        <div>
-          <div className="grid gap-5 md:grid-cols-2">
-            <div className="space-y-1.5">
-              <FieldLabel>Voucher No</FieldLabel>
-              <Input
-                value={draft.voucherNo || ''}
-                onChange={(e) => setRootValue(setValue, 'voucherNo', String(e.target.value || '').toUpperCase())}
-                placeholder="Auto generated on save"
-                className="font-mono uppercase tracking-wider"
-              />
-            </div>
-            
-            <LookupSelect
-              label="Branch"
-              value={draft.branchCode || ''}
-              onChange={(next) => setRootValue(setValue, 'branchCode', next)}
-              placeholder="Select branch"
-              groups={buildGroups(branches, 'Branches')}
-            />
+      </section>
+    );
+  }
 
-            <div className="space-y-1.5">
-              <FieldLabel>Financial Year</FieldLabel>
-              <Input
-                value={draft.fyCode || ''}
-                onChange={(e) => setRootValue(setValue, 'fyCode', String(e.target.value || '').toUpperCase())}
-                placeholder="FY25-26"
-                className="uppercase tracking-wider"
-              />
-            </div>
+  function renderSsaForm() {
+    return (
+      <section className="space-y-4">
+        <SectionTitle>SSA Payment</SectionTitle>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-1.5">
+            <FieldLabel required>Amount</FieldLabel>
+            <Input type="number" min="0" step="0.01" value={draft.amount ?? ''} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" />
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel required>Paymode</FieldLabel>
+            <CustomSelect value={draft.mode || ''} onChange={(next) => setRootValue(setValue, 'mode', next)} options={paymentOptions} placeholder="Select paymode" searchable={false} />
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel>Cheque No.</FieldLabel>
+            <Input value={draft.instrumentNo || ''} onChange={(event) => setRootValue(setValue, 'instrumentNo', event.target.value)} placeholder="Cheque number" />
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel>Cheque Date</FieldLabel>
+            <Input type="date" value={draft.instrumentDate || ''} onChange={(event) => setRootValue(setValue, 'instrumentDate', event.target.value)} />
+          </div>
+          <div className="space-y-1.5 md:col-span-2">
+            <FieldLabel>Total Amount</FieldLabel>
+            <Input value={amountValue || ''} readOnly />
+          </div>
+          <label className="flex items-center gap-2 text-sm text-slate-700 md:col-span-2">
+            <input type="checkbox" checked={!!draft.details?.sms} onChange={(event) => updateDetails('sms', event.target.checked)} />
+            Send SMS to member
+          </label>
+          <div className="space-y-1.5 md:col-span-2">
+            <FieldLabel>Narration</FieldLabel>
+            <Textarea rows={3} value={draft.narration || ''} onChange={(event) => setRootValue(setValue, 'narration', event.target.value)} placeholder="SSA payment remarks" />
+          </div>
+        </div>
+      </section>
+    );
+  }
 
+  function renderRecoveryForm() {
+    return (
+      <section className="space-y-8">
+        <div className="space-y-4">
+          <SectionTitle>Voucher</SectionTitle>
+          <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-1.5">
-              <FieldLabel>Status</FieldLabel>
-              <CustomSelect
-                value={draft.status || 'Draft'}
-                onChange={(next) => setRootValue(setValue, 'status', next)}
-                options={[
-                  { label: 'Draft', value: 'Draft' },
-                  { label: 'Posted', value: 'Posted' },
-                  { label: 'Reversed', value: 'Reversed' }
-                ]}
-              />
+              <FieldLabel>Voucher No.</FieldLabel>
+              <Input value={draft.voucherNo || ''} readOnly placeholder="Generating..." />
             </div>
-
             <div className="space-y-1.5">
-              <FieldLabel>Reference No</FieldLabel>
-              <Input
-                value={draft.referenceNo || ''}
-                onChange={(e) => setRootValue(setValue, 'referenceNo', e.target.value)}
-                placeholder="Reference / slip no"
-              />
+              <FieldLabel required>Date</FieldLabel>
+              <Input type="date" value={draft.date || ''} onChange={(event) => setRootValue(setValue, 'date', event.target.value)} />
             </div>
-
+            <div className="space-y-1.5 md:col-span-2 lg:col-span-1">
+              <FieldLabel required>Mode</FieldLabel>
+              <CustomSelect value={draft.mode || ''} onChange={(next) => setRootValue(setValue, 'mode', next)} options={paymentOptions} placeholder="Select mode" searchable={false} />
+            </div>
             <div className="space-y-1.5">
-              <FieldLabel>Mode</FieldLabel>
-              <Input
-                value={draft.mode || ''}
-                onChange={(e) => setRootValue(setValue, 'mode', e.target.value)}
-                placeholder={activeItem?.mode || 'Cash / Cheque'}
-              />
+              <FieldLabel>DD / Cheque No.</FieldLabel>
+              <Input value={draft.instrumentNo || ''} onChange={(event) => setRootValue(setValue, 'instrumentNo', event.target.value)} placeholder="DD / cheque number" />
             </div>
-
-            <div className="space-y-1.5">
-              <FieldLabel>Instrument No</FieldLabel>
-              <Input
-                value={draft.instrumentNo || ''}
-                onChange={(e) => setRootValue(setValue, 'instrumentNo', e.target.value)}
-                placeholder="Cheque / DD no"
-              />
-            </div>
-
             <div className="space-y-1.5">
               <FieldLabel>Instrument Date</FieldLabel>
-              <Input
-                type="date"
-                value={draft.instrumentDate || ''}
-                onChange={(e) => setRootValue(setValue, 'instrumentDate', e.target.value)}
-              />
+              <Input type="date" value={draft.instrumentDate || ''} onChange={(event) => setRootValue(setValue, 'instrumentDate', event.target.value)} />
             </div>
           </div>
         </div>
-      </div>
+
+        <RecoveryLinesEditor rows={recoveryRows} onChange={updateRecoveryRows} memberGroups={memberGroups} demandRows={demandRows} />
+
+        <div className="space-y-4">
+          <SectionTitle>Total and Narration</SectionTitle>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-1.5 md:col-span-2">
+              <FieldLabel>Total Recovery Amount</FieldLabel>
+              <Input value={amountValue || ''} readOnly />
+            </div>
+            <label className="flex items-center gap-2 text-sm text-slate-700 md:col-span-2">
+              <input type="checkbox" checked={!!draft.details?.sms} onChange={(event) => updateDetails('sms', event.target.checked)} />
+              Send SMS to member
+            </label>
+            <div className="space-y-1.5 md:col-span-2">
+              <FieldLabel>Narration</FieldLabel>
+              <Textarea rows={3} value={draft.narration || ''} onChange={(event) => setRootValue(setValue, 'narration', event.target.value)} placeholder="Recovery remarks" />
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <form id="transaction-voucher-form" className="mx-auto w-full max-w-5xl space-y-6" onSubmit={onSubmit}>
+      {!isRecovery && renderCommonHeader()}
+      {isLoan ? renderLoanForm() : null}
+      {isDeposit ? renderDepositForm() : null}
+      {isInsurance ? renderInsuranceForm() : null}
+      {isSsa ? renderSsaForm() : null}
+      {isRecovery ? renderRecoveryForm() : null}
+      {documentDefs.length ? (
+        <section className="space-y-4">
+          <SectionTitle>Attachments</SectionTitle>
+          <SimpleDocumentList definitions={documentDefs} documents={draft.documents || {}} onPickFile={updateDocumentMap} onClearFile={clearDocument} />
+        </section>
+      ) : null}
     </form>
   );
 }

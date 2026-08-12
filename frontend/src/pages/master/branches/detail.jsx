@@ -117,7 +117,8 @@ export function BranchDetailPage() {
     );
   }
 
-  const branchCode = branch.code || '—';
+  const branchCode = branch.code || '-';
+  const headOfficeCode = branch.headOfficeCode || 'HO01';
 
   return (
     <div className="space-y-6">
@@ -206,6 +207,7 @@ export function BranchDetailPage() {
               <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
                 <div className="divide-y divide-slate-100 px-6">
                   <DetailRow label="Branch Code" value={branchCode} />
+                  <DetailRow label="Head Office Code" value={headOfficeCode} />
                   <DetailRow label="Branch Name" value={branch.label} />
                   <DetailRow label="Place" value={branch.place} />
                   <DetailRow label="District" value={branch.district} />
@@ -305,4 +307,5 @@ export function BranchDetailPage() {
 }
 
 export default BranchDetailPage;
+
 

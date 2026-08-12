@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import {
   Banknote,
   Building2,
@@ -332,325 +332,344 @@ function getPartyGroupsForSelection(partyType, lookups) {
   return getLookupGroups(lookups, partyType);
 }
 
+const BANK_DEPOSIT_IN_OPTIONS = [
+  { value: 'L001', label: 'Cash-in-hand' },
+  { value: 'L002', label: 'Union Bank - CC A/c' },
+  { value: 'L013', label: 'SBI - Saving A/c' }
+];
+
+const BANK_DEPOSIT_BY_OPTIONS = [
+  { value: 'CASH', label: 'Cash' },
+  { value: 'CHEQUE', label: 'Cheque' },
+  { value: 'TRANSFER', label: 'Bank Transfer' }
+];
+
+const BANK_TRANSFER_TYPE_OPTIONS = [
+  { value: 'CASH', label: 'Cash' },
+  { value: 'CHEQUE', label: 'Cheque' }
+];
+
+function LedgerValue({ label, value }) {
+  return (
+    <div className="space-y-1.5">
+      <FieldLabel>{label}</FieldLabel>
+      <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-800">
+        {value || '-'}
+      </div>
+    </div>
+  );
+}
+
 export function BankTransactionForm({ section, lookups = {}, value, setValue, onSubmit, onDocumentRemove }) {
+  const draft = value || {};
   const editableItems = useMemo(() => (section?.items || []).filter((item) => !item.route), [section]);
-  const activeKey = value?.details?.key || editableItems[0]?.key || '';
+  const activeKey = draft?.details?.key || editableItems[0]?.key || '';
   const activeItem = editableItems.find((item) => item.key === activeKey) || editableItems[0] || null;
   const documentDefs = getBankDocumentDefinitions(activeKey);
-  const derivedPartyType = getPartyTypeForKey(activeKey);
-  const partyType = value?.partyType || derivedPartyType;
-  const partyGroups = useMemo(() => getPartyGroupsForSelection(partyType, lookups), [lookups, partyType]);
-  const accountGroups = useMemo(() => getPartyGroupsForSelection('ledger', lookups), [lookups]);
-  const branches = Array.isArray(lookups.branches) ? lookups.branches : [];
-  const members = Array.isArray(lookups.members) ? lookups.members : [];
-  const employees = Array.isArray(lookups.employees) ? lookups.employees : [];
-  const bankAccounts = Array.isArray(lookups.bankAccounts) ? lookups.bankAccounts : [];
-  const ledgers = Array.isArray(lookups.ledgers) ? lookups.ledgers : [];
-  const showLoanComponents = activeKey === 'loan-paid-member';
-  const showRecoveryLines = activeKey === 'recovery-member';
-  const showAllocations = activeKey === 'transfer-voucher-paid' || activeKey === 'transfer-voucher-recover';
-  const showEmployeePanel = activeKey === 'advance-paid-emp' || activeKey === 'advance-recovery-emp';
-  const showInterestPanel = activeKey === 'interest-paid-member' || activeKey === 'receipt-voucher';
-  const showBankPanel = section?.key === 'bank';
-  const showSupportingPanel = section?.key === 'supporting' || activeKey === 'payment-voucher';
+  const isLoanRecvCash = activeKey === 'loan-recv-cash';
+  const isLoanRecvSaving = activeKey === 'loan-recv-saving';
+  const isDepositInBank = activeKey === 'deposit-in-bank';
+  const isChequeIssueSaving = activeKey === 'cheque-issue-saving';
+  const isChequeIssueLoan = activeKey === 'cheque-issue-loan';
+  const isTransferSaving = activeKey === 'transfer-saving';
+  const isTransferCashCredit = activeKey === 'transfer-cashcredit';
+  const bankAccountGroups = useMemo(() => buildGroups(lookups.bankAccounts, 'Bank Accounts'), [lookups.bankAccounts]);
+  const ledgerGroups = useMemo(() => buildGroups(lookups.ledgers, 'Ledgers'), [lookups.ledgers]);
+  const accountGroups = useMemo(() => [...ledgerGroups, ...bankAccountGroups], [ledgerGroups, bankAccountGroups]);
+
+  useEffect(() => {
+    if (!activeKey) return;
+    setValue((current) => {
+      const next = deepClone(current);
+      if (!next.details || typeof next.details !== 'object') next.details = {};
+      let changed = false;
+      const setIfEmpty = (path, nextValue) => {
+        const parts = Array.isArray(path) ? path : String(path).split('.');
+        let cursor = next.details;
+        for (let index = 0; index < parts.length - 1; index += 1) {
+          const key = parts[index];
+          if (!cursor[key] || typeof cursor[key] !== 'object') cursor[key] = {};
+          cursor = cursor[key];
+        }
+        const lastKey = parts[parts.length - 1];
+        if (cursor[lastKey] === '' || cursor[lastKey] == null) {
+          cursor[lastKey] = nextValue;
+          changed = true;
+        }
+      };
+
+      if (!next.mode) {
+        if (isLoanRecvCash) { next.mode = 'Cash / Credit'; changed = true; }
+        else if (isLoanRecvSaving) { next.mode = 'Saving A/c'; changed = true; }
+        else if (isDepositInBank) { next.mode = 'Bank Deposit'; changed = true; }
+        else if (isChequeIssueSaving || isChequeIssueLoan) { next.mode = 'Cheque'; changed = true; }
+        else if (isTransferSaving || isTransferCashCredit) { next.mode = 'Transfer'; changed = true; }
+      }
+
+      if (isLoanRecvCash) { setIfEmpty('fixedSettlement', 'L002'); }
+      if (isLoanRecvSaving) { setIfEmpty('fixedSettlement', 'L013'); }
+      if (isDepositInBank) {
+        setIfEmpty('depositIn', 'L002');
+        setIfEmpty('depositBy', 'CASH');
+      }
+      if (isChequeIssueSaving) { setIfEmpty('fixedSettlement', 'L013'); }
+      if (isChequeIssueLoan) { setIfEmpty('fixedSettlement', 'L002'); }
+      if (isTransferSaving) {
+        setIfEmpty('fixedFrom', 'L002');
+        setIfEmpty('fixedTo', 'L013');
+        setIfEmpty('transferType', 'CASH');
+      }
+      if (isTransferCashCredit) {
+        setIfEmpty('fixedFrom', 'L013');
+        setIfEmpty('fixedTo', 'L002');
+        setIfEmpty('transferType', 'CASH');
+      }
+
+      return changed ? next : current;
+    });
+  }, [activeKey, isChequeIssueLoan, isChequeIssueSaving, isDepositInBank, isLoanRecvCash, isLoanRecvSaving, isTransferCashCredit, isTransferSaving, setValue]);
 
   function updateDetails(path, nextValue) {
     setDetailsValue(setValue, path, nextValue);
   }
 
-  function updateComponents(path, nextValue) {
-    setDetailsValue(setValue, ['components', path], nextValue);
+  function renderCommonHeader() {
+    return (
+      <Card className="rounded-[var(--radius-card,1.75rem)] border border-slate-200 bg-white p-6 shadow-sm">
+        <SectionHeader
+          title={activeItem?.label || 'Bank Transaction'}
+          description={activeItem?.description || 'Bank voucher entry'}
+          icon={Landmark}
+        />
+
+        <div className="mt-5 grid gap-4 md:grid-cols-2">
+          <div className="space-y-1.5">
+            <FieldLabel>Voucher No.</FieldLabel>
+            <Input value={draft.voucherNo || ''} readOnly placeholder="Auto generated on save" />
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel required>Date</FieldLabel>
+            <Input type="date" value={draft.date || ''} onChange={(event) => setRootValue(setValue, 'date', event.target.value)} />
+          </div>
+        </div>
+      </Card>
+    );
   }
 
-  function updateRows(path, nextValue) {
-    setDetailsValue(setValue, path, nextValue);
+  function renderCommonNarration() {
+    return (
+      <div className="space-y-1.5 md:col-span-2">
+        <FieldLabel>Narration</FieldLabel>
+        <Textarea
+          rows={3}
+          value={draft.narration || ''}
+          onChange={(event) => setRootValue(setValue, 'narration', event.target.value)}
+          placeholder="Transaction remarks"
+        />
+      </div>
+    );
   }
 
-  const notes = getSectionNotes(section?.key || '', activeKey);
+  function renderAmountInput() {
+    return (
+      <div className="space-y-1.5">
+        <FieldLabel required>Amount</FieldLabel>
+        <Input type="number" min="0" step="0.01" value={draft.amount ?? ''} onChange={(event) => setRootValue(setValue, 'amount', event.target.value)} placeholder="0.00" />
+      </div>
+    );
+  }
+
+  function renderLoanReceivedForm(settlementCode) {
+    return (
+      <Card className="rounded-[var(--radius-card,1.75rem)] border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="grid gap-4 md:grid-cols-2">
+          <LedgerValue label="Settlement Account" value={getTransactionLedgerLabel(settlementCode, lookups)} />
+          {renderAmountInput()}
+          <div className="space-y-1.5">
+            <FieldLabel>Instrument No.</FieldLabel>
+            <Input value={draft.instrumentNo || ''} onChange={(event) => setRootValue(setValue, 'instrumentNo', event.target.value)} placeholder="Cheque / reference no" />
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel>Instrument Date</FieldLabel>
+            <Input type="date" value={draft.instrumentDate || ''} onChange={(event) => setRootValue(setValue, 'instrumentDate', event.target.value)} />
+          </div>
+          {renderCommonNarration()}
+        </div>
+      </Card>
+    );
+  }
+
+  function renderDepositInBankForm() {
+    return (
+      <Card className="rounded-[var(--radius-card,1.75rem)] border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-1.5">
+            <FieldLabel required>Deposit In</FieldLabel>
+            <CustomSelect
+              value={draft.details?.depositIn || ''}
+              onChange={(next) => updateDetails('depositIn', next)}
+              options={BANK_DEPOSIT_IN_OPTIONS}
+              placeholder="Select account"
+              searchable={false}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel required>Deposit By</FieldLabel>
+            <CustomSelect
+              value={draft.details?.depositBy || ''}
+              onChange={(next) => updateDetails('depositBy', next)}
+              options={BANK_DEPOSIT_BY_OPTIONS}
+              placeholder="Select mode"
+              searchable={false}
+            />
+          </div>
+          {renderAmountInput()}
+          <div className="space-y-1.5">
+            <FieldLabel>Instrument No.</FieldLabel>
+            <Input value={draft.instrumentNo || ''} onChange={(event) => setRootValue(setValue, 'instrumentNo', event.target.value)} placeholder="Deposit slip / cheque no" />
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel>Instrument Date</FieldLabel>
+            <Input type="date" value={draft.instrumentDate || ''} onChange={(event) => setRootValue(setValue, 'instrumentDate', event.target.value)} />
+          </div>
+          {renderCommonNarration()}
+        </div>
+      </Card>
+    );
+  }
+
+  function renderChequeIssueForm() {
+    const settlementCode = isChequeIssueLoan ? 'L012' : 'L013';
+    return (
+      <Card className="rounded-[var(--radius-card,1.75rem)] border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="grid gap-4 md:grid-cols-2">
+          <LedgerValue label="Settlement Account" value={getTransactionLedgerLabel(settlementCode, lookups)} />
+          {renderAmountInput()}
+          <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 md:col-span-2">
+            <input type="checkbox" checked={!!draft.details?.selfUse} onChange={(event) => updateDetails('selfUse', event.target.checked)} />
+            Withdrawal for self use
+          </label>
+          <div className="space-y-1.5">
+            <FieldLabel>Instrument No.</FieldLabel>
+            <Input value={draft.instrumentNo || ''} onChange={(event) => setRootValue(setValue, 'instrumentNo', event.target.value)} placeholder="Cheque number" />
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel>Instrument Date</FieldLabel>
+            <Input type="date" value={draft.instrumentDate || ''} onChange={(event) => setRootValue(setValue, 'instrumentDate', event.target.value)} />
+          </div>
+          {renderCommonNarration()}
+        </div>
+      </Card>
+    );
+  }
+
+  function renderTransferForm() {
+    const fromCode = draft.details?.fixedFrom || (isTransferSaving ? 'L002' : 'L013');
+    const toCode = draft.details?.fixedTo || (isTransferSaving ? 'L013' : 'L002');
+    return (
+      <Card className="rounded-[var(--radius-card,1.75rem)] border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-1.5">
+            <FieldLabel required>Transfer Type</FieldLabel>
+            <CustomSelect
+              value={draft.details?.transferType || ''}
+              onChange={(next) => updateDetails('transferType', next)}
+              options={BANK_TRANSFER_TYPE_OPTIONS}
+              placeholder="Select type"
+              searchable={false}
+            />
+          </div>
+          {renderAmountInput()}
+          <LedgerValue label="From Account" value={getTransactionLedgerLabel(fromCode, lookups)} />
+          <LedgerValue label="To Account" value={getTransactionLedgerLabel(toCode, lookups)} />
+          <div className="space-y-1.5">
+            <FieldLabel>Instrument No.</FieldLabel>
+            <Input value={draft.instrumentNo || ''} onChange={(event) => setRootValue(setValue, 'instrumentNo', event.target.value)} placeholder="Cheque / transfer ref" />
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel>Instrument Date</FieldLabel>
+            <Input type="date" value={draft.instrumentDate || ''} onChange={(event) => setRootValue(setValue, 'instrumentDate', event.target.value)} />
+          </div>
+          {renderCommonNarration()}
+        </div>
+      </Card>
+    );
+  }
+
+  function renderActiveForm() {
+    if (isLoanRecvCash) return renderLoanReceivedForm('L002');
+    if (isLoanRecvSaving) return renderLoanReceivedForm('L013');
+    if (isDepositInBank) return renderDepositInBankForm();
+    if (isChequeIssueSaving) return renderChequeIssueForm();
+    if (isChequeIssueLoan) return renderChequeIssueForm();
+    if (isTransferSaving) return renderTransferForm();
+    if (isTransferCashCredit) return renderTransferForm();
+
+    return (
+      <Card className="rounded-[var(--radius-card,1.75rem)] border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="grid gap-4 md:grid-cols-2">
+          {renderAmountInput()}
+          <div className="space-y-1.5">
+            <FieldLabel>Instrument No.</FieldLabel>
+            <Input value={draft.instrumentNo || ''} onChange={(event) => setRootValue(setValue, 'instrumentNo', event.target.value)} placeholder="Reference no" />
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel>Instrument Date</FieldLabel>
+            <Input type="date" value={draft.instrumentDate || ''} onChange={(event) => setRootValue(setValue, 'instrumentDate', event.target.value)} />
+          </div>
+          {renderCommonNarration()}
+        </div>
+      </Card>
+    );
+  }
 
   return (
     <form id="transaction-voucher-form" className="mx-auto w-full space-y-6" onSubmit={onSubmit}>
-      <Card className="rounded-[var(--radius-card,1.75rem)] border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="grid gap-6 md:grid-cols-2">
-          
-          <div className="space-y-1.5 md:col-span-2">
-            <LookupSelect
-              label="Select Party (Optional)"
-              value={value.partyCode || ''}
-              onChange={(next) => setRootValue(setValue, 'partyCode', next.toUpperCase())}
-              placeholder="Search or select party"
-              groups={partyGroups}
-              helper={partyType === 'member' ? 'Member codes from master members.' : partyType === 'employee' ? 'Employee codes from master employees.' : 'Ledger or bank account codes.'}
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <FieldLabel required>Date</FieldLabel>
-            <Input
-              type="date"
-              value={value.date || ''}
-              onChange={(e) => setRootValue(setValue, 'date', e.target.value)}
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <FieldLabel required>Amount</FieldLabel>
-            <Input
-              type="number"
-              min="0"
-              step="0.01"
-              value={value.amount ?? ''}
-              onChange={(e) => setRootValue(setValue, 'amount', e.target.value)}
-              placeholder="0.00"
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <FieldLabel>Mode</FieldLabel>
-            <Input
-              value={value.mode || ''}
-              onChange={(e) => setRootValue(setValue, 'mode', e.target.value)}
-              placeholder={activeItem?.mode || 'Cash / Cheque / NEFT'}
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <FieldLabel>Reference No</FieldLabel>
-            <Input
-              value={value.referenceNo || ''}
-              onChange={(e) => setRootValue(setValue, 'referenceNo', e.target.value)}
-              placeholder="Reference / slip no"
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <FieldLabel>Instrument No</FieldLabel>
-            <Input
-              value={value.instrumentNo || ''}
-              onChange={(e) => setRootValue(setValue, 'instrumentNo', e.target.value)}
-              placeholder="Cheque / DD no"
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <FieldLabel>Instrument Date</FieldLabel>
-            <Input
-              type="date"
-              value={value.instrumentDate || ''}
-              onChange={(e) => setRootValue(setValue, 'instrumentDate', e.target.value)}
-            />
-          </div>
-
-          {showBankPanel || showSupportingPanel ? (
-            <div className="space-y-1.5">
-              <FieldLabel>Ledger Target</FieldLabel>
-              <LookupSelect
-                label=""
-                value={value.details?.ledgerTarget || ''}
-                onChange={(next) => updateDetails('ledgerTarget', next)}
-                placeholder="Select target ledger"
-                groups={showSupportingPanel ? accountGroups : buildGroups(ledgers, 'Ledgers')}
-              />
-            </div>
-          ) : null}
-
-          {showBankPanel ? (
-            <>
-              <div className="space-y-1.5">
-                <FieldLabel>Deposit In</FieldLabel>
-                <LookupSelect
-                  label=""
-                  value={value.details?.depositIn || ''}
-                  onChange={(next) => updateDetails('depositIn', next)}
-                  placeholder="Select bank / cash ledger"
-                  groups={accountGroups}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <FieldLabel>From Account</FieldLabel>
-                <LookupSelect
-                  label=""
-                  value={value.details?.fromAccount || ''}
-                  onChange={(next) => updateDetails('fromAccount', next)}
-                  placeholder="Select from account"
-                  groups={accountGroups}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <FieldLabel>To Account</FieldLabel>
-                <LookupSelect
-                  label=""
-                  value={value.details?.toAccount || ''}
-                  onChange={(next) => updateDetails('toAccount', next)}
-                  placeholder="Select to account"
-                  groups={accountGroups}
-                />
-              </div>
-            </>
-          ) : null}
-
-          {showInterestPanel || showEmployeePanel || showLoanComponents ? (
-            <div className="space-y-1.5">
-              <FieldLabel>Settlement Account</FieldLabel>
-              <LookupSelect
-                label=""
-                value={value.details?.settlementAccount || ''}
-                onChange={(next) => updateDetails('settlementAccount', next)}
-                placeholder="Select settlement account"
-                groups={accountGroups}
-              />
-            </div>
-          ) : null}
-
-          {showInterestPanel ? (
-            <div className="space-y-1.5">
-              <FieldLabel>Receipt By</FieldLabel>
-              <LookupSelect
-                label=""
-                value={value.details?.receiptBy || ''}
-                onChange={(next) => updateDetails('receiptBy', next)}
-                placeholder="Select receiving ledger"
-                groups={accountGroups}
-              />
-            </div>
-          ) : null}
-
-          {showLoanComponents ? (
-            <>
-              <div className="space-y-1.5">
-                <FieldLabel>Loan Amount</FieldLabel>
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={value.details?.components?.loanAmt ?? ''}
-                  onChange={(e) => updateComponents('loanAmt', e.target.value)}
-                  placeholder="0.00"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <FieldLabel>LAD</FieldLabel>
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={value.details?.components?.lad ?? ''}
-                  onChange={(e) => updateComponents('lad', e.target.value)}
-                  placeholder="0.00"
-                />
-              </div>
-            </>
-          ) : null}
-
-          <div className="space-y-1.5 md:col-span-2">
-            <FieldLabel>Account Head (Optional)</FieldLabel>
-            <Input
-              value={value.details?.accountHead || ''}
-              onChange={(e) => updateDetails('accountHead', e.target.value)}
-              placeholder="Specific account / payout head"
-            />
-          </div>
-
-          <div className="space-y-1.5 md:col-span-2">
-            <FieldLabel>Narration</FieldLabel>
-            <Textarea
-              rows={2}
-              value={value.narration || ''}
-              onChange={(e) => setRootValue(setValue, 'narration', e.target.value)}
-              placeholder="Brief narration for this transaction"
-            />
-          </div>
-        </div>
-      </Card>
-
-      {showRecoveryLines ? (
-        <ArrayRowsEditor
-          title="Recovery Breakdown"
-          description="Add member-wise recovery lines for the voucher."
-          rows={value.details?.recoveryLines || []}
-          onChange={(next) => updateRows('recoveryLines', next)}
-          emptyRow={{ memberCode: '', head: '', amount: '', memo: '' }}
-          addLabel="Add Recovery Line"
-          icon={Repeat2}
-          rowTone="emerald"
-          fields={[
-            { key: 'memberCode', label: 'Member Code', placeholder: 'M0001' },
-            { key: 'head', label: 'Head', placeholder: 'Recovery Head' },
-            { key: 'amount', label: 'Amount', type: 'number', step: '0.01', placeholder: '0.00' },
-            { key: 'memo', label: 'Memo', placeholder: 'Optional memo' }
-          ]}
-        />
-      ) : null}
-
-      {showAllocations ? (
-        <ArrayRowsEditor
-          title="Transfer Allocations"
-          description="Allocate transfer voucher amount across members or demand heads."
-          rows={value.details?.allocations || []}
-          onChange={(next) => updateRows('allocations', next)}
-          emptyRow={{ memberCode: '', head: '', amount: '' }}
-          addLabel="Add Allocation"
-          icon={FileText}
-          rowTone="amber"
-          fields={[
-            { key: 'memberCode', label: 'Member Code', placeholder: 'M0001' },
-            { key: 'head', label: 'Head', placeholder: 'Transfer Head' },
-            { key: 'amount', label: 'Amount', type: 'number', step: '0.01', placeholder: '0.00' }
-          ]}
-        />
-      ) : null}
-
-      <Card className="rounded-[var(--radius-card,1.75rem)] border border-slate-200 bg-white p-6 shadow-sm">
-        <SectionHeader
-          title="Attachments"
-          description={
-            activeKey === 'loan-recv-cash' || activeKey === 'loan-recv-saving'
-              ? 'Loan applications, disbursement advice, and bank proof.'
-              : activeKey === 'deposit-in-bank'
-                ? 'Deposit slips, bank receipts, and cash book evidence.'
-                : activeKey === 'cheque-issue-saving' || activeKey === 'cheque-issue-loan'
-                  ? 'Cheque image, cheque register, and bank advice.'
-                  : 'Transfer advice, RTGS/NEFT proof, and bank statement.'
-          }
-        />
-        <div className="mt-5">
-          <DocumentSection
-            title=""
-            description=""
-            definitions={documentDefs}
-            documents={value.documents || {}}
-            editable
-            onPickFile={(key, file) => {
-              setValue((current) => ({
-                ...(current || {}),
-                documents: {
-                  ...(current?.documents || {}),
-                  [key]: {
-                    file,
-                    fileName: file.name,
-                    originalName: file.name,
-                    mimeType: file.type,
-                    sizeBytes: file.size,
-                    documentType: key
+      {renderCommonHeader()}
+      {renderActiveForm()}
+      {documentDefs.length ? (
+        <Card className="rounded-[var(--radius-card,1.75rem)] border border-slate-200 bg-white p-6 shadow-sm">
+          <SectionHeader title="Attachments" description="Upload voucher-specific bank documents." icon={FileText} />
+          <div className="mt-5">
+            <DocumentSection
+              title=""
+              description=""
+              definitions={documentDefs}
+              documents={draft.documents || {}}
+              editable
+              onPickFile={(key, file) => {
+                setValue((current) => ({
+                  ...(current || {}),
+                  documents: {
+                    ...(current?.documents || {}),
+                    [key]: {
+                      file,
+                      fileName: file.name,
+                      originalName: file.name,
+                      mimeType: file.type,
+                      sizeBytes: file.size,
+                      documentType: key
+                    }
                   }
-                }
-              }));
-            }}
-            onClearFile={(key, document) => {
-              onDocumentRemove?.(key, document);
-              setValue((current) => ({
-                ...(current || {}),
-                documents: {
-                  ...(current?.documents || {}),
-                  [key]: null
-                }
-              }));
-            }}
-          />
-        </div>
-      </Card>
+                }));
+              }}
+              onClearFile={(key, document) => {
+                onDocumentRemove?.(key, document);
+                setValue((current) => ({
+                  ...(current || {}),
+                  documents: {
+                    ...(current?.documents || {}),
+                    [key]: null
+                  }
+                }));
+              }}
+            />
+          </div>
+        </Card>
+      ) : null}
     </form>
   );
 }
 
 export default BankTransactionForm;
+

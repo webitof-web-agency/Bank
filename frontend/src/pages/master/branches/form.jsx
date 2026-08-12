@@ -1,4 +1,4 @@
-﻿import { Input, Textarea } from '../../../components/ui/Input';
+import { Input, Textarea } from '../../../components/ui/Input';
 
 function FieldLabel({ children, required }) {
   return (
@@ -19,6 +19,15 @@ export function BranchForm({ value, setValue, onSubmit }) {
             value={value.code || ''}
             onChange={(event) => setValue((current) => ({ ...current, code: event.target.value }))}
             placeholder="BR01"
+          />
+        </div>
+
+        <div>
+          <FieldLabel required>Head Office Code</FieldLabel>
+          <Input
+            value={value.headOfficeCode || ''}
+            onChange={(event) => setValue((current) => ({ ...current, headOfficeCode: event.target.value }))}
+            placeholder="HO01"
           />
         </div>
 
@@ -87,4 +96,3 @@ export function BranchForm({ value, setValue, onSubmit }) {
 }
 
 export default BranchForm;
-

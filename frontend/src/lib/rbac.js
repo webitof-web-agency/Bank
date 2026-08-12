@@ -97,11 +97,11 @@ const PAGE_LABELS = {
   'no-interest-members': 'No Interest Members',
   'payment-receipt-statement': 'Statement of Payment and Receipt',
   'profit-loss': 'Profit / Loss',
-  rates: 'Rates',
+  rates: 'Rates Config',
   'receipt-interest': 'Receipt / Interest',
   roles: 'Roles',
   'settings': 'Settings',
-  society: 'Society',
+  society: 'Head Office',
   supporting: 'Supporting',
   'summary-monthly': 'Summary / Monthly Report',
   'transfer-voucher': 'Transfer Voucher',
@@ -344,3 +344,4 @@ export function groupPermissionsByModule(permissions = []) {
 }
 
 export const groupPermissionsByPage = groupPermissionsByModule;
+

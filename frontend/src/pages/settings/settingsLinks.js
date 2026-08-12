@@ -1,12 +1,12 @@
-﻿import { Bell, Building2, CalendarClock, Archive, KeyRound, ShieldCheck, Mail } from 'lucide-react';
+import { Bell, Building2, CalendarClock, Archive, KeyRound, ShieldCheck, Mail } from 'lucide-react';
 
 export const SETTINGS_LINKS = [
   {
-    label: 'Society Details',
-    path: '/app/settings/society-details',
+    label: 'Head Office',
+    path: '/app/settings/head-office',
     icon: Building2,
     permission: 'society.read',
-    description: 'Society profile, register number, and branding fields.',
+    description: 'Head office profile, code, and primary branch details.',
     group: 'Configuration',
     tone: 'slate'
   },

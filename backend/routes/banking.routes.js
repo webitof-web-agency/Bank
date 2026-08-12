@@ -29,7 +29,8 @@ registerCrud('/masters/employees', banking.resources.employees, 'employees.read'
 registerCrud('/masters/managers', banking.resources.managers, ['employees.read', 'users.manage'], ['employees.write', 'users.manage']);
 registerCrud('/masters/members', banking.resources.members, 'members.read', 'members.write');
 registerCrud('/masters/ledgers', banking.resources.ledgers, 'ledgers.read', 'ledgers.write');
-registerCrud('/masters/rates', banking.resources.rates, 'rates.read', 'rates.write');
+  router.get('/masters/rates', requirePermission('rates.read'), banking.resources.rates.get);
+  router.put('/masters/rates', requirePermission('rates.write'), banking.resources.rates.update);
 registerCrud('/masters/bank-accounts', banking.resources.bankAccounts, 'bank-accounts.read', 'bank-accounts.write');
 registerCrud('/masters/demands', banking.resources.demands, 'demands.read', 'demands.write');
 registerCrud('/masters/no-interest-members', banking.resources.noInterestMembers, 'no-interest-members.read', 'no-interest-members.write');
@@ -40,6 +41,7 @@ router.get(
   requirePermission('transactions.read', 'bank-transactions.read', 'demands.read', 'no-interest-members.read'),
   banking.transactions.catalog
 );
+router.get('/transactions/vouchers/next', requirePermission('transactions.read'), banking.transactions.getNextVoucher);
 router.get('/transactions/vouchers', requirePermission('transactions.read'), banking.transactions.listVouchers);
 router.post('/transactions/vouchers', requirePermission('transactions.write'), banking.transactions.createVoucher);
 router.get('/transactions/vouchers/:id', requirePermission('transactions.read'), banking.transactions.getVoucher);

@@ -36,13 +36,13 @@ const PERMISSION_SECTIONS = [
     key: 'master',
     label: 'Master',
     pages: [
-      createPage('master', 'society', 'Society', ['view', 'edit'], 'View and update society profile and branding.'),
+      createPage('master', 'society', 'Head Office', ['view', 'edit'], 'View and update head office profile and branding.'),
       createPage('master', 'branches', 'Branches', ['view', 'create', 'edit', 'delete'], 'Branch master and contact details.'),
       createPage('master', 'committee', 'Committee', ['view', 'create', 'edit', 'delete'], 'Society committee configuration.'),
       createPage('master', 'members', 'Members', ['view', 'create', 'edit', 'delete'], 'Bank member master and identity records.'),
       createPage('master', 'employees', 'Employees', ['view', 'create', 'edit', 'delete'], 'Employee access, roles, and staff profile.'),
       createPage('master', 'ledgers', 'Ledgers', ['view', 'create', 'edit', 'delete'], 'Ledger code, nature, and opening balance.'),
-      createPage('master', 'rates', 'Rates', ['view', 'create', 'edit', 'delete'], 'Interest and scheme rate master.'),
+      createPage('master', 'rates', 'Rates Config', ['view', 'create', 'edit', 'delete'], 'Global interest, limits, and demand configuration.'),
       createPage('master', 'bank-accounts', 'Bank Accounts', ['view', 'create', 'edit', 'delete'], 'Operating bank accounts and linkages.'),
       createPage('master', 'demands', 'Demands', ['view', 'create', 'edit', 'delete'], 'Monthly demand master and recovery records.'),
       createPage('master', 'no-interest-members', 'No Interest Members', ['view', 'create', 'edit', 'delete'], 'Members excluded from interest calculations.')
@@ -57,7 +57,7 @@ const PERMISSION_SECTIONS = [
       createPage('transactions', 'employee', 'Employee', ['view', 'create', 'edit', 'delete'], 'Advance paid and recovery entries for employees.'),
       createPage('transactions', 'transfer-voucher', 'Transfer Voucher', ['view', 'create', 'edit', 'delete', 'reverse'], 'Transfer voucher paid and recovered from member records.'),
       createPage('transactions', 'receipt-interest', 'Receipt / Interest', ['view', 'create', 'edit', 'delete'], 'Receipt, interest paid, and related member support links.'),
-      createPage('transactions', 'supporting', 'Supporting', ['view', 'create', 'edit', 'delete'], 'Payment and demand entry helper screens.')
+      createPage('transactions', 'supporting', 'Supporting', ['view', 'create', 'edit', 'delete'], 'Demand entry helper screens.')
     ]
   },
   {
@@ -280,3 +280,5 @@ module.exports = {
   isKnownPermissionCode,
   resolvePermissionCode
 };
+
+

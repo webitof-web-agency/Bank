@@ -79,8 +79,8 @@ export function getDefaultPartyType(sectionKey = '') {
   return 'ledger';
 }
 
-export function createEmptyTransactionDraft(sectionKey = '', sectionItems = []) {
-  const firstItem = sectionItems[0] || null;
+export function createEmptyTransactionDraft(sectionKey = '', sectionItems = [], activeKey = '') {
+  const firstItem = getSectionItemByKey(sectionItems, activeKey) || sectionItems[0] || null;
   return {
     voucherNo: '',
     date: todayString(),
@@ -111,6 +111,9 @@ export function createEmptyTransactionDraft(sectionKey = '', sectionItems = []) 
       fromAccount: '',
       toAccount: '',
       accountHead: '',
+      payMode: '',
+      sms: false,
+      fixedSettlement: '',
       components: {
         loanAmt: '',
         lad: ''
@@ -124,9 +127,9 @@ export function createEmptyTransactionDraft(sectionKey = '', sectionItems = []) 
   };
 }
 
-export function createTransactionDraftFromRecord(record = {}, sectionItems = [], sectionKey = '') {
+export function createTransactionDraftFromRecord(record = {}, sectionItems = [], sectionKey = '', activeKey = '') {
   const details = record.details || {};
-  const firstItem = getSectionItemByKey(sectionItems, details.key) || sectionItems[0] || null;
+  const firstItem = getSectionItemByKey(sectionItems, details.key || activeKey) || getSectionItemByKey(sectionItems, activeKey) || sectionItems[0] || null;
   return {
     voucherNo: record.voucherNo || '',
     date: record.date || todayString(),
@@ -136,7 +139,7 @@ export function createTransactionDraftFromRecord(record = {}, sectionItems = [],
     partyType: record.partyType || getDefaultPartyType(sectionKey || firstItem?.key || ''),
     partyCode: record.partyCode || '',
     amount: record.amount ?? '',
-    mode: record.mode || firstItem?.mode || '',
+    mode: record.mode || details.payMode || firstItem?.mode || '',
     status: record.status || 'Draft',
     narration: record.narration || '',
     referenceNo: record.referenceNo || '',
@@ -148,6 +151,7 @@ export function createTransactionDraftFromRecord(record = {}, sectionItems = [],
     createdBy: record.createdBy || '',
     documents: hydrateTransactionDocumentMap(record.documents || {}),
     details: {
+      ...details,
       key: details.key || firstItem?.key || '',
       settlementAccount: details.settlementAccount || '',
       ledgerTarget: details.ledgerTarget || '',
@@ -157,7 +161,11 @@ export function createTransactionDraftFromRecord(record = {}, sectionItems = [],
       fromAccount: details.fromAccount || '',
       toAccount: details.toAccount || '',
       accountHead: details.accountHead || '',
+      payMode: details.payMode || record.payMode || record.mode || '',
+      sms: Boolean(details.sms),
+      fixedSettlement: details.fixedSettlement || '',
       components: {
+        ...(details.components || {}),
         loanAmt: details.components?.loanAmt ?? '',
         lad: details.components?.lad ?? ''
       },
@@ -187,6 +195,13 @@ export function buildTransactionVoucherPayload(draft = {}) {
 
   const details = deepMerge(advancedDetails, baseDetails);
   details.key = cleanText(details.key || baseDetails.key);
+  details.payMode = cleanText(details.payMode || draft.payMode || draft.mode);
+  details.sms = Boolean(details.sms);
+  if (cleanText(details.fixedSettlement)) {
+    details.fixedSettlement = cleanText(details.fixedSettlement);
+  } else if (details.key === 'ssa-paid-member') {
+    details.fixedSettlement = details.payMode === 'CHEQUE' ? 'L013' : 'L001';
+  }
   details.components = {
     loanAmt: toNumberOrZero(details.components?.loanAmt),
     lad: toNumberOrZero(details.components?.lad)
@@ -205,7 +220,7 @@ export function buildTransactionVoucherPayload(draft = {}) {
     partyCode: cleanUpper(draft.partyCode),
     partyType: cleanText(draft.partyType, 'ledger'),
     amount: toNumberOrZero(draft.amount),
-    mode: cleanText(draft.mode),
+    mode: cleanText(draft.mode || draft.payMode),
     status: cleanText(draft.status, 'Draft'),
     narration: cleanText(draft.narration),
     referenceNo: cleanText(draft.referenceNo),
@@ -220,24 +235,33 @@ export function buildTransactionVoucherPayload(draft = {}) {
   };
 }
 
-export function getVoucherSectionItem(voucher = {}, sectionItems = []) {
-  const key = cleanText(voucher?.details?.key || '');
+export function getVoucherSectionItem(voucher = {}, sectionItems = [], activeKey = '') {
+  const key = cleanText(voucher?.details?.key || activeKey || '');
   return getSectionItemByKey(sectionItems, key)
     || (Array.isArray(sectionItems) ? sectionItems.find((item) => cleanText(voucher.voucherCategory).toLowerCase() === cleanText(item.label).toLowerCase()) : null)
     || null;
 }
 
-export function filterTransactionRows(rows = [], sectionItems = []) {
+export function filterTransactionRows(rows = [], sectionItems = [], activeKey = '') {
   const itemKeys = new Set((Array.isArray(sectionItems) ? sectionItems : []).map((item) => cleanText(item.key)));
+  const normalizedActiveKey = cleanText(activeKey).toLowerCase();
+  const activeItemLabel = normalizedActiveKey
+    ? cleanText((Array.isArray(sectionItems) ? sectionItems : []).find((item) => cleanText(item.key).toLowerCase() === normalizedActiveKey)?.label || '').toLowerCase()
+    : '';
+
   return (Array.isArray(rows) ? rows : []).filter((row) => {
-    const rowKey = cleanText(row?.details?.key || '');
+    const rowKey = cleanText(row?.details?.key || row?.transactionKey || row?.sectionKey || '').toLowerCase();
+    if (normalizedActiveKey) {
+      if (rowKey) return rowKey === normalizedActiveKey;
+      return cleanText(row.voucherCategory).toLowerCase() === activeItemLabel;
+    }
     if (rowKey && itemKeys.has(rowKey)) return true;
     return (Array.isArray(sectionItems) ? sectionItems : []).some((item) => cleanText(row.voucherCategory).toLowerCase() === cleanText(item.label).toLowerCase());
   });
 }
 
-export function getTransactionVoucherTitle(voucher = {}, sectionItems = []) {
-  const item = getVoucherSectionItem(voucher, sectionItems);
+export function getTransactionVoucherTitle(voucher = {}, sectionItems = [], activeKey = '') {
+  const item = getVoucherSectionItem(voucher, sectionItems, activeKey);
   return item?.label || voucher.voucherCategory || voucher.transactionType || voucher.voucherNo || 'Transaction';
 }
 
@@ -246,6 +270,17 @@ export function formatTransactionAmount(value) {
   if (!Number.isFinite(number)) return 'â€”';
   return new Intl.NumberFormat('en-IN').format(number);
 }
+export function formatTransactionModeLabel(value = '') {
+  const normalized = cleanText(value).toUpperCase();
+  if (!normalized) return '—';
+  if (normalized === 'CASH-IN-HAND') return 'Cash-in-Hand';
+  if (normalized === 'CASH') return 'Cash';
+  if (normalized === 'CHEQUE') return 'Cheque';
+  if (normalized === 'TRANSFER') return 'Transfer';
+  if (normalized === 'DD') return 'DD';
+  return cleanText(value) || '—';
+}
+
 
 export function getTransactionPartyLabel(value = '', lookups = {}, partyType = '') {
   const code = cleanUpper(value);
@@ -289,3 +324,7 @@ export function toCurrency(value) {
   if (!Number.isFinite(number)) return 'â€”';
   return new Intl.NumberFormat('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(number);
 }
+
+
+
+

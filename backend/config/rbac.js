@@ -1,7 +1,7 @@
-﻿const PERMISSIONS = [
+const PERMISSIONS = [
   { code: 'dashboard.read', name: 'View Dashboard', module: 'dashboard', action: 'read', description: 'Access the banking dashboard.' },
-  { code: 'society.read', name: 'Read Society Details', module: 'society', action: 'read', description: 'View society profile and branding.' },
-  { code: 'society.write', name: 'Write Society Details', module: 'society', action: 'write', description: 'Update society profile and branding.' },
+  { code: 'society.read', name: 'Read Head Office Details', module: 'society', action: 'read', description: 'View head office profile and branding.' },
+  { code: 'society.write', name: 'Write Head Office Details', module: 'society', action: 'write', description: 'Update head office profile and branding.' },
   { code: 'branches.read', name: 'Read Branches', module: 'branches', action: 'read', description: 'View branch master records.' },
   { code: 'branches.write', name: 'Write Branches', module: 'branches', action: 'write', description: 'Create, edit, and delete branches.' },
   { code: 'committee.read', name: 'Read Committee', module: 'committee', action: 'read', description: 'View committee members.' },
@@ -12,8 +12,8 @@
   { code: 'employees.write', name: 'Write Employees', module: 'employees', action: 'write', description: 'Create, edit, and delete employees.' },
   { code: 'ledgers.read', name: 'Read Ledgers', module: 'ledgers', action: 'read', description: 'View ledger master records.' },
   { code: 'ledgers.write', name: 'Write Ledgers', module: 'ledgers', action: 'write', description: 'Create, edit, and delete ledgers.' },
-  { code: 'rates.read', name: 'Read Rates', module: 'rates', action: 'read', description: 'View rate master records.' },
-  { code: 'rates.write', name: 'Write Rates', module: 'rates', action: 'write', description: 'Create, edit, and delete rates.' },
+  { code: 'rates.read', name: 'Read Rates Config', module: 'rates', action: 'read', description: 'View global rates configuration.' },
+  { code: 'rates.write', name: 'Write Rates Config', module: 'rates', action: 'write', description: 'Update global rates configuration.' },
   { code: 'bank-accounts.read', name: 'Read Bank Accounts', module: 'bank-accounts', action: 'read', description: 'View bank account master records.' },
   { code: 'bank-accounts.write', name: 'Write Bank Accounts', module: 'bank-accounts', action: 'write', description: 'Create, edit, and delete bank accounts.' },
   { code: 'demands.read', name: 'Read Demands', module: 'demands', action: 'read', description: 'View demand records.' },
@@ -120,7 +120,7 @@ const ROLE_TEMPLATES = [
   {
     code: 'accountant',
     label: 'Accountant',
-    description: 'Ledger, rate, voucher and financial report access.'
+    description: 'Ledger, rates configuration, voucher and financial report access.'
   },
   {
     code: 'cashier',
@@ -257,7 +257,7 @@ const DEMO_ROLE_DEFINITIONS = [
   {
     code: 'accountant',
     name: 'Accountant',
-    description: 'Can manage ledgers, rates, vouchers, and financial reports.',
+    description: 'Can manage ledgers, rates configuration, vouchers, and financial reports.',
     isSystem: false,
     permissions: [
       'dashboard.read',
@@ -435,5 +435,7 @@ module.exports = {
   PERMISSIONS,
   ROLE_TEMPLATES
 };
+
+
 
 

@@ -506,14 +506,15 @@ export function getReportConfig(reportKey = '') {
           subtitle: 'All branches',
           summary: [
             makeSummary('Branches', rows.length, 'Total branches found'),
+            makeSummary('Head Offices', new Set(rows.map((row) => row.headOfficeCode || 'HO01').filter(Boolean)).size, 'Unique head office codes'),
             makeSummary('Districts', new Set(rows.map((row) => row.district).filter(Boolean)).size, 'Unique districts covered')
           ],
           sections: [
             {
               title: 'Branch Directory',
-              description: 'Branch code, place and contact information.',
-              headers: ['Branch Code', 'Place', 'District', 'Phone', 'Address'],
-              rows: rows.map((row) => [row.code, row.place, row.district, row.phone, row.address])
+              description: 'Branch code, head office mapping, place and contact information.',
+              headers: ['Branch Code', 'Head Office Code', 'Place', 'District', 'Phone', 'Address'],
+              rows: rows.map((row) => [row.code, row.headOfficeCode || 'HO01', row.place, row.district, row.phone, row.address])
             }
           ],
           csvRows: rows
@@ -552,3 +553,4 @@ export function getReportConfig(reportKey = '') {
 
   return configs[reportKey] || null;
 }
+

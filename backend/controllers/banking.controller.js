@@ -96,7 +96,24 @@ const resources = {
   employees: buildCrudControllers('employees'),
   members: buildCrudControllers('members'),
   ledgers: buildCrudControllers('ledgers'),
-  rates: buildCrudControllers('rates'),
+  rates: {
+    async get(req, res, next) {
+      try {
+        const data = await bankingService.getGlobalRatesConfig();
+        res.json({ success: true, data });
+      } catch (error) {
+        next(error);
+      }
+    },
+    async update(req, res, next) {
+      try {
+        const data = await bankingService.updateGlobalRatesConfig(req.body || {});
+        res.json({ success: true, data });
+      } catch (error) {
+        next(error);
+      }
+    }
+  },
   bankAccounts: buildCrudControllers('bankAccounts'),
   demands: buildCrudControllers('demands'),
   noInterestMembers: buildCrudControllers('noInterestMembers'),
@@ -104,6 +121,15 @@ const resources = {
 };
 
 const transactions = {
+  async getNextVoucher(req, res, next) {
+    try {
+      const branchCode = req.query.branchCode || '';
+      const voucherNo = await bankingService.getNextVoucherNo(branchCode);
+      res.json({ success: true, data: { voucherNo } });
+    } catch (error) {
+      next(error);
+    }
+  },
   async catalog(req, res, next) {
     try {
       const rows = await bankingService.getTransactionCatalog();
@@ -415,6 +441,7 @@ module.exports = {
   resources,
   transactions
 };
+
 
 
 
