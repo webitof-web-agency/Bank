@@ -62,7 +62,7 @@ const PAGE_ORDER = [
   'settings'
 ];
 
-const ACTION_ORDER = ['view', 'create', 'edit', 'delete', 'reverse', 'export', 'print'];
+const ACTION_ORDER = ['view', 'create', 'edit', 'delete', 'export', 'print'];
 
 const SECTION_LABELS = {
   admin: 'Admin / Security',
@@ -117,7 +117,6 @@ const ACTION_LABELS = {
   edit: 'Edit',
   export: 'Export',
   print: 'Print',
-  reverse: 'Reverse',
   view: 'View'
 };
 
@@ -208,7 +207,6 @@ const REQUEST_PERMISSION_ALIASES = {
     'transactions.receipt-interest.view', 'transactions.receipt-interest.create', 'transactions.receipt-interest.edit', 'transactions.receipt-interest.delete',
     'transactions.supporting.view', 'transactions.supporting.create', 'transactions.supporting.edit', 'transactions.supporting.delete'
   ],
-  'transactions.reverse': ['transactions.transfer-voucher.reverse'],
   'bank-transactions.read': ['transactions.bank.view'],
   'bank-transactions.write': ['transactions.bank.view', 'transactions.bank.create', 'transactions.bank.edit', 'transactions.bank.delete'],
   'reports.read': [
@@ -344,4 +342,3 @@ export function groupPermissionsByModule(permissions = []) {
 }
 
 export const groupPermissionsByPage = groupPermissionsByModule;
-

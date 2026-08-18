@@ -26,13 +26,15 @@ function registerCrud(basePath, controllerGroup, readPermission, writePermission
 
 registerCrud('/masters/branches', banking.resources.branches, 'branches.read', 'branches.write');
 registerCrud('/masters/employees', banking.resources.employees, 'employees.read', 'employees.write');
-registerCrud('/masters/managers', banking.resources.managers, ['employees.read', 'users.manage'], ['employees.write', 'users.manage']);
 registerCrud('/masters/members', banking.resources.members, 'members.read', 'members.write');
 registerCrud('/masters/ledgers', banking.resources.ledgers, 'ledgers.read', 'ledgers.write');
   router.get('/masters/rates', requirePermission('rates.read'), banking.resources.rates.get);
   router.put('/masters/rates', requirePermission('rates.write'), banking.resources.rates.update);
 registerCrud('/masters/bank-accounts', banking.resources.bankAccounts, 'bank-accounts.read', 'bank-accounts.write');
-registerCrud('/masters/demands', banking.resources.demands, 'demands.read', 'demands.write');
+registerCrud('/masters/demand-lists', banking.resources.demandLists, 'demands.read', 'demands.write');
+registerCrud('/masters/demand-lines', banking.resources.demandLines, 'demands.read', 'demands.write');
+registerCrud('/masters/member-demand-defaults', banking.resources.memberDemandDefaults, 'demands.read', 'demands.write');
+registerCrud('/masters/recovery-lines', banking.resources.recoveryLines, 'demands.read', 'demands.write');
 registerCrud('/masters/no-interest-members', banking.resources.noInterestMembers, 'no-interest-members.read', 'no-interest-members.write');
 registerCrud('/masters/bank-transactions', banking.resources.bankTransactions, 'bank-transactions.read', 'bank-transactions.write');
 
@@ -47,7 +49,6 @@ router.post('/transactions/vouchers', requirePermission('transactions.write'), b
 router.get('/transactions/vouchers/:id', requirePermission('transactions.read'), banking.transactions.getVoucher);
 router.put('/transactions/vouchers/:id', requirePermission('transactions.write'), banking.transactions.updateVoucher);
 router.delete('/transactions/vouchers/:id', requirePermission('transactions.write'), banking.transactions.deleteVoucher);
-router.post('/transactions/vouchers/:id/reverse', requirePermission('transactions.reverse'), banking.transactions.reverseVoucher);
 
 router.get('/transactions/bank-transactions', requirePermission('bank-transactions.read'), banking.transactions.listBankTransactions);
 router.post('/transactions/bank-transactions', requirePermission('bank-transactions.write'), banking.transactions.createBankTransaction);
@@ -71,4 +72,3 @@ router.get('/reports/branch-list', requirePermission('reports.read'), banking.re
 router.get('/reports/dividend-report', requirePermission('reports.read'), banking.reports.dividendReport);
 
 module.exports = router;
-

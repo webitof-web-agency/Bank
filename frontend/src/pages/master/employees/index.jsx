@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Plus, Edit2, Trash2, Eye, Key, Users, UserCheck, User, UserX } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
@@ -13,7 +13,6 @@ import { UserAvatar } from '../../../components/ui/UserAvatar';
 import { Table } from '../../../components/ui/Table';
 import {
   buildEmployeePayload,
-  buildNextEmployeeCode,
   createEmptyEmployeeDraft,
   createEmployeeDraftFromRecord,
   formatBranchLabel,

@@ -230,7 +230,7 @@ function ArrayRowsEditor({
         {description ? <p className="text-sm text-slate-500">{description}</p> : null}
       </div>
 
-      <div className="mt-5 space-y-4">
+      <div className="mt-5 space-y-3">
         {safeRows.length ? safeRows.map((row, index) => (
           <div key={`${title}-${index}`} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
             <div className="mb-4 flex items-center justify-between gap-3">
@@ -247,7 +247,7 @@ function ArrayRowsEditor({
               </button>
             </div>
 
-            <div className={`grid gap-4 ${fields.length >= 4 ? 'md:grid-cols-4' : fields.length === 3 ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
+            <div className={`grid gap-3 ${fields.length >= 4 ? 'md:grid-cols-4' : fields.length === 3 ? 'md:grid-cols-3' : 'md:grid-cols-3'}`}>
               {fields.map((field) => (
                 <div key={field.key} className="space-y-1.5">
                   <FieldLabel>{field.label}</FieldLabel>
@@ -369,9 +369,9 @@ export function ReceiptInterestTransactionForm({ section, lookups = {}, value, s
   const notes = getSectionNotes(section?.key || '', activeKey);
 
   return (
-    <form id="transaction-voucher-form" className="mx-auto w-full space-y-6" onSubmit={onSubmit}>
+    <form id="transaction-voucher-form" className="mx-auto w-full space-y-3" onSubmit={onSubmit}>
       <Card className="rounded-[var(--radius-card,1.75rem)] border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="grid gap-6 md:grid-cols-2">
+        <div className="grid gap-3 md:grid-cols-4">
           
           <div className="space-y-1.5 md:col-span-2">
             <LookupSelect
@@ -600,7 +600,7 @@ export function ReceiptInterestTransactionForm({ section, lookups = {}, value, s
             </>
           ) : null}
 
-          <div className="space-y-1.5 md:col-span-2">
+          <div className="space-y-1.5 md:col-span-3">
             <FieldLabel>Narration</FieldLabel>
             <Textarea
               rows={3}

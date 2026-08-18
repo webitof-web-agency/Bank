@@ -10,7 +10,8 @@ export function Select({
   className = '',
   disabled = false,
   size = 'md',
-  menuPlacement = 'bottom'
+  menuPlacement = 'bottom',
+  ariaLabel
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -43,10 +44,11 @@ export function Select({
     <div className={`relative ${className}`} ref={containerRef}>
       <button
         type="button"
+        aria-label={ariaLabel}
         disabled={disabled}
         onClick={() => setIsOpen(!isOpen)}
         className={`flex w-full items-center justify-between gap-2 rounded-[var(--radius-input,0.75rem)] border bg-white shadow-sm outline-none transition-colors ${
-          size === 'sm' ? 'h-9 px-3 text-[13px]' : 'px-4 py-3 text-sm'
+          size === 'sm' ? 'h-8 px-2 text-[12px]' : 'h-9 px-3 py-1.5 text-[13px]'
         } ${
           isOpen 
             ? 'border-[var(--primary,#1661F6)] ring-1 ring-[var(--primary,#1661F6)]' 

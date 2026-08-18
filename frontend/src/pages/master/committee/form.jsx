@@ -24,8 +24,8 @@ export function CommitteeForm({ value, setValue, onSubmit, members = [] }) {
   };
 
   return (
-    <form id="committee-form" className="space-y-6" onSubmit={onSubmit}>
-      <div className="grid gap-6 md:grid-cols-2">
+    <form id="committee-form" className="space-y-3" onSubmit={onSubmit}>
+      <div className="grid gap-3 md:grid-cols-4">
         <div>
           <label className="mb-2 block text-[13px] font-semibold text-slate-700">Chairman</label>
           <Input

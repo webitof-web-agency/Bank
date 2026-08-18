@@ -16,7 +16,15 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# OS/editor files
+# Backend/runtime data
+**/uploads/
+**/upload/
+coverage/
+.nyc_output/
+*.tgz
+.npm/
+
+# IDE & OS
 .DS_Store
 Thumbs.db
 *.swp
@@ -24,6 +32,7 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Backend/runtime data
-**/uploads/
-coverage/
+# Environment
+**/.env
+**/.env.*
+!.env.example

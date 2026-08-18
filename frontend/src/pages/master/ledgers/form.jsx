@@ -12,8 +12,8 @@ function FieldLabel({ children, required }) {
 
 export function LedgerForm({ value, setValue, onSubmit, isEdit = false }) {
   return (
-    <form id="ledger-form" onSubmit={onSubmit} className="space-y-6">
-      <div className="grid gap-6 md:grid-cols-2">
+    <form id="ledger-form" onSubmit={onSubmit} className="space-y-3">
+      <div className="grid gap-3 md:grid-cols-4">
         <div>
           <FieldLabel required>Ledger Code</FieldLabel>
           <Input

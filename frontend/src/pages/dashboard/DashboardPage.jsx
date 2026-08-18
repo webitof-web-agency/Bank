@@ -36,7 +36,7 @@ function formatNumber(value) {
 }
 
 function formatCurrency(value) {
-  return `â‚¹ ${formatNumber(value)}`;
+  return `₹ ${formatNumber(value)}`;
 }
 
 function formatDate(value) {
@@ -230,10 +230,10 @@ export function DashboardPage() {
               Welcome back,
             </p>
             <h1 className="text-2xl font-bold leading-tight tracking-tight md:text-[32px]">
-              {user?.fullName || 'System Admin'} <span className="inline-block">ðŸ‘‹</span>
+              {user?.fullName || 'System Admin'} <span className="inline-block">👋</span>
             </h1>
             <p className="mt-1.5 text-sm font-medium text-white/90 max-w-xl">
-              {headOffice?.name || 'The Raipur Co-operative Employees Thrift Society Ltd.'} â€¢ {headOffice?.branchCode || 'BR01'}
+              {headOffice?.name || 'The Raipur Co-operative Employees Thrift Society Ltd.'} • {headOffice?.branchCode || 'BR01'}
             </p>
           </div>
 
@@ -353,14 +353,14 @@ export function DashboardPage() {
                     <p className="text-xl font-bold text-slate-900">{formatCurrency(selectedAnalytics.totals.income)}</p>
                     <div className="flex items-center gap-2 mt-1">
                       <p className="text-[11px] text-slate-500">Total Income</p>
-                      <span className="text-[11px] font-bold text-emerald-500">â†‘ {selectedAnalytics.totals.incomeChange}%</span>
+                      <span className="text-[11px] font-bold text-emerald-500">↑ {selectedAnalytics.totals.incomeChange}%</span>
                     </div>
                   </div>
                   <div>
                     <p className="text-xl font-bold text-slate-900">{formatCurrency(selectedAnalytics.totals.expense)}</p>
                     <div className="flex items-center gap-2 mt-1">
                       <p className="text-[11px] text-slate-500">Total Expense</p>
-                      <span className="text-[11px] font-bold text-rose-500">â†‘ {selectedAnalytics.totals.expenseChange}%</span>
+                      <span className="text-[11px] font-bold text-rose-500">↑ {selectedAnalytics.totals.expenseChange}%</span>
                     </div>
                   </div>
                 </div>
@@ -484,7 +484,7 @@ export function DashboardPage() {
                     <td className="py-3 pl-1 pr-4 font-bold text-slate-800">{v.voucherNo || '-'}</td>
                     <td className="py-3 pr-4 text-slate-500">{formatDate(v.date)}</td>
                     <td className="py-3 pr-4 font-medium text-slate-600">{v.voucherCategory || v.transactionType || '-'}</td>
-                    <td className="py-3 pr-4 font-bold text-slate-800">â‚¹ {formatNumber(v.amount)}</td>
+                    <td className="py-3 pr-4 font-bold text-slate-800">₹ {formatNumber(v.amount)}</td>
                     <td className="py-3 pr-1">
                       <span className={cn('inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider', statusTone(v.status))}>
                         {v.status || 'Posted'}
@@ -533,7 +533,7 @@ export function DashboardPage() {
                     <td className="py-3 pr-4 text-slate-500">{formatDate(tx.date)}</td>
                     <td className="py-3 pr-4 font-medium text-slate-600">{tx.bankAccountCode || '-'}</td>
                     <td className="py-3 pr-4 text-slate-600 capitalize">{tx.transactionType || '-'}</td>
-                    <td className="py-3 pr-4 font-bold text-slate-800">â‚¹ {formatNumber(tx.amount)}</td>
+                    <td className="py-3 pr-4 font-bold text-slate-800">₹ {formatNumber(tx.amount)}</td>
                     <td className="py-3 pr-1">
                       <span className={cn('inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider', statusTone(tx.status))}>
                         {tx.status || 'Posted'}

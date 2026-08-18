@@ -28,15 +28,6 @@ export const MASTER_LINKS = [
     tone: 'emerald'
   },
   {
-    label: 'Manager Master',
-    path: '/app/master/managers',
-    icon: Users,
-    permission: ['employees.read', 'users.manage'],
-    description: 'Dedicated manager master view.',
-    group: 'Operations',
-    tone: 'emerald'
-  },
-  {
     label: 'Members',
     path: '/app/master/members',
     icon: Users,
@@ -72,15 +63,7 @@ export const MASTER_LINKS = [
     group: 'Accounting',
     tone: 'amber'
   },
-  {
-    label: 'Bank Accounts',
-    path: '/app/master/bank-accounts',
-    icon: Landmark,
-    permission: 'master.bank-accounts.view',
-    description: 'Operating bank accounts and linkages.',
-    group: 'Accounting',
-    tone: 'amber'
-  },
+
 ];
 
 

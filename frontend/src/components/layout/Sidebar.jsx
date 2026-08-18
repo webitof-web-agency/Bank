@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { NavLink, useLocation } from 'react-router-dom';
 import { ChevronDown, ChevronRight, Menu, X } from 'lucide-react';
 import { navigationGroups } from '../../config/navigation';
 import { useAuth } from '../../context/AuthContext';
 import { getImageUrl } from '../../api/api';
 import { cn } from '../../lib/cn';
-
-
 
 function isPathActive(pathname, path) {
   if (!path) return false;
@@ -43,6 +42,68 @@ function SidebarLink({ item, onNavigate, open }) {
   );
 }
 
+function PopoverLink({ item, onNavigate }) {
+  return (
+    <NavLink
+      to={item.path}
+      onClick={onNavigate}
+      className={({ isActive }) =>
+        cn(
+          'block px-4 py-2.5 text-[14px] text-slate-700 hover:bg-slate-100 hover:text-[var(--primary,#2563eb)] transition-colors',
+          isActive && 'bg-slate-50 font-semibold text-[var(--primary,#2563eb)]'
+        )
+      }
+    >
+      {item.label}
+    </NavLink>
+  );
+}
+
+function PopoverDropdown({ item, onNavigate, pathname }) {
+  const [isHovered, setIsHovered] = useState(false);
+  const [rect, setRect] = useState(null);
+  const activeChild = item.children.some((child) => isItemActive(pathname, child));
+
+  return (
+    <div
+      className="relative"
+      onMouseEnter={(e) => {
+        setRect(e.currentTarget.getBoundingClientRect());
+        setIsHovered(true);
+      }}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      <div
+        className={cn(
+          'flex cursor-pointer items-center justify-between px-4 py-2.5 text-[14px] transition-colors',
+          activeChild ? 'bg-slate-50 font-semibold text-[var(--primary,#2563eb)]' : 'text-slate-700 hover:bg-slate-100 hover:text-[var(--primary,#2563eb)]'
+        )}
+      >
+        <span>{item.label}</span>
+        <ChevronRight size={16} className="text-slate-400" />
+      </div>
+
+      {isHovered && rect ? createPortal(
+        <div 
+          className="fixed z-[110] w-52 rounded-md bg-white py-1.5 shadow-lg ring-1 ring-black/5 border border-slate-100"
+          style={{ top: rect.top, left: rect.right + 4 }}
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
+        >
+          {item.children.map((child) => (
+            child.children ? (
+              <PopoverDropdown key={child.label} item={child} onNavigate={onNavigate} pathname={pathname} />
+            ) : (
+              <PopoverLink key={child.path || child.label} item={child} onNavigate={onNavigate} />
+            )
+          ))}
+        </div>,
+        document.body
+      ) : null}
+    </div>
+  );
+}
+
 function isItemActive(pathname, item) {
   if (isPathActive(pathname, item.path)) return true;
   if (item.children) {
@@ -53,22 +114,36 @@ function isItemActive(pathname, item) {
 
 function SidebarDropdown({ item, onNavigate, open, pathname, expanded, onToggle }) {
   const [localExpanded, setLocalExpanded] = useState(false);
+  const [expandedChild, setExpandedChild] = useState(null);
+  const [isHovered, setIsHovered] = useState(false);
+  const [rect, setRect] = useState(null);
+
   const activeChild = item.children.some((child) => isItemActive(pathname, child));
   const activeParent = isPathActive(pathname, item.path);
   const visible = expanded ?? localExpanded ?? (activeChild || activeParent);
 
-  const handleToggle = (next, childLabel) => {
-    if (childLabel) {
-      if (onToggle) onToggle(next, childLabel);
+  const handleToggle = (next) => {
+    if (onToggle) {
+      onToggle(next);
     } else {
       setLocalExpanded(next);
-      if (onToggle) onToggle(next, item.label);
     }
+  };
+
+  const handleChildToggle = (next, childLabel) => {
+    setExpandedChild(next ? childLabel : null);
   };
 
   return (
     <div
-      className="overflow-hidden transition-all duration-200"
+      className="relative transition-all duration-200"
+      onMouseEnter={(e) => {
+        if (!open) {
+          setRect(e.currentTarget.getBoundingClientRect());
+          setIsHovered(true);
+        }
+      }}
+      onMouseLeave={() => !open && setIsHovered(false)}
       style={{
         marginLeft: open ? '0.5rem' : '0.35rem',
         marginRight: open ? '0.5rem' : '0.35rem'
@@ -76,16 +151,19 @@ function SidebarDropdown({ item, onNavigate, open, pathname, expanded, onToggle 
     >
       <button
         type="button"
-        onClick={() => handleToggle(!visible)}
+        onClick={() => {
+          if (open) handleToggle(!visible);
+        }}
         className={cn(
           'group flex w-full items-center justify-between gap-3 px-3 py-2.5 text-[15px] transition-all duration-200 whitespace-nowrap rounded-[var(--radius-button,1rem)]',
-          activeChild || activeParent || visible ? 'font-medium text-[var(--primary,#2563eb)]' : 'font-medium text-slate-700 hover:bg-[color-mix(in_srgb,var(--primary)_8%,transparent)] hover:text-[var(--primary,#2563eb)]',
-          !open && 'lg:justify-center lg:px-0 lg:bg-transparent lg:hover:bg-transparent'
+          activeChild || activeParent || (open && visible) ? 'font-medium text-[var(--primary,#2563eb)]' : 'font-medium text-slate-700 hover:bg-[color-mix(in_srgb,var(--primary)_8%,transparent)] hover:text-[var(--primary,#2563eb)]',
+          !open && 'lg:justify-center lg:px-0 lg:bg-transparent lg:hover:bg-transparent',
+          !open && isHovered && 'bg-[color-mix(in_srgb,var(--primary)_8%,transparent)]'
         )}
         title={!open ? item.label : undefined}
       >
         <span className="flex items-center gap-3 overflow-hidden">
-          <item.icon size={20} strokeWidth={2} className={cn('shrink-0 transition-colors', activeChild || activeParent || visible ? 'text-[var(--primary,#2563eb)]' : 'text-slate-700 group-hover:text-[var(--primary,#2563eb)]')} />
+          <item.icon size={20} strokeWidth={2} className={cn('shrink-0 transition-colors', activeChild || activeParent || (open && visible) ? 'text-[var(--primary,#2563eb)]' : 'text-slate-700 group-hover:text-[var(--primary,#2563eb)]')} />
           <span className={cn('truncate transition-colors duration-200 group-hover:text-[var(--primary,#2563eb)]', !open && 'lg:hidden')}>
             {item.label}
           </span>
@@ -95,8 +173,9 @@ function SidebarDropdown({ item, onNavigate, open, pathname, expanded, onToggle 
         </span>
       </button>
 
-      {visible ? (
-        <div className={cn('mt-1 space-y-1 pb-2', !open && 'lg:hidden')}>
+      {/* Inline children (when open) */}
+      {open && visible ? (
+        <div className="mt-1 space-y-1 pb-2">
           {item.children.map((child) => (
             <div key={child.label || child.path} className="pl-4">
               {child.children ? (
@@ -105,8 +184,8 @@ function SidebarDropdown({ item, onNavigate, open, pathname, expanded, onToggle 
                   onNavigate={onNavigate}
                   open={open}
                   pathname={pathname}
-                  expanded={undefined}
-                  onToggle={(next) => onToggle(next, child.label)}
+                  expanded={expandedChild === child.label}
+                  onToggle={(next) => handleChildToggle(next, child.label)}
                 />
               ) : (
                 <SidebarLink item={child} onNavigate={onNavigate} open={open} />
@@ -114,6 +193,28 @@ function SidebarDropdown({ item, onNavigate, open, pathname, expanded, onToggle 
             </div>
           ))}
         </div>
+      ) : null}
+
+      {/* Popover children (when collapsed) */}
+      {!open && isHovered && rect ? createPortal(
+        <div 
+          className="fixed z-[100] w-56 rounded-xl bg-white py-2 shadow-xl ring-1 ring-black/5 border border-slate-100"
+          style={{ top: rect.top, left: rect.right + 12 }}
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
+        >
+          <div className="px-4 pb-2 mb-1 border-b border-slate-100 font-semibold text-slate-800 text-sm">
+            {item.label}
+          </div>
+          {item.children.map((child) => (
+            child.children ? (
+              <PopoverDropdown key={child.label} item={child} onNavigate={onNavigate} pathname={pathname} />
+            ) : (
+              <PopoverLink key={child.path || child.label} item={child} onNavigate={onNavigate} />
+            )
+          ))}
+        </div>,
+        document.body
       ) : null}
     </div>
   );
@@ -125,7 +226,20 @@ export function Sidebar({ open = false, onClose, onToggleCollapse }) {
   const [expandedGroups, setExpandedGroups] = useState({});
 
   useEffect(() => {
-    setExpandedGroups({});
+    // When pathname changes, we want to auto-expand the parent containing the active item
+    let activeRoot = null;
+    let found = false;
+    for (const group of navigationGroups) {
+      if (found) break;
+      for (const item of group.items) {
+        if (item.children && isItemActive(pathname, item)) {
+          activeRoot = item.label;
+          found = true;
+          break;
+        }
+      }
+    }
+    setExpandedGroups(activeRoot ? { [activeRoot]: true } : {});
   }, [pathname]);
 
   const visibleGroups = useMemo(() => {
@@ -161,7 +275,7 @@ export function Sidebar({ open = false, onClose, onToggleCollapse }) {
       {open ? <div className="fixed inset-0 z-30 bg-slate-900/40 backdrop-blur-sm lg:hidden" onClick={onClose} /> : null}
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-40 flex flex-col overflow-hidden border-r border-slate-200 bg-white shadow-sm transition-all duration-300 lg:translate-x-0',
+          'fixed inset-y-0 left-0 z-40 flex flex-col border-r border-slate-200 bg-white shadow-sm transition-all duration-300 lg:translate-x-0',
           open ? 'translate-x-0 w-64' : '-translate-x-full w-64 lg:w-20'
         )}
       >
@@ -187,7 +301,7 @@ export function Sidebar({ open = false, onClose, onToggleCollapse }) {
           </button>
         </div>
 
-        <nav className="flex-1 space-y-2 overflow-y-auto px-2 py-5">
+        <nav className="flex-1 space-y-2 overflow-y-auto overflow-x-hidden px-2 py-5">
           {visibleGroups.map((group) => (
             <div key={group.title}>
               <div className="space-y-1">
@@ -199,7 +313,7 @@ export function Sidebar({ open = false, onClose, onToggleCollapse }) {
                       open={open}
                       pathname={pathname}
                       expanded={expandedGroups[item.label]}
-                      onToggle={(next) => setExpandedGroups((current) => ({ ...current, [item.label]: next }))}
+                      onToggle={(next) => setExpandedGroups(next ? { [item.label]: true } : {})}
                       onNavigate={() => { if (window.innerWidth < 1024) onClose(); }}
                     />
                   ) : (

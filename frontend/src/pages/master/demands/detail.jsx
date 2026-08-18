@@ -14,7 +14,7 @@ function DetailRow({ label, value }) {
   return (
     <div className="grid grid-cols-[180px_1fr] gap-4 border-b border-slate-100 py-4 last:border-b-0">
       <div className="text-[13px] font-medium text-slate-500">{label}</div>
-      <div className="text-[14px] font-medium text-slate-900">{value || 'â€”'}</div>
+      <div className="text-[14px] font-medium text-slate-900">{value || '—'}</div>
     </div>
   );
 }
@@ -39,7 +39,7 @@ export function DemandDetailPage() {
     setLoading(true);
 
     Promise.all([
-      api.resources.get('/banking/masters/demands', id, token),
+      api.resources.get('/banking/masters/demand-lists', id, token),
       api.resources.list('/banking/masters/branches', token),
       api.resources.list('/banking/masters/members', token)
     ])
@@ -80,7 +80,7 @@ export function DemandDetailPage() {
     setSaving(true);
     try {
       const payload = buildDemandPayload(draft);
-      const response = await api.resources.update('/banking/masters/demands', demand.id, payload, token);
+      const response = await api.resources.update('/banking/masters/demand-lists', demand.id, payload, token);
       setDemand(response.data || demand);
       toast.success('Demand updated');
       closeEditor();
@@ -113,7 +113,7 @@ export function DemandDetailPage() {
     );
   }
 
-  const demandNo = demand.demandNo || 'â€”';
+  const demandNo = demand.demandNo || '—';
   const branch = branchLookup.get(String(demand.branchCode || '').trim().toUpperCase());
   const member = memberLookup.get(String(demand.memberCode || '').trim().toUpperCase());
   const status = String(demand.status || 'Pending');

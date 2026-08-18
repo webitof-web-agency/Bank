@@ -201,11 +201,11 @@ function RecoveryLinesEditor({ rows = [], onChange, memberGroups = [], demandRow
   }
 
   return (
-    <div className="space-y-6">
-      <div className="space-y-4">
+    <div className="space-y-3">
+      <div className="space-y-3">
         <SectionTitle>Add Recovery Line</SectionTitle>
-        <div className="grid gap-4 md:grid-cols-3">
-          <div className="space-y-1.5 md:col-span-3">
+        <div className="grid gap-3 md:grid-cols-4">
+          <div className="space-y-1.5 md:col-span-2">
             <LookupSelect
               label="Member Code *"
               value={draftLine.member}
@@ -460,12 +460,12 @@ export function MemberTransactionForm({ section, lookups = {}, value, setValue, 
 
   function renderCommonHeader() {
     return (
-      <section className="space-y-4">
+      <section className="space-y-3">
         <SectionTitle>
           Voucher and Member
         </SectionTitle>
 
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-3 md:grid-cols-4">
           <div className="space-y-1.5">
             <FieldLabel>Voucher No.</FieldLabel>
             <Input value={draft.voucherNo || ''} readOnly placeholder="Generating..." />
@@ -502,10 +502,10 @@ export function MemberTransactionForm({ section, lookups = {}, value, setValue, 
 
   function renderLoanForm() {
     return (
-      <section className="space-y-4">
+      <section className="space-y-3">
         <SectionTitle>Loan Disbursement</SectionTitle>
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-1.5 md:col-span-2">
+        <div className="grid gap-3 md:grid-cols-4">
+          <div className="space-y-1.5 md:col-span-3">
             <FieldLabel>Settlement Account</FieldLabel>
             <Input value={draft.details?.settlementAccount || ''} onChange={(event) => updateDetails('settlementAccount', event.target.value)} placeholder="Settlement account or ledger" />
           </div>
@@ -549,15 +549,15 @@ export function MemberTransactionForm({ section, lookups = {}, value, setValue, 
             <FieldLabel>Cheque Date</FieldLabel>
             <Input type="date" value={draft.instrumentDate || ''} onChange={(event) => setRootValue(setValue, 'instrumentDate', event.target.value)} />
           </div>
-          <div className="space-y-1.5 md:col-span-2">
+          <div className="space-y-1.5">
             <FieldLabel>Total Amount</FieldLabel>
             <Input value={amountValue || ''} readOnly />
           </div>
-          <label className="flex items-center gap-2 text-sm text-slate-700 md:col-span-2">
+          <label className="flex items-center gap-2 text-sm text-slate-700 md:col-span-3">
             <input type="checkbox" checked={!!draft.details?.sms} onChange={(event) => updateDetails('sms', event.target.checked)} />
             Send SMS to member
           </label>
-          <div className="space-y-1.5 md:col-span-2">
+          <div className="space-y-1.5 md:col-span-3">
             <FieldLabel>Narration</FieldLabel>
             <Textarea rows={3} value={draft.narration || ''} onChange={(event) => setRootValue(setValue, 'narration', event.target.value)} placeholder="Loan disbursement remarks" />
           </div>
@@ -568,10 +568,10 @@ export function MemberTransactionForm({ section, lookups = {}, value, setValue, 
 
   function renderDepositForm() {
     return (
-      <section className="space-y-4">
+      <section className="space-y-3">
         <SectionTitle>Compulsory Deposit</SectionTitle>
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-1.5 md:col-span-2">
+        <div className="grid gap-3 md:grid-cols-4">
+          <div className="space-y-1.5 md:col-span-3">
             <FieldLabel>Settlement Account</FieldLabel>
             <Input value={draft.details?.settlementAccount || ''} onChange={(event) => updateDetails('settlementAccount', event.target.value)} placeholder="Settlement account or ledger" />
           </div>
@@ -595,15 +595,15 @@ export function MemberTransactionForm({ section, lookups = {}, value, setValue, 
             <FieldLabel>Cheque Date</FieldLabel>
             <Input type="date" value={draft.instrumentDate || ''} onChange={(event) => setRootValue(setValue, 'instrumentDate', event.target.value)} />
           </div>
-          <div className="space-y-1.5 md:col-span-2">
+          <div className="space-y-1.5">
             <FieldLabel>Total Amount</FieldLabel>
             <Input value={amountValue || ''} readOnly />
           </div>
-          <label className="flex items-center gap-2 text-sm text-slate-700 md:col-span-2">
+          <label className="flex items-center gap-2 text-sm text-slate-700 md:col-span-3">
             <input type="checkbox" checked={!!draft.details?.sms} onChange={(event) => updateDetails('sms', event.target.checked)} />
             Send SMS to member
           </label>
-          <div className="space-y-1.5 md:col-span-2">
+          <div className="space-y-1.5 md:col-span-3">
             <FieldLabel>Narration</FieldLabel>
             <Textarea rows={3} value={draft.narration || ''} onChange={(event) => setRootValue(setValue, 'narration', event.target.value)} placeholder="Deposit payout remarks" />
           </div>
@@ -614,10 +614,10 @@ export function MemberTransactionForm({ section, lookups = {}, value, setValue, 
 
   function renderInsuranceForm() {
     return (
-      <section className="space-y-4">
+      <section className="space-y-3">
         <SectionTitle>Insurance Premium</SectionTitle>
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-1.5 md:col-span-2">
+        <div className="grid gap-3 md:grid-cols-4">
+          <div className="space-y-1.5 md:col-span-3">
             <FieldLabel>Settlement Account</FieldLabel>
             <Input value={draft.details?.settlementAccount || ''} onChange={(event) => updateDetails('settlementAccount', event.target.value)} placeholder="Settlement account or ledger" />
           </div>
@@ -645,15 +645,15 @@ export function MemberTransactionForm({ section, lookups = {}, value, setValue, 
             <FieldLabel>Cheque Date</FieldLabel>
             <Input type="date" value={draft.instrumentDate || ''} onChange={(event) => setRootValue(setValue, 'instrumentDate', event.target.value)} />
           </div>
-          <div className="space-y-1.5 md:col-span-2">
+          <div className="space-y-1.5">
             <FieldLabel>Total Amount</FieldLabel>
             <Input value={amountValue || ''} readOnly />
           </div>
-          <label className="flex items-center gap-2 text-sm text-slate-700 md:col-span-2">
+          <label className="flex items-center gap-2 text-sm text-slate-700 md:col-span-3">
             <input type="checkbox" checked={!!draft.details?.sms} onChange={(event) => updateDetails('sms', event.target.checked)} />
             Send SMS to member
           </label>
-          <div className="space-y-1.5 md:col-span-2">
+          <div className="space-y-1.5 md:col-span-3">
             <FieldLabel>Narration</FieldLabel>
             <Textarea rows={3} value={draft.narration || ''} onChange={(event) => setRootValue(setValue, 'narration', event.target.value)} placeholder="Insurance payout remarks" />
           </div>
@@ -664,9 +664,9 @@ export function MemberTransactionForm({ section, lookups = {}, value, setValue, 
 
   function renderSsaForm() {
     return (
-      <section className="space-y-4">
+      <section className="space-y-3">
         <SectionTitle>SSA Payment</SectionTitle>
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-3 md:grid-cols-4">
           <div className="space-y-1.5">
             <FieldLabel required>Amount</FieldLabel>
             <Input type="number" min="0" step="0.01" value={draft.amount ?? ''} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" />
@@ -683,15 +683,15 @@ export function MemberTransactionForm({ section, lookups = {}, value, setValue, 
             <FieldLabel>Cheque Date</FieldLabel>
             <Input type="date" value={draft.instrumentDate || ''} onChange={(event) => setRootValue(setValue, 'instrumentDate', event.target.value)} />
           </div>
-          <div className="space-y-1.5 md:col-span-2">
+          <div className="space-y-1.5">
             <FieldLabel>Total Amount</FieldLabel>
             <Input value={amountValue || ''} readOnly />
           </div>
-          <label className="flex items-center gap-2 text-sm text-slate-700 md:col-span-2">
+          <label className="flex items-center gap-2 text-sm text-slate-700 md:col-span-3">
             <input type="checkbox" checked={!!draft.details?.sms} onChange={(event) => updateDetails('sms', event.target.checked)} />
             Send SMS to member
           </label>
-          <div className="space-y-1.5 md:col-span-2">
+          <div className="space-y-1.5 md:col-span-3">
             <FieldLabel>Narration</FieldLabel>
             <Textarea rows={3} value={draft.narration || ''} onChange={(event) => setRootValue(setValue, 'narration', event.target.value)} placeholder="SSA payment remarks" />
           </div>
@@ -702,10 +702,10 @@ export function MemberTransactionForm({ section, lookups = {}, value, setValue, 
 
   function renderRecoveryForm() {
     return (
-      <section className="space-y-8">
-        <div className="space-y-4">
+      <section className="space-y-3">
+        <div className="space-y-3">
           <SectionTitle>Voucher</SectionTitle>
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-3 md:grid-cols-4">
             <div className="space-y-1.5">
               <FieldLabel>Voucher No.</FieldLabel>
               <Input value={draft.voucherNo || ''} readOnly placeholder="Generating..." />
@@ -731,19 +731,19 @@ export function MemberTransactionForm({ section, lookups = {}, value, setValue, 
 
         <RecoveryLinesEditor rows={recoveryRows} onChange={updateRecoveryRows} memberGroups={memberGroups} demandRows={demandRows} />
 
-        <div className="space-y-4">
+        <div className="space-y-3">
           <SectionTitle>Total and Narration</SectionTitle>
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-3 md:grid-cols-4">
             <div className="space-y-1.5 md:col-span-2">
               <FieldLabel>Total Recovery Amount</FieldLabel>
               <Input value={amountValue || ''} readOnly />
             </div>
-            <label className="flex items-center gap-2 text-sm text-slate-700 md:col-span-2">
-              <input type="checkbox" checked={!!draft.details?.sms} onChange={(event) => updateDetails('sms', event.target.checked)} />
+            <label className="flex items-center gap-2 text-sm text-slate-700 md:col-span-3">
+            <input type="checkbox" checked={!!draft.details?.sms} onChange={(event) => updateDetails('sms', event.target.checked)} />
               Send SMS to member
             </label>
-            <div className="space-y-1.5 md:col-span-2">
-              <FieldLabel>Narration</FieldLabel>
+            <div className="space-y-1.5 md:col-span-3">
+            <FieldLabel>Narration</FieldLabel>
               <Textarea rows={3} value={draft.narration || ''} onChange={(event) => setRootValue(setValue, 'narration', event.target.value)} placeholder="Recovery remarks" />
             </div>
           </div>
@@ -753,7 +753,7 @@ export function MemberTransactionForm({ section, lookups = {}, value, setValue, 
   }
 
   return (
-    <form id="transaction-voucher-form" className="mx-auto w-full max-w-5xl space-y-6" onSubmit={onSubmit}>
+    <form id="transaction-voucher-form" className="mx-auto w-full max-w-5xl space-y-3" onSubmit={onSubmit}>
       {!isRecovery && renderCommonHeader()}
       {isLoan ? renderLoanForm() : null}
       {isDeposit ? renderDepositForm() : null}
@@ -761,7 +761,7 @@ export function MemberTransactionForm({ section, lookups = {}, value, setValue, 
       {isSsa ? renderSsaForm() : null}
       {isRecovery ? renderRecoveryForm() : null}
       {documentDefs.length ? (
-        <section className="space-y-4">
+        <section className="space-y-3">
           <SectionTitle>Attachments</SectionTitle>
           <SimpleDocumentList definitions={documentDefs} documents={draft.documents || {}} onPickFile={updateDocumentMap} onClearFile={clearDocument} />
         </section>

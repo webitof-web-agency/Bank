@@ -62,9 +62,9 @@ export function RoleForm({ value, groups = [], onChange, onSubmit, onCancel, sav
   }
 
   return (
-    <form id="role-form" className="flex flex-col lg:flex-row gap-6 h-full items-start" onSubmit={onSubmit}>
-      <div className="w-full lg:w-1/3 flex flex-col gap-6 shrink-0 sticky top-6 self-start max-h-[calc(100vh-2rem)] overflow-y-auto pb-4" style={{ scrollbarWidth: 'none' }}>
-        <Card className="flex flex-col gap-6 p-6 border border-slate-200 bg-white shadow-sm">
+    <form id="role-form" className="flex flex-col lg:flex-row gap-3 h-full items-start" onSubmit={onSubmit}>
+      <div className="w-full lg:w-1/3 flex flex-col gap-3 shrink-0 sticky top-6 self-start max-h-[calc(100vh-2rem)] overflow-y-auto pb-4" style={{ scrollbarWidth: 'none' }}>
+        <Card className="flex flex-col gap-3 p-6 border border-slate-200 bg-white shadow-sm">
           <h3 className="text-[14px] font-bold text-slate-800 mb-2">Role Details</h3>
 
           <div>
@@ -147,7 +147,7 @@ export function RoleForm({ value, groups = [], onChange, onSubmit, onCancel, sav
         </div>
       </div>
 
-      <div className="w-full lg:w-2/3 flex flex-col gap-4">
+      <div className="w-full lg:w-2/3 flex flex-col gap-3">
         <Card className="p-6 border border-slate-200 bg-white shadow-sm flex flex-col">
           <div className="flex items-center justify-between gap-3 mb-4 border-b border-slate-100 pb-2">
             <div>
@@ -210,7 +210,7 @@ export function RoleForm({ value, groups = [], onChange, onSubmit, onCancel, sav
                             <span className="text-[11px] font-medium text-slate-500">{selectedPageCount}/{pageCodes.length} selected</span>
                           </div>
 
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-y-4 gap-x-6 p-4">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-y-4 gap-x-6 p-4">
                             {Array.isArray(page.permissions) ? page.permissions.map((permission) => {
                               const isChecked = selectedCodes.has(permission.code);
                               return (

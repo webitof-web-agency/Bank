@@ -1,4 +1,4 @@
-﻿import { useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { Camera, Trash2, Upload, User, Briefcase, FileText, Lock } from 'lucide-react';
 import PhoneInput from 'react-phone-input-2';
 import { Input, Textarea } from '../../../components/ui/Input';
@@ -104,14 +104,14 @@ export function EmployeeForm({
       <div className="p-8">
         
         {/* TAB: BASIC INFO */}
-        <div className={activeTab === 'basic' ? 'block space-y-8' : 'hidden'}>
+        <div className={activeTab === 'basic' ? 'block space-y-3' : 'hidden'}>
           <div>
             <h3 className="text-lg font-bold text-slate-900">Basic Information</h3>
             <p className="text-[13px] text-slate-500 mt-1">Personal details and primary contact information.</p>
           </div>
           
           <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-5">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-3">
               <div className="relative mx-auto sm:mx-0">
                 <UserAvatar
                   name={value.fullName || value.name || 'Employee'}
@@ -164,14 +164,14 @@ export function EmployeeForm({
             <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="space-y-1.5">
               <label className="text-[13px] font-semibold text-slate-700">Full Name <span className="text-rose-500">*</span></label>
               <Input placeholder="e.g. John Doe" value={value.fullName || ''} onChange={(e) => setValue({ ...value, fullName: e.target.value })} />
             </div>
             <div className="space-y-1.5">
               <label className="text-[13px] font-semibold text-slate-700">Employee Code</label>
-              <Input placeholder="e.g. EMP-1001" value={value.code || ''} onChange={(e) => setValue({ ...value, code: e.target.value.toUpperCase() })} className="font-mono uppercase tracking-wider" />
+              <Input placeholder="Auto-generated" value={value.code || ''} disabled className="font-mono uppercase tracking-wider" />
             </div>
             
             <div className="space-y-1.5">
@@ -215,7 +215,7 @@ export function EmployeeForm({
               </div>
             </div>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:col-span-2">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:col-span-2">
             <div className="space-y-1.5">
               <label className="text-[13px] font-semibold text-slate-700">Father / Husband Name</label>
               <Input placeholder="e.g. Ramesh Kumar" value={value.fatherOrHusbandName || ""} onChange={(e) => setValue({ ...value, fatherOrHusbandName: e.target.value })} />
@@ -244,13 +244,13 @@ export function EmployeeForm({
         </div>
 
         {/* TAB: WORK DETAILS */}
-        <div className={activeTab === 'work' ? 'block space-y-8' : 'hidden'}>
+        <div className={activeTab === 'work' ? 'block space-y-3' : 'hidden'}>
           <div>
             <h3 className="text-lg font-bold text-slate-900">Work Details</h3>
             <p className="text-[13px] text-slate-500 mt-1">Assign branches, roles, and status for the employee.</p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="space-y-1.5">
               <label className="text-[13px] font-semibold text-slate-700">Branch <span className="text-rose-500">*</span></label>
               <Select
@@ -299,7 +299,7 @@ export function EmployeeForm({
 
           <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-5">
             <h4 className="mb-4 text-sm font-semibold text-slate-900">Service / Salary Details</h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="space-y-1.5">
                 <label className="text-[13px] font-semibold text-slate-700">Basic Salary</label>
                 <Input type="number" min="0" step="1" placeholder="0" value={value.basicSalary || ''} onChange={(e) => setValue({ ...value, basicSalary: e.target.value })} />
@@ -352,7 +352,7 @@ export function EmployeeForm({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="space-y-1.5">
               <label className="text-[13px] font-semibold text-slate-700">Retired</label>
               <label className="flex items-center gap-2 rounded-[var(--radius-input,0.75rem)] border border-slate-200 bg-white px-4 py-3 text-[13px] font-medium text-slate-700">
@@ -373,7 +373,7 @@ export function EmployeeForm({
         </div>
 
         {/* TAB: DOCUMENTS */}
-        <div className={activeTab === 'documents' ? 'block space-y-6' : 'hidden'}>
+        <div className={activeTab === 'documents' ? 'block space-y-3' : 'hidden'}>
           <DocumentSection
             title="Employee Documents"
             description="Upload KYC, qualifications, and background verification documents here."
@@ -402,13 +402,13 @@ export function EmployeeForm({
         </div>
 
         {/* TAB: SECURITY */}
-        <div className={activeTab === 'security' ? 'block space-y-8' : 'hidden'}>
+        <div className={activeTab === 'security' ? 'block space-y-3' : 'hidden'}>
           <div>
             <h3 className="text-lg font-bold text-slate-900">Security & Access</h3>
             <p className="text-[13px] text-slate-500 mt-1">Configure login credentials.</p>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="space-y-1.5">
               <label className="text-[13px] font-semibold text-slate-700">Login Username <span className="text-rose-500">*</span></label>
               <Input placeholder="Unique username" value={value.username || ''} onChange={(e) => setValue({ ...value, username: e.target.value })} className="bg-slate-50" />
@@ -431,7 +431,7 @@ export function EmployeeForm({
 
       {/* Integrated Form Footer */}
       <div className="border-t border-slate-200 bg-slate-50/50 px-8 py-5 flex items-center justify-between rounded-b-2xl">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={onCancel}
@@ -441,7 +441,7 @@ export function EmployeeForm({
             Cancel
           </button>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           {tabs.findIndex(t => t.id === activeTab) > 0 && (
             <button
               type="button"

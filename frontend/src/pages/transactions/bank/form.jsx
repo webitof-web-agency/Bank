@@ -230,7 +230,7 @@ function ArrayRowsEditor({
         {description ? <p className="text-sm text-slate-500">{description}</p> : null}
       </div>
 
-      <div className="mt-5 space-y-4">
+      <div className="mt-5 space-y-3">
         {safeRows.length ? safeRows.map((row, index) => (
           <div key={`${title}-${index}`} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
             <div className="mb-4 flex items-center justify-between gap-3">
@@ -247,7 +247,7 @@ function ArrayRowsEditor({
               </button>
             </div>
 
-            <div className={`grid gap-4 ${fields.length >= 4 ? 'md:grid-cols-4' : fields.length === 3 ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
+            <div className={`grid gap-3 ${fields.length >= 4 ? 'md:grid-cols-4' : fields.length === 3 ? 'md:grid-cols-3' : 'md:grid-cols-3'}`}>
               {fields.map((field) => (
                 <div key={field.key} className="space-y-1.5">
                   <FieldLabel>{field.label}</FieldLabel>
@@ -442,7 +442,7 @@ export function BankTransactionForm({ section, lookups = {}, value, setValue, on
           icon={Landmark}
         />
 
-        <div className="mt-5 grid gap-4 md:grid-cols-2">
+        <div className="mt-5 grid gap-3 md:grid-cols-3">
           <div className="space-y-1.5">
             <FieldLabel>Voucher No.</FieldLabel>
             <Input value={draft.voucherNo || ''} readOnly placeholder="Auto generated on save" />
@@ -458,8 +458,8 @@ export function BankTransactionForm({ section, lookups = {}, value, setValue, on
 
   function renderCommonNarration() {
     return (
-      <div className="space-y-1.5 md:col-span-2">
-        <FieldLabel>Narration</FieldLabel>
+      <div className="space-y-1.5 md:col-span-3">
+            <FieldLabel>Narration</FieldLabel>
         <Textarea
           rows={3}
           value={draft.narration || ''}
@@ -482,7 +482,7 @@ export function BankTransactionForm({ section, lookups = {}, value, setValue, on
   function renderLoanReceivedForm(settlementCode) {
     return (
       <Card className="rounded-[var(--radius-card,1.75rem)] border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-3 md:grid-cols-4">
           <LedgerValue label="Settlement Account" value={getTransactionLedgerLabel(settlementCode, lookups)} />
           {renderAmountInput()}
           <div className="space-y-1.5">
@@ -502,7 +502,7 @@ export function BankTransactionForm({ section, lookups = {}, value, setValue, on
   function renderDepositInBankForm() {
     return (
       <Card className="rounded-[var(--radius-card,1.75rem)] border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-3 md:grid-cols-4">
           <div className="space-y-1.5">
             <FieldLabel required>Deposit In</FieldLabel>
             <CustomSelect
@@ -542,10 +542,10 @@ export function BankTransactionForm({ section, lookups = {}, value, setValue, on
     const settlementCode = isChequeIssueLoan ? 'L012' : 'L013';
     return (
       <Card className="rounded-[var(--radius-card,1.75rem)] border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-3 md:grid-cols-4">
           <LedgerValue label="Settlement Account" value={getTransactionLedgerLabel(settlementCode, lookups)} />
           {renderAmountInput()}
-          <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 md:col-span-2">
+          <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 md:col-span-3">
             <input type="checkbox" checked={!!draft.details?.selfUse} onChange={(event) => updateDetails('selfUse', event.target.checked)} />
             Withdrawal for self use
           </label>
@@ -568,7 +568,7 @@ export function BankTransactionForm({ section, lookups = {}, value, setValue, on
     const toCode = draft.details?.fixedTo || (isTransferSaving ? 'L013' : 'L002');
     return (
       <Card className="rounded-[var(--radius-card,1.75rem)] border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-3 md:grid-cols-4">
           <div className="space-y-1.5">
             <FieldLabel required>Transfer Type</FieldLabel>
             <CustomSelect
@@ -607,7 +607,7 @@ export function BankTransactionForm({ section, lookups = {}, value, setValue, on
 
     return (
       <Card className="rounded-[var(--radius-card,1.75rem)] border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-3 md:grid-cols-4">
           {renderAmountInput()}
           <div className="space-y-1.5">
             <FieldLabel>Instrument No.</FieldLabel>
@@ -624,7 +624,7 @@ export function BankTransactionForm({ section, lookups = {}, value, setValue, on
   }
 
   return (
-    <form id="transaction-voucher-form" className="mx-auto w-full space-y-6" onSubmit={onSubmit}>
+    <form id="transaction-voucher-form" className="mx-auto w-full space-y-3" onSubmit={onSubmit}>
       {renderCommonHeader()}
       {renderActiveForm()}
       {documentDefs.length ? (

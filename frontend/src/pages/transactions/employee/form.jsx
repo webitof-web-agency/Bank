@@ -174,9 +174,9 @@ export function EmployeeTransactionForm({ section, itemKey, lookups = {}, value,
   }, [activeKey]);
 
   return (
-    <form id="transaction-voucher-form" className="mx-auto w-full space-y-4" onSubmit={onSubmit}>
+    <form id="transaction-voucher-form" className="mx-auto w-full space-y-3" onSubmit={onSubmit}>
       <Card className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-3 md:grid-cols-4">
           <div className="space-y-1.5">
             <FieldLabel>Voucher No</FieldLabel>
             <Input
@@ -204,7 +204,7 @@ export function EmployeeTransactionForm({ section, itemKey, lookups = {}, value,
           </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-3 md:grid-cols-4">
           <div className="md:col-span-2">
             <LookupSelect
               label="Employee Code"
@@ -244,7 +244,7 @@ export function EmployeeTransactionForm({ section, itemKey, lookups = {}, value,
           <Plus size={16} />
           Advance Heads
         </div>
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-4">
           <div className="space-y-1.5">
             <FieldLabel>House Loan</FieldLabel>
             <Input type="number" min="0" step="0.01" value={value.details?.components?.house ?? ''} onChange={(e) => updateComponent('house', e.target.value)} placeholder="0.00" />
@@ -262,7 +262,7 @@ export function EmployeeTransactionForm({ section, itemKey, lookups = {}, value,
 
       <Card className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="mb-4 text-sm font-semibold text-slate-900">{getModeLabel(activeKey)}</div>
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-3 md:grid-cols-4">
           <div className="space-y-1.5">
             <FieldLabel required>{getModeLabel(activeKey)}</FieldLabel>
             <CustomSelect

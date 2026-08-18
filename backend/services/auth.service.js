@@ -70,23 +70,10 @@ function generateStaffCode(fullName = '', username = '') {
   return basis ? `EMP-${basis.slice(0, 12)}` : '';
 }
 
+const { getNextSequenceValue } = require('./sequence.service');
+
 async function generateNextEmployeeCode() {
-  const rows = await User.find({
-    code: { $regex: /^(?:EMP-|E)\d+$/i }
-  }).select('code').lean();
-
-  let maxNumber = 1000;
-  for (const row of rows) {
-    const code = normalizeUpper(row.code);
-    const match = code.match(/^(?:EMP-|E)(\d+)$/);
-    if (!match) continue;
-    const value = Number(match[1]);
-    if (Number.isFinite(value) && value > maxNumber) {
-      maxNumber = value;
-    }
-  }
-
-  return `EMP-${maxNumber + 1}`;
+  return await getNextSequenceValue('employees', 'code');
 }
 
 function getJwtSecret() {

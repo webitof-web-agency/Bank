@@ -26,7 +26,7 @@ function DetailRow({ label, value }) {
   return (
     <div className="grid grid-cols-[180px_1fr] gap-4 border-b border-slate-100 py-4 last:border-b-0">
       <div className="text-[13px] font-medium text-slate-500">{label}</div>
-      <div className="text-[14px] font-medium text-slate-900">{value || '—'}</div>
+      <div className="text-[14px] font-medium text-slate-900">{value || 'â€”'}</div>
     </div>
   );
 }
@@ -319,8 +319,8 @@ export function InterestVoucherWorkspaceDetailPage({ sectionKey, itemKey, detail
                   <DetailRow label="Status" value={<StatusBadge status={record.status} />} />
                   <DetailRow label="Receipt Date" value={record.date} />
                   <DetailRow label="Narration" value={record.narration} />
-                  <DetailRow label="Branch Code" value={record.branchCode || '—'} />
-                  <DetailRow label="FY Code" value={record.fyCode || '—'} />
+                  <DetailRow label="Branch Code" value={record.branchCode || 'â€”'} />
+                  <DetailRow label="FY Code" value={record.fyCode || 'â€”'} />
                 </div>
               </Card>
             </div>
@@ -333,7 +333,7 @@ export function InterestVoucherWorkspaceDetailPage({ sectionKey, itemKey, detail
                   <DetailRow label="Journal Lines" value={journalLines.length} />
                   <DetailRow label="Main Amount" value={formatTransactionAmount(record.amount ?? 0)} />
                   <DetailRow label="Posted Status" value={<StatusBadge status={record.status} />} />
-                  <DetailRow label="Reversal Of" value={record.reversalOf || '—'} />
+                  <DetailRow label="Reversal Of" value={record.reversalOf || 'â€”'} />
                 </div>
               </Card>
 
@@ -363,13 +363,13 @@ export function InterestVoucherWorkspaceDetailPage({ sectionKey, itemKey, detail
                   <DetailRow label="Voucher No" value={record.voucherNo} />
                   <DetailRow label="Category" value={record.voucherCategory} />
                   <DetailRow label="Status" value={<StatusBadge status={record.status} />} />
-                  <DetailRow label="Created By" value={record.createdBy || '—'} />
-                  <DetailRow label="Approved By" value={record.approvedBy || '—'} />
+                  <DetailRow label="Created By" value={record.createdBy || 'â€”'} />
+                  <DetailRow label="Approved By" value={record.approvedBy || 'â€”'} />
                   <DetailRow label="Party Type" value={record.partyType} />
-                  <DetailRow label="Branch" value={record.branchCode || '—'} />
-                  <DetailRow label="FY Code" value={record.fyCode || '—'} />
-                  <DetailRow label="Transaction Type" value={record.transactionType || '—'} />
-                  <DetailRow label="Reversal Of" value={record.reversalOf || '—'} />
+                  <DetailRow label="Branch" value={record.branchCode || 'â€”'} />
+                  <DetailRow label="FY Code" value={record.fyCode || 'â€”'} />
+                  <DetailRow label="Transaction Type" value={record.transactionType || 'â€”'} />
+                  <DetailRow label="Reversal Of" value={record.reversalOf || 'â€”'} />
                 </div>
               </Card>
 
@@ -377,7 +377,7 @@ export function InterestVoucherWorkspaceDetailPage({ sectionKey, itemKey, detail
                 <div className="grid gap-4 md:grid-cols-2 px-6 py-6">
                   <div className="rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3">
                     <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Member</p>
-                    <p className="mt-1 text-[14px] font-semibold text-slate-900">{selectedMember?.code ? `${selectedMember.code} - ${selectedMember.name || ''}`.trim() : record.partyCode || '—'}</p>
+                    <p className="mt-1 text-[14px] font-semibold text-slate-900">{selectedMember?.code ? `${selectedMember.code} - ${selectedMember.name || ''}`.trim() : record.partyCode || 'â€”'}</p>
                   </div>
                   <div className="rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3">
                     <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Interest</p>
@@ -390,7 +390,20 @@ export function InterestVoucherWorkspaceDetailPage({ sectionKey, itemKey, detail
         </div>
       </div>
 
-      <Modal open={editorOpen} onClose={closeEditor} title="Edit Interest" size="xl">
+      <Modal 
+        open={editorOpen} 
+        onClose={closeEditor} 
+        title="Edit Interest" 
+        width="min(1100px, 96vw)"
+        footer={
+          <div className="flex w-full justify-end gap-3">
+            <Button variant="outline" type="button" onClick={closeEditor}>Cancel</Button>
+            <Button type="submit" form="transaction-voucher-form" disabled={saving || !canWrite} className="bg-[var(--primary,#1661F6)] text-white hover:opacity-90">
+              {saving ? 'Saving...' : 'Save Changes'}
+            </Button>
+          </div>
+        }
+      >
         {draft ? <InterestVoucherForm section={section} lookups={lookups} value={draft} setValue={setDraft} onSubmit={saveVoucher} onDocumentRemove={handleDocumentRemove} /> : null}
       </Modal>
 

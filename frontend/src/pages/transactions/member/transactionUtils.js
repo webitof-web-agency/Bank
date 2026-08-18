@@ -272,13 +272,13 @@ export function formatTransactionAmount(value) {
 }
 export function formatTransactionModeLabel(value = '') {
   const normalized = cleanText(value).toUpperCase();
-  if (!normalized) return '—';
+  if (!normalized) return 'â€”';
   if (normalized === 'CASH-IN-HAND') return 'Cash-in-Hand';
   if (normalized === 'CASH') return 'Cash';
   if (normalized === 'CHEQUE') return 'Cheque';
   if (normalized === 'TRANSFER') return 'Transfer';
   if (normalized === 'DD') return 'DD';
-  return cleanText(value) || '—';
+  return cleanText(value) || 'â€”';
 }
 
 

@@ -157,9 +157,9 @@ export function TransferVoucherTransactionForm({ section, itemKey, lookups = {},
   }, [activeKey]);
 
   return (
-    <form id="transaction-voucher-form" className="mx-auto w-full space-y-4" onSubmit={onSubmit}>
+    <form id="transaction-voucher-form" className="mx-auto w-full space-y-3" onSubmit={onSubmit}>
       <Card className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-3 md:grid-cols-4">
           <div className="space-y-1.5">
             <FieldLabel>Voucher No</FieldLabel>
             <Input
@@ -187,7 +187,7 @@ export function TransferVoucherTransactionForm({ section, itemKey, lookups = {},
           </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-3 md:grid-cols-4">
           <div className="md:col-span-2">
             <LookupSelect
               label="Member Code"
@@ -258,7 +258,7 @@ export function TransferVoucherTransactionForm({ section, itemKey, lookups = {},
       </Card>
 
       <Card className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="grid gap-4 md:grid-cols-[1fr_260px] md:items-start">
+        <div className="grid gap-3 md:grid-cols-[1fr_260px] md:items-start">
           <div className="space-y-1.5">
             <FieldLabel>Narration</FieldLabel>
             <Textarea

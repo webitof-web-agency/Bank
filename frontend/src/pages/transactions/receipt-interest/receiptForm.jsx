@@ -50,7 +50,7 @@ export function ReceiptVoucherForm({ section, lookups = {}, value, setValue, onS
   }
 
   return (
-    <form id="transaction-voucher-form" className="mx-auto w-full space-y-6" onSubmit={onSubmit}>
+    <form id="transaction-voucher-form" className="mx-auto w-full space-y-3" onSubmit={onSubmit}>
       <Card className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="mb-5 border-b border-slate-100 pb-4">
           <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-500">Receipt Voucher</p>
@@ -58,7 +58,7 @@ export function ReceiptVoucherForm({ section, lookups = {}, value, setValue, onS
           <p className="mt-1 text-sm text-slate-500">Voucher entry for receipt by, receipt to, amount, and narration.</p>
         </div>
 
-        <div className="grid gap-6 md:grid-cols-2">
+        <div className="grid gap-3 md:grid-cols-4">
           <div className="space-y-1.5">
             <FieldLabel>Voucher No</FieldLabel>
             <Input
@@ -113,7 +113,7 @@ export function ReceiptVoucherForm({ section, lookups = {}, value, setValue, onS
             <Input value={formatTransactionAmount(value.amount ?? 0)} readOnly />
           </div>
 
-          <div className="space-y-1.5 md:col-span-2">
+          <div className="space-y-1.5 md:col-span-3">
             <FieldLabel>Narration</FieldLabel>
             <Textarea
               rows={4}
@@ -172,10 +172,10 @@ export function ReceiptVoucherForm({ section, lookups = {}, value, setValue, onS
 
       <div className="flex items-center gap-3 text-sm text-slate-500">
         <span>Receipt By:</span>
-        <span className="font-medium text-slate-900">{receiptByLabel || '—'}</span>
-        <span className="text-slate-300">•</span>
+        <span className="font-medium text-slate-900">{receiptByLabel || 'â€”'}</span>
+        <span className="text-slate-300">â€¢</span>
         <span>Receipt To:</span>
-        <span className="font-medium text-slate-900">{receiptToLabel || '—'}</span>
+        <span className="font-medium text-slate-900">{receiptToLabel || 'â€”'}</span>
       </div>
     </form>
   );

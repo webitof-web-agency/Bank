@@ -55,8 +55,8 @@ export function DemandForm({ value, setValue, onSubmit, branches = [], members =
   }
 
   return (
-    <form id="demand-form" onSubmit={onSubmit} className="space-y-6">
-      <div className="grid gap-6 md:grid-cols-2">
+    <form id="demand-form" onSubmit={onSubmit} className="space-y-3">
+      <div className="grid gap-3 md:grid-cols-4">
         <div>
           <FieldLabel required>Demand List No.</FieldLabel>
           <Input
@@ -139,7 +139,7 @@ export function DemandForm({ value, setValue, onSubmit, branches = [], members =
               <div className="text-right">Action</div>
             </div>
             {allocations.map((row, index) => (
-              <div key={`${row.memberCode || index}`} className="grid grid-cols-[1.2fr_0.5fr_0.12fr] items-center gap-4 border-b border-slate-100 px-4 py-3 last:border-b-0">
+              <div key={`${row.memberCode || index}`} className="grid grid-cols-[1.2fr_0.5fr_0.12fr] items-center gap-3 border-b border-slate-100 px-4 py-3 last:border-b-0">
                 <div>
                   <p className="text-[13px] font-semibold text-slate-900">{row.head || row.memberCode || '-'}</p>
                   <p className="text-[12px] text-slate-500">{row.memberCode || '-'}</p>
@@ -171,7 +171,7 @@ export function DemandForm({ value, setValue, onSubmit, branches = [], members =
         )}
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="grid gap-3 md:grid-cols-4">
         <div>
           <FieldLabel>Recovered</FieldLabel>
           <Input

@@ -135,14 +135,14 @@ export function MemberForm({
       <div className="p-8">
         
         {/* TAB: BASIC INFO */}
-        <div className={activeTab === 'basic' ? 'block space-y-8' : 'hidden'}>
+        <div className={activeTab === 'basic' ? 'block space-y-3' : 'hidden'}>
           <div>
             <h3 className="text-lg font-bold text-slate-900">Basic Information</h3>
             <p className="text-[13px] text-slate-500 mt-1">Personal and contact details for the member.</p>
           </div>
 
           <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-5">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-3">
               <div className="relative mx-auto sm:mx-0">
                 <UserAvatar
                   name={value.name || 'Member'}
@@ -196,7 +196,7 @@ export function MemberForm({
             <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="space-y-1.5">
               <label className="text-[13px] font-semibold text-slate-700">Member Name <span className="text-rose-500">*</span></label>
               <Input placeholder="e.g. John Doe" value={value.name || ''} onChange={(e) => setValue({ ...value, name: e.target.value })} />
@@ -253,17 +253,17 @@ export function MemberForm({
         </div>
 
         {/* TAB: MEMBERSHIP */}
-        <div className={activeTab === 'membership' ? 'block space-y-8' : 'hidden'}>
+        <div className={activeTab === 'membership' ? 'block space-y-3' : 'hidden'}>
           <div>
             <h3 className="text-lg font-bold text-slate-900">Membership Details</h3>
             <p className="text-[13px] text-slate-500 mt-1">Branch assignment and membership status.</p>
           </div>
 
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="space-y-1.5">
               <label className="text-[13px] font-semibold text-slate-700">Member Code</label>
-              <Input placeholder="M0009" value={value.code || ''} onChange={(e) => setValue({ ...value, code: e.target.value.toUpperCase() })} className="font-mono uppercase tracking-wider" />
+              <Input placeholder="Auto-generated" value={value.code || ''} disabled className="font-mono uppercase tracking-wider" />
             </div>
 
             <div className="space-y-1.5">
@@ -322,7 +322,7 @@ export function MemberForm({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="space-y-1.5">
               <label className="text-[13px] font-semibold text-slate-700">Dismembered</label>
               <label className="flex items-center gap-2 rounded-[var(--radius-input,0.75rem)] border border-slate-200 bg-white px-4 py-3 text-[13px] font-medium text-slate-700">
@@ -343,7 +343,7 @@ export function MemberForm({
         </div>
 
         {/* TAB: DOCUMENTS */}
-        <div className={activeTab === 'documents' ? 'block space-y-6' : 'hidden'}>
+        <div className={activeTab === 'documents' ? 'block space-y-3' : 'hidden'}>
           <DocumentSection
             title="Member Documents"
             description="Upload KYC, signature specimen, and nominee verification documents."
@@ -372,7 +372,7 @@ export function MemberForm({
         </div>
 
         {/* TAB: FINANCIAL */}
-        <div className={activeTab === 'financial' ? 'block space-y-8' : 'hidden'}>
+        <div className={activeTab === 'financial' ? 'block space-y-3' : 'hidden'}>
           <div>
             <h3 className="text-lg font-bold text-slate-900">Balances & Nominee</h3>
             <p className="text-[13px] text-slate-500 mt-1">Opening balances and beneficiary details.</p>
@@ -412,7 +412,7 @@ export function MemberForm({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="space-y-1.5">
               <label className="text-[13px] font-semibold text-slate-700">Nominee Name</label>
               <Input value={value.nomineeName || ''} onChange={(e) => setValue({ ...value, nomineeName: e.target.value })} />
@@ -436,7 +436,7 @@ export function MemberForm({
 
       {/* Integrated Form Footer */}
       <div className="border-t border-slate-200 bg-slate-50/50 px-8 py-5 flex items-center justify-between rounded-b-2xl">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={onCancel}
@@ -446,7 +446,7 @@ export function MemberForm({
             Cancel
           </button>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           {tabs.findIndex(t => t.id === activeTab) > 0 && (
             <button
               type="button"

@@ -224,7 +224,6 @@ export const api = {
     createTransactionVoucher: (token, payload) => request('/banking/transactions/vouchers', { method: 'POST', token, body: payload }),
     updateTransactionVoucher: (token, id, payload) => request(`/banking/transactions/vouchers/${id}`, { method: 'PUT', token, body: payload }),
     deleteTransactionVoucher: (token, id) => request(`/banking/transactions/vouchers/${id}`, { method: 'DELETE', token }),
-    reverseTransactionVoucher: (token, id) => request(`/banking/transactions/vouchers/${id}/reverse`, { method: 'POST', token }),
     listBankTransactions: (token, query = {}) => request(`/banking/transactions/bank-transactions${buildQuery(query)}`, { token, skipCache: true }),
     reports: {
       memberLedger: (token, query = {}) => request(`/banking/reports/member-ledger${buildQuery(query)}`, { token, skipCache: true }),

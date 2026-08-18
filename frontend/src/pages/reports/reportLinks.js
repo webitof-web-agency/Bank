@@ -88,15 +88,6 @@ export const REPORT_LINKS = [
     description: 'Voucher totals grouped by voucher category.'
   },
   {
-    key: 'summary-monthly',
-    label: 'Summary / Monthly Report',
-    path: '/app/reports/summary-monthly',
-    icon: TrendingUp,
-    category: 'voucher-and-summary',
-    permission: 'reports.summary-monthly.view',
-    description: 'Monthly transaction summary filtered by branch.'
-  },
-  {
     key: 'demand-list-report',
     label: 'Demand List',
     path: '/app/reports/demand-list-report',

@@ -22,7 +22,6 @@ const PERMISSIONS = [
   { code: 'no-interest-members.write', name: 'Write No Interest Members', module: 'no-interest-members', action: 'write', description: 'Create, edit, and delete no-interest members.' },
   { code: 'transactions.read', name: 'Read Transactions', module: 'transactions', action: 'read', description: 'View voucher and transaction records.' },
   { code: 'transactions.write', name: 'Write Transactions', module: 'transactions', action: 'write', description: 'Create and edit vouchers and transactions.' },
-  { code: 'transactions.reverse', name: 'Reverse Transactions', module: 'transactions', action: 'reverse', description: 'Reverse posted vouchers.' },
   { code: 'bank-transactions.read', name: 'Read Bank Transactions', module: 'bank-transactions', action: 'read', description: 'View bank transaction records.' },
   { code: 'bank-transactions.write', name: 'Write Bank Transactions', module: 'bank-transactions', action: 'write', description: 'Create, edit, and delete bank transactions.' },
   { code: 'reports.read', name: 'Read Reports', module: 'reports', action: 'read', description: 'View accounting and operational reports.' },
@@ -77,7 +76,6 @@ const PERMISSION_GROUPS = [
     permissions: [
       'transactions.read',
       'transactions.write',
-      'transactions.reverse',
       'bank-transactions.read',
       'bank-transactions.write'
     ]
@@ -176,7 +174,6 @@ const DEFAULT_ROLE_DEFINITIONS = [
       'no-interest-members.write',
       'transactions.read',
       'transactions.write',
-      'transactions.reverse',
       'bank-transactions.read',
       'bank-transactions.write',
       'reports.read',
@@ -246,7 +243,6 @@ const DEMO_ROLE_DEFINITIONS = [
       'no-interest-members.write',
       'transactions.read',
       'transactions.write',
-      'transactions.reverse',
       'bank-transactions.read',
       'bank-transactions.write',
       'reports.read',
@@ -279,7 +275,6 @@ const DEMO_ROLE_DEFINITIONS = [
       'no-interest-members.read',
       'transactions.read',
       'transactions.write',
-      'transactions.reverse',
       'bank-transactions.read',
       'bank-transactions.write',
       'reports.read',
@@ -435,7 +430,6 @@ module.exports = {
   PERMISSIONS,
   ROLE_TEMPLATES
 };
-
 
 
 

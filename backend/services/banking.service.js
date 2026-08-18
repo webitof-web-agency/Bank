@@ -4,13 +4,16 @@ const {
   BANK_TRANSACTION_SEEDS,
   BRANCH_SEEDS,
   COMMITTEE_SEED,
-  MANAGER_SEEDS,
-  DEMAND_SEEDS,
+  COMMITTEE_DIRECTOR_SEEDS,
+  DEMAND_LIST_SEEDS,
+  DEMAND_LINE_SEEDS,
   EMPLOYEE_SEEDS,
   LEDGER_SEEDS,
   MEMBER_SEEDS,
+  MEMBER_DEMAND_DEFAULT_SEEDS,
   NO_INTEREST_MEMBER_SEEDS,
   RATE_SEEDS,
+  RECOVERY_LINE_SEEDS,
   SOCIETY_SEED,
   VOUCHER_SEEDS
 } = require('../config/bankingSeed');
@@ -19,12 +22,16 @@ const {
   BankTransaction,
   Branch,
   Committee,
-  Manager,
-  Demand,
+  CommitteeDirector,
+  Employee,
+  DemandList,
+  DemandLine,
   Ledger,
   Member,
+  MemberDemandDefault,
   NoInterestMember,
   Rate,
+  RecoveryLine,
   Society,
   Voucher
 } = require('../models/banking.models');
@@ -36,8 +43,10 @@ const {
 } = require('./file.service');
 const { createNotification } = require('./notification.service');
 const { DEFAULT_SETTINGS } = require('../config/defaultSettings');
+const { BANK_VOUCHER_KEYS } = require('../config/transactionConstants');
 const { getSettings, updateSettings, mergeDeep } = require('./settings.service');
 const { toResponse } = require('../utils/response');
+const { getNextSequenceValue, syncSequence } = require('./sequence.service');
 const { buildFileViewUrl } = require('../utils/file-url');
 
 function cleanText(value, fallback = '') {
@@ -73,9 +82,8 @@ function toBool(value, fallback = false) {
 const BRANCH_SCOPED_RESOURCES = new Set([
   'branches',
   'employees',
-  'managers',
   'members',
-  'demands',
+  'demandLists',
   'noInterestMembers',
   'vouchers',
   'bankTransactions'
@@ -158,6 +166,30 @@ function buildSearchQuery(fields = [], search = '') {
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
+}
+
+const BANK_VOUCHER_KEY_SET = new Set(BANK_VOUCHER_KEYS);
+
+function sanitizeBankVoucherDetails(value = {}) {
+  const details = clone(toMixed(value, {}));
+  if (BANK_VOUCHER_KEY_SET.has(cleanLower(details.key))) {
+    delete details.settlementAccount;
+    delete details.fixedSettlement;
+    delete details.fromAccount;
+    delete details.toAccount;
+    delete details.fixedFrom;
+    delete details.fixedTo;
+  }
+  return details;
+}
+
+function sanitizeVoucherResponse(record = {}) {
+  const response = toResponse(record);
+  if (!response) return response;
+  return {
+    ...response,
+    details: sanitizeBankVoucherDetails(response.details)
+  };
 }
 
 const DEFAULT_RATES_CONFIG = clone(DEFAULT_SETTINGS.payload?.ratesConfig || {});
@@ -249,10 +281,6 @@ function summarizeRecord(resource, record = {}) {
         code: record.code || '',
         name: record.fullName || record.name || ''
       }
-    : resource === 'managers'
-      ? {
-          name: [record.name, record.designation].filter(Boolean).join(' - ') || record.name || record.branchCode || ''
-        }
     : resource === 'members'
       ? {
           code: record.code || '',
@@ -279,9 +307,9 @@ function summarizeRecord(resource, record = {}) {
                   code: record.voucherNo || '',
                   name: record.voucherCategory || record.transactionType || ''
                 }
-            : resource === 'demands'
+            : resource === 'demandLists'
               ? {
-                  code: record.demandNo || '',
+                  code: record.demandListNo || '',
                   name: record.memberCode || ''
                 }
               : resource === 'noInterestMembers'
@@ -318,14 +346,7 @@ function getResourceMeta(resource) {
       listUrl: '/app/master/committee',
       detailUrl: '/app/master/committee'
     },
-    managers: {
-      label: 'Manager',
-      module: 'master',
-      type: 'master',
-      severity: 'medium',
-      listUrl: '/app/master/managers',
-      detailUrl: '/app/master/managers'
-    },
+    
     branches: {
       label: 'Branch',
       module: 'master',
@@ -334,19 +355,7 @@ function getResourceMeta(resource) {
       listUrl: '/app/master/branches',
       detailUrl: (record) => `/app/master/branches/${record.id}`
     },
-    managers: {
-    model: Manager,
-    searchFields: ['name', 'designation', 'branchCode'],
-    normalize(data = {}) {
-      return {
-        name: cleanText(data.name),
-        designation: cleanText(data.designation),
-        branchCode: cleanUpper(data.branchCode),
-        isActive: toBool(data.isActive, true),
-        payload: toMixed(data.payload, {})
-      };
-    }
-  },
+    
   employees: {
       label: 'Employee',
       module: 'master',
@@ -387,8 +396,8 @@ function getResourceMeta(resource) {
       listUrl: '/app/master/bank-accounts',
       detailUrl: (record) => `/app/master/bank-accounts/${record.id}`
     },
-    demands: {
-      label: 'Demand',
+    demandLists: {
+      label: 'Demand List',
       module: 'master',
       type: 'master',
       severity: 'medium',
@@ -494,10 +503,10 @@ function buildResourceNotificationPayload(resource, action, record = {}, meta = 
 }
 
 function buildVoucherNotificationPayload(action, voucher = {}, meta = {}) {
-  const actionLabel = action === 'created' ? 'created' : action === 'deleted' ? 'deleted' : action === 'reversed' ? 'reversed' : action === 'updated' ? 'updated' : action;
+  const actionLabel = action === 'created' ? 'created' : action === 'deleted' ? 'deleted' : action === 'updated' ? 'updated' : action;
   const summary = summarizeRecord('vouchers', voucher);
   const actionUrl = action === 'deleted' ? '/app/transactions/overview' : getTransactionSectionUrl(voucher);
-  const severity = action === 'deleted' || action === 'reversed' ? 'high' : 'medium';
+  const severity = action === 'deleted' ? 'high' : 'medium';
 
   return {
     title: `Voucher ${titleCase(actionLabel)}`,
@@ -514,7 +523,6 @@ function buildVoucherNotificationPayload(action, voucher = {}, meta = {}) {
     payload: {
       voucherCategory: voucher.voucherCategory || '',
       transactionType: voucher.transactionType || '',
-      status: voucher.status || '',
       amount: toNumber(voucher.amount, 0)
     }
   };
@@ -546,39 +554,7 @@ function buildBankTransactionNotificationPayload(action, transaction = {}, meta 
   };
 }
 
-async function generateNextMemberCode() {
-  const rows = await Member.find({ code: { $regex: /^M\d+$/i } }).select('code').lean();
-  let maxNumber = 0;
 
-  for (const row of rows) {
-    const code = cleanUpper(row.code);
-    const match = code.match(/^M(\d+)$/);
-    if (!match) continue;
-    const value = Number(match[1]);
-    if (Number.isFinite(value) && value > maxNumber) {
-      maxNumber = value;
-    }
-  }
-
-  return `M${String(maxNumber + 1).padStart(4, '0')}`;
-}
-
-async function generateNextMembershipNo() {
-  const rows = await Member.find({ membershipNo: { $regex: /^MB-\d+$/i } }).select('membershipNo').lean();
-  let maxNumber = 1000;
-
-  for (const row of rows) {
-    const membershipNo = cleanUpper(row.membershipNo);
-    const match = membershipNo.match(/^MB-(\d+)$/);
-    if (!match) continue;
-    const value = Number(match[1]);
-    if (Number.isFinite(value) && value > maxNumber) {
-      maxNumber = value;
-    }
-  }
-
-  return `MB-${maxNumber + 1}`;
-}
 
 function getEmployeePasswordHash(data = {}) {
   const password = String(data.password || process.env.EMPLOYEE_DEFAULT_PASSWORD || 'Employee@12345').trim();
@@ -591,7 +567,7 @@ function normalizeEmployeeUser(data = {}) {
   const email = cleanLower(data.email || `${cleanLower(data.code || fullName.replace(/\s+/g, '.'))}@bank.local`);
   const status = cleanText(data.status || (data.isActive === false ? 'Inactive' : 'Active')) || 'Active';
   const isActive = !status.toLowerCase().startsWith('inact');
-  const code = cleanUpper(data.code || `EMP-${username.replace(/[^a-z0-9]+/gi, '').toUpperCase().slice(0, 12)}`);
+  const code = cleanUpper(data.code || '');
 
   return {
     code,
@@ -756,56 +732,11 @@ const TRANSACTION_CATALOG = [
     description: 'Member loan, deposit, insurance, and recovery transactions.',
     permission: 'transactions.read',
     items: [
-      {
-        key: 'loan-paid-member',
-        label: 'Loan Paid to Member',
-        description: 'Disburse loan amounts to members.',
-        voucherCategory: 'Loan Paid to Member',
-        transactionType: 'payment',
-        accent: 'pink',
-        mode: 'Cash / Cheque',
-        documents: MEMBER_TRANSACTION_DOCUMENTS.loanPaidMember
-      },
-      {
-        key: 'deposit-paid-member',
-        label: 'Compulsory Deposit Paid to Member',
-        description: 'Pay compulsory deposit amounts back to member accounts.',
-        voucherCategory: 'Compulsory Deposit Paid to Member',
-        transactionType: 'payment',
-        accent: 'pink',
-        mode: 'Cash / Cheque',
-        documents: MEMBER_TRANSACTION_DOCUMENTS.depositPaidMember
-      },
-      {
-        key: 'insurance-paid-member',
-        label: 'Insurance Premium Paid to Member',
-        description: 'Record insurance premium disbursement entries.',
-        voucherCategory: 'Insurance Premium Paid to Member',
-        transactionType: 'payment',
-        accent: 'pink',
-        mode: 'Cash / Cheque',
-        documents: MEMBER_TRANSACTION_DOCUMENTS.insurancePaidMember
-      },
-      {
-        key: 'ssa-paid-member',
-        label: 'SSA Paid To Member',
-        description: 'Record SSA payout entries to members.',
-        voucherCategory: 'SSA Paid To Member',
-        transactionType: 'payment',
-        accent: 'pink',
-        mode: 'Cash-in-Hand',
-        documents: MEMBER_TRANSACTION_DOCUMENTS.ssaPaidMember
-      },
-      {
-        key: 'recovery-member',
-        label: 'Recovery From Member',
-        description: 'Recover dues from member accounts.',
-        voucherCategory: 'Recovery From Member',
-        transactionType: 'receipt',
-        accent: 'emerald',
-        mode: 'Cash / Transfer',
-        documents: MEMBER_TRANSACTION_DOCUMENTS.recoveryMember
-      }
+      { key: 'loan-paid-member', label: 'Loan Paid to Member', description: 'Disburse loan amounts to members.', voucherCategory: 'Loan Paid to Member', transactionType: 'payment', accent: 'pink', mode: 'Cash / Cheque', documents: MEMBER_TRANSACTION_DOCUMENTS.loanPaidMember },
+      { key: 'deposit-paid-member', label: 'Compulsory Deposit Paid to Member', description: 'Pay compulsory deposit amounts back to member accounts.', voucherCategory: 'Compulsory Deposit Paid to Member', transactionType: 'payment', accent: 'pink', mode: 'Cash / Cheque', documents: MEMBER_TRANSACTION_DOCUMENTS.depositPaidMember },
+      { key: 'insurance-paid-member', label: 'Insurance Premium Paid to Member', description: 'Record insurance premium disbursement entries.', voucherCategory: 'Insurance Premium Paid to Member', transactionType: 'payment', accent: 'pink', mode: 'Cash / Cheque', documents: MEMBER_TRANSACTION_DOCUMENTS.insurancePaidMember },
+      { key: 'ssa-paid-member', label: 'SSA Paid To Member', description: 'Record SSA payout entries to members.', voucherCategory: 'SSA Paid To Member', transactionType: 'payment', accent: 'pink', mode: 'Cash-in-Hand', documents: MEMBER_TRANSACTION_DOCUMENTS.ssaPaidMember },
+      { key: 'recovery-member', label: 'Recovery From Member', description: 'Recover dues from member accounts.', voucherCategory: 'Recovery From Member', transactionType: 'receipt', accent: 'emerald', mode: 'Cash / Transfer', documents: MEMBER_TRANSACTION_DOCUMENTS.recoveryMember }
     ]
   },
   {
@@ -814,76 +745,12 @@ const TRANSACTION_CATALOG = [
     description: 'Bank cash movement, cheque, and transfer vouchers.',
     permission: 'bank-transactions.read',
     items: [
-      {
-        key: 'loan-recv-cash',
-        label: 'Loan Received to Cash/Credit A/c',
-        description: 'Receive loan proceeds through cash or credit settlement.',
-        voucherCategory: 'Loan Received',
-        transactionType: 'receipt',
-        accent: 'emerald',
-        mode: 'Cash / Credit',
-        documents: BANK_TRANSACTION_DOCUMENTS['loan-recv-cash']
-      },
-      {
-        key: 'loan-recv-saving',
-        label: 'Loan Received to Saving A/c',
-        description: 'Receive loan proceeds into saving account.',
-        voucherCategory: 'Loan Received to Saving A/c',
-        transactionType: 'receipt',
-        accent: 'emerald',
-        mode: 'Saving A/c',
-        documents: BANK_TRANSACTION_DOCUMENTS['loan-recv-saving']
-      },
-      {
-        key: 'deposit-in-bank',
-        label: 'Deposit in Bank',
-        description: 'Move cash or settlement into bank account.',
-        voucherCategory: 'Deposit in Bank',
-        transactionType: 'transfer',
-        accent: 'amber',
-        mode: 'Bank Deposit',
-        documents: BANK_TRANSACTION_DOCUMENTS['deposit-in-bank']
-      },
-      {
-        key: 'cheque-issue-saving',
-        label: 'Cheque Issue With Bank (Saving A/c)',
-        description: 'Issue cheque against savings account settlement.',
-        voucherCategory: 'Cheque Issue With Bank (Saving A/c)',
-        transactionType: 'payment',
-        accent: 'pink',
-        mode: 'Cheque',
-        documents: BANK_TRANSACTION_DOCUMENTS['cheque-issue-saving']
-      },
-      {
-        key: 'cheque-issue-loan',
-        label: 'Cheque Issue With Bank (Loan A/c)',
-        description: 'Issue cheque against loan account settlement.',
-        voucherCategory: 'Cheque Issue With Bank (Loan A/c)',
-        transactionType: 'payment',
-        accent: 'pink',
-        mode: 'Cheque',
-        documents: BANK_TRANSACTION_DOCUMENTS['cheque-issue-loan']
-      },
-      {
-        key: 'transfer-saving',
-        label: 'Amount Transfer to Saving A/c',
-        description: 'Transfer money to saving account ledger.',
-        voucherCategory: 'Amount Transfer to Saving A/c',
-        transactionType: 'transfer',
-        accent: 'amber',
-        mode: 'Transfer',
-        documents: BANK_TRANSACTION_DOCUMENTS['transfer-saving']
-      },
-      {
-        key: 'transfer-cashcredit',
-        label: 'Amount Transfer to Cash-Credit A/c',
-        description: 'Transfer money to cash-credit account ledger.',
-        voucherCategory: 'Amount Transfer to Cash-Credit A/c',
-        transactionType: 'transfer',
-        accent: 'amber',
-        mode: 'Transfer',
-        documents: BANK_TRANSACTION_DOCUMENTS['transfer-cashcredit']
-      }
+      { key: 'loan-recv-cash', label: 'Loan Received to Cash/Credit A/c', description: 'Receive loan proceeds through cash or credit settlement.', voucherCategory: 'Loan Received', transactionType: 'receipt', accent: 'emerald', mode: 'Cash / Credit', documents: BANK_TRANSACTION_DOCUMENTS['loan-recv-cash'] },
+      { key: 'loan-recv-saving', label: 'Loan Received to Saving A/c', description: 'Receive loan proceeds into saving account.', voucherCategory: 'Loan Received to Saving A/c', transactionType: 'receipt', accent: 'emerald', mode: 'Saving A/c', documents: BANK_TRANSACTION_DOCUMENTS['loan-recv-saving'] },
+      { key: 'deposit-in-bank', label: 'Deposit in Bank', description: 'Move cash or settlement into bank account.', voucherCategory: 'Deposit in Bank', transactionType: 'transfer', accent: 'amber', mode: 'Bank Deposit', documents: BANK_TRANSACTION_DOCUMENTS['deposit-in-bank'] },
+      { key: 'cheque-issue-saving', label: 'Cheque Issue With Bank (Saving A/c)', description: 'Issue cheque against savings account settlement.', voucherCategory: 'Cheque Issue With Bank (Saving A/c)', transactionType: 'payment', accent: 'pink', mode: 'Cheque', documents: BANK_TRANSACTION_DOCUMENTS['cheque-issue-saving'] },
+      { key: 'transfer-saving', label: 'Amount Transfer to Saving A/c', description: 'Transfer money to saving account ledger.', voucherCategory: 'Amount Transfer to Saving A/c', transactionType: 'transfer', accent: 'amber', mode: 'Transfer', documents: BANK_TRANSACTION_DOCUMENTS['transfer-saving'] },
+      { key: 'transfer-cashcredit', label: 'Amount Transfer to Cash-Credit A/c', description: 'Transfer money to cash-credit account ledger.', voucherCategory: 'Amount Transfer to Cash-Credit A/c', transactionType: 'transfer', accent: 'amber', mode: 'Transfer', documents: BANK_TRANSACTION_DOCUMENTS['transfer-cashcredit'] }
     ]
   },
   {
@@ -892,26 +759,8 @@ const TRANSACTION_CATALOG = [
     description: 'Employee advance payment and recovery workflow.',
     permission: 'transactions.read',
     items: [
-      {
-        key: 'advance-paid-emp',
-        label: 'Advance Paid by Cash/Cheque',
-        description: 'Pay advance to employee through cash or cheque.',
-        voucherCategory: 'Advance Paid by Cash/Cheque',
-        transactionType: 'payment',
-        accent: 'pink',
-        mode: 'Cash / Cheque',
-        documents: EMPLOYEE_TRANSACTION_DOCUMENTS['advance-paid-emp']
-      },
-      {
-        key: 'advance-recovery-emp',
-        label: 'Advance Recovery by Cash/Transfer',
-        description: 'Recover employee advance through cash or transfer.',
-        voucherCategory: 'Advance Recovery by Cash/Transfer',
-        transactionType: 'receipt',
-        accent: 'emerald',
-        mode: 'Cash / Transfer',
-        documents: EMPLOYEE_TRANSACTION_DOCUMENTS['advance-recovery-emp']
-      }
+      { key: 'advance-paid-emp', label: 'Advance Paid by Cash/Cheque', description: 'Pay advance to employee through cash or cheque.', voucherCategory: 'Advance Paid by Cash/Cheque', transactionType: 'payment', accent: 'pink', mode: 'Cash / Cheque', documents: EMPLOYEE_TRANSACTION_DOCUMENTS['advance-paid-emp'] },
+      { key: 'advance-recovery-emp', label: 'Advance Recovery by Cash/Transfer', description: 'Recover employee advance through cash or transfer.', voucherCategory: 'Advance Recovery by Cash/Transfer', transactionType: 'receipt', accent: 'emerald', mode: 'Cash / Transfer', documents: EMPLOYEE_TRANSACTION_DOCUMENTS['advance-recovery-emp'] }
     ]
   },
   {
@@ -920,112 +769,33 @@ const TRANSACTION_CATALOG = [
     description: 'Inter-account transfer voucher movements.',
     permission: 'transactions.read',
     items: [
-      {
-        key: 'transfer-voucher-paid',
-        label: 'Transfer Voucher Paid to Member',
-        description: 'Transfer voucher paid out to member.',
-        voucherCategory: 'Transfer Voucher Paid to Member',
-        transactionType: 'payment',
-        accent: 'pink',
-        mode: 'Transfer',
-        documents: [
-          { key: 'transferAdvice', label: 'Transfer Advice', description: 'Transfer request or advice slip.' },
-          { key: 'allocationSheet', label: 'Allocation Sheet', description: 'Member allocation breakdown sheet.' },
-          { key: 'memberAcknowledgement', label: 'Member Acknowledgement', description: 'Signed acknowledgement from member.' }
-        ]
-      },
-      {
-        key: 'transfer-voucher-recover',
-        label: 'Transfer Voucher Recover From Member',
-        description: 'Recover transfer voucher amount from member.',
-        voucherCategory: 'Transfer Voucher Recover From Member',
-        transactionType: 'receipt',
-        accent: 'emerald',
-        mode: 'Transfer',
-        documents: [
-          { key: 'recoveryAdvice', label: 'Recovery Advice', description: 'Recovery advice or internal note.' },
-          { key: 'allocationSheet', label: 'Allocation Sheet', description: 'Member allocation breakdown sheet.' },
-          { key: 'bankProof', label: 'Bank Proof', description: 'Bank proof or recovery confirmation.' }
-        ]
-      },
-      {
-        key: 'transfer-voucher-payment',
-        label: 'Payment',
-        description: 'Payment voucher entry under transfer voucher workspace.',
-        voucherCategory: 'Payment',
-        transactionType: 'payment',
-        accent: 'pink',
-        mode: 'Payment',
-        documents: [
-          { key: 'paymentVoucher', label: 'Payment Voucher', description: 'Primary transfer voucher payment copy.' },
-          { key: 'ledgerAdvice', label: 'Ledger Advice', description: 'Ledger or account posting reference.' },
-          { key: 'approvalNote', label: 'Approval Note', description: 'Approved note or sanction document.' }
-        ]
-      }
+      { key: 'transfer-voucher-paid', label: 'Transfer Voucher Paid to Member', description: 'Transfer voucher paid out to member.', voucherCategory: 'Transfer Voucher Paid to Member', transactionType: 'payment', accent: 'pink', mode: 'Transfer', documents: [] },
+      { key: 'transfer-voucher-recover', label: 'Transfer Voucher Recover From Member', description: 'Recover transfer voucher amount from member.', voucherCategory: 'Transfer Voucher Recover From Member', transactionType: 'receipt', accent: 'emerald', mode: 'Transfer', documents: [] },
+      { key: 'transfer-voucher-payment', label: 'Payment', description: 'Payment voucher entry under transfer voucher workspace.', voucherCategory: 'Payment', transactionType: 'payment', accent: 'pink', mode: 'Payment', documents: [] },
+      { key: 'transfer-voucher-receipt', label: 'Receipt', description: 'Receipt voucher entry under transfer voucher workspace.', voucherCategory: 'Receipt', transactionType: 'receipt', accent: 'emerald', mode: 'Receipt', documents: [] }
     ]
   },
   {
-    key: 'receipt-interest',
-    label: 'Receipt / Interest',
-    description: 'Receipt vouchers, interest postings, and related member lists.',
-    permission: ['transactions.read', 'no-interest-members.read'],
+    key: 'interest',
+    label: 'Interest',
+    description: 'Interest transactions.',
+    permission: 'transactions.read',
     items: [
-      {
-        key: 'receipt-voucher',
-        label: 'Receipt',
-        description: 'General receipt entry for the society.',
-        voucherCategory: 'Receipt',
-        transactionType: 'receipt',
-        accent: 'emerald',
-        mode: 'Receipt',
-        documents: [
-          { key: 'receiptVoucher', label: 'Receipt Voucher', description: 'Primary receipt voucher copy.' },
-          { key: 'cashReceipt', label: 'Cash Receipt', description: 'Cash receipt or acknowledgment.' },
-          { key: 'bankReceipt', label: 'Bank Receipt', description: 'Bank receipt or transfer confirmation.' }
-        ]
-      },
-      {
-        key: 'interest-paid-member',
-        label: 'Interest Paid to Member',
-        description: 'Post interest payout to member ledger.',
-        voucherCategory: 'Interest Paid to Member',
-        transactionType: 'payment',
-        accent: 'pink',
-        mode: 'Interest',
-        documents: [
-          { key: 'interestWorksheet', label: 'Interest Worksheet', description: 'Interest calculation worksheet.' },
-          { key: 'sanctionNote', label: 'Sanction Note', description: 'Interest approval or sanction note.' },
-          { key: 'bankAdvice', label: 'Bank Advice', description: 'Bank advice or payment reference.' },
-          { key: 'receiptCopy', label: 'Receipt Copy', description: 'Receipt copy for interest payout.' }
-        ]
-      },
-      {
-        key: 'no-interest-members',
-        label: 'No Interest Members',
-        description: 'Members excluded from interest calculation.',
-        voucherCategory: 'No Interest Members',
-        transactionType: 'support',
-        accent: 'amber',
-        mode: 'Master Link',
-        route: '/app/transactions/receipt-interest/no-interest-members'
-      }
+      { key: 'interest-paid-member', label: 'Interest Paid to Member', description: 'Post interest payout to member ledger.', voucherCategory: 'Interest Paid to Member', transactionType: 'payment', accent: 'pink', mode: 'Interest', documents: [] },
+      { key: 'interest-recv-member', label: 'Interest Receive From Member', description: 'Receive interest from member.', voucherCategory: 'Interest Receive From Member', transactionType: 'receipt', accent: 'emerald', mode: 'Interest', documents: [] },
+      { key: 'interest-recv-employee', label: 'Interest Receive From Employee', description: 'Receive interest from employee.', voucherCategory: 'Interest Receive From Employee', transactionType: 'receipt', accent: 'emerald', mode: 'Interest', documents: [] }
     ]
   },
   {
-    key: 'supporting',
-    label: 'Supporting',
-    description: 'Demand entry helpers inside the transaction workspace.',
-    permission: ['transactions.read'],
+    key: 'other',
+    label: 'Other Transactions',
+    description: 'Other transactions and support forms.',
+    permission: 'transactions.read',
     items: [
-      {
-        key: 'demand-entry',
-        label: 'Demand Entry',
-        description: 'Create or review demand records from the transaction shell.',
-        voucherCategory: 'Demand Entry',
-        transactionType: 'support',
-        accent: 'amber',
-        mode: 'Demand'
-      }
+      { key: 'payment-voucher', label: 'Payment Voucher', description: 'General payment entry.', voucherCategory: 'Payment Voucher', transactionType: 'payment', accent: 'pink', mode: 'Payment', documents: [] },
+      { key: 'receipt-voucher', label: 'Receipt Voucher', description: 'General receipt entry for the society.', voucherCategory: 'Receipt Voucher', transactionType: 'receipt', accent: 'emerald', mode: 'Receipt', documents: [] },
+      { key: 'no-interest-members', label: 'No Interest Members', description: 'Members excluded from interest calculation.', voucherCategory: 'No Interest Members', transactionType: 'support', accent: 'amber', mode: 'Master Link', route: '/app/transactions/other/no-interest-members' },
+      { key: 'demand-entry', label: 'Demand Entry', description: 'Create or review demand records from the transaction shell.', voucherCategory: 'Demand Entry', transactionType: 'support', accent: 'amber', mode: 'Demand', route: '/app/transactions/other/demand-entry' }
     ]
   }
 ];
@@ -1103,19 +873,7 @@ const RESOURCE_DEFS = {
       };
     }
   },
-  managers: {
-    model: Manager,
-    searchFields: ['name', 'designation', 'branchCode'],
-    normalize(data = {}) {
-      return {
-        name: cleanText(data.name),
-        designation: cleanText(data.designation),
-        branchCode: cleanUpper(data.branchCode),
-        isActive: toBool(data.isActive, true),
-        payload: toMixed(data.payload, {})
-      };
-    }
-  },
+  
   employees: {
     model: User,
     searchFields: ['code', 'fullName', 'name', 'username', 'email', 'designation', 'branchCode', 'phone', 'mobileNo', 'status'],
@@ -1246,25 +1004,18 @@ const RESOURCE_DEFS = {
       };
     }
   },
-  demands: {
-    model: Demand,
-    searchFields: ['demandNo', 'month', 'branchCode', 'memberCode', 'status', 'remarks'],
+  demandLists: {
+    model: DemandList,
+    searchFields: ['demandListNo', 'month', 'branchCode', 'status', 'remarks'],
     normalize(data = {}) {
       return {
-        demandNo: cleanUpper(data.demandNo),
-        month: cleanText(data.month),
+        demandListNo: cleanUpper(data.demandListNo),
+        demandListDate: cleanText(data.demandListDate),
         branchCode: cleanUpper(data.branchCode),
-        memberCode: cleanUpper(data.memberCode),
-        dueDate: cleanText(data.dueDate),
-        total: toNumber(data.total, 0),
-        recovered: toNumber(data.recovered, 0),
+        month: cleanText(data.month),
+        year: cleanText(data.year),
         status: cleanText(data.status, 'Pending'),
         remarks: cleanText(data.remarks),
-        allocations: toArray(data.allocations).map((item) => ({
-          memberCode: cleanUpper(item.memberCode),
-          head: cleanText(item.head),
-          amount: toNumber(item.amount, 0)
-        })),
         payload: toMixed(data.payload, {})
       };
     }
@@ -1287,7 +1038,7 @@ const RESOURCE_DEFS = {
   },
   vouchers: {
     model: Voucher,
-    searchFields: ['voucherNo', 'voucherCategory', 'transactionType', 'partyCode', 'partyType', 'mode', 'status', 'narration', 'referenceNo', 'instrumentNo', 'branchCode', 'fyCode'],
+    searchFields: ['voucherNo', 'voucherCategory', 'transactionType', 'partyCode', 'partyType', 'mode', 'narration', 'referenceNo', 'instrumentNo', 'branchCode', 'fyCode'],
     normalize(data = {}) {
       return {
         voucherNo: cleanUpper(data.voucherNo),
@@ -1299,24 +1050,21 @@ const RESOURCE_DEFS = {
         partyType: cleanText(data.partyType, 'ledger'),
         amount: toNumber(data.amount, 0),
         mode: cleanText(data.mode),
-        status: cleanText(data.status, 'Draft'),
         narration: cleanText(data.narration),
         referenceNo: cleanText(data.referenceNo),
         instrumentNo: cleanText(data.instrumentNo),
         instrumentDate: cleanText(data.instrumentDate),
         branchCode: cleanUpper(data.branchCode),
         fyCode: cleanUpper(data.fyCode),
-        reversalOf: cleanUpper(data.reversalOf),
         approvedBy: cleanText(data.approvedBy),
         createdBy: cleanText(data.createdBy),
         details: (() => {
-          const details = toMixed(data.details, {});
-          return {
+          const details = sanitizeBankVoucherDetails(data.details);
+          return sanitizeBankVoucherDetails({
             ...details,
             payMode: cleanText(details.payMode || data.mode || ''),
-            fixedSettlement: cleanText(details.fixedSettlement || ''),
             sms: Boolean(details.sms)
-          };
+          });
         })(),
         journalLines: toArray(data.journalLines).map((line) => ({
           ledgerCode: cleanUpper(line.ledgerCode || line.ledger),
@@ -1362,9 +1110,12 @@ async function seedMany(model, filterFn, rows = []) {
 async function seedBankingData() {
   await seedOne(Society, { key: 'default' }, SOCIETY_SEED);
   await seedOne(Committee, { key: 'default' }, COMMITTEE_SEED);
-  await seedMany(Manager, (row) => ({ name: cleanText(row.name), designation: cleanText(row.designation), branchCode: cleanUpper(row.branchCode) }), MANAGER_SEEDS);
+  await seedMany(CommitteeDirector, (row) => ({ committeeKey: row.committeeKey, name: row.name }), COMMITTEE_DIRECTOR_SEEDS);
+  
   await seedMany(Branch, (row) => ({ code: cleanUpper(row.code) }), BRANCH_SEEDS);
   await seedMany(Member, (row) => ({ code: cleanUpper(row.code) }), MEMBER_SEEDS);
+  await seedMany(MemberDemandDefault, (row) => ({ memberCode: row.memberCode }), MEMBER_DEMAND_DEFAULT_SEEDS);
+  
   await seedMany(User, (row) => ({ code: cleanUpper(row.code) }), EMPLOYEE_SEEDS.map((row) => normalizeEmployeeUser({
     ...row,
     fullName: row.name,
@@ -1374,12 +1125,40 @@ async function seedBankingData() {
     password: row.password || row.code || row.name,
     status: row.status || 'Active'
   })));
+  await seedMany(Employee, (row) => ({ code: cleanUpper(row.code) }), EMPLOYEE_SEEDS.map(row => ({
+    code: cleanUpper(row.code),
+    name: cleanText(row.name),
+    designation: cleanText(row.designation),
+    branchCode: cleanUpper(row.branchCode),
+    isActive: row.isActive !== false
+  })));
+
   await seedMany(Ledger, (row) => ({ code: cleanUpper(row.code) }), LEDGER_SEEDS);
+  await seedMany(Rate, (row) => ({ code: cleanUpper(row.code) }), RATE_SEEDS);
   await seedMany(BankAccount, (row) => ({ code: cleanUpper(row.code) }), BANK_ACCOUNT_SEEDS);
-  await seedMany(Demand, (row) => ({ demandNo: cleanUpper(row.demandNo) }), DEMAND_SEEDS);
+  
+  await seedMany(DemandList, (row) => ({ demandListNo: cleanUpper(row.demandListNo) }), DEMAND_LIST_SEEDS);
+  await seedMany(DemandLine, (row) => ({ demandListNo: row.demandListNo, memberCode: row.memberCode }), DEMAND_LINE_SEEDS);
+  
   await seedMany(NoInterestMember, (row) => ({ code: cleanUpper(row.code) }), NO_INTEREST_MEMBER_SEEDS);
   await seedMany(Voucher, (row) => ({ voucherNo: cleanUpper(row.voucherNo) }), VOUCHER_SEEDS);
+  await seedMany(RecoveryLine, (row) => ({ voucherNo: row.voucherNo, memberCode: row.memberCode }), RECOVERY_LINE_SEEDS);
+  
   await seedMany(BankTransaction, (row) => ({ transactionNo: cleanUpper(row.transactionNo) }), BANK_TRANSACTION_SEEDS);
+
+  // Synchronize sequences so that the next generated sequence is MAX(code) + 1
+  await syncSequence('branches', 'code');
+  await syncSequence('members', 'code');
+  await syncSequence('members', 'membershipNo');
+  await syncSequence('employees', 'code');
+  await syncSequence('ledgers', 'code');
+  await syncSequence('bank_accounts', 'code');
+  await syncSequence('demand_lists', 'demandListNo');
+  await syncSequence('no_interest_members', 'code');
+  await syncSequence('vouchers', 'voucherNo');
+  await syncSequence('bank_transactions', 'transactionNo');
+
+  console.log('Default data seeding completed successfully');
   return true;
 }
 
@@ -1396,7 +1175,11 @@ async function listResource(resource, search = '', user = {}) {
   }
   const query = applyBranchScope(buildSearchQuery(def.searchFields, search), resource, user);
   const rows = await def.model.find(query).sort({ updatedAt: -1 }).lean();
-  return rows.map((row) => (resource === 'members' ? sanitizeMemberResponse(row) : toResponse(row)));
+  return rows.map((row) => {
+    if (resource === 'members') return sanitizeMemberResponse(row);
+    if (resource === 'vouchers') return sanitizeVoucherResponse(row);
+    return toResponse(row);
+  });
 }
 
 async function getResource(resource, id, user = {}) {
@@ -1415,7 +1198,9 @@ async function getResource(resource, id, user = {}) {
 
   const record = await def.model.findById(id).lean();
   if (!record || !canAccessBranchRecord(resource, record, user)) return null;
-  return resource === 'members' ? sanitizeMemberResponse(record) : toResponse(record);
+  if (resource === 'members') return sanitizeMemberResponse(record);
+  if (resource === 'vouchers') return sanitizeVoucherResponse(record);
+  return toResponse(record);
 }
 
 async function createResource(resource, data = {}, meta = {}) {
@@ -1431,6 +1216,9 @@ async function createResource(resource, data = {}, meta = {}) {
   if (resource === 'employees') {
     const payload = normalizeEmployeeUser(data);
     payload.branchCode = resolveBranchCode(actorUser, payload.branchCode);
+    if (!payload.code) {
+      payload.code = await getNextSequenceValue('employees', 'code');
+    }
     if (meta.actorUserId) {
       payload.createdByUserId = meta.actorUserId;
       payload.updatedByUserId = meta.actorUserId;
@@ -1446,14 +1234,29 @@ async function createResource(resource, data = {}, meta = {}) {
   if (isBranchScopedResource(resource)) {
     payload.branchCode = resolveBranchCode(actorUser, payload.branchCode);
   }
-  if (resource === 'members') {
-    if (!payload.code) {
-      payload.code = await generateNextMemberCode();
-    }
-    if (!payload.membershipNo) {
-      payload.membershipNo = await generateNextMembershipNo();
-    }
+  
+  const getSequenceField = () => {
+    if (['members', 'employees', 'branches', 'ledgers', 'bankAccounts', 'noInterestMembers'].includes(resource)) return 'code';
+    if (resource === 'vouchers') return 'voucherNo';
+    if (resource === 'bankTransactions') return 'transactionNo';
+    if (resource === 'demandLists') return 'demandListNo';
+    return null;
+  };
+  
+  const sequenceField = getSequenceField();
+  if (sequenceField && !payload[sequenceField]) {
+    const tableName = resource === 'bankAccounts' ? 'bank_accounts' 
+                    : resource === 'bankTransactions' ? 'bank_transactions'
+                    : resource === 'demandLists' ? 'demand_lists'
+                    : resource === 'noInterestMembers' ? 'no_interest_members'
+                    : resource;
+    payload[sequenceField] = await getNextSequenceValue(tableName, sequenceField);
   }
+
+  if (resource === 'members' && !payload.membershipNo) {
+    payload.membershipNo = await getNextSequenceValue('members', 'membershipNo');
+  }
+
   if (meta.actorUserId) {
     payload.createdByUserId = meta.actorUserId;
     payload.updatedByUserId = meta.actorUserId;
@@ -1479,7 +1282,7 @@ async function createResource(resource, data = {}, meta = {}) {
   }
 
   const record = await def.model.create(payload);
-  const response = toResponse(record);
+  const response = resource === 'vouchers' ? sanitizeVoucherResponse(record) : toResponse(record);
   await notifySafely(buildResourceNotificationPayload(resource, 'created', response, meta));
   return response;
 }
@@ -1521,8 +1324,8 @@ async function updateResource(resource, id, data = {}, meta = {}) {
     const previousPhotoFileId = current.photoFileId ? String(current.photoFileId) : '';
     const payload = def.normalize ? def.normalize({ ...current.toObject(), ...data }) : clone({ ...current.toObject(), ...data });
     payload.branchCode = resolveBranchCode(actorUser, current.branchCode);
-    payload.code = payload.code || current.code || await generateNextMemberCode();
-    payload.membershipNo = payload.membershipNo || current.membershipNo || await generateNextMembershipNo();
+    payload.code = payload.code || current.code;
+    payload.membershipNo = payload.membershipNo || current.membershipNo;
     if (meta.actorUserId) {
       payload.updatedByUserId = meta.actorUserId;
     }
@@ -1567,7 +1370,11 @@ async function updateResource(resource, id, data = {}, meta = {}) {
   current.set(payload);
   await current.save();
   const record = current.toObject();
-  const response = resource === 'members' ? sanitizeMemberResponse(record) : toResponse(record);
+  const response = resource === 'members'
+    ? sanitizeMemberResponse(record)
+    : resource === 'vouchers'
+      ? sanitizeVoucherResponse(record)
+      : toResponse(record);
   await notifySafely(buildResourceNotificationPayload(resource, 'updated', response, meta));
   return response;
 }
@@ -1678,7 +1485,7 @@ function ledgerSnapshotFromDocuments(ledgers = [], vouchers = []) {
 
 async function getLedgerSnapshots({ uptoDate = '', branchCode = '' } = {}) {
   const ledgers = await Ledger.find({}).lean();
-  const query = { status: 'Posted' };
+  const query = {};
   if (uptoDate) {
     query.date = { $lte: uptoDate };
   }
@@ -1729,7 +1536,7 @@ async function getDashboardSummary({ user = {}, fyStart = '', fyEnd = '' } = {})
     Ledger.countDocuments({}),
     Rate.countDocuments({}),
     BankAccount.countDocuments({}),
-    Demand.countDocuments(branchCode ? { branchCode } : {}),
+    DemandList.countDocuments(branchCode ? { branchCode } : {}),
     NoInterestMember.countDocuments(branchCode ? { branchCode } : {}),
     Voucher.find(voucherQuery).sort({ createdAt: -1 }).limit(10).lean(),
     BankTransaction.find(txQuery).sort({ createdAt: -1 }).limit(10).lean()
@@ -1750,7 +1557,7 @@ async function getDashboardSummary({ user = {}, fyStart = '', fyEnd = '' } = {})
       vouchers: await Voucher.countDocuments(voucherQuery),
       bankTransactions: await BankTransaction.countDocuments(txQuery)
     },
-    recentVouchers: vouchers.map((voucher) => toResponse(voucher)),
+    recentVouchers: vouchers.map((voucher) => sanitizeVoucherResponse(voucher)),
     recentBankTransactions: bankTransactions.map((transaction) => toResponse(transaction))
   };
 }
@@ -1775,7 +1582,7 @@ async function getLookups(user = {}) {
       listResource('ledgers'),
       listResource('rates'),
       listResource('bankAccounts'),
-      listResource('demands', '', user),
+      listResource('demandLists', '', user),
       listResource('noInterestMembers', '', user),
       getGlobalRatesConfig()
     ]);
@@ -1793,13 +1600,10 @@ async function getLookups(user = {}) {
       ratesConfig
     };
   }
-  async function buildVoucherRows(filter = {}) {
+async function buildVoucherRows(filter = {}) {
   const query = {};
   if (filter.search) {
     Object.assign(query, buildSearchQuery(RESOURCE_DEFS.vouchers.searchFields, filter.search));
-  }
-  if (filter.status) {
-    query.status = cleanText(filter.status);
   }
   if (filter.partyType) {
     query.partyType = cleanText(filter.partyType);
@@ -1815,7 +1619,7 @@ async function getLookups(user = {}) {
   }
 
   const vouchers = await Voucher.find(query).sort({ date: -1, createdAt: -1 }).lean();
-  return vouchers.map((voucher) => toResponse(voucher));
+  return vouchers.map((voucher) => sanitizeVoucherResponse(voucher));
 }
 
 async function buildBankTransactionRows(filter = {}) {
@@ -1855,7 +1659,7 @@ async function buildMemberLedgerReport({ memberCode, dateFrom = '', dateTo = '',
   }
 
   const branchCode = resolveBranchCode(user, member.branchCode);
-  const query = { status: 'Posted' };
+  const query = {};
   if (branchCode) {
     query.branchCode = branchCode;
   }
@@ -1981,7 +1785,7 @@ async function buildProfitLossReport({ uptoDate = '', user = {} } = {}) {
 }
 
 async function buildCashBookReport({ date = '', user = {} } = {}) {
-  const query = date ? { status: 'Posted', date } : { status: 'Posted' };
+  const query = date ? { date } : {};
   const branchCode = resolveBranchCode(user);
   if (branchCode) {
     query.branchCode = branchCode;
@@ -2007,7 +1811,7 @@ async function buildCashBookReport({ date = '', user = {} } = {}) {
 }
 
 async function buildDayBookReport({ date = '', user = {} } = {}) {
-  const query = date ? { status: 'Posted', date } : { status: 'Posted' };
+  const query = date ? { date } : {};
   const branchCode = resolveBranchCode(user);
   if (branchCode) {
     query.branchCode = branchCode;
@@ -2032,7 +1836,7 @@ async function buildDayBookReport({ date = '', user = {} } = {}) {
 }
 
 async function buildVoucherSummaryReport({ date = '', user = {} } = {}) {
-  const query = date ? { status: 'Posted', date } : { status: 'Posted' };
+  const query = date ? { date } : {};
   const branchCode = resolveBranchCode(user);
   if (branchCode) {
     query.branchCode = branchCode;
@@ -2049,7 +1853,7 @@ async function buildVoucherSummaryReport({ date = '', user = {} } = {}) {
 }
 
 async function buildMonthlySummaryReport({ branchCode = '', month = '', user = {} } = {}) {
-  const query = { status: 'Posted' };
+  const query = {};
   const effectiveBranchCode = resolveBranchCode(user, branchCode);
   if (effectiveBranchCode) {
     query.branchCode = effectiveBranchCode;
@@ -2107,7 +1911,7 @@ async function buildAllMemberListReport({ branchCode = '', user = {} } = {}) {
 }
 
 async function buildPaymentReceiptStatementReport({ dateFrom = '', dateTo = '', branchCode = '', user = {} } = {}) {
-  const query = { status: 'Posted' };
+  const query = {};
   const effectiveBranchCode = resolveBranchCode(user, branchCode);
   if (effectiveBranchCode) {
     query.branchCode = effectiveBranchCode;
@@ -2176,21 +1980,11 @@ async function buildDashboardQuickSummary({ user = {}, fyStart = '', fyEnd = '' 
 }
 
 async function getNextVoucherNo(branchCode = '') {
-  const query = branchCode ? { branchCode: cleanUpper(branchCode) } : {};
-  const last = await Voucher.findOne(query).sort({ createdAt: -1 }).select('voucherNo').lean();
-  if (!last?.voucherNo) return 'V-0001';
-  const match = String(last.voucherNo).match(/(\d+)$/);
-  if (!match) return 'V-0001';
-  return `V-${String(Number(match[1]) + 1).padStart(4, '0')}`;
+  return await getNextSequenceValue('vouchers', 'voucherNo');
 }
 
 async function getNextTransactionNo(branchCode = '') {
-  const query = branchCode ? { branchCode: cleanUpper(branchCode) } : {};
-  const last = await BankTransaction.findOne(query).sort({ createdAt: -1 }).select('transactionNo').lean();
-  if (!last?.transactionNo) return 'BT0001';
-  const match = String(last.transactionNo).match(/(\d+)$/);
-  if (!match) return 'BT0001';
-  return `BT${String(Number(match[1]) + 1).padStart(4, '0')}`;
+  return await getNextSequenceValue('bank_transactions', 'transactionNo');
 }
 
 function getTransactionCatalogItemByKey(key = '') {
@@ -2203,7 +1997,7 @@ function getTransactionCatalogItemByKey(key = '') {
   return null;
 }
 function normalizeVoucher(data = {}) {
-  const details = toMixed(data.details, {});
+  const details = sanitizeBankVoucherDetails(data.details);
   const catalogItem = getTransactionCatalogItemByKey(details.key || data.transactionKey || '');
   return {
     voucherNo: cleanText(data.voucherNo),
@@ -2215,10 +2009,15 @@ function normalizeVoucher(data = {}) {
     partyType: cleanText(data.partyType || (catalogItem ? 'member' : 'ledger')),
     partyCode: cleanText(data.partyCode),
     partyName: cleanText(data.partyName),
+    referenceNo: cleanText(data.referenceNo),
+    instrumentNo: cleanText(data.instrumentNo),
+    instrumentDate: cleanText(data.instrumentDate),
     branchCode: cleanUpper(data.branchCode),
+    fyCode: cleanUpper(data.fyCode),
     amount: toNumber(data.amount, 0),
     narration: cleanText(data.narration),
-    status: cleanText(data.status || 'Draft'),
+    approvedBy: cleanText(data.approvedBy),
+    createdBy: cleanText(data.createdBy),
     journalLines: toArray(data.journalLines),
     details,
     documents: toMixed(data.documents, {}),
@@ -2263,7 +2062,7 @@ async function createVoucher(data = {}, meta = {}) {
     payload.updatedByUserId = meta.actorUserId;
   }
   const record = await Voucher.create(payload);
-  const response = toResponse(record);
+  const response = sanitizeVoucherResponse(record);
   await notifySafely(buildVoucherNotificationPayload('created', response, meta));
   return response;
 }
@@ -2278,7 +2077,7 @@ async function updateVoucher(id, data = {}, meta = {}) {
   }
   current.set(payload);
   await current.save();
-  const response = toResponse(current.toObject());
+  const response = sanitizeVoucherResponse(current.toObject());
   await notifySafely(buildVoucherNotificationPayload('updated', response, meta));
   return response;
 }
@@ -2288,22 +2087,6 @@ async function deleteVoucher(id) {
   if (!record) return false;
   await deleteDocumentFiles(record.documents || {});
   return true;
-}
-
-async function reverseVoucher(id, meta = {}) {
-  const current = await Voucher.findById(id);
-  if (!current) return null;
-  if (current.status !== 'Posted') {
-    const error = new Error('Only posted vouchers can be reversed');
-    error.statusCode = 400;
-    throw error;
-  }
-  current.status = 'Reversed';
-  if (meta.actorUserId) current.updatedByUserId = meta.actorUserId;
-  await current.save();
-  const response = toResponse(current.toObject());
-  await notifySafely(buildVoucherNotificationPayload('reversed', response, meta));
-  return response;
 }
 
 async function createBankTransaction(data = {}, meta = {}) {
@@ -2379,16 +2162,11 @@ module.exports = {
   getSingle,
   listResource,
   normalizeResourcePayload,
-  reverseVoucher,
   seedBankingData,
   updateBankTransaction,
   updateResource,
   updateVoucher
 };
-
-
-
-
 
 
 

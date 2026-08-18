@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowUpDown, ArrowDown, ArrowUp, Search } from 'lucide-react';
 import { Select } from './Select';
+import { formatDateOnly, isDateOnlyColumn } from '../../utils/date';
 
 export function Table({
   columns = [],
@@ -202,7 +203,7 @@ export function Table({
                   </td>
                   {columns.map((col) => (
                     <td key={col.key} className={`px-4 py-3 text-slate-700 ${col.align === 'right' ? 'text-right' : ''} ${col.align === 'center' ? 'text-center' : ''}`}>
-                      {col.render ? col.render(row) : row[col.key]}
+                      {isDateOnlyColumn(col) ? formatDateOnly(row[col.key]) : (col.render ? col.render(row) : row[col.key])}
                     </td>
                   ))}
                 </tr>

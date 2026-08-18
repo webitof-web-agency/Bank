@@ -482,7 +482,12 @@ export function TransferVoucherTransactionWorkspaceDetailPage({ sectionKey, item
         </div>
       </div>
 
-      <Modal open={editorOpen} onClose={closeEditor} title="Edit Transfer Voucher" size="xl">
+      <Modal open={editorOpen} onClose={closeEditor} title="Edit Transfer Voucher" width="min(1100px, 96vw)" footer={<div className="flex w-full justify-end gap-3">
+          <Button type="button" variant="outline" onClick={closeEditor} disabled={saving}>Cancel</Button>
+          <Button type="submit" form="transaction-voucher-form" className="bg-[var(--primary,#1661F6)] text-white hover:opacity-90" disabled={saving}>
+            {saving ? 'Saving...' : 'Save'}
+          </Button>
+        </div>}>
         <div className="max-h-[80vh] overflow-y-auto pr-1">
           <TransferVoucherTransactionForm
             section={section}
@@ -494,12 +499,7 @@ export function TransferVoucherTransactionWorkspaceDetailPage({ sectionKey, item
             onDocumentRemove={handleDocumentRemove}
           />
         </div>
-        <div className="mt-5 flex justify-end gap-2 border-t border-slate-200 pt-4">
-          <Button type="button" variant="outline" onClick={closeEditor} disabled={saving}>Cancel</Button>
-          <Button type="submit" form="transaction-voucher-form" className="bg-[var(--primary,#1661F6)] text-white hover:opacity-90" disabled={saving}>
-            {saving ? 'Saving...' : 'Save'}
-          </Button>
-        </div>
+        
       </Modal>
 
       <ConfirmDialog

@@ -125,12 +125,16 @@ const TABLE_SCHEMAS = {
     code: T.string(40),
     name: T.string(255),
     prefix: T.string(80),
+    place: T.string(191),
     regNo: T.string(120),
     email: T.string(191),
     address: T.text,
     branchCode: T.string(40),
     logoUrl: T.string(255),
+    logoFileId: T.string(40),
+    watermarkEnabled: T.boolean,
     watermarkUrl: T.string(255),
+    watermarkFileId: T.string(40),
     footerText: T.text,
     payload: T.json,
     createdByUserId: T.string(40),
@@ -156,21 +160,38 @@ const TABLE_SCHEMAS = {
     chairman: T.string(191),
     viceChairman: T.string(191),
     viceChairman2: T.string(191),
-    directors: T.json,
     payload: T.json,
     createdByUserId: T.string(40),
     updatedByUserId: T.string(40)
   }, ['key']),
 
-  managers: schema({
+  committee_directors: schema({
+    committeeKey: T.string(120),
+    name: T.string(191),
+    designation: T.string(120),
+    orderIndex: T.number
+  }),
+
+  employees: schema({
+    code: T.string(80),
     name: T.string(191),
     designation: T.string(120),
     branchCode: T.string(40),
+    retired: T.boolean,
+    retirementDate: T.date,
+    homeLoanBalance: T.number,
+    homeLoanCrDr: T.string(10),
+    vehicleLoanBalance: T.number,
+    vehicleLoanCrDr: T.string(10),
+    grainAdvanceBalance: T.number,
+    grainAdvanceCrDr: T.string(10),
+    documentsFolderId: T.string(40),
+    documents: T.json,
     isActive: T.boolean,
     payload: T.json,
     createdByUserId: T.string(40),
     updatedByUserId: T.string(40)
-  }),
+  }, ['code']),
 
   members: schema({
     code: T.string(80),
@@ -186,10 +207,16 @@ const TABLE_SCHEMAS = {
     membershipDate: T.date,
     appointmentDate: T.date,
     membershipNo: T.string(80),
+    pfNo: T.string(80),
+    dismembered: T.boolean,
+    dismemberedDate: T.date,
+    suretyName1: T.string(191),
+    suretyName2: T.string(191),
     address: T.text,
     mobileNo: T.string(40),
     basicSalary: T.number,
     openingBalance: T.number,
+    openingBalanceCrDr: T.string(10),
     balances: T.json,
     loanOutstanding: T.number,
     depositBalance: T.number,
@@ -204,6 +231,17 @@ const TABLE_SCHEMAS = {
     createdByUserId: T.string(40),
     updatedByUserId: T.string(40)
   }, ['code']),
+
+  member_demand_defaults: schema({
+    memberCode: T.string(80),
+    compulsoryDeposit: T.number,
+    ssa: T.number,
+    regularLoan: T.number,
+    loanAgainstDeposit: T.number,
+    insurancePremium: T.number,
+    other: T.number,
+    payload: T.json
+  }, ['memberCode']),
 
   ledgers: schema({
     code: T.string(80),
@@ -269,26 +307,42 @@ const TABLE_SCHEMAS = {
     updatedByUserId: T.string(40)
   }, ['transactionNo']),
 
-  demands: schema({
-    demandNo: T.string(120),
-    month: T.string(40),
+  demand_lists: schema({
+    demandListNo: T.string(120),
+    demandListDate: T.date,
     branchCode: T.string(40),
-    memberCode: T.string(80),
-    dueDate: T.date,
-    total: T.number,
-    recovered: T.number,
+    month: T.string(40),
+    year: T.string(40),
     status: T.string(80),
     remarks: T.text,
-    allocations: T.json,
     payload: T.json,
     createdByUserId: T.string(40),
     updatedByUserId: T.string(40)
-  }, ['demandNo']),
+  }, ['demandListNo']),
+
+  demand_lines: schema({
+    demandListNo: T.string(120),
+    memberCode: T.string(80),
+    memberName: T.string(191),
+    postedBranch: T.string(120),
+    compulsoryDeposit: T.number,
+    ssa: T.number,
+    regularLoan: T.number,
+    loanAgainstDeposit: T.number,
+    insurancePremium: T.number,
+    other: T.number,
+    totalAmount: T.number,
+    recoveredAmount: T.number,
+    recoveryStatus: T.string(80),
+    payload: T.json
+  }),
 
   no_interest_members: schema({
     code: T.string(80),
     memberCode: T.string(80),
     branchCode: T.string(40),
+    setOnDate: T.date,
+    narration: T.text,
     reason: T.text,
     fromDate: T.date,
     toDate: T.date,
@@ -308,14 +362,12 @@ const TABLE_SCHEMAS = {
     partyType: T.string(80),
     amount: T.number,
     mode: T.string(80),
-    status: T.string(80),
     narration: T.text,
     referenceNo: T.string(120),
     instrumentNo: T.string(120),
     instrumentDate: T.date,
     branchCode: T.string(40),
     fyCode: T.string(40),
-    reversalOf: T.string(120),
     approvedBy: T.string(120),
     createdBy: T.string(120),
     details: T.json,
@@ -323,9 +375,25 @@ const TABLE_SCHEMAS = {
     documents: T.json,
     payload: T.json,
     createdByUserId: T.string(40),
-    updatedByUserId: T.string(40),
-    reversedByUserId: T.string(40)
-  }, ['voucherNo'])
+    updatedByUserId: T.string(40)
+  }, ['voucherNo']),
+
+  recovery_lines: schema({
+    voucherNo: T.string(120),
+    memberCode: T.string(80),
+    demandLineId: T.string(80),
+    share: T.number,
+    compulsoryDeposit: T.number,
+    ssa: T.number,
+    regularLoan: T.number,
+    depositLoan: T.number,
+    premium: T.number,
+    admission: T.number,
+    suspense: T.number,
+    other: T.number,
+    total: T.number,
+    payload: T.json
+  })
 };
 
 function getTableSchema(tableName) {
@@ -342,7 +410,6 @@ module.exports = {
   getTableSchema,
   schema
 };
-
 
 
 

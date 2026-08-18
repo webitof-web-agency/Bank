@@ -91,7 +91,6 @@ function buildSingletonControllers(resource) {
 const resources = {
   society: buildSingletonControllers('society'),
   committee: buildSingletonControllers('committee'),
-  managers: buildCrudControllers('managers'),
   branches: buildCrudControllers('branches'),
   employees: buildCrudControllers('employees'),
   members: buildCrudControllers('members'),
@@ -115,7 +114,10 @@ const resources = {
     }
   },
   bankAccounts: buildCrudControllers('bankAccounts'),
-  demands: buildCrudControllers('demands'),
+  demandLists: buildCrudControllers('demandLists'),
+  demandLines: buildCrudControllers('demandLines'),
+  memberDemandDefaults: buildCrudControllers('memberDemandDefaults'),
+  recoveryLines: buildCrudControllers('recoveryLines'),
   noInterestMembers: buildCrudControllers('noInterestMembers'),
   bankTransactions: buildCrudControllers('bankTransactions')
 };
@@ -143,7 +145,6 @@ const transactions = {
       const rows = await bankingService.buildVoucherRows({
         user: req.user || {},
         search: req.query.search || '',
-        status: req.query.status || '',
         partyType: req.query.partyType || '',
         branchCode: req.query.branchCode || '',
         dateFrom: req.query.dateFrom || req.query.fyStart || '',
@@ -197,20 +198,6 @@ const transactions = {
         return res.status(404).json({ success: false, message: 'Voucher not found' });
       }
       res.json({ success: true, message: 'Deleted successfully' });
-    } catch (error) {
-      next(error);
-    }
-  },
-  async reverseVoucher(req, res, next) {
-    try {
-      const record = await bankingService.reverseVoucher(req.params.id, {
-        actorUserId: req.user?.id || null,
-          actorUser: req.user || null
-      });
-      if (!record) {
-        return res.status(404).json({ success: false, message: 'Voucher not found' });
-      }
-      res.json({ success: true, data: record });
     } catch (error) {
       next(error);
     }
@@ -441,7 +428,6 @@ module.exports = {
   resources,
   transactions
 };
-
 
 
 

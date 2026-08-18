@@ -1,4 +1,4 @@
-﻿import { Banknote, FileText, Landmark, ReceiptText, Repeat2, Users } from 'lucide-react';
+import { Banknote, FileText, Landmark, ReceiptText, Repeat2, Users } from 'lucide-react';
 
 export const TRANSACTION_SECTIONS = [
   {
@@ -9,10 +9,10 @@ export const TRANSACTION_SECTIONS = [
     description: 'Dedicated loan paid, compulsory deposit, insurance, and recovery workspaces.',
     tone: 'pink',
     children: [
-      { label: 'Loan Paid', path: '/app/transactions/member/loan-paid', icon: Banknote },
-      { label: 'Deposit Paid', path: '/app/transactions/member/deposit-paid', icon: ReceiptText },
-      { label: 'Insurance Paid', path: '/app/transactions/member/insurance-paid', icon: FileText },
-      { label: 'SSA Paid', path: '/app/transactions/member/ssa-paid', icon: Banknote },
+      { label: 'Loan Payment', path: '/app/transactions/member/loan-paid', icon: Banknote },
+      { label: 'CD Payment', path: '/app/transactions/member/deposit-paid', icon: ReceiptText },
+      { label: 'SSA Payment', path: '/app/transactions/member/ssa-paid', icon: Banknote },
+      { label: 'Premium Paid To Member', path: '/app/transactions/member/insurance-paid', icon: FileText },
       { label: 'Recovery', path: '/app/transactions/member/recovery', icon: Repeat2 }
     ]
   },
@@ -25,13 +25,12 @@ export const TRANSACTION_SECTIONS = [
     description: 'Loan receipt, deposit, cheque issue, and transfer entries.',
     tone: 'emerald',
     children: [
-      { label: 'Loan Received to Cash/Credit A/c', path: '/app/transactions/bank/loan-recv-cash', icon: Banknote },
-      { label: 'Loan Received to Saving A/c', path: '/app/transactions/bank/loan-recv-saving', icon: Banknote },
-      { label: 'Deposit in Bank', path: '/app/transactions/bank/deposit-in-bank', icon: FileText },
-      { label: 'Cheque Issue With Bank (Saving A/c)', path: '/app/transactions/bank/cheque-issue-saving', icon: FileText },
-      { label: 'Cheque Issue With Bank (Loan A/c)', path: '/app/transactions/bank/cheque-issue-loan', icon: FileText },
-      { label: 'Amount Transfer to Saving A/c', path: '/app/transactions/bank/transfer-saving', icon: Repeat2 },
-      { label: 'Amount Transfer to Cash-Credit A/c', path: '/app/transactions/bank/transfer-cashcredit', icon: Repeat2 }
+      { label: 'Loan Receive By Cash-Credit A/c', path: '/app/transactions/bank/loan-recv-cash', icon: Banknote },
+      { label: 'Loan Receive To Saving A/c', path: '/app/transactions/bank/loan-recv-saving', icon: Banknote },
+      { label: 'Deposit In Bank', path: '/app/transactions/bank/deposit-in-bank', icon: FileText },
+      { label: 'Cheque Issue With Bank', path: '/app/transactions/bank/cheque-issue-saving', icon: FileText },
+      { label: 'Amount Transfer By Saving A/c', path: '/app/transactions/bank/transfer-saving', icon: Repeat2 },
+      { label: 'Amount Transfer To Cash-Credit A/c', path: '/app/transactions/bank/transfer-cashcredit', icon: Repeat2 }
     ]
   },
   {
@@ -43,8 +42,8 @@ export const TRANSACTION_SECTIONS = [
     description: 'Advance paid and recovery entries for employees.',
     tone: 'amber',
     children: [
-      { label: 'Advance Paid by Cash/Cheque', path: '/app/transactions/employee/advance-paid-emp', icon: Banknote },
-      { label: 'Advance Recovery by Cash/Transfer', path: '/app/transactions/employee/advance-recovery-emp', icon: Repeat2 }
+      { label: 'Advance Paid', path: '/app/transactions/employee/advance-paid-emp', icon: Banknote },
+      { label: 'Advance Recovery', path: '/app/transactions/employee/advance-recovery-emp', icon: Repeat2 }
     ]
   },
   {
@@ -56,35 +55,39 @@ export const TRANSACTION_SECTIONS = [
     description: 'Transfer voucher paid and recovered from member records.',
     tone: 'violet',
     children: [
-      { label: 'Transfer Voucher Paid to Member', path: '/app/transactions/transfer-voucher/transfer-voucher-paid', icon: Banknote },
-      { label: 'Transfer Voucher Recover From Member', path: '/app/transactions/transfer-voucher/transfer-voucher-recover', icon: Repeat2 },
-      { label: 'Payment', path: '/app/transactions/transfer-voucher/payment', icon: Banknote }
+      { label: 'Paid To Member', path: '/app/transactions/transfer-voucher/transfer-voucher-paid', icon: Banknote },
+      { label: 'Recovery From Member', path: '/app/transactions/transfer-voucher/transfer-voucher-recover', icon: Repeat2 },
+      { label: 'Payment', path: '/app/transactions/transfer-voucher/payment', icon: Banknote },
+      { label: 'Receipt', path: '/app/transactions/transfer-voucher/receipt', icon: ReceiptText }
     ]
   },
   {
-    key: 'receipt-interest',
-    label: 'Receipt / Interest',
-    path: '/app/transactions/receipt-interest',
+    key: 'interest',
+    label: 'Interest',
+    path: '/app/transactions/interest',
     icon: ReceiptText,
     permission: 'transactions.read',
-    description: 'Receipt, interest paid, and no-interest member workspaces.',
+    description: 'Interest workspaces.',
     tone: 'sky',
     children: [
-      { label: 'Receipt', path: '/app/transactions/receipt-interest/receipt-voucher', icon: FileText },
-      { label: 'Interest Paid to Member', path: '/app/transactions/receipt-interest/interest-paid-member', icon: Banknote },
-      { label: 'No Interest Members', path: '/app/transactions/receipt-interest/no-interest-members', icon: Users }
+      { label: 'Paid To Member', path: '/app/transactions/interest/interest-paid-member', icon: Banknote },
+      { label: 'Receive From Member', path: '/app/transactions/interest/interest-receive-member', icon: ReceiptText },
+      { label: 'Receive From Employee', path: '/app/transactions/interest/interest-receive-employee', icon: ReceiptText }
     ]
   },
   {
-    key: 'supporting',
-    label: 'Supporting',
-    path: '/app/transactions/supporting',
+    key: 'other',
+    label: 'Other',
+    path: '/app/transactions/other',
     icon: FileText,
-    permission: 'transactions.supporting.view',
-    description: 'Demand entry helper screens.',
+    permission: 'transactions.read',
+    description: 'Other transactions and special pages.',
     tone: 'slate',
     children: [
-      { label: 'Demand Entry', path: '/app/transactions/supporting', icon: FileText }
+      { label: 'Payment Voucher', path: '/app/transactions/other/payment-voucher', icon: Banknote },
+      { label: 'Receipt Voucher', path: '/app/transactions/other/receipt-voucher', icon: ReceiptText },
+      { label: 'No Interest Members', path: '/app/transactions/other/no-interest-members', icon: Users },
+      { label: 'Demand Entry', path: '/app/transactions/other/demand-entry', icon: FileText }
     ]
   }
 ];
@@ -98,8 +101,3 @@ export const TRANSACTION_SECTION_MAP = TRANSACTION_SECTIONS.reduce((acc, section
   acc[section.key] = section;
   return acc;
 }, {});
-
-
-
-
-

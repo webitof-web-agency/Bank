@@ -144,6 +144,30 @@ export function EmployeeTransactionWorkspacePage({ sectionKey, itemKey, detailPa
     }
   }
 
+  function exportCsv() {
+    const headers = ['Voucher No', 'Date', 'Category', 'Party', 'Amount', 'Status', 'Narration'];
+    const escape = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+    const csv = [
+      headers.map(escape).join(','),
+      ...visibleRows.map((row) => ([
+        row.voucherNo,
+        row.date,
+        row.voucherCategory,
+        getTransactionPartyLabel(row.partyCode, lookups, row.partyType),
+        row.amount ?? 0,
+        row.status || 'Draft',
+        row.narration || ''
+      ].map(escape).join(',')))
+    ].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${sectionKey || 'transactions'}-export.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   async function persistVoucherDocuments(nextRecord, currentDraft = draft) {
     if (!nextRecord?.id) return nextRecord;
 

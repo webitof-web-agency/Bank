@@ -35,7 +35,7 @@ function DetailRow({ label, value }) {
   return (
     <div className="grid grid-cols-[180px_1fr] gap-4 border-b border-slate-100 py-4 last:border-b-0">
       <div className="text-[13px] font-medium text-slate-500">{label}</div>
-      <div className="text-[14px] font-medium text-slate-900">{value || 'â€”'}</div>
+      <div className="text-[14px] font-medium text-slate-900">{value || '—'}</div>
     </div>
   );
 }
@@ -263,9 +263,9 @@ export function MemberDetailPage() {
             {activeTab === 'contact' && (
               <Card className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                 <div className="divide-y divide-slate-100 px-6">
-                  <DetailRow label="Mobile No" value={formatMemberPhone(member.mobileNo || '') || 'â€”'} />
-                  <DetailRow label="Address" value={member.address || 'â€”'} />
-                  <DetailRow label="Nominee Name" value={member.nomineeName || 'â€”'} />
+                  <DetailRow label="Mobile No" value={formatMemberPhone(member.mobileNo || '') || '—'} />
+                  <DetailRow label="Address" value={member.address || '—'} />
+                  <DetailRow label="Nominee Name" value={member.nomineeName || '—'} />
                   <DetailRow label="Nominee Relation" value={member.nomineeRelation || "-"} />
                 </div>
               </Card>

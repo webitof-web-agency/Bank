@@ -26,24 +26,24 @@ export function Modal({ open, title, subtitle, children, onClose, footer, width 
           aria-label={title}
         >
           {hideHeader ? (
-            <div className="flex justify-end px-6 pt-5">
+            <div className="flex justify-end px-5 pt-4">
               <Button variant="ghost" size="icon" type="button" aria-label="Close modal" onClick={onClose}>
                 <X size={18} />
               </Button>
             </div>
           ) : (
-            <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-5 shrink-0">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-3 shrink-0">
               <div>
                 <h3 className="text-lg font-semibold text-[var(--text-main)]">{title}</h3>
-                {subtitle ? <p className="mt-1 text-sm text-[var(--text-muted)]">{subtitle}</p> : null}
+                {subtitle ? <p className="mt-1 text-[13px] text-[var(--text-muted)]">{subtitle}</p> : null}
               </div>
               <Button variant="ghost" size="icon" type="button" aria-label="Close modal" onClick={onClose}>
                 <X size={18} />
               </Button>
             </div>
           )}
-          <div className={hideHeader ? `px-6 pb-6 pt-2 ${overflowVisible ? 'overflow-visible' : 'overflow-y-auto'}` : `px-6 py-6 ${overflowVisible ? 'overflow-visible' : 'overflow-y-auto'}`}>{children}</div>
-          {footer ? <div className="rounded-b-2xl border-t border-slate-200 px-6 py-5 bg-slate-50 shrink-0">{footer}</div> : null}
+          <div className={hideHeader ? `px-5 pb-5 pt-2 ${overflowVisible ? 'overflow-visible' : 'overflow-y-auto'}` : `px-5 py-4 ${overflowVisible ? 'overflow-visible' : 'overflow-y-auto'}`}>{children}</div>
+          {footer ? <div className="rounded-b-2xl border-t border-slate-200 px-5 py-3 bg-slate-50 shrink-0">{footer}</div> : null}
         </div>
       </div>
     </div>

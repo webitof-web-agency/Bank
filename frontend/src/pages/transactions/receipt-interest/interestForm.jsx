@@ -46,7 +46,7 @@ export function InterestVoucherForm({ section, lookups = {}, value, setValue, on
   }
 
   return (
-    <form id="transaction-voucher-form" className="mx-auto w-full space-y-6" onSubmit={onSubmit}>
+    <form id="transaction-voucher-form" className="mx-auto w-full space-y-3" onSubmit={onSubmit}>
       <Card className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="mb-5 border-b border-slate-100 pb-4">
           <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-rose-500">Interest Payment</p>
@@ -54,7 +54,7 @@ export function InterestVoucherForm({ section, lookups = {}, value, setValue, on
           <p className="mt-1 text-sm text-slate-500">Member interest posting with account head, amount, and narration.</p>
         </div>
 
-        <div className="grid gap-6 md:grid-cols-2">
+        <div className="grid gap-3 md:grid-cols-4">
           <div className="space-y-1.5">
             <FieldLabel>Voucher No</FieldLabel>
             <Input
@@ -85,17 +85,17 @@ export function InterestVoucherForm({ section, lookups = {}, value, setValue, on
 
           <div className="space-y-1.5">
             <FieldLabel>Member Name</FieldLabel>
-            <Input value={selectedMember?.name || '—'} readOnly />
+            <Input value={selectedMember?.name || 'â€”'} readOnly />
           </div>
 
           <div className="space-y-1.5">
             <FieldLabel>Branch</FieldLabel>
-            <Input value={selectedMember?.branchCode || selectedMember?.branch || '—'} readOnly />
+            <Input value={selectedMember?.branchCode || selectedMember?.branch || 'â€”'} readOnly />
           </div>
 
           <div className="space-y-1.5">
             <FieldLabel>Designation</FieldLabel>
-            <Input value={selectedMember?.designation || '—'} readOnly />
+            <Input value={selectedMember?.designation || 'â€”'} readOnly />
           </div>
 
           <LookupSelect
@@ -131,7 +131,7 @@ export function InterestVoucherForm({ section, lookups = {}, value, setValue, on
             />
           </div>
 
-          <div className="space-y-1.5 md:col-span-2">
+          <div className="space-y-1.5 md:col-span-3">
             <FieldLabel>Narration</FieldLabel>
             <Textarea
               rows={4}
@@ -190,8 +190,8 @@ export function InterestVoucherForm({ section, lookups = {}, value, setValue, on
 
       <div className="flex items-center gap-3 text-sm text-slate-500">
         <span>Member:</span>
-        <span className="font-medium text-slate-900">{selectedMember?.code ? `${selectedMember.code} - ${selectedMember.name || ''}`.trim() : '—'}</span>
-        <span className="text-slate-300">•</span>
+        <span className="font-medium text-slate-900">{selectedMember?.code ? `${selectedMember.code} - ${selectedMember.name || ''}`.trim() : 'â€”'}</span>
+        <span className="text-slate-300">â€¢</span>
         <span>Interest:</span>
         <span className="font-medium text-slate-900">{formatTransactionAmount(value.details?.interestAmount ?? 0)}</span>
       </div>

@@ -1,6 +1,6 @@
 ﻿import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Eye, Edit2, Plus, Trash2, RotateCcw } from 'lucide-react';
+import { Eye, Edit2, Plus, Trash2, RotateCcw, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../api/api';
 import { Button } from '../../../components/ui/Button';
@@ -147,6 +147,30 @@ export function TransferVoucherPaymentWorkspacePage({ sectionKey, itemKey, detai
     if (document?.fileId) {
       setRemovedDocumentIds((current) => (current.includes(document.fileId) ? current : [...current, document.fileId]));
     }
+  }
+
+  function exportCsv() {
+    const headers = ['Voucher No', 'Date', 'Category', 'Party', 'Amount', 'Status', 'Narration'];
+    const escape = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+    const csv = [
+      headers.map(escape).join(','),
+      ...visibleRows.map((row) => ([
+        row.voucherNo,
+        row.date,
+        row.voucherCategory,
+        getTransactionPartyLabel(row.partyCode, lookups, row.partyType),
+        row.amount ?? 0,
+        row.status || 'Draft',
+        row.narration || ''
+      ].map(escape).join(',')))
+    ].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${sectionKey || 'transactions'}-export.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
   }
 
   async function persistVoucherDocuments(nextRecord, currentDraft = draft) {
@@ -313,7 +337,12 @@ export function TransferVoucherPaymentWorkspacePage({ sectionKey, itemKey, detai
         <Table loading={loading} columns={columns} rows={visibleRows} emptyMessage="No transfer voucher payment entries found." />
       </Card>
 
-      <Modal open={editorOpen} onClose={closeEditor} title={activeRecord ? 'Edit Transfer Voucher Payment' : 'Create Transfer Voucher Payment'} size="xl">
+      <Modal open={editorOpen} onClose={closeEditor} title={activeRecord ? 'Edit Transfer Voucher Payment' : 'Create Transfer Voucher Payment'} width="min(1100px, 96vw)" footer={<div className="flex w-full justify-end gap-3">
+          <Button type="button" variant="outline" onClick={closeEditor} disabled={saving}>Cancel</Button>
+          <Button type="submit" form="transaction-voucher-form" className="bg-[var(--primary,#1661F6)] text-white hover:opacity-90" disabled={saving || !activeItem}>
+            {saving ? 'Saving...' : activeRecord ? 'Update' : 'Save'}
+          </Button>
+        </div>}>
         <div className="max-h-[80vh] overflow-y-auto pr-1">
           <TransferVoucherPaymentForm
             section={section}
@@ -325,12 +354,7 @@ export function TransferVoucherPaymentWorkspacePage({ sectionKey, itemKey, detai
             onDocumentRemove={handleDocumentRemove}
           />
         </div>
-        <div className="mt-5 flex justify-end gap-2 border-t border-slate-200 pt-4">
-          <Button type="button" variant="outline" onClick={closeEditor} disabled={saving}>Cancel</Button>
-          <Button type="submit" form="transaction-voucher-form" className="bg-[var(--primary,#1661F6)] text-white hover:opacity-90" disabled={saving || !activeItem}>
-            {saving ? 'Saving...' : activeRecord ? 'Update' : 'Save'}
-          </Button>
-        </div>
+        
       </Modal>
 
       <ConfirmDialog open={Boolean(deleteTarget)} title="Delete Transfer Voucher Payment" description="This payment voucher will be removed permanently." confirmLabel="Delete" onConfirm={confirmDelete} onCancel={() => setDeleteTarget(null)} />

@@ -5,7 +5,6 @@ const ACTION_LABELS = {
   export: 'Export',
   print: 'Print',
   read: 'View',
-  reverse: 'Reverse',
   update: 'Edit',
   view: 'View',
   write: 'Create / Edit / Delete'
@@ -55,7 +54,7 @@ const PERMISSION_SECTIONS = [
       createPage('transactions', 'member', 'Member', ['view', 'create', 'edit', 'delete'], 'Loan paid, compulsory deposit, insurance, and recovery transactions.'),
       createPage('transactions', 'bank', 'Bank', ['view', 'create', 'edit', 'delete'], 'Loan receipt, deposit, cheque issue, and transfer entries.'),
       createPage('transactions', 'employee', 'Employee', ['view', 'create', 'edit', 'delete'], 'Advance paid and recovery entries for employees.'),
-      createPage('transactions', 'transfer-voucher', 'Transfer Voucher', ['view', 'create', 'edit', 'delete', 'reverse'], 'Transfer voucher paid and recovered from member records.'),
+      createPage('transactions', 'transfer-voucher', 'Transfer Voucher', ['view', 'create', 'edit', 'delete'], 'Transfer voucher paid and recovered from member records.'),
       createPage('transactions', 'receipt-interest', 'Receipt / Interest', ['view', 'create', 'edit', 'delete'], 'Receipt, interest paid, and related member support links.'),
       createPage('transactions', 'supporting', 'Supporting', ['view', 'create', 'edit', 'delete'], 'Demand entry helper screens.')
     ]
@@ -172,7 +171,6 @@ const LEGACY_PERMISSION_ALIASES = {
     ...pageCodes('transactions', 'receipt-interest', ['create', 'edit', 'delete']),
     ...pageCodes('transactions', 'supporting', ['create', 'edit', 'delete'])
   ],
-  'transactions.reverse': pageCodes('transactions', 'transfer-voucher', ['reverse']),
   'bank-transactions.read': pageCodes('transactions', 'bank', ['view']),
   'bank-transactions.write': pageCodes('transactions', 'bank', ['create', 'edit', 'delete']),
   'reports.read': [
@@ -280,5 +278,4 @@ module.exports = {
   isKnownPermissionCode,
   resolvePermissionCode
 };
-
 

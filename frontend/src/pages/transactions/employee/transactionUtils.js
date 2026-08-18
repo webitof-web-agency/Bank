@@ -253,13 +253,13 @@ export function getEmployeeComponentTotal(value = {}) {
 
 export function formatTransactionAmount(value) {
   const number = Number(value);
-  if (!Number.isFinite(number)) return 'â€”';
+  if (!Number.isFinite(number)) return '—';
   return new Intl.NumberFormat('en-IN').format(number);
 }
 
 export function getTransactionPartyLabel(value = '', lookups = {}, partyType = '') {
   const code = cleanUpper(value);
-  if (!code) return 'â€”';
+  if (!code) return '—';
 
   if (partyType === 'member') {
     const member = (lookups.members || []).find((row) => cleanUpper(row.code) === code);
@@ -286,7 +286,7 @@ export function getTransactionPartyLabel(value = '', lookups = {}, partyType = '
 
 export function getTransactionLedgerLabel(value = '', lookups = {}) {
   const code = cleanUpper(value);
-  if (!code) return 'â€”';
+  if (!code) return '—';
   const ledger = (lookups.ledgers || []).find((row) => cleanUpper(row.code) === code);
   if (ledger) return `${ledger.code} - ${ledger.name || ''}`.trim();
   const bank = (lookups.bankAccounts || []).find((row) => cleanUpper(row.code) === code);
@@ -296,7 +296,7 @@ export function getTransactionLedgerLabel(value = '', lookups = {}) {
 
 export function toCurrency(value) {
   const number = Number(value);
-  if (!Number.isFinite(number)) return 'â€”';
+  if (!Number.isFinite(number)) return '—';
   return new Intl.NumberFormat('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(number);
 }
 

@@ -11,6 +11,7 @@ const {
   getSchemaColumns,
   quoteIdentifier
 } = require('./sqlSchema');
+const { BANK_VOUCHER_KEYS } = require('./transactionConstants');
 
 let pool = null;
 let initPromise = null;
@@ -340,6 +341,23 @@ async function syncTableSchema(database, tableName) {
   if (tableName === 'users' && existingColumns.has('phone') && !schemaColumns.some((column) => column.name === 'phone')) {
     await database.query(`ALTER TABLE ${quoteIdentifier(tableName)} DROP COLUMN IF EXISTS ${quoteIdentifier('phone')}`);
   }
+
+  if (tableName === 'vouchers') {
+    for (const columnName of ['status', 'reversalOf', 'reversedByUserId']) {
+      if (existingColumns.has(columnName) && !schemaColumns.some((column) => column.name === columnName)) {
+        await database.query(`ALTER TABLE ${quoteIdentifier(tableName)} DROP COLUMN IF EXISTS ${quoteIdentifier(columnName)}`);
+      }
+    }
+
+    await database.query(
+      `UPDATE ${quoteIdentifier(tableName)}
+       SET ${quoteIdentifier('details')} = COALESCE(${quoteIdentifier('details')}, '{}'::jsonb)
+         - 'settlementAccount' - 'fixedSettlement' - 'fromAccount' - 'toAccount' - 'fixedFrom' - 'fixedTo'
+       WHERE LOWER(COALESCE(${quoteIdentifier('details')}->>'key', '')) = ANY($1::text[])
+         AND (${quoteIdentifier('details')} ?| ARRAY['settlementAccount', 'fixedSettlement', 'fromAccount', 'toAccount', 'fixedFrom', 'fixedTo'])`,
+      [BANK_VOUCHER_KEYS]
+    );
+  }
 }
 
 async function loadCache(database) {
@@ -545,7 +563,4 @@ module.exports = {
   persistMainRow,
   replaceUserRoles
 };
-
-
-
 

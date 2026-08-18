@@ -14,10 +14,10 @@ const variants = {
 };
 
 const sizes = {
-  sm: 'h-9 px-3 text-sm',
-  md: 'h-11 px-4 text-sm',
-  lg: 'h-12 px-5 text-base',
-  icon: 'h-10 w-10 p-0'
+  sm: 'h-8 px-3 text-xs',
+  md: 'h-9 px-4 text-[13px]',
+  lg: 'h-11 px-5 text-sm',
+  icon: 'h-9 w-9 p-0'
 };
 
 export function Button({ as: Tag = 'button', className = '', variant = 'primary', size = 'md', ...props }) {

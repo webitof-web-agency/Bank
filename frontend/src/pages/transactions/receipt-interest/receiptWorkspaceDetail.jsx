@@ -27,7 +27,7 @@ function DetailRow({ label, value }) {
   return (
     <div className="grid grid-cols-[180px_1fr] gap-4 border-b border-slate-100 py-4 last:border-b-0">
       <div className="text-[13px] font-medium text-slate-500">{label}</div>
-      <div className="text-[14px] font-medium text-slate-900">{value || '—'}</div>
+      <div className="text-[14px] font-medium text-slate-900">{value || 'â€”'}</div>
     </div>
   );
 }
@@ -321,7 +321,20 @@ export function ReceiptVoucherWorkspaceDetailPage({ sectionKey, itemKey, detailP
         </div>
       </div>
 
-      <Modal open={editorOpen} onClose={closeEditor} title="Edit Receipt" size="xl">
+      <Modal 
+        open={editorOpen} 
+        onClose={closeEditor} 
+        title="Edit Receipt" 
+        width="min(1100px, 96vw)"
+        footer={
+          <div className="flex w-full justify-end gap-3">
+            <Button variant="outline" type="button" onClick={closeEditor}>Cancel</Button>
+            <Button type="submit" form="transaction-voucher-form" disabled={saving || !canWrite} className="bg-[var(--primary,#1661F6)] text-white hover:opacity-90">
+              {saving ? 'Saving...' : 'Save Changes'}
+            </Button>
+          </div>
+        }
+      >
         {draft ? <ReceiptVoucherForm section={section} lookups={lookups} value={draft} setValue={setDraft} onSubmit={saveVoucher} onDocumentRemove={handleDocumentRemove} /> : null}
       </Modal>
 

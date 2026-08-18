@@ -39,7 +39,7 @@ export function DemandsPage() {
     setLookupsLoading(true);
 
     Promise.all([
-      api.resources.list('/banking/masters/demands', token, search),
+      api.resources.list('/banking/masters/demand-lists', token, search),
       api.resources.list('/banking/masters/branches', token),
       api.resources.list('/banking/masters/members', token)
     ])
@@ -89,8 +89,8 @@ export function DemandsPage() {
     try {
       const payload = buildDemandPayload(draft);
       const response = activeRecord
-        ? await api.resources.update('/banking/masters/demands', activeRecord.id, payload, token)
-        : await api.resources.create('/banking/masters/demands', payload, token);
+        ? await api.resources.update('/banking/masters/demand-lists', activeRecord.id, payload, token)
+        : await api.resources.create('/banking/masters/demand-lists', payload, token);
 
       const nextRecord = response.data || response;
       setRows((current) => {
@@ -111,7 +111,7 @@ export function DemandsPage() {
   async function confirmDelete() {
     if (!deleteTarget) return;
     try {
-      await api.resources.remove('/banking/masters/demands', deleteTarget.id, token);
+      await api.resources.remove('/banking/masters/demand-lists', deleteTarget.id, token);
       setRows((current) => current.filter((item) => item.id !== deleteTarget.id));
       toast.success('Demand deleted');
     } catch (error) {

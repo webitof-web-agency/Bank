@@ -1,5 +1,4 @@
-const Demand = require('../models/banking.models').Demand;
-const Voucher = require('../models/banking.models').Voucher;
+const DemandList = require('../models/banking.models').DemandList;
 const JobState = require('../models/jobState.model');
 const { createNotification } = require('./notification.service');
 const { buildMonthlySummaryReport } = require('./banking.service');
@@ -69,16 +68,10 @@ function buildDemandReminderSummary(rows = []) {
   }).join('\n');
 }
 
-function buildDraftVoucherSummary(rows = []) {
-  return rows.slice(0, 10).map((row) => {
-    return `${row.voucherNo} | ${row.voucherCategory || row.transactionType || '-'} | ${row.date || '-'} | amount ${toNumber(row.amount, 0)}`;
-  }).join('\n');
-}
-
 function buildMonthlySummaryText(rows = [], month = '') {
   return rows.length
     ? rows.map((row) => `${row.transactionType || row.voucherCategory || 'Voucher'}: count ${toNumber(row.count, 0)}, amount ${toNumber(row.amount, 0)}`).join('\n')
-    : `No posted vouchers found for ${month}.`;
+    : `No vouchers found for ${month}.`;
 }
 
 async function runDemandReminder() {
@@ -95,7 +88,7 @@ async function runDemandReminder() {
     return { skipped: true, reason: 'disabled' };
   }
 
-  const rows = await Demand.find({}).lean();
+  const rows = await DemandList.find({});
   const overdue = rows.filter((row) => {
     const pending = Math.max(0, toNumber(row.total, 0) - toNumber(row.recovered, 0));
     const status = cleanLower(row.status);
@@ -138,66 +131,6 @@ async function runDemandReminder() {
 
   await markRun(stateKey, runLabel, { count: overdue.length });
   return { count: overdue.length };
-}
-
-async function runDraftVoucherReminder() {
-  const todayKey = formatDateKey();
-  const stateKey = 'automation:draft-voucher-reminder';
-  const runLabel = todayKey;
-  if (await hasRunForKey(stateKey, runLabel)) {
-    return { skipped: true, reason: 'already-ran-today' };
-  }
-
-  const settings = await getSettings();
-  if (settings.notifications?.enabled === false || settings.notifications?.transactionAlerts === false) {
-    await markRun(stateKey, runLabel, { skipped: true, reason: 'disabled' });
-    return { skipped: true, reason: 'disabled' };
-  }
-
-  const cutoff = new Date();
-  cutoff.setHours(0, 0, 0, 0);
-  cutoff.setDate(cutoff.getDate() - 1);
-
-  const rows = await Voucher.find({
-    status: 'Draft',
-    updatedAt: { $lte: cutoff }
-  }).sort({ updatedAt: 1 }).lean();
-
-  if (!rows.length) {
-    await markRun(stateKey, runLabel, { count: 0 });
-    return { count: 0 };
-  }
-
-  const summary = buildDraftVoucherSummary(rows);
-  await createNotification({
-    title: 'Pending Draft Vouchers',
-    message: `${rows.length} draft vouchers are still pending posting.`,
-    type: 'warning',
-    severity: 'medium',
-    module: 'transactions',
-    action: 'draft-reminder',
-    actionUrl: '/app/transactions/overview',
-    entityType: 'Voucher',
-    entityCode: 'DRAFT-VOUCHERS',
-    audience: 'internal',
-    recipientRoleCodes: getRecipientRoleCodes(settings),
-    includeDefaultRecipients: false,
-    includeActorUserId: false,
-    sendEmail: true,
-    emailTemplateKey: 'securityAlert',
-    emailVariables: {
-      title: 'Pending Draft Vouchers',
-      message: `${rows.length} draft vouchers are still pending posting.`,
-      actionUrl: '/app/transactions/overview'
-    },
-    payload: {
-      count: rows.length,
-      summary
-    }
-  });
-
-  await markRun(stateKey, runLabel, { count: rows.length });
-  return { count: rows.length };
 }
 
 async function runMonthlySummary() {
@@ -262,7 +195,6 @@ async function runAutomationCycle() {
   try {
     const results = [];
     results.push(await runDemandReminder());
-    results.push(await runDraftVoucherReminder());
     results.push(await runMonthlySummary());
     return { results };
   } finally {
@@ -299,7 +231,6 @@ function stopAutomationScheduler() {
 module.exports = {
   runAutomationCycle,
   runDemandReminder,
-  runDraftVoucherReminder,
   runMonthlySummary,
   startAutomationScheduler,
   stopAutomationScheduler

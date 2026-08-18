@@ -1,4 +1,4 @@
-﻿import imageCompression from 'browser-image-compression';
+import imageCompression from 'browser-image-compression';
 import { EMPLOYEE_DOCUMENT_DEFS, createEmptyDocumentMap, hydrateDocumentMap, serializeDocumentMap } from '../../../components/master/documentUtils';
 
 export function stripPhoneDigits(value = '') {
@@ -10,30 +10,6 @@ export function formatEmployeePhone(value = '') {
   return digits ? `+${digits}` : '';
 }
 
-export function suggestEmployeeCode(fullName = '', username = '') {
-  const basis = String(username || fullName || '')
-    .trim()
-    .replace(/[^a-z0-9]+/gi, '')
-    .toUpperCase();
-
-  return basis ? `EMP-${basis.slice(0, 12)}` : '';
-}
-
-export function buildNextEmployeeCode(rows = []) {
-  let maxNumber = 1000;
-
-  for (const row of Array.isArray(rows) ? rows : []) {
-    const code = String(row?.code || '').trim().toUpperCase();
-    const match = code.match(/^(?:EMP-|E)(\d+)$/);
-    if (!match) continue;
-    const value = Number(match[1]);
-    if (Number.isFinite(value) && value > maxNumber) {
-      maxNumber = value;
-    }
-  }
-
-  return `EMP-${maxNumber + 1}`;
-}
 
 export function formatBranchLabel(branch = {}) {
   const code = String(branch.code || '').trim();
@@ -72,7 +48,7 @@ export async function prepareEmployeeAvatarFile(file) {
 
 export function createEmptyEmployeeDraft(rows = []) {
   return {
-    code: buildNextEmployeeCode(rows),
+    code: '',
     fullName: '',
     fatherOrHusbandName: '',
     dateOfBirth: '',

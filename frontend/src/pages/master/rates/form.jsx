@@ -22,8 +22,8 @@ export function RateForm({ value, setValue, onSubmit, ledgers = [] }) {
   }
 
   return (
-    <form id="rate-form" onSubmit={onSubmit} className="space-y-6">
-      <div className="grid gap-6 md:grid-cols-2">
+    <form id="rate-form" onSubmit={onSubmit} className="space-y-3">
+      <div className="grid gap-3 md:grid-cols-4">
         <div>
           <FieldLabel required>Rate Code</FieldLabel>
           <Input
