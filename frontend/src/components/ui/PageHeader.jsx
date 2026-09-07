@@ -22,3 +22,15 @@ export function PageHeader({ title, description, actions = [], eyebrow, meta }) 
     </div>
   );
 }
+
+export function PageHeaderHeading({ children, className = '' }) {
+  return <h1 className={`text-2xl font-semibold tracking-tight text-slate-900 ${className}`}>{children}</h1>;
+}
+
+export function PageHeaderDescription({ children, className = '' }) {
+  return <p className={`mt-3 max-w-2xl text-sm leading-7 text-slate-500 ${className}`}>{children}</p>;
+}
+
+export function PageHeaderActions({ children, className = '' }) {
+  return <div className={`flex items-center space-x-2 ${className}`}>{children}</div>;
+}

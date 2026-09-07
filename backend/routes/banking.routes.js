@@ -50,12 +50,10 @@ router.get('/transactions/vouchers/:id', requirePermission('transactions.read'),
 router.put('/transactions/vouchers/:id', requirePermission('transactions.write'), banking.transactions.updateVoucher);
 router.delete('/transactions/vouchers/:id', requirePermission('transactions.write'), banking.transactions.deleteVoucher);
 
-router.get('/transactions/bank-transactions', requirePermission('bank-transactions.read'), banking.transactions.listBankTransactions);
-router.post('/transactions/bank-transactions', requirePermission('bank-transactions.write'), banking.transactions.createBankTransaction);
-router.put('/transactions/bank-transactions/:id', requirePermission('bank-transactions.write'), banking.transactions.updateBankTransaction);
-router.delete('/transactions/bank-transactions/:id', requirePermission('bank-transactions.write'), banking.transactions.deleteBankTransaction);
+
 
 router.get('/reports/member-ledger', requirePermission('reports.read'), banking.reports.memberLedger);
+router.get('/reports/employee-ledger', requirePermission('reports.read'), banking.reports.employeeLedger);
 router.get('/reports/member-account-status', requirePermission('reports.read'), banking.reports.memberLedger);
 router.get('/reports/account-statement', requirePermission('reports.read'), banking.reports.accountStatement);
 router.get('/reports/trial-balance', requirePermission('reports.read'), banking.reports.trialBalance);

@@ -34,7 +34,9 @@ router.use('/notifications', notificationsRoutes);
 router.use('/users', usersRoutes);
 router.use('/roles', rolesRoutes);
 router.use('/permissions', permissionsRoutes);
+router.use('/settings/storage', require('./storageSettings.routes'));
 router.use('/settings', settingsRoutes);
 router.use('/files', filesRoutes);
+router.use('/recovery-import', require('./recoveryImport.routes'));
 
 module.exports = router;

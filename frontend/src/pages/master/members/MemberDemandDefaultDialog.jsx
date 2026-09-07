@@ -9,8 +9,9 @@ export function MemberDemandDefaultDialog({ isOpen, onClose, memberId, token }) 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [data, setData] = useState({
+    share: 0,
     compulsoryDeposit: 0,
-    specialSaving: 0,
+    specialDeposit: 0,
     regularLoan: 0,
     loanAgainstDeposit: 0,
     insurancePremium: 0,
@@ -26,8 +27,9 @@ export function MemberDemandDefaultDialog({ isOpen, onClose, memberId, token }) 
           if (!mounted) return;
           const record = res.data || {};
           setData({
+            share: record.share || 0,
             compulsoryDeposit: record.compulsoryDeposit || 0,
-            specialSaving: record.specialSaving || 0,
+            specialDeposit: record.specialDeposit || record.specialSaving || record.ssa || 0,
             regularLoan: record.regularLoan || 0,
             loanAgainstDeposit: record.loanAgainstDeposit || 0,
             insurancePremium: record.insurancePremium || 0,
@@ -55,8 +57,9 @@ export function MemberDemandDefaultDialog({ isOpen, onClose, memberId, token }) 
     try {
       const payload = {
         memberId,
+        share: Number(data.share) || 0,
         compulsoryDeposit: Number(data.compulsoryDeposit) || 0,
-        specialSaving: Number(data.specialSaving) || 0,
+        specialDeposit: Number(data.specialDeposit) || 0,
         regularLoan: Number(data.regularLoan) || 0,
         loanAgainstDeposit: Number(data.loanAgainstDeposit) || 0,
         insurancePremium: Number(data.insurancePremium) || 0,
@@ -97,12 +100,16 @@ export function MemberDemandDefaultDialog({ isOpen, onClose, memberId, token }) 
         ) : (
           <div className="space-y-4">
             <div className="space-y-1.5">
+              <label className="text-[13px] font-medium text-slate-700">Share</label>
+              <Input type="number" min="0" value={data.share} onChange={(e) => setData({ ...data, share: e.target.value })} />
+            </div>
+            <div className="space-y-1.5">
               <label className="text-[13px] font-medium text-slate-700">Compulsory Deposit</label>
               <Input type="number" min="0" value={data.compulsoryDeposit} onChange={(e) => setData({ ...data, compulsoryDeposit: e.target.value })} />
             </div>
             <div className="space-y-1.5">
-              <label className="text-[13px] font-medium text-slate-700">Special Saving A/c (SSA)</label>
-              <Input type="number" min="0" value={data.specialSaving} onChange={(e) => setData({ ...data, specialSaving: e.target.value })} />
+              <label className="text-[13px] font-medium text-slate-700">Special Deposit A/c</label>
+              <Input type="number" min="0" value={data.specialDeposit} onChange={(e) => setData({ ...data, specialDeposit: e.target.value })} />
             </div>
             <div className="space-y-1.5">
               <label className="text-[13px] font-medium text-slate-700">Regular Loan</label>

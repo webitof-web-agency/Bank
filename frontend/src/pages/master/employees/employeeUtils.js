@@ -51,6 +51,7 @@ export function createEmptyEmployeeDraft(rows = []) {
     code: '',
     fullName: '',
     fatherOrHusbandName: '',
+    fatherName: '',
     dateOfBirth: '',
     appointmentDate: '',
     category: '',
@@ -87,6 +88,7 @@ export function createEmployeeDraftFromRecord(user = {}) {
     code: user.code || '',
     fullName: user.fullName || user.name || '',
     fatherOrHusbandName: user.fatherOrHusbandName || payload.fatherOrHusbandName || '',
+    fatherName: user.fatherName || payload.fatherName || '',
     dateOfBirth: user.dateOfBirth || payload.dateOfBirth || '',
     appointmentDate: user.appointmentDate || payload.appointmentDate || '',
     category: user.category || payload.category || '',
@@ -121,6 +123,7 @@ export function buildEmployeePayload(draft = {}) {
   const payload = {
     ...(draft.payload || {}),
     fatherOrHusbandName: String(draft.fatherOrHusbandName || '').trim(),
+    fatherName: String(draft.fatherName || '').trim(),
     dateOfBirth: String(draft.dateOfBirth || '').trim(),
     appointmentDate: String(draft.appointmentDate || '').trim(),
     category: String(draft.category || '').trim(),

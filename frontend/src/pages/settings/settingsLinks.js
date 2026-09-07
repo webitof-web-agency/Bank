@@ -45,5 +45,14 @@ export const SETTINGS_LINKS = [
     description: 'Year-end close metadata and controls.',
     group: 'Administration',
     tone: 'blue'
+  },
+  {
+    label: 'Storage Providers',
+    path: '/app/settings/storage',
+    icon: Archive,
+    permission: 'settings_manage',
+    description: 'Configure Local, GCS, or S3 storage for file uploads.',
+    group: 'Configuration',
+    tone: 'violet'
   }
 ];

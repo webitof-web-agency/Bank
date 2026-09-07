@@ -202,57 +202,7 @@ const transactions = {
       next(error);
     }
   },
-  async listBankTransactions(req, res, next) {
-    try {
-      const rows = await bankingService.buildBankTransactionRows({
-        user: req.user || {},
-        search: req.query.search || '',
-        status: req.query.status || '',
-        bankAccountCode: req.query.bankAccountCode || '',
-        dateFrom: req.query.dateFrom || req.query.fyStart || '',
-        dateTo: req.query.dateTo || req.query.fyEnd || ''
-      });
-      res.json({ success: true, data: rows });
-    } catch (error) {
-      next(error);
-    }
-  },
-  async createBankTransaction(req, res, next) {
-    try {
-      const record = await bankingService.createBankTransaction(req.body || {}, {
-        actorUserId: req.user?.id || null,
-          actorUser: req.user || null
-      });
-      res.status(201).json({ success: true, data: record });
-    } catch (error) {
-      next(error);
-    }
-  },
-  async updateBankTransaction(req, res, next) {
-    try {
-      const record = await bankingService.updateBankTransaction(req.params.id, req.body || {}, {
-        actorUserId: req.user?.id || null,
-          actorUser: req.user || null
-      });
-      if (!record) {
-        return res.status(404).json({ success: false, message: 'Bank transaction not found' });
-      }
-      res.json({ success: true, data: record });
-    } catch (error) {
-      next(error);
-    }
-  },
-  async deleteBankTransaction(req, res, next) {
-    try {
-      const ok = await bankingService.deleteBankTransaction(req.params.id);
-      if (!ok) {
-        return res.status(404).json({ success: false, message: 'Bank transaction not found' });
-      }
-      res.json({ success: true, message: 'Deleted successfully' });
-    } catch (error) {
-      next(error);
-    }
-  }
+
 };
 
 const reports = {
@@ -292,13 +242,32 @@ const reports = {
       next(error);
     }
   },
+  async employeeLedger(req, res, next) {
+    try {
+      const data = await bankingService.buildEmployeeLedgerReport({
+        user: req.user || {},
+        employeeCode: req.query.employeeCode || req.query.code || '',
+        dateFrom: req.query.dateFrom || req.query.from || req.query.fyStart || '',
+        dateTo: req.query.dateTo || req.query.to || req.query.fyEnd || ''
+      });
+      if (!data) {
+        return res.status(404).json({ success: false, message: 'Employee not found' });
+      }
+      res.json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  },
   async accountStatement(req, res, next) {
     try {
       const data = await bankingService.buildAccountStatementReport({
         user: req.user || {},
-        search: req.query.search || '',
-        nature: req.query.nature || '',
-        uptoDate: req.query.date || req.query.uptoDate || req.query.fyEnd || ''
+        type: req.query.type || 'ledger',
+        ledgerId: req.query.ledgerId || req.query.ledger || '',
+        memberId: req.query.memberId || req.query.memberCode || '',
+        employeeId: req.query.employeeId || req.query.employeeCode || '',
+        dateFrom: req.query.dateFrom || req.query.from || req.query.fyStart || '',
+        dateTo: req.query.dateTo || req.query.to || req.query.fyEnd || req.query.date || req.query.uptoDate || ''
       });
       res.json({ success: true, data });
     } catch (error) {
@@ -309,7 +278,8 @@ const reports = {
     try {
       const data = await bankingService.buildTrialBalanceReport({
         user: req.user || {},
-        uptoDate: req.query.date || req.query.uptoDate || req.query.fyEnd || ''
+        dateFrom: req.query.dateFrom || req.query.from || req.query.fyStart || '',
+        dateTo: req.query.dateTo || req.query.to || req.query.fyEnd || req.query.date || req.query.uptoDate || ''
       });
       res.json({ success: true, data });
     } catch (error) {
@@ -340,7 +310,11 @@ const reports = {
   },
   async cashBook(req, res, next) {
     try {
-      const data = await bankingService.buildCashBookReport({ date: req.query.date || req.query.fyEnd || '', user: req.user || {} });
+      const data = await bankingService.buildCashBookReport({
+        dateFrom: req.query.dateFrom || req.query.from || req.query.fyStart || '',
+        dateTo: req.query.dateTo || req.query.to || req.query.fyEnd || req.query.date || '',
+        user: req.user || {}
+      });
       res.json({ success: true, data });
     } catch (error) {
       next(error);
@@ -414,7 +388,9 @@ const reports = {
     try {
       const data = await bankingService.buildDividendReport({
         user: req.user || {},
-        rate: req.query.rate ? Number(req.query.rate) : 8
+        mode: req.query.mode,
+        uptoDate: req.query.uptoDate || req.query.dateTo || req.query.fyEnd || '',
+        branchCode: req.query.branchCode || ''
       });
       res.json({ success: true, data });
     } catch (error) {

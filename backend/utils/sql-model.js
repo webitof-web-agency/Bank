@@ -338,6 +338,12 @@ class SqlQuery {
     this._select = null;
     this._populate = [];
     this._lean = false;
+    this._tx = null;
+  }
+
+  tx(transactionClient) {
+    this._tx = transactionClient;
+    return this;
   }
 
   sort(spec) {
@@ -383,7 +389,8 @@ class SqlQuery {
       populate: this._populate,
       select: this._select,
       skip: this._skip,
-      sort: this._sort
+      sort: this._sort,
+      tx: this._tx
     });
   }
 
@@ -617,10 +624,19 @@ function createSqlModel(tableName, options = {}) {
       rows = rows.slice(0, query.limit);
     }
 
+    if (query.op === 'findByIdAndDelete') {
+      const id = query.filter.id;
+      if (!id) return null;
+      const record = Array.from(rows.values()).find((row) => String(row.id) === String(id));
+      if (!record) return null;
+      await deleteById(record.id, { tx: query.tx });
+      return buildSelectResult(record, query.select);
+    }
+
     if (op === 'findOneAndDelete' || op === 'findByIdAndDelete') {
       const target = rows[0] || null;
       if (!target) return null;
-      await deleteById(target.id);
+      await deleteById(target.id, { tx: query.tx });
       const output = query.lean ? clone(target) : new SqlDocument(model, target);
       return query.select ? applySelect(output.toObject ? output.toObject() : output, query.select) : output;
     }
@@ -634,9 +650,9 @@ function createSqlModel(tableName, options = {}) {
       let updated;
       if (!target) {
         const merged = { ...(query.extra.filterDoc || {}), ...(query.extra.setOnInsert || {}), ...(query.extra.set || {}) };
-        updated = await create(merged);
+        updated = await create(merged, { tx: query.tx });
       } else {
-        updated = await updateById(target.id, query.extra.set || {});
+        updated = await updateById(target.id, query.extra.set || {}, { tx: query.tx });
       }
 
       const returnUpdated = Boolean(query.extra?.new);
@@ -712,7 +728,7 @@ function createSqlModel(tableName, options = {}) {
     return doc;
   }
 
-  async function create(data = {}) {
+  async function create(data = {}, options = {}) {
     await initializeDatabase();
     const doc = clone(data) || {};
     if (beforeCreate) {
@@ -720,7 +736,7 @@ function createSqlModel(tableName, options = {}) {
     }
     const row = dataToRow(doc);
     assertUnique(doc);
-    await persistMainRow(tableName, row);
+    await persistMainRow(tableName, row, options.tx);
     const saved = rowToData({ ...row });
     await syncUserRolesIfNeeded({ ...doc, id: saved.id, _id: saved._id });
     if (afterSave) {
@@ -729,10 +745,10 @@ function createSqlModel(tableName, options = {}) {
     return new SqlDocument(model, saved);
   }
 
-  async function insertMany(docs = []) {
+  async function insertMany(docs = [], options = {}) {
     const created = [];
     for (const doc of docs) {
-      created.push(await create(doc));
+      created.push(await create(doc, options));
     }
     return created;
   }
@@ -754,7 +770,7 @@ function createSqlModel(tableName, options = {}) {
     return merged;
   }
 
-  async function updateById(id, patch = {}) {
+  async function updateById(id, patch = {}, options = {}) {
     await initializeDatabase();
     const rows = findAllRows();
     const target = rows.find((row) => String(row.id) === String(id));
@@ -768,7 +784,7 @@ function createSqlModel(tableName, options = {}) {
     nextDoc.updatedAt = new Date().toISOString();
     applyExistingRoles(nextDoc, target.id);
     assertUnique(nextDoc, target.id);
-    await persistMainRow(tableName, dataToRow(nextDoc));
+    await persistMainRow(tableName, dataToRow(nextDoc), options.tx);
     await syncUserRolesIfNeeded(nextDoc);
     if (afterSave) {
       await afterSave(nextDoc, { isCreate: false, previous: target });
@@ -787,7 +803,7 @@ function createSqlModel(tableName, options = {}) {
         if (doc.id == null && doc._id == null) {
           doc.id = randomUUID();
         }
-        const created = await create(doc);
+        const created = await create(doc, { tx: options.tx });
         return { matchedCount: 0, modifiedCount: 0, upsertedCount: 1, upsertedId: created.id };
       }
       return { matchedCount: 0, modifiedCount: 0, upsertedCount: 0 };
@@ -799,7 +815,7 @@ function createSqlModel(tableName, options = {}) {
     nextDoc.updatedAt = new Date().toISOString();
     applyExistingRoles(nextDoc, target.id);
     assertUnique(nextDoc, target.id);
-    await persistMainRow(tableName, dataToRow(nextDoc));
+    await persistMainRow(tableName, dataToRow(nextDoc), options.tx);
     await syncUserRolesIfNeeded(nextDoc);
     if (afterSave) {
       await afterSave(nextDoc, { isCreate: false, previous: target });
@@ -807,35 +823,35 @@ function createSqlModel(tableName, options = {}) {
     return { matchedCount: 1, modifiedCount: 1, upsertedCount: 0 };
   }
 
-  async function updateMany(filter = {}, update = {}) {
+  async function updateMany(filter = {}, update = {}, options = {}) {
     const rows = findAllRows().filter((row) => matchesFilter(row, filter));
     let modifiedCount = 0;
     for (const row of rows) {
-      await updateById(row.id, update.$set || update);
+      await updateById(row.id, update.$set || update, { tx: options.tx });
       modifiedCount += 1;
     }
     return { matchedCount: rows.length, modifiedCount };
   }
 
-  async function deleteById(id) {
+  async function deleteById(id, options = {}) {
     await initializeDatabase();
     const row = findAllRows().find((item) => String(item.id) === String(id));
     if (!row) return false;
-    await deleteMainRow(tableName, String(id));
+    await deleteMainRow(tableName, String(id), options.tx);
     return true;
   }
 
-  async function deleteOne(filter = {}) {
+  async function deleteOne(filter = {}, options = {}) {
     const row = findAllRows().find((item) => matchesFilter(item, filter));
     if (!row) return { deletedCount: 0 };
-    await deleteById(row.id);
+    await deleteById(row.id, options);
     return { deletedCount: 1 };
   }
 
-  async function deleteMany(filter = {}) {
+  async function deleteMany(filter = {}, options = {}) {
     const rows = findAllRows().filter((item) => matchesFilter(item, filter));
     for (const row of rows) {
-      await deleteById(row.id);
+      await deleteById(row.id, options);
     }
     return { deletedCount: rows.length };
   }

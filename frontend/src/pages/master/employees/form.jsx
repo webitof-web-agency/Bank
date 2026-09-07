@@ -217,8 +217,8 @@ export function EmployeeForm({
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:col-span-2">
             <div className="space-y-1.5">
-              <label className="text-[13px] font-semibold text-slate-700">Father / Husband Name</label>
-              <Input placeholder="e.g. Ramesh Kumar" value={value.fatherOrHusbandName || ""} onChange={(e) => setValue({ ...value, fatherOrHusbandName: e.target.value })} />
+              <label className="text-[13px] font-semibold text-slate-700">Father's Name</label>
+              <Input placeholder="e.g. Ramesh Kumar" value={value.fatherName || ""} onChange={(e) => setValue({ ...value, fatherName: e.target.value })} />
             </div>
             <div className="space-y-1.5">
               <label className="text-[13px] font-semibold text-slate-700">Date of Birth</label>

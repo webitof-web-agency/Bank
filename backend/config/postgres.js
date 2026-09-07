@@ -468,8 +468,8 @@ async function closeDatabase() {
   tableCache.clear();
 }
 
-async function persistMainRow(tableName, row) {
-  const database = await initializeDatabase();
+async function persistMainRow(tableName, row, tx = null) {
+  const database = tx || await initializeDatabase();
   const payload = clone(row) || {};
   const columns = Object.keys(payload).filter((key) => payload[key] !== undefined);
   const values = columns.map((column) => payload[column]);
@@ -486,18 +486,24 @@ async function persistMainRow(tableName, row) {
     : `INSERT INTO ${quoteIdentifier(tableName)} (${columns.map(quoteIdentifier).join(', ')}) VALUES (${columns.map((_, index) => `$${index + 1}`).join(', ')}) ON CONFLICT (${quoteIdentifier('id')}) DO NOTHING`;
 
   await database.query(statement, values);
-  updateCachedRow(tableName, payload);
+  if (!tx) {
+    updateCachedRow(tableName, payload);
+  }
   return payload;
 }
 
-async function deleteMainRow(tableName, id) {
-  const database = await initializeDatabase();
+async function deleteMainRow(tableName, id, tx = null) {
+  const database = tx || await initializeDatabase();
   await database.query(`DELETE FROM ${quoteIdentifier(tableName)} WHERE ${quoteIdentifier('id')} = $1`, [String(id)]);
-  removeCachedRow(tableName, id);
+  if (!tx) {
+    removeCachedRow(tableName, id);
+  }
 
   if (tableName === 'users') {
     await database.query('DELETE FROM user_roles WHERE "userId" = $1', [String(id)]);
-    setUserRoleRows(getUserRoleRows().filter((row) => String(row.userId) !== String(id)));
+    if (!tx) {
+      setUserRoleRows(getUserRoleRows().filter((row) => String(row.userId) !== String(id)));
+    }
   }
 }
 
@@ -553,6 +559,25 @@ function getUserRolesForUsers(userIds = []) {
   return map;
 }
 
+async function withTransaction(callback) {
+  const database = await initializeDatabase();
+  const client = await database.connect();
+  let result;
+  try {
+    await client.query('BEGIN');
+    result = await callback(client);
+    await client.query('COMMIT');
+    // Reload cache to reflect changes made inside the transaction
+    await loadCache(database);
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+  return result;
+}
+
 module.exports = {
   closeDatabase,
   deleteMainRow,
@@ -561,6 +586,7 @@ module.exports = {
   getUserRolesForUsers,
   initializeDatabase,
   persistMainRow,
-  replaceUserRoles
+  replaceUserRoles,
+  withTransaction
 };
 

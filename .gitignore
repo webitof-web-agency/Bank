@@ -8,6 +8,7 @@
 # Environment files
 **/.env
 **/.env.*
+!.env.example
 
 # Logs
 *.log
@@ -23,6 +24,7 @@ coverage/
 .nyc_output/
 *.tgz
 .npm/
+backend/test_output.txt
 
 # IDE & OS
 .DS_Store
@@ -32,7 +34,15 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Environment
-**/.env
-**/.env.*
-!.env.example
+# --- Repo scope: only frontend/ and backend/ are tracked here. ---
+# Everything else at the root stays local-only and must NOT be force-added:
+#   tools/legacy-migration-audit/config.json  — live legacy SQL Server credentials
+#   tools/legacy-migration-audit/reports/     — raw member financial data (PII)
+#   tools/**/node_modules/                    — vendored deps, ~250MB
+#   tools/archive_scripts/, docs/, dev_backup.sql, .agents/, "full backup"/
+# See the conversation with Claude on 2026-09-07 for the reasoning if this
+# whitelist is ever revisited.
+/*
+!/frontend/
+!/backend/
+!/.gitignore

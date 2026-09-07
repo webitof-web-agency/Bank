@@ -12,6 +12,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useFY } from '../../context/FYContext';
 import { getReportConfig, getReportDefaultFilters } from './reportDefinitions';
 import { REPORT_LINK_MAP, REPORT_NAV_LINKS } from './reportLinks';
+import { MemberLedgerPrintTemplate } from './MemberLedgerPrintTemplate';
 
 const SUMMARY_PALETTES = [
   { color: 'text-blue-600', bg: 'bg-blue-50', Icon: BarChart3 },
@@ -434,7 +435,10 @@ export function ReportViewerPage() {
 
       <div className="report-shell">
         <div className="report-canvas-wrap w-full">
-          <div className="report-canvas">
+          {reportKey === 'member-ledger' ? (
+            <MemberLedgerPrintTemplate payload={payload} headerActions={filterPopover} />
+          ) : (
+            <div className="report-canvas">
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {(payload?.summary || []).map((item, index) => (
                 <SummaryCard key={item.label} label={item.label} value={item.value} subLabel={item.subLabel} index={index} />
@@ -455,6 +459,7 @@ export function ReportViewerPage() {
               )}
             </div>
           </div>
+          )}
         </div>
       </div>
     </div>

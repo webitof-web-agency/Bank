@@ -254,3 +254,19 @@ export function Table({
     </div>
   );
 }
+
+export function TableHeader({ className = '', ...props }) {
+  return <thead className={`bg-slate-50 ${className}`} {...props} />;
+}
+export function TableBody({ className = '', ...props }) {
+  return <tbody className={`divide-y divide-slate-200 bg-white ${className}`} {...props} />;
+}
+export function TableRow({ className = '', ...props }) {
+  return <tr className={`hover:bg-slate-50 transition-colors ${className}`} {...props} />;
+}
+export function TableHead({ className = '', ...props }) {
+  return <th className={`px-4 py-3 text-left text-xs font-semibold text-slate-500 tracking-wider ${className}`} {...props} />;
+}
+export function TableCell({ className = '', colSpan, ...props }) {
+  return <td className={`px-4 py-3 text-sm text-slate-700 whitespace-nowrap ${className}`} colSpan={colSpan} {...props} />;
+}

@@ -137,25 +137,28 @@ const EMPLOYEE_SEEDS = [
 ];
 
 const LEDGER_SEEDS = [
-  { code: '0', name: 'Cash-in-hand', nature: 'ASSET', group: 'CASHBANK', openingBalance: 842300, balanceSide: 'DR', isBankAccount: true },
-  { code: '1', name: 'Union Bank - CC A/c', nature: 'ASSET', group: 'CASHBANK', openingBalance: 2154000, balanceSide: 'DR', isBankAccount: true },
-  { code: '2', name: 'Loan A/c - Regular', nature: 'ASSET', group: 'LOANS', openingBalance: 658000, balanceSide: 'DR' },
-  { code: '3', name: 'Loan Against Deposit A/c', nature: 'ASSET', group: 'LOANS', openingBalance: 112000, balanceSide: 'DR' },
-  { code: '4', name: 'Compulsory Deposit A/c', nature: 'LIABILITY', group: 'DEPOSITS', openingBalance: 1930500, balanceSide: 'CR' },
-  { code: '5', name: 'Special Saving A/c', nature: 'LIABILITY', group: 'DEPOSITS', openingBalance: 412000, balanceSide: 'CR' },
-  { code: '6', name: 'Member Share A/c', nature: 'LIABILITY', group: 'GENERAL', openingBalance: 560000, balanceSide: 'CR' },
-  { code: '7', name: 'Interest Income', nature: 'INCOME', group: 'GENERAL', openingBalance: 98400, balanceSide: 'CR' },
-  { code: '8', name: 'Admission Fee Income', nature: 'INCOME', group: 'GENERAL', openingBalance: 14200, balanceSide: 'CR' },
+  { code: '0', name: 'Cash-in-hand', nature: 'ASSET', group: 'CASHBANK', semanticRole: 'CASH', openingBalance: 842300, balanceSide: 'DR', isBankAccount: true },
+  { code: '1', name: 'Union Bank - CC A/c', nature: 'ASSET', group: 'CASHBANK', semanticRole: 'BANK_CC', openingBalance: 2154000, balanceSide: 'DR', isBankAccount: true },
+  { code: '2', name: 'Loan A/c - Regular', nature: 'ASSET', group: 'LOANS', semanticRole: 'REGULAR_LOAN', openingBalance: 658000, balanceSide: 'DR' },
+  { code: '3', name: 'Loan Against Deposit A/c', nature: 'ASSET', group: 'LOANS', semanticRole: 'LOAN_AGAINST_DEPOSIT', openingBalance: 112000, balanceSide: 'DR' },
+  { code: '4', name: 'Compulsory Deposit A/c', nature: 'LIABILITY', group: 'DEPOSITS', semanticRole: 'COMPULSORY_DEPOSIT', openingBalance: 1930500, balanceSide: 'CR' },
+  { code: '5', name: 'Special Saving A/c', nature: 'LIABILITY', group: 'DEPOSITS', semanticRole: 'SPECIAL_DEPOSIT', openingBalance: 412000, balanceSide: 'CR' },
+  { code: '6', name: 'Member Share A/c', nature: 'LIABILITY', group: 'GENERAL', semanticRole: 'SHARE', openingBalance: 560000, balanceSide: 'CR' },
+  { code: '7', name: 'Interest Income', nature: 'INCOME', group: 'GENERAL', semanticRole: 'INTEREST_INCOME', openingBalance: 98400, balanceSide: 'CR' },
+  { code: '8', name: 'Admission Fee Income', nature: 'INCOME', group: 'GENERAL', semanticRole: 'ADMISSION', openingBalance: 14200, balanceSide: 'CR' },
   { code: '9', name: 'Office Expense', nature: 'EXPENSE', group: 'GENERAL', openingBalance: 36700, balanceSide: 'DR' },
   { code: '10', name: 'Staff Salary Expense', nature: 'EXPENSE', group: 'GENERAL', openingBalance: 210000, balanceSide: 'DR' },
-  { code: '11', name: 'Suspense A/c', nature: 'LIABILITY', group: 'SUSPENSE', openingBalance: 4200, balanceSide: 'CR' },
-  { code: '12', name: 'SBI - Saving A/c', nature: 'ASSET', group: 'CASHBANK', openingBalance: 318000, balanceSide: 'DR', isBankAccount: true },
-  { code: '13', name: 'Employee Advance A/c', nature: 'ASSET', group: 'LOANS', openingBalance: 86000, balanceSide: 'DR' },
-  { code: '14', name: 'Insurance Premium A/c', nature: 'LIABILITY', group: 'GENERAL', openingBalance: 74000, balanceSide: 'CR' },
-  { code: '15', name: 'Interest Paid Expense', nature: 'EXPENSE', group: 'GENERAL', openingBalance: 45000, balanceSide: 'DR' },
+  { code: '11', name: 'Suspense A/c', nature: 'LIABILITY', group: 'SUSPENSE', semanticRole: 'SUSPENSE', openingBalance: 4200, balanceSide: 'CR' },
+  { code: '12', name: 'SBI - Saving A/c', nature: 'ASSET', group: 'CASHBANK', semanticRole: 'BANK_SAVING', openingBalance: 318000, balanceSide: 'DR', isBankAccount: true },
+  { code: '13', name: 'Employee Advance A/c', nature: 'ASSET', group: 'LOANS', semanticRole: 'EMPLOYEE_ADVANCE', openingBalance: 86000, balanceSide: 'DR' },
+  { code: '14', name: 'Insurance Premium A/c', nature: 'LIABILITY', group: 'GENERAL', semanticRole: 'PREMIUM', openingBalance: 74000, balanceSide: 'CR' },
+  { code: '15', name: 'Interest Paid Expense', nature: 'EXPENSE', group: 'GENERAL', semanticRole: 'INTEREST_EXPENSE', openingBalance: 45000, balanceSide: 'DR' },
   { code: '16', name: 'Provident Fund A/c', nature: 'LIABILITY', group: 'DEPOSITS', openingBalance: 126000, balanceSide: 'CR' },
   { code: '17', name: 'Bank Loan Liability', nature: 'LIABILITY', group: 'LOANS', openingBalance: 750000, balanceSide: 'CR' },
-  { code: '18', name: 'General Reserve / Capital Fund', nature: 'LIABILITY', group: 'GENERAL', openingBalance: 492700, balanceSide: 'CR' }
+  { code: '18', name: 'General Reserve / Capital Fund', nature: 'LIABILITY', group: 'GENERAL', openingBalance: 492700, balanceSide: 'CR' },
+  { code: '33', name: 'Housing Loan To Employee', nature: 'ASSET', group: 'LOANS', semanticRole: 'EMPLOYEE_HOUSING_LOAN', openingBalance: 0, balanceSide: 'DR' },
+  { code: '34', name: 'Vehicle Loan To Employee', nature: 'ASSET', group: 'LOANS', semanticRole: 'EMPLOYEE_VEHICLE_LOAN', openingBalance: 0, balanceSide: 'DR' },
+  { code: '35', name: 'Grain Advance To Employee', nature: 'ASSET', group: 'LOANS', semanticRole: 'EMPLOYEE_GRAIN_ADVANCE', openingBalance: 0, balanceSide: 'DR' }
 ];
 
 const RATE_SEEDS = [
@@ -259,28 +262,10 @@ const RECOVERY_LINE_SEEDS = [
   { voucherNo: '0', memberCode: '0', demandLineId: '', share: 0, compulsoryDeposit: 1000, ssa: 0, regularLoan: 4200, depositLoan: 0, premium: 0, admission: 0, suspense: 0, other: 0, total: 5200 }
 ];
 
-const BANK_TRANSACTION_SEEDS = [
-  {
-    transactionNo: '0',
-    date: '2026-07-09',
-    bankAccountCode: '0',
-    transactionType: 'Credit',
-    amount: 16000,
-    linkedClientCode: '',
-    linkedProjectCode: '',
-    linkedInvoiceNo: '',
-    linkedExpenseCode: '',
-    notes: 'Deposit in bank',
-    voucherNo: '',
-    status: 'Posted'
-  }
-];
-
 const NO_INTEREST_MEMBER_SEEDS = [];
 
 module.exports = {
   BANK_ACCOUNT_SEEDS,
-  BANK_TRANSACTION_SEEDS,
   BRANCH_SEEDS,
   COMMITTEE_SEED,
   COMMITTEE_DIRECTOR_SEEDS,

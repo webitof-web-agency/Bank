@@ -38,6 +38,7 @@ export function createEmptyLedgerDraft(rows = []) {
     group: 'GENERAL',
     openingBalance: '',
     balanceSide: 'DR',
+    sortOrder: '',
     isBankAccount: false,
     isActive: true
   };
@@ -51,6 +52,7 @@ export function createLedgerDraftFromRecord(record = {}) {
     group: toString(record.group) || 'GENERAL',
     openingBalance: record.openingBalance ?? '',
     balanceSide: toUpper(record.balanceSide) || 'DR',
+    sortOrder: record.sortOrder ?? '',
     isBankAccount: Boolean(record.isBankAccount),
     isActive: record.isActive !== false
   };
@@ -66,6 +68,9 @@ export function buildLedgerPayload(draft = {}) {
       ? undefined
       : toNumber(draft.openingBalance, 0),
     balanceSide: toUpper(draft.balanceSide) || 'DR',
+    sortOrder: draft.sortOrder === '' || draft.sortOrder === null || draft.sortOrder === undefined
+      ? undefined
+      : toNumber(draft.sortOrder, 0),
     isBankAccount: Boolean(draft.isBankAccount),
     isActive: draft.isActive !== false
   };

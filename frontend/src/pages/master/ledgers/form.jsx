@@ -75,6 +75,17 @@ export function LedgerForm({ value, setValue, onSubmit, isEdit = false }) {
             ))}
           </Select>
         </div>
+
+        <div>
+          <FieldLabel>Sort Order</FieldLabel>
+          <Input
+            type="number"
+            step="1"
+            value={value.sortOrder ?? ''}
+            onChange={(event) => setValue((current) => ({ ...current, sortOrder: event.target.value ? Number(event.target.value) : '' }))}
+            placeholder="0"
+          />
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-3">

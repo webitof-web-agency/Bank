@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useAuth } from '../../../context/AuthContext';
@@ -21,7 +21,7 @@ export function EmployeeFormPage() {
   const [loading, setLoading] = useState(isEdit);
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState({
-    code: '', fullName: '', fatherOrHusbandName: '', dateOfBirth: '', appointmentDate: '',
+    code: '', fullName: '', fatherOrHusbandName: '', fatherName: '', dateOfBirth: '', appointmentDate: '',
     category: '', caste: '', qualification: '', name: '', username: '', email: '', password: '',
     mobileNo: '', address: '', gender: '', designation: '', branchCode: '',
     basicSalary: '', housingLoan: '', housingSide: 'Dr', vehicleLoan: '', vehicleSide: 'Dr',

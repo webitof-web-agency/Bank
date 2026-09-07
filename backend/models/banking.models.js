@@ -7,10 +7,10 @@ const BankAccount = createSqlModel('bank_accounts', {
   uniqueFields: ['code']
 });
 
-const BankTransaction = createSqlModel('bank_transactions', {
-  schema: TABLE_SCHEMAS.bank_transactions,
-  modelName: 'BankTransaction',
-  uniqueFields: ['transactionNo']
+const JournalLine = createSqlModel('journal_lines', {
+  schema: TABLE_SCHEMAS.journal_lines,
+  modelName: 'JournalLine',
+  uniqueFields: []
 });
 
 const Branch = createSqlModel('branches', {
@@ -97,9 +97,27 @@ const RecoveryLine = createSqlModel('recovery_lines', {
   uniqueFields: []
 });
 
+const RecoveryImportBatch = createSqlModel('recovery_import_batches', {
+  schema: TABLE_SCHEMAS.recovery_import_batches,
+  modelName: 'RecoveryImportBatch',
+  uniqueFields: []
+});
+
+const RecoveryImportRow = createSqlModel('recovery_import_rows', {
+  schema: TABLE_SCHEMAS.recovery_import_rows,
+  modelName: 'RecoveryImportRow',
+  uniqueFields: []
+});
+
+const FinancialYear = createSqlModel('financial_years', {
+  schema: TABLE_SCHEMAS.financial_years,
+  modelName: 'FinancialYear',
+  uniqueFields: ['code']
+});
+
 module.exports = {
   BankAccount,
-  BankTransaction,
+  JournalLine,
   Branch,
   Committee,
   CommitteeDirector,
@@ -113,7 +131,10 @@ module.exports = {
   Rate,
   Society,
   Voucher,
-  RecoveryLine
+  RecoveryLine,
+  RecoveryImportBatch,
+  RecoveryImportRow,
+  FinancialYear
 };
 
 

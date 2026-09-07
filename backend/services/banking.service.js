@@ -33,7 +33,8 @@ const {
   Rate,
   RecoveryLine,
   Society,
-  Voucher
+  Voucher,
+  JournalLine
 } = require('../models/banking.models');
 const User = require('../models/user.model');
 const {
@@ -48,6 +49,8 @@ const { getSettings, updateSettings, mergeDeep } = require('./settings.service')
 const { toResponse } = require('../utils/response');
 const { getNextSequenceValue, syncSequence } = require('./sequence.service');
 const { buildFileViewUrl } = require('../utils/file-url');
+const { withTransaction } = require('../config/postgres');
+const { buildJournalLinesForVoucher } = require('./posting.service');
 
 function cleanText(value, fallback = '') {
   const text = String(value ?? fallback).trim();
@@ -67,6 +70,8 @@ function normalizePhone(value = '') {
   return digits ? `+${digits}` : '';
 }
 
+function toPaise(value) { return Math.round(Number(value || 0) * 100); }
+function toRupees(value) { return Number(Number(value || 0).toFixed(2)); }
 function toNumber(value, fallback = 0) {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
@@ -139,6 +144,28 @@ function canAccessBranchRecord(resource, record = {}, user = {}) {
 
 function toArray(value) {
   return Array.isArray(value) ? value.filter((item) => item !== undefined && item !== null) : [];
+}
+
+function parseBalancesString(val) {
+  if (typeof val === 'string') {
+    try { 
+      let parsed = JSON.parse(val);
+      if (typeof parsed === 'string') parsed = JSON.parse(parsed);
+      return parsed || {};
+    } catch(e) { return {}; }
+  }
+  return val || {};
+}
+
+function parseBalancesString(val) {
+  if (typeof val === 'string') {
+    try { 
+      let parsed = JSON.parse(val);
+      if (typeof parsed === 'string') parsed = JSON.parse(parsed);
+      return parsed || {};
+    } catch(e) { return {}; }
+  }
+  return val || {};
 }
 
 function toMixed(value, fallback = {}) {
@@ -1670,71 +1697,168 @@ async function buildMemberLedgerReport({ memberCode, dateFrom = '', dateTo = '',
   }
 
   const vouchers = await Voucher.find(query).sort({ date: 1, createdAt: 1 }).lean();
-  const rows = [];
-  let balance = 0;
+  const voucherIds = vouchers.map((v) => String(v._id || v.id));
+  const voucherNos = vouchers.map((v) => v.voucherNo).filter(Boolean);
+  
+  const recoveryLinesAll = await RecoveryLine.find({ 
+    memberCode: member.code, 
+    $or: [{ voucherId: { $in: voucherIds } }, { voucherNo: { $in: voucherNos } }]
+  }).lean();
+  
+  const balancesObj = typeof member.balances === 'string' ? JSON.parse(member.balances || '{}') : (member.balances || {});
+  
+  let shareBal = toPaise(balancesObj.share || 0);
+  let specialDepositBal = toPaise(balancesObj.specialDeposit || balancesObj.ssa || 0);
+  let cdBal = toPaise(balancesObj.compulsoryDeposit || balancesObj.cd || 0);
+  let loanBal = toPaise(member.loanOutstanding || balancesObj.loanOutstanding || balancesObj.loan || balancesObj.regularLoan || 0);
+  let ladBal = toPaise(member.loanAgainstDeposit || balancesObj.loanAgainstDeposit || balancesObj.lad || 0);
+
+  let allRows = [];
 
   for (const voucher of vouchers) {
     const voucherMember = getPartyMemberCode(voucher);
-    const recoveryLines = toArray(voucher.details?.recoveryLines);
     const isPartyMatch = voucherMember && voucherMember === member.code;
-    const lineMatch = recoveryLines.find((line) => cleanUpper(line.member || line.memberCode) === member.code);
+    const vId = String(voucher._id || voucher.id);
+    const lineMatch = recoveryLinesAll.find((line) => line.voucherId === vId || (!line.voucherId && line.voucherNo === voucher.voucherNo));
 
     if (!isPartyMatch && !lineMatch) {
       continue;
     }
 
-    let debit = 0;
-    let credit = 0;
-    let particulars = voucher.voucherCategory || voucher.transactionType || voucher.narration || 'Voucher';
-
-    if (lineMatch) {
-      const lineTotal = toNumber(lineMatch.total, 0);
-      credit = lineTotal;
-      particulars = particulars + ' - Recovery';
-    } else if (cleanLower(voucher.accent) === 'pink') {
-      debit = voucher.amount;
-    } else if (cleanLower(voucher.accent) === 'green') {
-      credit = voucher.amount;
-    } else if (cleanLower(voucher.transactionType) === 'payment') {
-      debit = voucher.amount;
-    } else {
-      credit = voucher.amount;
-    }
-
-    balance += credit - debit;
-    rows.push({
+    const row = {
       voucherNo: voucher.voucherNo,
       date: voucher.date,
-      particulars,
-      debit,
-      credit,
-      balance: Number(balance.toFixed(2)),
+      share: { credit: 0, debit: 0, balance: 0 },
+      specialDeposit: { credit: 0, debit: 0, balance: 0, interest: 0 },
+      compulsoryDeposit: { credit: 0, debit: 0, balance: 0, interest: 0 },
+      loan: { credit: 0, debit: 0, balance: 0, interest: 0 },
+      loanAgainstDeposit: { credit: 0, debit: 0, balance: 0, interest: 0 },
+      isOpening: false,
       narration: voucher.narration || voucher.details?.narration || ''
+    };
+
+    if (lineMatch) {
+      row.share.credit = toPaise(lineMatch.share);
+      row.specialDeposit.credit = toPaise(lineMatch.specialDeposit || lineMatch.ssa);
+      row.compulsoryDeposit.credit = toPaise(lineMatch.compulsoryDeposit);
+      row.loan.credit = toPaise(lineMatch.regularLoan);
+      row.loanAgainstDeposit.credit = toPaise(lineMatch.loanAgainstDeposit || lineMatch.depositLoan);
+    } else {
+      const components = voucher.details?.components || {};
+      const key = voucher.details?.key || '';
+      
+      if (key === 'loan-paid-member') {
+        row.loan.debit = toPaise(components.loanAmt);
+        row.loanAgainstDeposit.debit = toPaise(components.lad);
+      } else if (key === 'deposit-paid-member') {
+        row.compulsoryDeposit.debit = toPaise(components.cd || voucher.amount);
+      } else if (key === 'ssa-paid-member') {
+        row.specialDeposit.debit = toPaise(components.specialDeposit || components.ssa || voucher.amount);
+      } else if (key === 'share-paid-member') {
+        row.share.debit = toPaise(components.share || voucher.amount);
+      } else if (cleanLower(voucher.accent) === 'pink' || cleanLower(voucher.transactionType) === 'payment') {
+        row.loan.debit = toPaise(voucher.amount);
+      } else {
+        row.loan.credit = toPaise(voucher.amount);
+      }
+    }
+
+    shareBal += row.share.credit - row.share.debit;
+    specialDepositBal += row.specialDeposit.credit - row.specialDeposit.debit;
+    cdBal += row.compulsoryDeposit.credit - row.compulsoryDeposit.debit;
+    loanBal += row.loan.debit - row.loan.credit;
+    ladBal += row.loanAgainstDeposit.debit - row.loanAgainstDeposit.credit;
+
+    row.share.balance = Math.abs(shareBal);
+    row.specialDeposit.balance = Math.abs(specialDepositBal);
+    row.compulsoryDeposit.balance = Math.abs(cdBal);
+    row.loan.balance = Math.abs(loanBal);
+    row.loanAgainstDeposit.balance = Math.abs(ladBal);
+
+    allRows.push(row);
+  }
+
+  let finalRows = [];
+  const fromDateStr = cleanText(dateFrom);
+  const previousRows = fromDateStr ? allRows.filter(r => r.date < fromDateStr) : [];
+  const visibleRows = fromDateStr ? allRows.filter(r => r.date >= fromDateStr) : allRows;
+  
+  if (previousRows.length > 0) {
+    const lastPrev = previousRows[previousRows.length - 1];
+    finalRows.push({
+      voucherNo: 'OPENING',
+      date: fromDateStr,
+      share: { credit: 0, debit: 0, balance: lastPrev.share.balance },
+      specialDeposit: { credit: 0, debit: 0, balance: lastPrev.specialDeposit.balance, interest: 0 },
+      compulsoryDeposit: { credit: 0, debit: 0, balance: lastPrev.compulsoryDeposit.balance, interest: 0 },
+      loan: { credit: 0, debit: 0, balance: lastPrev.loan.balance, interest: 0 },
+      loanAgainstDeposit: { credit: 0, debit: 0, balance: lastPrev.loanAgainstDeposit.balance, interest: 0 },
+      isOpening: true
+    });
+  } else {
+    finalRows.push({
+      voucherNo: 'OPENING',
+      date: fromDateStr || (visibleRows.length > 0 ? visibleRows[0].date : ''),
+      share: { credit: 0, debit: 0, balance: Math.abs(toPaise(balancesObj.share || 0)) },
+      specialDeposit: { credit: 0, debit: 0, balance: Math.abs(toPaise(balancesObj.specialDeposit || balancesObj.ssa || 0)), interest: 0 },
+      compulsoryDeposit: { credit: 0, debit: 0, balance: Math.abs(toPaise(balancesObj.compulsoryDeposit || balancesObj.cd || 0)), interest: 0 },
+      loan: { credit: 0, debit: 0, balance: Math.abs(toPaise(balancesObj.loan || balancesObj.regularLoan || 0)), interest: 0 },
+      loanAgainstDeposit: { credit: 0, debit: 0, balance: Math.abs(toPaise(balancesObj.loanAgainstDeposit || balancesObj.lad || 0)), interest: 0 },
+      isOpening: true
     });
   }
+  
+  finalRows = finalRows.concat(visibleRows);
+
+  finalRows = finalRows.map((row) => ({
+    ...row,
+    share: { credit: toRupees(row.share.credit), debit: toRupees(row.share.debit), balance: toRupees(row.share.balance) },
+    specialDeposit: { credit: toRupees(row.specialDeposit.credit), debit: toRupees(row.specialDeposit.debit), balance: toRupees(row.specialDeposit.balance) },
+    compulsoryDeposit: { credit: toRupees(row.compulsoryDeposit.credit), debit: toRupees(row.compulsoryDeposit.debit), balance: toRupees(row.compulsoryDeposit.balance) },
+    loan: { credit: toRupees(row.loan.credit), debit: toRupees(row.loan.debit), balance: toRupees(row.loan.balance) },
+    loanAgainstDeposit: { credit: toRupees(row.loanAgainstDeposit.credit), debit: toRupees(row.loanAgainstDeposit.debit), balance: toRupees(row.loanAgainstDeposit.balance) },
+  }));
 
   return {
     member: toResponse(member),
     balances: {
-      share: toNumber(member.balances?.share, 0),
-      compulsoryDeposit: toNumber(member.depositBalance, toNumber(member.balances?.compulsoryDeposit, 0)),
-      specialSaving: toNumber(member.balances?.specialSaving, 0),
+      share: Math.abs(shareBal / 100),
+      compulsoryDeposit: Math.abs(cdBal / 100),
+      specialSaving: Math.abs(specialDepositBal / 100),
       providentFund: toNumber(member.balances?.providentFund, 0),
-      loanAgainstDeposit: toNumber(member.balances?.loanAgainstDeposit, 0),
+      loanAgainstDeposit: Math.abs(ladBal / 100),
       insurancePremium: toNumber(member.balances?.insurancePremium, 0),
-      loanOutstanding: toNumber(member.loanOutstanding, 0)
+      loanOutstanding: Math.abs(loanBal / 100),
+      cdInterest: toNumber(member.balances?.cdInterest, 0),
+      ssaInterest: toNumber(member.balances?.ssaInterest, 0),
+      regularLoanInterest: toNumber(member.balances?.regularLoanInterest, 0),
+      ladInterest: toNumber(member.balances?.ladInterest, 0)
     },
-    rows
+    rows: finalRows
   };
 }
+async function buildAccountStatementReport({ type = 'ledger', ledgerId = '', memberId = '', employeeId = '', dateFrom = '', dateTo = '', uptoDate = '', search = '', nature = '', user = {} } = {}) {
+  const branchCode = resolveBranchCode(user);
+  
+  if (type === 'member') {
+    return await buildMemberAccountStatement({ memberId: memberId || ledgerId, dateFrom, dateTo, user });
+  }
+  if (type === 'employee') {
+    return await buildEmployeeAccountStatement({ employeeId: employeeId || ledgerId, dateFrom, dateTo, user });
+  }
 
-async function buildAccountStatementReport({ search = '', nature = '', uptoDate = '', user = {} } = {}) {
-  const snapshots = await getLedgerSnapshots({ uptoDate, branchCode: resolveBranchCode(user) });
-  const filtered = snapshots.filter((row) => {
-    const matchesNature = !nature || cleanUpper(row.nature) === cleanUpper(nature);
-    const matchesSearch = !search || [row.code, row.name, row.group].some((value) => cleanLower(value).includes(cleanLower(search)));
-    return matchesNature && matchesSearch;
-  });
+  const snapshots = await getLedgerSnapshots({ dateFrom, dateTo, uptoDate, branchCode });
+  let filtered = snapshots;
+  
+  if (ledgerId) {
+    filtered = snapshots.filter(s => cleanUpper(s.code) === cleanUpper(ledgerId) || String(s._id) === String(ledgerId));
+  } else {
+    filtered = snapshots.filter((row) => {
+      const matchesNature = !nature || cleanUpper(row.nature) === cleanUpper(nature);
+      const matchesSearch = !search || [row.code, row.name, row.group].some((value) => cleanLower(value).includes(cleanLower(search)));
+      return matchesNature && matchesSearch;
+    });
+  }
 
   return filtered.map((row) => ({
     ledgerCode: row.code,
@@ -1743,11 +1867,10 @@ async function buildAccountStatementReport({ search = '', nature = '', uptoDate 
     openingSide: row.openingSide,
     totalCr: row.totalCr,
     totalDr: row.totalDr,
-    balance: row.balance,
+    balance: row.closing,
     balanceSide: row.closingSide
   }));
 }
-
 async function buildTrialBalanceReport({ uptoDate = '', user = {} } = {}) {
   const snapshots = await getLedgerSnapshots({ uptoDate, branchCode: resolveBranchCode(user) });
   return snapshots.map((row) => ({
@@ -1884,15 +2007,22 @@ async function buildDemandListReport({ month = '', branchCode = '', user = {} } 
   if (effectiveBranchCode) {
     query.branchCode = effectiveBranchCode;
   }
-  const rows = await Demand.find(query).sort({ updatedAt: -1 }).lean();
-  return rows.map((row) => ({
-    demandNo: row.demandNo,
-    memberCode: row.memberCode,
-    month: row.month,
-    total: toNumber(row.total, 0),
-    recovered: toNumber(row.recovered, 0),
-    pending: Math.max(0, toNumber(row.total, 0) - toNumber(row.recovered, 0)),
-    status: row.status
+  // Join DemandList → DemandLine for member-level detail
+  const lists = await DemandList.find(query).sort({ updatedAt: -1 }).lean();
+  const listNos = lists.map((l) => l.demandListNo);
+  const lineQuery = listNos.length > 0 ? { demandListNo: { $in: listNos } } : {};
+  const lines = await DemandLine.find(lineQuery).lean();
+  return lines.map((line) => ({
+    demandListNo: line.demandListNo,
+    memberCode: line.memberCode,
+    memberName: line.memberName,
+    month: (lists.find((l) => l.demandListNo === line.demandListNo) || {}).month || '',
+    cd: toNumber(line.compulsoryDeposit, 0),
+    regularLoan: toNumber(line.regularLoan, 0),
+    total: toNumber(line.totalAmount, 0),
+    recovered: toNumber(line.recoveredAmount, 0),
+    pending: Math.max(0, toNumber(line.totalAmount, 0) - toNumber(line.recoveredAmount, 0)),
+    status: line.recoveryStatus
   }));
 }
 
@@ -1911,26 +2041,39 @@ async function buildAllMemberListReport({ branchCode = '', user = {} } = {}) {
 }
 
 async function buildPaymentReceiptStatementReport({ dateFrom = '', dateTo = '', branchCode = '', user = {} } = {}) {
-  const query = {};
+  // Proven legacy behavior relies on cumulative balances (vwLedgerBalance).
+  // Hence we use uptoDate = dateTo for cumulative as-of snapshot.
   const effectiveBranchCode = resolveBranchCode(user, branchCode);
-  if (effectiveBranchCode) {
-    query.branchCode = effectiveBranchCode;
-  }
-  if (dateFrom || dateTo) {
-    query.date = {};
-    if (dateFrom) query.date.$gte = cleanText(dateFrom);
-    if (dateTo) query.date.$lte = cleanText(dateTo);
+  const uptoDate = dateTo || dateFrom || '';
+  const snapshots = await getLedgerSnapshots({ uptoDate, branchCode: effectiveBranchCode });
+  
+  const receipts = [];
+  const payments = [];
+  
+  let receiptTotal = 0;
+  let paymentTotal = 0;
+
+  for (const row of snapshots) {
+    if ((row.nature === 'LIABILITY' || row.nature === 'INCOME') && row.group !== 'PRIMARY') {
+      receipts.push({
+        ledgerCode: row.code,
+        ledgerName: row.name,
+        group: row.group,
+        amount: row.closing
+      });
+      receiptTotal += row.closing;
+    } else if ((row.nature === 'ASSET' || row.nature === 'EXPENSE') && row.group !== 'PRIMARY') {
+      payments.push({
+        ledgerCode: row.code,
+        ledgerName: row.name,
+        group: row.group,
+        amount: row.closing
+      });
+      paymentTotal += row.closing;
+    }
   }
 
-  const vouchers = await Voucher.find(query).sort({ date: 1, createdAt: 1 }).lean();
-  return vouchers.map((voucher) => ({
-    voucherNo: voucher.voucherNo,
-    date: voucher.date,
-    voucherCategory: voucher.voucherCategory,
-    partyCode: voucher.partyCode,
-    payment: cleanLower(voucher.accent) === 'pink' ? voucher.amount : 0,
-    receipt: cleanLower(voucher.accent) === 'green' ? voucher.amount : 0
-  }));
+  return { receipts, payments, receiptTotal: Number(receiptTotal.toFixed(2)), paymentTotal: Number(paymentTotal.toFixed(2)) };
 }
 
 async function buildBranchListReport({ branchCode = '', user = {} } = {}) {
@@ -2054,39 +2197,90 @@ async function getSingle(resource) {
 }
 
 async function createVoucher(data = {}, meta = {}) {
-  const branchCode = resolveBranchCode(meta.actorUser || {}, data.branchCode);
-  const voucherNo = cleanText(data.voucherNo) || await getNextVoucherNo(branchCode);
-  const payload = normalizeVoucher({ ...data, voucherNo, branchCode });
-  if (meta.actorUserId) {
-    payload.createdByUserId = meta.actorUserId;
-    payload.updatedByUserId = meta.actorUserId;
-  }
-  const record = await Voucher.create(payload);
-  const response = sanitizeVoucherResponse(record);
-  await notifySafely(buildVoucherNotificationPayload('created', response, meta));
-  return response;
+  return withTransaction(async (tx) => {
+    const branchCode = resolveBranchCode(meta.actorUser || {}, data.branchCode);
+    const voucherNo = cleanText(data.voucherNo) || await getNextVoucherNo(branchCode);
+    const payload = normalizeVoucher({ ...data, voucherNo, branchCode });
+    if (meta.actorUserId) {
+      payload.createdByUserId = meta.actorUserId;
+      payload.updatedByUserId = meta.actorUserId;
+    }
+    
+    const journalLines = await buildJournalLinesForVoucher(payload, { ...meta, tx, recoveryLines: payload.details?.recoveryLines || [] });
+
+    const record = await Voucher.create(payload, { tx });
+    
+    if (payload.details && payload.details.recoveryLines && payload.details.recoveryLines.length > 0) {
+      const linesToInsert = payload.details.recoveryLines.map(line => ({
+        ...line,
+        voucherId: String(record._id || record.id),
+        voucherNo: record.voucherNo
+      }));
+      await RecoveryLine.insertMany(linesToInsert, { tx });
+    }
+
+    const journalLinesToInsert = journalLines.map(line => ({
+      ...line,
+      voucherId: String(record._id || record.id),
+      voucherNo: record.voucherNo
+    }));
+    await JournalLine.insertMany(journalLinesToInsert, { tx });
+
+    const response = sanitizeVoucherResponse(record);
+    await notifySafely(buildVoucherNotificationPayload('created', response, meta));
+    return response;
+  });
 }
 
 async function updateVoucher(id, data = {}, meta = {}) {
-  const current = await Voucher.findById(id);
-  if (!current) return null;
-  const payload = normalizeVoucher({ ...current.toObject(), ...data });
-  payload.branchCode = resolveBranchCode(meta.actorUser || {}, current.branchCode);
-  if (meta.actorUserId) {
-    payload.updatedByUserId = meta.actorUserId;
-  }
-  current.set(payload);
-  await current.save();
-  const response = sanitizeVoucherResponse(current.toObject());
-  await notifySafely(buildVoucherNotificationPayload('updated', response, meta));
-  return response;
+  return withTransaction(async (tx) => {
+    const current = await Voucher.findById(id);
+    if (!current) return null;
+    const payload = normalizeVoucher({ ...current.toObject(), ...data });
+    payload.branchCode = resolveBranchCode(meta.actorUser || {}, current.branchCode);
+    if (meta.actorUserId) {
+      payload.updatedByUserId = meta.actorUserId;
+    }
+    
+    const journalLines = await buildJournalLinesForVoucher(payload, { ...meta, tx, recoveryLines: payload.details?.recoveryLines || [] });
+
+    await Voucher.findByIdAndUpdate(id, payload, { new: true }).tx(tx);
+
+    if (payload.details && payload.details.recoveryLines) {
+      await RecoveryLine.deleteMany({ voucherId: id }, { tx });
+      if (payload.details.recoveryLines.length > 0) {
+        const linesToInsert = payload.details.recoveryLines.map(line => ({
+          ...line,
+          voucherId: id,
+          voucherNo: payload.voucherNo || current.voucherNo
+        }));
+        await RecoveryLine.insertMany(linesToInsert, { tx });
+      }
+    }
+    
+    await JournalLine.deleteMany({ voucherId: id }, { tx });
+    const journalLinesToInsert = journalLines.map(line => ({
+      ...line,
+      voucherId: id,
+      voucherNo: payload.voucherNo || current.voucherNo
+    }));
+    await JournalLine.insertMany(journalLinesToInsert, { tx });
+
+    const response = sanitizeVoucherResponse({ ...current.toObject(), ...payload });
+    await notifySafely(buildVoucherNotificationPayload('updated', response, meta));
+    return response;
+  });
 }
 
 async function deleteVoucher(id) {
-  const record = await Voucher.findByIdAndDelete(id).lean();
-  if (!record) return false;
-  await deleteDocumentFiles(record.documents || {});
-  return true;
+  return withTransaction(async (tx) => {
+    const record = await Voucher.findByIdAndDelete(id).tx(tx);
+    if (!record) return false;
+    await RecoveryLine.deleteMany({ voucherId: id }, { tx });
+    await JournalLine.deleteMany({ voucherId: id }, { tx });
+    await deleteDocumentFiles(record.documents || {});
+    return true;
+  });
 }
 
 async function createBankTransaction(data = {}, meta = {}) {
@@ -2126,6 +2320,467 @@ async function deleteBankTransaction(id) {
 }
 
 
+
+async function buildMemberAccountStatement({ memberId, dateFrom, dateTo, user }) {
+  const member = await Member.findOne({ code: cleanUpper(memberId) }).lean();
+  if (!member) return { member: null, statement: [] };
+
+  const branchCode = resolveBranchCode(user);
+  const query = {};
+  if (branchCode) query.branchCode = branchCode;
+  if (dateTo) query.date = { $lte: cleanText(dateTo) };
+
+  const vouchers = await Voucher.find(query).sort({ date: 1, createdAt: 1 }).lean();
+  const balancesObj = typeof member.balances === 'string' ? JSON.parse(member.balances || '{}') : (member.balances || {});
+
+  let components = {
+    share: { balance: toPaise(balancesObj.share || 0), dr: 0, cr: 0, opening: toPaise(balancesObj.share || 0) },
+    specialDeposit: { balance: toPaise(balancesObj.specialDeposit || balancesObj.ssa || 0), dr: 0, cr: 0, opening: toPaise(balancesObj.specialDeposit || balancesObj.ssa || 0) },
+    compulsoryDeposit: { balance: toPaise(balancesObj.compulsoryDeposit || balancesObj.cd || 0), dr: 0, cr: 0, opening: toPaise(balancesObj.compulsoryDeposit || balancesObj.cd || 0) },
+    loan: { balance: toPaise(balancesObj.loan || balancesObj.regularLoan || 0), dr: 0, cr: 0, opening: toPaise(balancesObj.loan || balancesObj.regularLoan || 0) },
+    loanAgainstDeposit: { balance: toPaise(balancesObj.loanAgainstDeposit || balancesObj.lad || 0), dr: 0, cr: 0, opening: toPaise(balancesObj.loanAgainstDeposit || balancesObj.lad || 0) }
+  };
+
+  const fromDateStr = cleanText(dateFrom);
+  const voucherIds = vouchers.map(v => String(v._id || v.id));
+  const voucherNos = vouchers.map(v => v.voucherNo).filter(Boolean);
+  const recoveryLinesAll = await RecoveryLine.find({ 
+    memberCode: member.code, 
+    $or: [{ voucherId: { $in: voucherIds } }, { voucherNo: { $in: voucherNos } }]
+  }).lean();
+
+  for (const voucher of vouchers) {
+    const voucherMember = getPartyMemberCode(voucher);
+    const lineMatch = recoveryLinesAll.find((line) => line.voucherNo === String(voucher._id || voucher.id) || line.voucherNo === voucher.voucherNo);
+    const isPartyMatch = voucherMember && voucherMember === member.code;
+
+    if (!isPartyMatch && !lineMatch) continue;
+
+    const isOpening = fromDateStr && voucher.date < fromDateStr;
+
+    let dr = { share: 0, specialDeposit: 0, compulsoryDeposit: 0, loan: 0, loanAgainstDeposit: 0 };
+    let cr = { share: 0, specialDeposit: 0, compulsoryDeposit: 0, loan: 0, loanAgainstDeposit: 0 };
+
+    if (lineMatch) {
+      cr.share = toPaise(lineMatch.share);
+      cr.specialDeposit = toPaise(lineMatch.specialDeposit || lineMatch.ssa);
+      cr.compulsoryDeposit = toPaise(lineMatch.compulsoryDeposit);
+      cr.loan = toPaise(lineMatch.regularLoan);
+      cr.loanAgainstDeposit = toPaise(lineMatch.loanAgainstDeposit || lineMatch.depositLoan);
+    } else {
+      const vc = voucher.details?.components || {};
+      const key = voucher.details?.key || '';
+      
+      if (key === 'loan-paid-member') {
+        dr.loan = toPaise(vc.loanAmt);
+        dr.loanAgainstDeposit = toPaise(vc.lad);
+      } else if (key === 'deposit-paid-member') {
+        dr.compulsoryDeposit = toPaise(vc.cd || voucher.amount);
+      } else if (key === 'ssa-paid-member') {
+        dr.specialDeposit = toPaise(vc.specialDeposit || vc.ssa || voucher.amount);
+      } else if (key === 'share-paid-member') {
+        dr.share = toPaise(vc.share || voucher.amount);
+      } else if (cleanLower(voucher.accent) === 'pink' || cleanLower(voucher.transactionType) === 'payment') {
+        dr.loan = toPaise(voucher.amount);
+      } else {
+        cr.loan = toPaise(voucher.amount);
+      }
+    }
+
+    // Apply to balance (Intentional Modernization: Loans are Assets, DR increases, CR decreases. Deposits are Liabilities, DR decreases, CR increases)
+    // Actually, in the account statement UI, we usually just want absolute positive balances.
+    components.share.balance += cr.share - dr.share;
+    components.specialDeposit.balance += cr.specialDeposit - dr.specialDeposit;
+    components.compulsoryDeposit.balance += cr.compulsoryDeposit - dr.compulsoryDeposit;
+    components.loan.balance += dr.loan - cr.loan;
+    components.loanAgainstDeposit.balance += dr.loanAgainstDeposit - cr.loanAgainstDeposit;
+
+    if (isOpening) {
+      components.share.opening = components.share.balance;
+      components.specialDeposit.opening = components.specialDeposit.balance;
+      components.compulsoryDeposit.opening = components.compulsoryDeposit.balance;
+      components.loan.opening = components.loan.balance;
+      components.loanAgainstDeposit.opening = components.loanAgainstDeposit.balance;
+    } else {
+      components.share.dr += dr.share; components.share.cr += cr.share;
+      components.specialDeposit.dr += dr.specialDeposit; components.specialDeposit.cr += cr.specialDeposit;
+      components.compulsoryDeposit.dr += dr.compulsoryDeposit; components.compulsoryDeposit.cr += cr.compulsoryDeposit;
+      components.loan.dr += dr.loan; components.loan.cr += cr.loan;
+      components.loanAgainstDeposit.dr += dr.loanAgainstDeposit; components.loanAgainstDeposit.cr += cr.loanAgainstDeposit;
+    }
+  }
+
+  const labels = {
+    share: 'Share',
+    specialDeposit: 'Special Deposit',
+    compulsoryDeposit: 'Compulsory Deposit',
+    loan: 'Regular Loan',
+    loanAgainstDeposit: 'Loan Against Deposit'
+  };
+
+  const results = Object.keys(components).map(key => ({
+    head: labels[key],
+    opening: Number((components[key].opening / 100).toFixed(2)),
+    debit: Number((components[key].dr / 100).toFixed(2)),
+    credit: Number((components[key].cr / 100).toFixed(2)),
+    closing: Number((Math.abs(components[key].balance) / 100).toFixed(2))
+  }));
+
+  return { 
+    member: { 
+      code: member.code, 
+      name: member.name, 
+      dismembered: !!member.isDismembered,
+      interest: 'pending' // Intentional modernization per requirements
+    }, 
+    statement: results 
+  };
+}
+
+async function buildEmployeeAccountStatement({ employeeId, dateFrom, dateTo, user }) {
+  const employee = await Employee.findOne({ code: cleanUpper(employeeId) }).lean();
+  if (!employee) return { employee: null, statement: [] };
+
+  const branchCode = resolveBranchCode(user);
+  const query = {};
+  if (branchCode) query.branchCode = branchCode;
+  if (dateTo) query.date = { $lte: cleanText(dateTo) };
+
+  const vouchers = await Voucher.find(query).sort({ date: 1, createdAt: 1 }).lean();
+  
+  let components = {
+    house: { balance: toPaise(employee.homeLoanBalance || 0), dr: 0, cr: 0, opening: toPaise(employee.homeLoanBalance || 0) },
+    vehicle: { balance: toPaise(employee.vehicleLoanBalance || 0), dr: 0, cr: 0, opening: toPaise(employee.vehicleLoanBalance || 0) },
+    grain: { balance: toPaise(employee.grainAdvanceBalance || 0), dr: 0, cr: 0, opening: toPaise(employee.grainAdvanceBalance || 0) }
+  };
+
+  const fromDateStr = cleanText(dateFrom);
+
+  for (const voucher of vouchers) {
+    if (cleanUpper(voucher.partyCode) !== employee.code || cleanUpper(voucher.partyType) !== 'EMPLOYEE') continue;
+
+    const isOpening = fromDateStr && voucher.date < fromDateStr;
+    const vc = voucher.details?.components || {};
+    const isRecovery = voucher.details?.key === 'advance-recovery-emp';
+
+    let dr = { house: 0, vehicle: 0, grain: 0 };
+    let cr = { house: 0, vehicle: 0, grain: 0 };
+
+    if (isRecovery) {
+      cr.house = toPaise(vc.house);
+      cr.vehicle = toPaise(vc.vehicle);
+      cr.grain = toPaise(vc.grain);
+    } else {
+      dr.house = toPaise(vc.house || (voucher.amount && !vc.vehicle && !vc.grain ? voucher.amount : 0));
+      dr.vehicle = toPaise(vc.vehicle);
+      dr.grain = toPaise(vc.grain);
+    }
+
+    // Intentional Modernization: Loans are Assets, DR increases, CR decreases
+    components.house.balance += dr.house - cr.house;
+    components.vehicle.balance += dr.vehicle - cr.vehicle;
+    components.grain.balance += dr.grain - cr.grain;
+
+    if (isOpening) {
+      components.house.opening = components.house.balance;
+      components.vehicle.opening = components.vehicle.balance;
+      components.grain.opening = components.grain.balance;
+    } else {
+      components.house.dr += dr.house; components.house.cr += cr.house;
+      components.vehicle.dr += dr.vehicle; components.vehicle.cr += cr.vehicle;
+      components.grain.dr += dr.grain; components.grain.cr += cr.grain;
+    }
+  }
+
+  const labels = {
+    house: 'Housing Loan',
+    vehicle: 'Vehicle Loan',
+    grain: 'Grain Advance'
+  };
+
+  const results = Object.keys(components).map(key => ({
+    head: labels[key],
+    opening: Number((components[key].opening / 100).toFixed(2)),
+    debit: Number((components[key].dr / 100).toFixed(2)),
+    credit: Number((components[key].cr / 100).toFixed(2)),
+    closing: Number((Math.abs(components[key].balance) / 100).toFixed(2))
+  }));
+
+  return { 
+    employee: { 
+      code: employee.code, 
+      name: employee.name,
+      retired: !!employee.isRetired,
+      interest: 'pending' // Intentional modernization per requirements
+    }, 
+    statement: results 
+  };
+}
+async function buildEmployeeLedgerReport({ employeeCode, dateFrom = '', dateTo = '', user = {} } = {}) {
+  const employee = await Employee.findOne({ code: cleanUpper(employeeCode) }).lean();
+  if (!employee) return null;
+
+  const branchCode = resolveBranchCode(user);
+  const query = {};
+  if (branchCode) query.branchCode = branchCode;
+  if (dateTo) query.date = { $lte: cleanText(dateTo) };
+
+  const vouchers = await Voucher.find(query).sort({ date: 1, createdAt: 1 }).lean();
+  const voucherIds = vouchers.map((v) => String(v._id || v.id));
+  const voucherNos = vouchers.map((v) => v.voucherNo).filter(Boolean);
+  const allRecoveryLines = await RecoveryLine.find({ $or: [{ voucherId: { $in: voucherIds } }, { voucherNo: { $in: voucherNos } }] }).lean();
+  const recoveryLinesByVoucher = allRecoveryLines.reduce((acc, line) => {
+    const key = line.voucherId || line.voucherNo;
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(line);
+    return acc;
+  }, {});
+  
+  const balancesObj = typeof employee.balances === 'string' ? JSON.parse(employee.balances || '{}') : (employee.balances || {});
+  
+  let housingBal = toNumber(employee.homeLoanBalance ?? balancesObj.housingLoan ?? balancesObj.house ?? 0);
+  let vehicleBal = toNumber(employee.vehicleLoanBalance ?? balancesObj.vehicleLoan ?? balancesObj.vehicle ?? 0);
+  let grainBal = toNumber(employee.grainAdvanceBalance ?? balancesObj.grainAdvance ?? balancesObj.grain ?? 0);
+
+  let allRows = [];
+
+  for (const voucher of vouchers) {
+    const isPartyMatch = cleanUpper(voucher.partyCode) === cleanUpper(employee.code);
+    const recoveryLines = toArray(voucher.details?.recoveryLines).concat(recoveryLinesByVoucher[voucher._id || voucher.id] || []).concat(recoveryLinesByVoucher[voucher.voucherNo] || []);
+    const hasEmployeeLines = recoveryLines.some(l => cleanUpper(l.employeeCode || l.memberCode || l.member) === cleanUpper(employee.code));
+
+    if (!isPartyMatch && !hasEmployeeLines) {
+      continue;
+    }
+
+    const row = {
+      voucherNo: voucher.voucherNo,
+      date: voucher.date,
+      housingLoan: { credit: 0, debit: 0, balance: 0 },
+      vehicleLoan: { credit: 0, debit: 0, balance: 0 },
+      grainAdvance: { credit: 0, debit: 0, balance: 0 },
+      isOpening: false
+    };
+
+    const key = voucher.details?.key || '';
+    const components = voucher.details?.components || {};
+    
+    if (key === 'advance-paid-emp') {
+      row.housingLoan.debit = toNumber(components.house || 0);
+      row.vehicleLoan.debit = toNumber(components.vehicle || 0);
+      row.grainAdvance.debit = toNumber(components.grain || 0);
+    } 
+    else if (key === 'advance-recovery-emp') {
+      row.housingLoan.credit = toNumber(components.house || 0);
+      row.vehicleLoan.credit = toNumber(components.vehicle || 0);
+      row.grainAdvance.credit = toNumber(components.grain || 0);
+    }
+    else {
+      if (components.house) row.housingLoan.debit = toNumber(components.house);
+      if (components.vehicle) row.vehicleLoan.debit = toNumber(components.vehicle);
+      if (components.grain) row.grainAdvance.debit = toNumber(components.grain);
+    }
+
+    housingBal += row.housingLoan.debit - row.housingLoan.credit;
+    vehicleBal += row.vehicleLoan.debit - row.vehicleLoan.credit;
+    grainBal += row.grainAdvance.debit - row.grainAdvance.credit;
+
+    row.housingLoan.balance = Math.abs(housingBal);
+    row.vehicleLoan.balance = Math.abs(vehicleBal);
+    row.grainAdvance.balance = Math.abs(grainBal);
+
+    allRows.push(row);
+  }
+
+  let finalRows = [];
+  const fromDateStr = cleanText(dateFrom);
+  const previousRows = fromDateStr ? allRows.filter(r => r.date < fromDateStr) : [];
+  const visibleRows = fromDateStr ? allRows.filter(r => r.date >= fromDateStr) : allRows;
+  
+  if (previousRows.length > 0) {
+    const lastPrev = previousRows[previousRows.length - 1];
+    finalRows.push({
+      voucherNo: 'OPENING',
+      date: fromDateStr,
+      housingLoan: { credit: 0, debit: 0, balance: lastPrev.housingLoan.balance },
+      vehicleLoan: { credit: 0, debit: 0, balance: lastPrev.vehicleLoan.balance },
+      grainAdvance: { credit: 0, debit: 0, balance: lastPrev.grainAdvance.balance },
+      isOpening: true
+    });
+  } else {
+    finalRows.push({
+      voucherNo: 'OPENING',
+      date: fromDateStr || (visibleRows.length > 0 ? visibleRows[0].date : ''),
+      housingLoan: { credit: 0, debit: 0, balance: Math.abs(toPaise(employee.homeLoanBalance || 0)) },
+      vehicleLoan: { credit: 0, debit: 0, balance: Math.abs(toPaise(employee.vehicleLoanBalance || 0)) },
+      grainAdvance: { credit: 0, debit: 0, balance: Math.abs(toPaise(employee.grainAdvanceBalance || 0)) },
+      isOpening: true
+    });
+  }
+  
+  finalRows = finalRows.concat(visibleRows);
+
+  finalRows = finalRows.map((row) => ({
+    ...row,
+    housingLoan: { credit: toRupees(row.housingLoan.credit), debit: toRupees(row.housingLoan.debit), balance: toRupees(row.housingLoan.balance) },
+    vehicleLoan: { credit: toRupees(row.vehicleLoan.credit), debit: toRupees(row.vehicleLoan.debit), balance: toRupees(row.vehicleLoan.balance) },
+    grainAdvance: { credit: toRupees(row.grainAdvance.credit), debit: toRupees(row.grainAdvance.debit), balance: toRupees(row.grainAdvance.balance) },
+  }));
+
+  const balances = finalRows.length > 0 ? finalRows[finalRows.length - 1] : {
+    housingLoan: { balance: 0 },
+    vehicleLoan: { balance: 0 },
+    grainAdvance: { balance: 0 }
+  };
+
+  return {
+    employee: toResponse(employee),
+    balances: {
+      housingLoan: balances.housingLoan.balance,
+      vehicleLoan: balances.vehicleLoan.balance,
+      grainAdvance: balances.grainAdvance.balance,
+      housingLoanInterest: toNumber(employee.homeLoanInterest, 0),
+      vehicleLoanInterest: toNumber(employee.vehicleLoanInterest, 0)
+    },
+    rows: finalRows
+  };
+}
+
+
+async function buildDividendReport({ mode = 'branchwise-opening', uptoDate = '', branchCode = '', user = {} } = {}) {
+  const effectiveBranchCode = resolveBranchCode(user, branchCode);
+  const query = {};
+  if (effectiveBranchCode) query.branchCode = effectiveBranchCode;
+  
+  const members = await Member.find(query).lean();
+  const ratesConfig = await getGlobalRatesConfig();
+  const paidDividendRate = toNumber(ratesConfig.interestRates?.paid?.dividend, 0);
+
+  const voucherQuery = effectiveBranchCode ? { branchCode: effectiveBranchCode } : {};
+  if (uptoDate) voucherQuery.date = { $lte: cleanText(uptoDate) };
+  
+  const isClosing = ['memberwise-closing', 'branchwise-closing', 'summary-closing'].includes(cleanLower(mode));
+  
+  let recoveryLinesByVoucher = {};
+  let vouchers = [];
+  
+  if (isClosing) {
+    vouchers = await Voucher.find(voucherQuery).lean();
+    const voucherIds = vouchers.map(v => String(v._id || v.id));
+    const voucherNos = vouchers.map(v => v.voucherNo).filter(Boolean);
+    const allRecoveryLines = await RecoveryLine.find({ $or: [{ voucherId: { $in: voucherIds } }, { voucherNo: { $in: voucherNos } }] }).lean();
+    recoveryLinesByVoucher = allRecoveryLines.reduce((acc, line) => {
+      const key = line.voucherId || line.voucherNo;
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(line);
+      return acc;
+    }, {});
+  }
+
+  const results = members.map(member => {
+    let baseShare = 0;
+    
+    // Parse Member Balances
+    let balancesObj = {};
+    if (member.balances) {
+      balancesObj = typeof member.balances === 'string' ? JSON.parse(member.balances || '{}') : member.balances;
+    }
+    
+    baseShare = toNumber(balancesObj.share, 0);
+
+    let closingShare = baseShare;
+    
+    if (isClosing) {
+      // Aggregate Share movements up to uptoDate
+      let shareDr = 0;
+      let shareCr = 0;
+      for (const voucher of vouchers) {
+        const isPartyMatch = cleanUpper(voucher.partyCode) === cleanUpper(member.code);
+        const recoveryLines = toArray(voucher.details?.recoveryLines)
+          .concat(recoveryLinesByVoucher[voucher._id || voucher.id] || [])
+          .concat(recoveryLinesByVoucher[voucher.voucherNo] || []);
+        const hasMemberLines = recoveryLines.some(l => cleanUpper(l.memberCode || l.member) === cleanUpper(member.code));
+        
+        if (!isPartyMatch && !hasMemberLines) continue;
+        
+        const key = voucher.details?.key || '';
+        const components = voucher.details?.components || {};
+        
+        // Member Paid Vouchers (Disbursements)
+        if (key === 'loan-paid-member' && isPartyMatch) {
+          shareDr += toNumber(components.share, 0);
+        }
+        
+        // Recoveries
+        for (const line of recoveryLines) {
+          if (cleanUpper(line.memberCode || line.member) === cleanUpper(member.code)) {
+            shareCr += toNumber(line.share, 0);
+          }
+        }
+      }
+      closingShare = baseShare + shareCr - shareDr; 
+      // legacy logic treats Share payments as debits (decrease) and Share recoveries as credits (increase). Wait, for Shares, recovery increases it? 
+      // Yes, "Recovery TransType 5 -> Member component values are positive. Positive component movement -> credit/increase side."
+      // "loan-paid-member TransType 1-4 -> negated -> debit/decrease side".
+    }
+
+    const shareToUse = isClosing ? closingShare : baseShare;
+    const dividendAmount = Number(((shareToUse / 100) * paidDividendRate).toFixed(2));
+    
+    return {
+      memberCode: member.code,
+      memberName: member.name,
+      branch: member.branchCode,
+      openingShare: baseShare,
+      closingShare: isClosing ? closingShare : undefined,
+      share: shareToUse,
+      dividendRate: paidDividendRate,
+      dividendAmount
+    };
+  });
+
+  const mMode = cleanLower(mode);
+  
+  if (mMode === 'memberwise-opening' || mMode === 'memberwise-closing') {
+    return results;
+  }
+  
+  if (mMode === 'branchwise-opening' || mMode === 'branchwise-closing') {
+    const branchMap = {};
+    for (const r of results) {
+      const b = r.branch || 'UNKNOWN';
+      if (!branchMap[b]) branchMap[b] = { branch: b, memberCount: 0, shareTotal: 0, dividendTotal: 0 };
+      branchMap[b].memberCount += 1;
+      branchMap[b].shareTotal += r.share;
+      branchMap[b].dividendTotal += r.dividendAmount;
+    }
+    return Object.values(branchMap).map(b => ({
+      ...b,
+      shareTotal: Number(b.shareTotal.toFixed(2)),
+      dividendTotal: Number(b.dividendTotal.toFixed(2))
+    }));
+  }
+  
+  if (mMode === 'summary-opening' || mMode === 'summary-closing') {
+    let memberCount = 0;
+    let shareTotal = 0;
+    let dividendTotal = 0;
+    for (const r of results) {
+      memberCount += 1;
+      shareTotal += r.share;
+      dividendTotal += r.dividendAmount;
+    }
+    return {
+      memberCount,
+      shareTotal: Number(shareTotal.toFixed(2)),
+      rate: paidDividendRate,
+      dividendTotal: Number(dividendTotal.toFixed(2))
+    };
+  }
+  
+  return [];
+}
+
 module.exports = {
   getGlobalRatesConfig,
   updateGlobalRatesConfig,
@@ -2140,8 +2795,10 @@ module.exports = {
   buildDemandListReport,
   buildDividendReport,
   buildMonthlySummaryReport,
+  buildEmployeeLedgerReport,
   buildMemberLedgerReport,
   buildPaymentReceiptStatementReport,
+  buildDividendReport,
   buildProfitLossReport,
   buildTrialBalanceReport,
   buildVoucherRows,

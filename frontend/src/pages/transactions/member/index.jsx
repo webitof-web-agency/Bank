@@ -393,6 +393,13 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '
             Export CSV
           </Button>
           
+          {currentItemKey === 'recovery-member' && (
+            <Button type="button" variant="outline" className="gap-2 border-emerald-500 text-emerald-600 hover:bg-emerald-50" onClick={() => navigate('/app/transactions/member/recovery-import')}>
+              <Sparkles size={16} />
+              Import
+            </Button>
+          )}
+
           {activeItem ? (
             <Button type="button" className="gap-2 bg-[var(--primary,#1661F6)] text-white hover:opacity-90" onClick={() => openCreate(activeItem.key)}>
               <Plus size={16} />

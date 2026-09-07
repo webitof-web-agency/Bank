@@ -15,3 +15,5 @@ export function CardTitle({ className = '', ...props }) {
 export function CardBody({ className = '', ...props }) {
   return <div className={cn('text-sm text-text-muted', className)} {...props} />;
 }
+
+export const CardContent = CardBody;

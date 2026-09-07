@@ -198,12 +198,12 @@ export function buildMemberPayload(draft = {}) {
   const payload = {
     ...(draft.payload || {}),
     dismembered: Boolean(draft.dismembered),
-    dismemberedDate: String(draft.dismemberedDate || '').trim()
+    dismemberedDate: String(draft.dismemberedDate || '').trim(),
+    openingDate: String(draft.openingDate || '').trim()
   };
 
   return {
     code: String(draft.code || '').trim().toUpperCase() || undefined,
-    membershipNo: String(draft.membershipNo || '').trim().toUpperCase() || undefined,
     name: String(draft.name || '').trim(),
     fatherOrHusbandName: String(draft.fatherOrHusbandName || '').trim(),
     branchCode: String(draft.branchCode || '').trim().toUpperCase(),
@@ -214,6 +214,7 @@ export function buildMemberPayload(draft = {}) {
     serviceName2: String(draft.serviceName2 || '').trim(),
     dateOfBirth: String(draft.dateOfBirth || '').trim(),
     membershipDate: String(draft.membershipDate || '').trim(),
+    openingDate: String(draft.openingDate || '').trim(),
     appointmentDate: String(draft.appointmentDate || '').trim(),
     address: String(draft.address || '').trim(),
     mobileNo: String(draft.mobileNo || '').trim(),

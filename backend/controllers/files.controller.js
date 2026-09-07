@@ -79,16 +79,24 @@ async function uploadFiles(req, res, next) {
 
 async function viewFile(req, res, next) {
   try {
-    const file = await readFileStream(req.params.id);
-    if (!file) {
+    const result = await readFileStream(req.params.id);
+    if (!result) {
       return res.status(404).send('File not found');
     }
 
-    res.setHeader('Content-Type', file.mimeType || 'application/octet-stream');
+    if (result.signedUrl) {
+      return res.redirect(302, result.signedUrl);
+    }
+
+    if (!result.stream) {
+      return res.status(404).send('File stream could not be created');
+    }
+
+    res.setHeader('Content-Type', result.mimeType || 'application/octet-stream');
     res.setHeader('Cache-Control', 'private, no-store, max-age=0, must-revalidate');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    fs.createReadStream(file.localPath).pipe(res);
+    result.stream.pipe(res);
   } catch (error) {
     next(error);
   }

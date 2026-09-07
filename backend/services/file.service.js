@@ -6,6 +6,7 @@ const FileAsset = require('../models/fileAsset.model');
 const FileFolder = require('../models/fileFolder.model');
 const { toResponse } = require('../utils/response');
 const { buildFileViewUrl } = require('../utils/file-url');
+const StorageService = require('./storage/storage.service');
 
 const UPLOAD_ROOT = path.join(__dirname, '..', 'uploads');
 const MODULE_ROOT_NAMES = {
@@ -295,21 +296,47 @@ async function saveUploads(files = [], { folderId = null, moduleName = 'general'
   const saved = [];
 
   for (const file of files) {
+    const maxSize = Number(process.env.UPLOAD_MAX_SIZE_BYTES || 25 * 1024 * 1024);
+    if ((file.size || file.buffer?.length) > maxSize) {
+      const error = new Error('File exceeds maximum allowed size');
+      error.statusCode = 400;
+      throw error;
+    }
+    if (!file.buffer || !file.buffer.length) {
+      const error = new Error('File content is empty');
+      error.statusCode = 400;
+      throw error;
+    }
+
     const { base, ext } = splitExt(file.originalname);
+    
+    const prefix = (documentType || '').toLowerCase().includes('photo') || (file.mimetype || '').startsWith('image/') ? 'images' : 'documents';
+    const modDir = String(moduleName || 'general').trim() || 'general';
+    const entDir = String(entityId || '').trim();
     const storedName = `${Date.now()}-${randomUUID()}${ext}`;
-    const localPath = path.join(folderPath, storedName);
-    await fsp.writeFile(localPath, file.buffer);
+    
+    const storageKeySegments = [prefix, modDir];
+    if (entDir) storageKeySegments.push(entDir);
+    storageKeySegments.push(storedName);
+    const storageKey = storageKeySegments.join('/');
+
+    const locator = await StorageService.upload(file.buffer, storageKey);
 
     const doc = await FileAsset.create({
       folderId: folderId || null,
-      moduleName: String(moduleName || 'general').trim() || 'general',
-      entityId: String(entityId || '').trim(),
+      moduleName: modDir,
+      entityId: entDir,
       originalName: `${base}${ext}`,
       storedName,
       documentType: String(documentType || '').trim(),
       mimeType: file.mimetype || 'application/octet-stream',
       sizeBytes: file.size || file.buffer?.length || 0,
-      localPath,
+      localPath: locator.storageProvider === 'local' ? path.join(folderPath, storedName) : null,
+      storageProvider: locator.storageProvider,
+      storageKey: locator.storageKey,
+      storageBucket: locator.storageBucket,
+      storageRegion: locator.storageRegion,
+      storageProject: locator.storageProject,
       isPublic: Boolean(isPublic),
       createdBy: createdBy || null
     });
@@ -339,25 +366,27 @@ async function deleteFileById(fileId) {
   const file = await FileAsset.findById(fileId).lean();
   if (!file) return false;
 
-  try {
-    if (file.localPath && fs.existsSync(file.localPath)) {
-      await fsp.unlink(file.localPath);
-    }
-  } catch {
-    // Ignore filesystem errors during cleanup.
-  }
-
+  await StorageService.delete(file);
   await FileAsset.deleteOne({ _id: fileId });
   return true;
 }
 
 async function readFileStream(fileId) {
   const file = await FileAsset.findById(fileId).lean();
-  if (!file || !file.localPath || !fs.existsSync(file.localPath)) {
+  if (!file) {
     return null;
   }
 
-  return file;
+  const signedUrl = await StorageService.getSignedUrl(file);
+  let stream = null;
+  if (!signedUrl) {
+    stream = await StorageService.getStream(file);
+    if (!stream && file.localPath && fs.existsSync(file.localPath)) {
+      stream = fs.createReadStream(file.localPath);
+    }
+  }
+
+  return { ...file, signedUrl, stream };
 }
 
 module.exports = {

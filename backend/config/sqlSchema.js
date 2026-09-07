@@ -21,6 +21,10 @@ function buildColumnSql(name, definition) {
   switch (type) {
     case 'boolean':
       return `${columnName} BOOLEAN NOT NULL DEFAULT FALSE`;
+    case 'money':
+      return `${columnName} NUMERIC(15,2) NULL DEFAULT NULL`;
+    case 'rate':
+      return `${columnName} NUMERIC(10,4) NULL DEFAULT NULL`;
     case 'number':
       return `${columnName} DOUBLE PRECISION NULL DEFAULT NULL`;
     case 'date':
@@ -69,6 +73,11 @@ function buildCreateTableSql(tableName) {
     `  PRIMARY KEY (${quoteIdentifier('id')})`,
     ...buildUniqueKeySql(tableName, schema.uniqueFields).map((keySql) => `  ${keySql}`)
   ];
+
+  if (tableName === 'journal_lines') {
+    keys.push(`  CONSTRAINT chk_journal_lines_amounts CHECK (COALESCE("debitAmount", 0) > 0 OR COALESCE("creditAmount", 0) > 0)`);
+    keys.push(`  CONSTRAINT chk_journal_lines_not_both CHECK (NOT (COALESCE("debitAmount", 0) > 0 AND COALESCE("creditAmount", 0) > 0))`);
+  }
 
   return `CREATE TABLE IF NOT EXISTS ${quoteIdentifier(tableName)} (
 ${[...columns, ...keys].join(',\n')}

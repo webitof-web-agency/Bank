@@ -224,7 +224,6 @@ export const api = {
     createTransactionVoucher: (token, payload) => request('/banking/transactions/vouchers', { method: 'POST', token, body: payload }),
     updateTransactionVoucher: (token, id, payload) => request(`/banking/transactions/vouchers/${id}`, { method: 'PUT', token, body: payload }),
     deleteTransactionVoucher: (token, id) => request(`/banking/transactions/vouchers/${id}`, { method: 'DELETE', token }),
-    listBankTransactions: (token, query = {}) => request(`/banking/transactions/bank-transactions${buildQuery(query)}`, { token, skipCache: true }),
     reports: {
       memberLedger: (token, query = {}) => request(`/banking/reports/member-ledger${buildQuery(query)}`, { token, skipCache: true }),
       accountStatement: (token, query = {}) => request(`/banking/reports/account-statement${buildQuery(query)}`, { token, skipCache: true }),
@@ -242,10 +241,24 @@ export const api = {
       profitLoss: (token, query = {}) => request(`/banking/reports/profit-loss${buildQuery(query)}`, { token, skipCache: true })
     }
   },
+  recoveryImport: {
+    analyze: (token, formData) => request('/recovery-import/analyze', { method: 'POST', token, formData, skipCache: true }),
+    upload: (token, formData) => request('/recovery-import/upload', { method: 'POST', token, formData, skipCache: true }),
+    getBatches: (token) => request('/recovery-import/batches', { token, skipCache: true }),
+    getBatchRows: (token, id) => request(`/recovery-import/batches/${id}`, { token, skipCache: true }),
+    revalidate: (token, id) => request(`/recovery-import/batches/${id}/revalidate`, { method: 'POST', token, skipCache: true }),
+    accept: (token, id) => request(`/recovery-import/batches/${id}/accept`, { method: 'POST', token, skipCache: true }),
+    post: (token, id) => request(`/recovery-import/batches/${id}/post`, { method: 'POST', token, skipCache: true })
+  },
   settings: {
     get: (token) => request('/settings', { token, skipCache: true }),
     getPublic: () => request('/settings/public', { skipCache: true }),
-    save: (token, payload) => request('/settings', { method: 'PUT', token, body: payload })
+    save: (token, payload) => request('/settings', { method: 'PUT', token, body: payload }),
+    storage: {
+      get: (token) => request('/settings/storage', { token, skipCache: true }),
+      save: (token, payload) => request('/settings/storage', { method: 'PUT', token, body: payload }),
+      test: (token, payload) => request('/settings/storage/test', { method: 'POST', token, body: payload })
+    }
   },
   files: {
     list: (token, query = {}) => request(`/files${buildQuery(query)}`, { token, skipCache: true }),

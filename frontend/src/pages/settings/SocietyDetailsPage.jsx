@@ -12,6 +12,7 @@ const EMPTY_FORM = {
   name: '',
   prefix: '',
   regNo: '',
+  gstNo: '',
   email: '',
   address: '',
   branchCode: '',
@@ -52,6 +53,7 @@ export function SocietyDetailsPage() {
           name: record.name || '',
           prefix: record.prefix || '',
           regNo: record.regNo || '',
+          gstNo: record.gstNo || '',
           email: record.email || '',
           address: record.address || '',
           branchCode: record.branchCode || '',
@@ -113,6 +115,9 @@ export function SocietyDetailsPage() {
             </Field>
             <Field label="Registration No." icon={FileImage}>
               <Input value={draft.regNo} onChange={(event) => setDraft((current) => ({ ...current, regNo: event.target.value }))} />
+            </Field>
+            <Field label="GST No." icon={FileImage}>
+              <Input value={draft.gstNo} onChange={(event) => setDraft((current) => ({ ...current, gstNo: event.target.value }))} />
             </Field>
             <Field label="Email" icon={FileImage}>
               <Input type="email" value={draft.email} onChange={(event) => setDraft((current) => ({ ...current, email: event.target.value }))} />
