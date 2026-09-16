@@ -1,4 +1,5 @@
 const express = require('express');
+const helmet = require('helmet');
 const authRoutes = require('./auth.routes');
 const filesRoutes = require('./files.routes');
 const bankingRoutes = require('./banking.routes');
@@ -24,7 +25,11 @@ const filesController = require('../controllers/files.controller');
 const settingsController = require('../controllers/settings.controller');
 
 router.use('/auth', authRoutes);
-router.get('/files/:id/view', requireFileViewAccess, filesController.viewFile);
+// helmet()'s default Cross-Origin-Resource-Policy: same-origin blocks the
+// browser from rendering these images when the frontend runs on a different
+// origin (e.g. Vite dev server on :5173 vs API on :8001) — <img src> to a
+// cross-origin URL is otherwise silently refused, showing a broken image icon.
+router.get('/files/:id/view', helmet.crossOriginResourcePolicy({ policy: 'cross-origin' }), requireFileViewAccess, filesController.viewFile);
 router.get('/settings/public', settingsController.getPublicController);
 router.get('/notifications/stream', notificationsController.streamController);
 

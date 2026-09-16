@@ -166,31 +166,32 @@ function normalizePermissionArray(input = []) {
 const REQUEST_PERMISSION_ALIASES = {
   'dashboard.read': ['workspace.dashboard.view'],
   'calendar.read': ['workspace.calendar.view'],
+  'calendar.write': ['workspace.calendar.create', 'workspace.calendar.edit', 'workspace.calendar.delete'],
   'files.read': ['workspace.files.view'],
-  'files.write': ['workspace.files.view', 'workspace.files.create', 'workspace.files.edit'],
+  'files.write': ['workspace.files.create', 'workspace.files.edit'],
   'files.delete': ['workspace.files.delete'],
   'notifications.read': ['workspace.notifications.view'],
-  'notifications.write': ['workspace.notifications.view', 'workspace.notifications.create', 'workspace.notifications.delete'],
+  'notifications.write': ['workspace.notifications.create', 'workspace.notifications.delete'],
   'society.read': ['master.society.view'],
-  'society.write': ['master.society.view', 'master.society.edit'],
+  'society.write': ['master.society.edit'],
   'branches.read': ['master.branches.view'],
-  'branches.write': ['master.branches.view', 'master.branches.create', 'master.branches.edit', 'master.branches.delete'],
+  'branches.write': ['master.branches.create', 'master.branches.edit', 'master.branches.delete'],
   'committee.read': ['master.committee.view'],
-  'committee.write': ['master.committee.view', 'master.committee.create', 'master.committee.edit', 'master.committee.delete'],
+  'committee.write': ['master.committee.create', 'master.committee.edit', 'master.committee.delete'],
   'members.read': ['master.members.view'],
-  'members.write': ['master.members.view', 'master.members.create', 'master.members.edit', 'master.members.delete'],
+  'members.write': ['master.members.create', 'master.members.edit', 'master.members.delete'],
   'employees.read': ['master.employees.view'],
-  'employees.write': ['master.employees.view', 'master.employees.create', 'master.employees.edit', 'master.employees.delete'],
+  'employees.write': ['master.employees.create', 'master.employees.edit', 'master.employees.delete'],
   'ledgers.read': ['master.ledgers.view'],
-  'ledgers.write': ['master.ledgers.view', 'master.ledgers.create', 'master.ledgers.edit', 'master.ledgers.delete'],
+  'ledgers.write': ['master.ledgers.create', 'master.ledgers.edit', 'master.ledgers.delete'],
   'rates.read': ['master.rates.view'],
-  'rates.write': ['master.rates.view', 'master.rates.create', 'master.rates.edit', 'master.rates.delete'],
+  'rates.write': ['master.rates.create', 'master.rates.edit', 'master.rates.delete'],
   'bank-accounts.read': ['master.bank-accounts.view'],
-  'bank-accounts.write': ['master.bank-accounts.view', 'master.bank-accounts.create', 'master.bank-accounts.edit', 'master.bank-accounts.delete'],
+  'bank-accounts.write': ['master.bank-accounts.create', 'master.bank-accounts.edit', 'master.bank-accounts.delete'],
   'demands.read': ['master.demands.view'],
-  'demands.write': ['master.demands.view', 'master.demands.create', 'master.demands.edit', 'master.demands.delete'],
+  'demands.write': ['master.demands.create', 'master.demands.edit', 'master.demands.delete'],
   'no-interest-members.read': ['master.no-interest-members.view'],
-  'no-interest-members.write': ['master.no-interest-members.view', 'master.no-interest-members.create', 'master.no-interest-members.edit', 'master.no-interest-members.delete'],
+  'no-interest-members.write': ['master.no-interest-members.create', 'master.no-interest-members.edit', 'master.no-interest-members.delete'],
   'transactions.read': [
     'transactions.member.view',
     'transactions.bank.view',
@@ -200,18 +201,19 @@ const REQUEST_PERMISSION_ALIASES = {
     'transactions.supporting.view'
   ],
   'transactions.write': [
-    'transactions.member.view', 'transactions.member.create', 'transactions.member.edit', 'transactions.member.delete',
-    'transactions.bank.view', 'transactions.bank.create', 'transactions.bank.edit', 'transactions.bank.delete',
-    'transactions.employee.view', 'transactions.employee.create', 'transactions.employee.edit', 'transactions.employee.delete',
-    'transactions.transfer-voucher.view', 'transactions.transfer-voucher.create', 'transactions.transfer-voucher.edit', 'transactions.transfer-voucher.delete',
-    'transactions.receipt-interest.view', 'transactions.receipt-interest.create', 'transactions.receipt-interest.edit', 'transactions.receipt-interest.delete',
-    'transactions.supporting.view', 'transactions.supporting.create', 'transactions.supporting.edit', 'transactions.supporting.delete'
+    'transactions.member.create', 'transactions.member.edit', 'transactions.member.delete',
+    'transactions.bank.create', 'transactions.bank.edit', 'transactions.bank.delete',
+    'transactions.employee.create', 'transactions.employee.edit', 'transactions.employee.delete',
+    'transactions.transfer-voucher.create', 'transactions.transfer-voucher.edit', 'transactions.transfer-voucher.delete',
+    'transactions.receipt-interest.create', 'transactions.receipt-interest.edit', 'transactions.receipt-interest.delete',
+    'transactions.supporting.create', 'transactions.supporting.edit', 'transactions.supporting.delete'
   ],
   'bank-transactions.read': ['transactions.bank.view'],
-  'bank-transactions.write': ['transactions.bank.view', 'transactions.bank.create', 'transactions.bank.edit', 'transactions.bank.delete'],
+  'bank-transactions.write': ['transactions.bank.create', 'transactions.bank.edit', 'transactions.bank.delete'],
   'reports.read': [
     'reports.account-statement-view.view',
     'reports.member-ledger.view',
+    'reports.employee-ledger.view',
     'reports.balance-sheet.view',
     'reports.trial-balance.view',
     'reports.cash-book.view',
@@ -228,6 +230,7 @@ const REQUEST_PERMISSION_ALIASES = {
   'reports.export': [
     'reports.account-statement-view.export', 'reports.account-statement-view.print',
     'reports.member-ledger.export', 'reports.member-ledger.print',
+    'reports.employee-ledger.export', 'reports.employee-ledger.print',
     'reports.balance-sheet.export', 'reports.balance-sheet.print',
     'reports.trial-balance.export', 'reports.trial-balance.print',
     'reports.cash-book.export', 'reports.cash-book.print',
@@ -245,7 +248,7 @@ const REQUEST_PERMISSION_ALIASES = {
   'users.manage': ['admin.users.view', 'admin.users.create', 'admin.users.edit', 'admin.users.delete'],
   'roles.manage': ['admin.roles.view', 'admin.roles.create', 'admin.roles.edit', 'admin.roles.delete'],
   'settings.read': ['admin.settings.view'],
-  'settings.write': ['admin.settings.view', 'admin.settings.edit']
+  'settings.write': ['admin.settings.edit']
 };
 
 function normalizePermissionKey(value = '') {

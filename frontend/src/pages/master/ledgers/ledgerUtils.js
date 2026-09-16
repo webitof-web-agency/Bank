@@ -18,16 +18,13 @@ export function buildNextLedgerCode(rows = []) {
   let maxNumber = 0;
 
   for (const row of Array.isArray(rows) ? rows : []) {
-    const code = toUpper(row?.code);
-    const match = code.match(/^L(\d+)$/);
-    if (!match) continue;
-    const value = Number(match[1]);
+    const value = Number(toUpper(row?.code));
     if (Number.isFinite(value) && value > maxNumber) {
       maxNumber = value;
     }
   }
 
-  return `L${String(maxNumber + 1).padStart(3, '0')}`;
+  return String(maxNumber + 1);
 }
 
 export function createEmptyLedgerDraft(rows = []) {

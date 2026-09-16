@@ -240,7 +240,7 @@ export function Topbar({ title, subtitle, onMenuClick }) {
   }
 
   return (
-    <header className="sticky top-0 z-20 border-b border-slate-200/70 bg-white/90 px-4 py-3 backdrop-blur-xl shadow-sm md:px-8">
+    <header className="sticky top-0 z-20 border-b border-slate-200/70 bg-white/90 px-4 py-3 backdrop-blur-xl shadow-sm md:px-8 print:hidden">
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           <SidebarToggle onClick={onMenuClick} />

@@ -6,6 +6,14 @@ function currentMonthString() {
   return new Date().toISOString().slice(0, 7);
 }
 
+function currentMonthNumber() {
+  return String(new Date().getMonth() + 1).padStart(2, '0');
+}
+
+function currentYearString() {
+  return String(new Date().getFullYear());
+}
+
 function formatNumber(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) return '0';
@@ -62,11 +70,20 @@ export function getReportDefaultFilters(reportKey = '', lookups = {}, user = {})
   }
 
   if (reportKey === 'demand-list-report') {
-    return { branchCode: getDefaultBranchCode(user), month: currentMonthString() };
+    return {
+      branchCode: getDefaultBranchCode(user),
+      date: todayString(),
+      year: currentYearString(),
+      month: currentMonthNumber()
+    };
   }
 
-  if (reportKey === 'dividend-report') {
-    return { rate: 8 };
+  if (reportKey === 'employee-ledger') {
+    return {
+      employeeCode: firstCode(lookups.employees),
+      dateFrom: '',
+      dateTo: ''
+    };
   }
 
   if (reportKey === 'payment-receipt-statement') {
@@ -147,57 +164,13 @@ export function getReportConfig(reportKey = '') {
         });
         const payload = response.data || {};
         const member = payload.member || {};
-        const balances = payload.balances || {};
-        const rows = Array.isArray(payload.rows) ? payload.rows : [];
-        const summaryBalance = rows.length ? rows[rows.length - 1].balance : 0;
 
         return {
           title: "Member Ledger / Member's A/c Status",
           subtitle: `${member.name || member.code || 'Member'} ${member.membershipNo ? `- ${member.membershipNo}` : ''}`.trim(),
-          summary: [
-            makeSummary('Member', member.code || '-', 'Selected member code'),
-            makeSummary('Membership No', member.membershipNo || member.memNo || '-', 'Member registration no'),
-            makeSummary('Running Balance', formatMoney(summaryBalance), 'Closing balance')
-          ],
-          sections: [
-            {
-              title: 'Member Ledger',
-              description: 'Voucher-wise running balance for the selected member.',
-              headers: ['Voucher', 'Date', 'Particulars', 'Debit', 'Credit', 'Running Balance', 'Narration'],
-              rows: rows.map((row) => [
-                row.voucherNo,
-                row.date,
-                row.particulars,
-                formatMoney(row.debit),
-                formatMoney(row.credit),
-                formatMoney(row.balance),
-                row.narration || ''
-              ])
-            },
-            {
-              title: 'Member Balances',
-              description: 'Current balance heads linked to the member account.',
-              headers: ['Balance Head', 'Amount'],
-              rows: [
-                ['Share', formatMoney(balances.share)],
-                ['Compulsory Deposit', formatMoney(balances.compulsoryDeposit)],
-                ['Special Saving', formatMoney(balances.specialSaving)],
-                ['Provident Fund', formatMoney(balances.providentFund)],
-                ['Loan Against Deposit', formatMoney(balances.loanAgainstDeposit)],
-                ['Insurance Premium', formatMoney(balances.insurancePremium)],
-                ['Loan Outstanding', formatMoney(balances.loanOutstanding)]
-              ]
-            }
-          ],
-          csvRows: rows.map((row) => ({
-            voucherNo: row.voucherNo,
-            date: row.date,
-            particulars: row.particulars,
-            debit: row.debit,
-            credit: row.credit,
-            runningBalance: row.balance,
-            narration: row.narration || ''
-          }))
+          summary: [],
+          sections: [],
+          raw: payload
         };
       }
     },
@@ -232,7 +205,8 @@ export function getReportConfig(reportKey = '') {
               headers: ['Ledger Code', 'Ledger Name', 'Amount'],
               rows: assets.map((row) => [row.ledgerCode, row.ledgerName, formatMoney(row.amount)])
             }
-          ]
+          ],
+          raw: payload
         };
       }
     },
@@ -259,7 +233,8 @@ export function getReportConfig(reportKey = '') {
               rows: rows.map((row) => [row.ledgerCode, row.ledgerName, formatMoney(row.debit), formatMoney(row.credit)])
             }
           ],
-          csvRows: rows
+          csvRows: rows,
+          raw: rows
         };
       }
     },
@@ -286,7 +261,8 @@ export function getReportConfig(reportKey = '') {
               rows: rows.map((row) => [row.voucherNo, row.date, row.particulars, formatMoney(row.receipt), formatMoney(row.payment)])
             }
           ],
-          csvRows: rows
+          csvRows: rows,
+          raw: rows
         };
       }
     },
@@ -312,7 +288,8 @@ export function getReportConfig(reportKey = '') {
               rows: rows.map((row) => [row.voucherNo, row.date, row.ledgerCode, row.particulars, formatMoney(row.debit), formatMoney(row.credit)])
             }
           ],
-          csvRows: rows
+          csvRows: rows,
+          raw: rows
         };
       }
     },
@@ -338,7 +315,8 @@ export function getReportConfig(reportKey = '') {
               rows: rows.map((row) => [row.voucherCategory, formatMoney(row.amount)])
             }
           ],
-          csvRows: rows
+          csvRows: rows,
+          raw: rows
         };
       }
     },
@@ -375,9 +353,14 @@ export function getReportConfig(reportKey = '') {
     'demand-list-report': {
       label: 'Demand List',
       description: 'Demand totals, recovery and pending balance.',
-      filterMode: 'month-only',
+      filterMode: 'demand-list',
       load: async (api, token, filters) => {
-        const response = await api.banking.reports.demandList(token, { month: filters.month || '', branchCode: filters.branchCode || '' });
+        const response = await api.banking.reports.demandList(token, {
+          month: filters.month || '',
+          year: filters.year || '',
+          date: filters.date || '',
+          branchCode: filters.branchCode || ''
+        });
         const rows = Array.isArray(response.data) ? response.data : [];
         return {
           title: 'Demand List',
@@ -391,10 +374,11 @@ export function getReportConfig(reportKey = '') {
               title: 'Demand List',
               description: 'Member demand and recovery status.',
               headers: ['Demand No', 'Member Code', 'Month', 'Total', 'Recovered', 'Pending', 'Status'],
-              rows: rows.map((row) => [row.demandNo, row.memberCode, row.month, formatMoney(row.total), formatMoney(row.recovered), formatMoney(row.pending), row.status])
+              rows: rows.map((row) => [row.demandListNo, row.memberCode, row.month, formatMoney(row.total), formatMoney(row.recovered), formatMoney(row.pending), row.status])
             }
           ],
-          csvRows: rows
+          csvRows: rows,
+          raw: rows
         };
       }
     },
@@ -431,14 +415,15 @@ export function getReportConfig(reportKey = '') {
               headers: ['Ledger Code', 'Ledger Name', 'Amount'],
               rows: expense.map((row) => [row.ledgerCode, row.ledgerName, formatMoney(row.amount)])
             }
-          ]
+          ],
+          raw: payload
         };
       }
     },
     'all-member-list': {
       label: 'All Member List',
       description: 'Complete member registry with status.',
-      filterMode: 'none',
+      filterMode: 'branchwise',
       load: async (api, token, filters) => {
         const response = await api.banking.reports.allMemberList(token, { branchCode: filters?.branchCode || '' });
         const rows = Array.isArray(response.data) ? response.data : [];
@@ -459,7 +444,8 @@ export function getReportConfig(reportKey = '') {
               rows: rows.map((row) => [row.code, row.name, row.branchCode, row.category, row.membershipNo, row.status])
             }
           ],
-          csvRows: rows
+          csvRows: rows,
+          raw: rows
         };
       }
     },
@@ -473,31 +459,39 @@ export function getReportConfig(reportKey = '') {
           dateTo: filters.dateTo || '',
           branchCode: filters.branchCode || ''
         });
-        const rows = Array.isArray(response.data) ? response.data : [];
+        const payload = response.data || {};
+        const receipts = Array.isArray(payload.receipts) ? payload.receipts : [];
+        const payments = Array.isArray(payload.payments) ? payload.payments : [];
         return {
           title: 'Statement of Payment and Receipt',
           subtitle: `${filters.dateFrom || 'Start'} to ${filters.dateTo || 'End'}`.trim(),
           summary: [
-            makeSummary('Rows', rows.length, 'Total voucher entries'),
-            makeSummary('Payment', formatMoney(rows.reduce((sum, row) => sum + Number(row.payment || 0), 0)), 'Total payment amount'),
-            makeSummary('Receipt', formatMoney(rows.reduce((sum, row) => sum + Number(row.receipt || 0), 0)), 'Total receipt amount')
+            makeSummary('Receipt Lines', receipts.length, 'Total receipt ledgers'),
+            makeSummary('Payment', formatMoney(payload.paymentTotal), 'Total payment amount'),
+            makeSummary('Receipt', formatMoney(payload.receiptTotal), 'Total receipt amount')
           ],
           sections: [
             {
-              title: 'Payment and Receipt',
-              description: 'Voucher wise payment and receipt rows.',
-              headers: ['Voucher No', 'Date', 'Voucher Category', 'Party Code', 'Payment', 'Receipt'],
-              rows: rows.map((row) => [row.voucherNo, row.date, row.voucherCategory, row.partyCode, formatMoney(row.payment), formatMoney(row.receipt)])
+              title: 'Receipts',
+              description: 'Receipt-side ledger balances.',
+              headers: ['Ledger Code', 'Ledger Name', 'Amount'],
+              rows: receipts.map((row) => [row.ledgerCode, row.ledgerName, formatMoney(row.amount)])
+            },
+            {
+              title: 'Payments',
+              description: 'Payment-side ledger balances.',
+              headers: ['Ledger Code', 'Ledger Name', 'Amount'],
+              rows: payments.map((row) => [row.ledgerCode, row.ledgerName, formatMoney(row.amount)])
             }
           ],
-          csvRows: rows
+          raw: payload
         };
       }
     },
     'branch-list-report': {
       label: 'Branch List',
       description: 'Branch directory with contact details.',
-      filterMode: 'none',
+      filterMode: 'branchwise',
       load: async (api, token, filters) => {
         const response = await api.banking.reports.branchList(token, { branchCode: filters?.branchCode || '' });
         const rows = Array.isArray(response.data) ? response.data : [];
@@ -517,35 +511,59 @@ export function getReportConfig(reportKey = '') {
               rows: rows.map((row) => [row.code, row.headOfficeCode || 'HO01', row.place, row.district, row.phone, row.address])
             }
           ],
-          csvRows: rows
+          csvRows: rows,
+          raw: rows
         };
       }
     },
     'dividend-report': {
       label: 'Dividend Report',
-      description: 'Dividend calculation based on member share balance.',
-      filterMode: 'rate',
+      description: 'Branchwise dividend calculation based on member share balance.',
+      filterMode: 'branchwise',
       load: async (api, token, filters) => {
-        const response = await api.banking.reports.dividendReport(token, { rate: Number(filters.rate || 8), branchCode: filters.branchCode || '' });
+        const response = await api.banking.reports.dividendReport(token, {
+          mode: 'branchwise-opening',
+          branchCode: filters.branchCode || ''
+        });
         const rows = Array.isArray(response.data) ? response.data : [];
-        const totalDividend = rows.reduce((sum, row) => sum + Number(row.dividendAmount || 0), 0);
+        const totalDividend = rows.reduce((sum, row) => sum + Number(row.dividendTotal || 0), 0);
         return {
           title: 'Dividend Report',
-          subtitle: `Rate ${Number(filters.rate || 8)}%`,
+          subtitle: filters.branchCode || 'All branches',
           summary: [
-            makeSummary('Members', rows.length, 'Eligible members'),
-            makeSummary('Rate', `${Number(filters.rate || 8)}%`, 'Dividend percentage'),
+            makeSummary('Branches', rows.length, 'Branches in report'),
             makeSummary('Dividend', formatMoney(totalDividend), 'Total dividend payable')
           ],
           sections: [
             {
               title: 'Dividend Calculation',
-              description: 'Dividend based on member share balance.',
-              headers: ['Member Code', 'Member Name', 'Share Balance', 'Dividend Rate', 'Dividend Amount'],
-              rows: rows.map((row) => [row.memberCode, row.memberName, formatMoney(row.shareBalance), `${row.dividendRate}%`, formatMoney(row.dividendAmount)])
+              description: 'Dividend based on member share balance, grouped by branch.',
+              headers: ['Branch', 'Members', 'Share Total', 'Dividend Total'],
+              rows: rows.map((row) => [row.branch, row.memberCount, formatMoney(row.shareTotal), formatMoney(row.dividendTotal)])
             }
           ],
-          csvRows: rows
+          csvRows: rows,
+          raw: rows
+        };
+      }
+    },
+    'employee-ledger': {
+      label: "Employee Ledger",
+      description: 'Employee ledger with running balance across housing loan, vehicle loan and grain advance.',
+      filterMode: 'employee-ledger',
+      load: async (api, token, filters) => {
+        const response = await api.banking.reports.employeeLedger(token, {
+          employeeCode: filters.employeeCode || '',
+          dateFrom: filters.dateFrom || '',
+          dateTo: filters.dateTo || ''
+        });
+        const payload = response.data || {};
+        return {
+          title: 'Employee Ledger',
+          subtitle: payload.employee?.name || payload.employee?.code || 'Employee',
+          summary: [],
+          sections: [],
+          raw: payload
         };
       }
     }

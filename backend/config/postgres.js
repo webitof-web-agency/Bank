@@ -1,6 +1,7 @@
 const fs = require('fs/promises');
 const os = require('os');
 const path = require('path');
+const crypto = require('crypto');
 const { spawn } = require('child_process');
 const { Client, Pool } = require('pg');
 const {
@@ -12,6 +13,8 @@ const {
   quoteIdentifier
 } = require('./sqlSchema');
 const { BANK_VOUCHER_KEYS } = require('./transactionConstants');
+const { isSoftDeleteEnabled } = require('./tableSchemas');
+const { getCurrentActorId } = require('../utils/requestContext');
 
 let pool = null;
 let initPromise = null;
@@ -342,6 +345,29 @@ async function syncTableSchema(database, tableName) {
     await database.query(`ALTER TABLE ${quoteIdentifier(tableName)} DROP COLUMN IF EXISTS ${quoteIdentifier('phone')}`);
   }
 
+  // These columns store signed file-view URLs (buildFileViewUrl()), which
+  // include a JWT token and can exceed the varchar(255) they were originally
+  // typed as ("value too long for type character varying(255)" on upload).
+  // syncTableSchema only ever ADDS missing columns, never widens existing
+  // ones, so this widens them explicitly for anyone whose DB predates T.text.
+  const TEXT_WIDEN_COLUMNS = {
+    users: ['avatarUrl'],
+    societies: ['logoUrl', 'watermarkUrl'],
+    members: ['photoUrl']
+  };
+  if (TEXT_WIDEN_COLUMNS[tableName]) {
+    for (const columnName of TEXT_WIDEN_COLUMNS[tableName]) {
+      if (!existingColumns.has(columnName)) continue;
+      const typeResult = await database.query(
+        `SELECT data_type FROM information_schema.columns WHERE table_name = $1 AND column_name = $2`,
+        [tableName, columnName]
+      );
+      if (typeResult.rows[0] && typeResult.rows[0].data_type !== 'text') {
+        await database.query(`ALTER TABLE ${quoteIdentifier(tableName)} ALTER COLUMN ${quoteIdentifier(columnName)} TYPE text`);
+      }
+    }
+  }
+
   if (tableName === 'vouchers') {
     for (const columnName of ['status', 'reversalOf', 'reversedByUserId']) {
       if (existingColumns.has(columnName) && !schemaColumns.some((column) => column.name === columnName)) {
@@ -468,6 +494,38 @@ async function closeDatabase() {
   tableCache.clear();
 }
 
+// Writes one audit_log row. Called from persistMainRow/deleteMainRow/
+// restoreMainRow below for every table whose schema has a `deletedAt` field
+// (see isSoftDeleteEnabled in ./tableSchemas) — never called directly by
+// application code. `changes` is `{before, after}`; before=null on CREATE,
+// after=null on DELETE.
+async function writeAuditLog(database, { tableName, recordId, action, changes }, tx = null) {
+  const auditRow = {
+    id: crypto.randomUUID(),
+    tableName,
+    recordId: String(recordId),
+    action,
+    actorUserId: getCurrentActorId(),
+    changes: JSON.stringify(changes),
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+  const columns = Object.keys(auditRow);
+  await database.query(
+    `INSERT INTO ${quoteIdentifier('audit_log')} (${columns.map(quoteIdentifier).join(', ')}) VALUES (${columns.map((_, index) => `$${index + 1}`).join(', ')})`,
+    columns.map((column) => auditRow[column])
+  );
+  // Every read in the app goes through the in-memory tableCache (see
+  // findAllRows in sql-model.js), not a live query — a raw INSERT like the
+  // one above is invisible to any subsequent .find() on the AuditLog model
+  // until this cache entry exists too (or the cache is fully reloaded, e.g.
+  // after a transaction commits — see withTransaction below).
+  if (!tx) {
+    updateCachedRow('audit_log', auditRow);
+  }
+  return auditRow;
+}
+
 async function persistMainRow(tableName, row, tx = null) {
   const database = tx || await initializeDatabase();
   const payload = clone(row) || {};
@@ -481,19 +539,75 @@ async function persistMainRow(tableName, row, tx = null) {
     throw new Error(`persistMainRow requires an id column for ${tableName}`);
   }
 
+  const auditEnabled = isSoftDeleteEnabled(tableName) && tableName !== 'audit_log';
+  let previous = null;
+  if (auditEnabled) {
+    const existing = await database.query(
+      `SELECT * FROM ${quoteIdentifier(tableName)} WHERE ${quoteIdentifier('id')} = $1`,
+      [payload.id]
+    );
+    previous = existing.rows[0] || null;
+  }
+
   const statement = updates.length
     ? `INSERT INTO ${quoteIdentifier(tableName)} (${columns.map(quoteIdentifier).join(', ')}) VALUES (${columns.map((_, index) => `$${index + 1}`).join(', ')}) ON CONFLICT (${quoteIdentifier('id')}) DO UPDATE SET ${updates.join(', ')}`
     : `INSERT INTO ${quoteIdentifier(tableName)} (${columns.map(quoteIdentifier).join(', ')}) VALUES (${columns.map((_, index) => `$${index + 1}`).join(', ')}) ON CONFLICT (${quoteIdentifier('id')}) DO NOTHING`;
 
   await database.query(statement, values);
+
+  if (auditEnabled) {
+    await writeAuditLog(database, {
+      tableName,
+      recordId: payload.id,
+      action: previous ? 'UPDATE' : 'CREATE',
+      changes: { before: previous, after: payload }
+    }, tx);
+  }
+
   if (!tx) {
     updateCachedRow(tableName, payload);
   }
   return payload;
 }
 
+// For soft-delete-enabled tables (see isSoftDeleteEnabled in ./tableSchemas),
+// this marks the row deleted instead of removing it — the row, and its full
+// history, always stays recoverable. Only tables without a `deletedAt` field
+// (documents/images, and non-financial operational tables like notifications/
+// job_states) still get a real DELETE here.
 async function deleteMainRow(tableName, id, tx = null) {
   const database = tx || await initializeDatabase();
+
+  if (isSoftDeleteEnabled(tableName)) {
+    const existing = await database.query(
+      `SELECT * FROM ${quoteIdentifier(tableName)} WHERE ${quoteIdentifier('id')} = $1`,
+      [String(id)]
+    );
+    const previous = existing.rows[0] || null;
+    if (!previous || previous.deletedAt) {
+      // Already soft-deleted or never existed — nothing to do, matches the
+      // no-op-on-missing-row semantics a real DELETE would have had.
+      return;
+    }
+
+    const nowIso = new Date().toISOString();
+    await database.query(
+      `UPDATE ${quoteIdentifier(tableName)} SET ${quoteIdentifier('deletedAt')} = $1, ${quoteIdentifier('updatedAt')} = $1 WHERE ${quoteIdentifier('id')} = $2`,
+      [nowIso, String(id)]
+    );
+    await writeAuditLog(database, {
+      tableName,
+      recordId: id,
+      action: 'DELETE',
+      changes: { before: previous, after: null }
+    }, tx);
+
+    if (!tx) {
+      updateCachedRow(tableName, { ...previous, deletedAt: nowIso, updatedAt: nowIso });
+    }
+    return;
+  }
+
   await database.query(`DELETE FROM ${quoteIdentifier(tableName)} WHERE ${quoteIdentifier('id')} = $1`, [String(id)]);
   if (!tx) {
     removeCachedRow(tableName, id);
@@ -505,6 +619,43 @@ async function deleteMainRow(tableName, id, tx = null) {
       setUserRoleRows(getUserRoleRows().filter((row) => String(row.userId) !== String(id)));
     }
   }
+}
+
+// Un-deletes a row soft-deleted by deleteMainRow. No-op (returns null) if the
+// row doesn't exist or isn't currently soft-deleted.
+async function restoreMainRow(tableName, id, tx = null) {
+  if (!isSoftDeleteEnabled(tableName)) {
+    throw new Error(`restoreMainRow: ${tableName} is not soft-delete enabled`);
+  }
+  const database = tx || await initializeDatabase();
+
+  const existing = await database.query(
+    `SELECT * FROM ${quoteIdentifier(tableName)} WHERE ${quoteIdentifier('id')} = $1`,
+    [String(id)]
+  );
+  const previous = existing.rows[0] || null;
+  if (!previous || !previous.deletedAt) {
+    return null;
+  }
+
+  const nowIso = new Date().toISOString();
+  const result = await database.query(
+    `UPDATE ${quoteIdentifier(tableName)} SET ${quoteIdentifier('deletedAt')} = NULL, ${quoteIdentifier('updatedAt')} = $1 WHERE ${quoteIdentifier('id')} = $2 RETURNING *`,
+    [nowIso, String(id)]
+  );
+  const restored = result.rows[0];
+
+  await writeAuditLog(database, {
+    tableName,
+    recordId: id,
+    action: 'RESTORE',
+    changes: { before: previous, after: restored }
+  }, tx);
+
+  if (!tx) {
+    updateCachedRow(tableName, restored);
+  }
+  return restored;
 }
 
 async function replaceUserRoles(userId, roleIds = []) {
@@ -587,6 +738,7 @@ module.exports = {
   initializeDatabase,
   persistMainRow,
   replaceUserRoles,
+  restoreMainRow,
   withTransaction
 };
 

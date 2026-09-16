@@ -31,7 +31,8 @@ export function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   useEffect(() => {
-    if (window.innerWidth < 1024) {
+    const isViewingReport = /^\/app\/reports\/[^/]+/.test(location.pathname);
+    if (window.innerWidth < 1024 || isViewingReport) {
       setSidebarOpen(false);
     }
   }, [location.pathname]);

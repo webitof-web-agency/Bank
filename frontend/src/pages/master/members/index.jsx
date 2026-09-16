@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Edit2, Trash2, Eye, Users, UserCheck, UserX, Building2 } from 'lucide-react';
+import { Plus, Edit2, Trash2, Eye, Users, UserCheck, UserX, Building2, BookOpen } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../../api/api';
 import { useAuth } from '../../../context/AuthContext';
+import { REPORT_LINK_MAP } from '../../reports/reportLinks';
 import { Card } from '../../../components/ui/Card';
 import { Button } from '../../../components/ui/Button';
 import { Modal } from '../../../components/ui/Modal';
@@ -54,6 +55,7 @@ export function MembersPage() {
   const branchLookup = useMemo(() => getBranchMap(branches), [branches]);
 
   const canManage = hasPermission('members.write');
+  const canViewLedger = hasPermission(REPORT_LINK_MAP['member-ledger']?.permission || 'reports.read');
 
   useEffect(() => {
     let mounted = true;
@@ -235,6 +237,16 @@ export function MembersPage() {
           >
             <Eye size={16} />
           </button>
+          {canViewLedger ? (
+            <button
+              type="button"
+              onClick={() => navigate(`/app/reports/member-ledger?memberCode=${encodeURIComponent(row.code)}`)}
+              className="rounded-full p-2 text-slate-400 hover:bg-blue-50 hover:text-blue-600"
+              title="View Ledger"
+            >
+              <BookOpen size={16} />
+            </button>
+          ) : null}
           {canManage ? (
             <>
               <button

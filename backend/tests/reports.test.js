@@ -98,29 +98,38 @@ test('Phase 3 Batch 1 Reports Engine', async (t) => {
   const dateTo = '2023-02-28';
 
   await t.test('Trial Balance Report Calculations', async () => {
+    // A trial balance shows each ledger's CLOSING balance in whichever column
+    // (debit/credit) it sits on — not period movement. periodDebit/periodCredit
+    // carry the movement-only figures separately, for anything that wants them.
     const tb = await buildTrialBalanceReport({ dateFrom, dateTo });
-    
+
     const cashRow = tb.find(r => r.ledgerCode === 'L-CASH');
     assert.strictEqual(cashRow.opening, 8000, 'Cash opening balance should be 8000');
     assert.strictEqual(cashRow.openingSide, 'DR');
-    assert.strictEqual(cashRow.debit, 1500, 'Cash debit during period should be 1500');
-    assert.strictEqual(cashRow.credit, 0, 'Cash credit during period should be 0');
+    assert.strictEqual(cashRow.periodDebit, 1500, 'Cash debit movement during period should be 1500');
+    assert.strictEqual(cashRow.periodCredit, 0, 'Cash credit movement during period should be 0');
     assert.strictEqual(cashRow.closing, 9500, 'Cash closing should be 9500');
     assert.strictEqual(cashRow.closingSide, 'DR');
+    assert.strictEqual(cashRow.debit, 9500, 'DR-side ledger shows its closing balance in the debit column');
+    assert.strictEqual(cashRow.credit, 0);
 
     const loanRow = tb.find(r => r.ledgerCode === 'L-LOAN');
     assert.strictEqual(loanRow.opening, 52000);
-    assert.strictEqual(loanRow.debit, 0);
-    assert.strictEqual(loanRow.credit, 1000);
+    assert.strictEqual(loanRow.periodDebit, 0);
+    assert.strictEqual(loanRow.periodCredit, 1000);
     assert.strictEqual(loanRow.closing, 51000);
+    assert.strictEqual(loanRow.debit, 51000);
+    assert.strictEqual(loanRow.credit, 0);
 
     const shareRow = tb.find(r => r.ledgerCode === 'L-SHARE');
     assert.strictEqual(shareRow.opening, 20000);
     assert.strictEqual(shareRow.openingSide, 'CR');
-    assert.strictEqual(shareRow.debit, 0);
-    assert.strictEqual(shareRow.credit, 500);
+    assert.strictEqual(shareRow.periodDebit, 0);
+    assert.strictEqual(shareRow.periodCredit, 500);
     assert.strictEqual(shareRow.closing, 20500);
     assert.strictEqual(shareRow.closingSide, 'CR');
+    assert.strictEqual(shareRow.debit, 0, 'CR-side ledger shows nothing in the debit column');
+    assert.strictEqual(shareRow.credit, 20500, 'CR-side ledger shows its closing balance in the credit column');
   });
 
   await t.test('Ledger Account Statement (Cash Ledger)', async () => {

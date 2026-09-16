@@ -1,9 +1,10 @@
 ﻿import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Edit2, Shield, User, CalendarDays, Home, Coins, Wallet, PiggyBank, Landmark, PieChart, Lock, Star, ShieldCheck, Banknote, Umbrella } from 'lucide-react';
+import { ArrowLeft, Edit2, Shield, User, CalendarDays, Home, Coins, Wallet, PiggyBank, Landmark, PieChart, Lock, Star, ShieldCheck, Banknote, Umbrella, BookOpen } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../api/api';
 import { useAuth } from '../../../context/AuthContext';
+import { REPORT_LINK_MAP } from '../../reports/reportLinks';
 import { Button } from '../../../components/ui/Button';
 import { Card } from '../../../components/ui/Card';
 import { Modal } from '../../../components/ui/Modal';
@@ -65,6 +66,7 @@ export function MemberDetailPage() {
   const [activeTab, setActiveTab] = useState('identity');
 
   const canManage = hasPermission('members.write');
+  const canViewLedger = hasPermission(REPORT_LINK_MAP['member-ledger']?.permission || 'reports.read');
   const branchLookup = useMemo(() => getBranchMap(branches), [branches]);
   const statusLabel = getMemberStatus(member);
   const memberBranch = branchLookup.get(String(member?.branchCode || '').trim().toUpperCase());
@@ -202,6 +204,16 @@ export function MemberDetailPage() {
                     {item}
                   </span>
                 ))}
+                {canViewLedger ? (
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/app/reports/member-ledger?memberCode=${encodeURIComponent(memberCode)}`)}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-[var(--primary)] px-3 py-1.5 text-[13px] font-medium text-[var(--primary)] transition hover:bg-[color-mix(in_srgb,var(--primary)_8%,transparent)]"
+                  >
+                    <BookOpen size={14} />
+                    View Ledger
+                  </button>
+                ) : null}
               </div>
             </div>
           </div>

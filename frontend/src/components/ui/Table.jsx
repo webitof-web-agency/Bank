@@ -3,6 +3,40 @@ import { ArrowUpDown, ArrowDown, ArrowUp, Search } from 'lucide-react';
 import { Select } from './Select';
 import { formatDateOnly, isDateOnlyColumn } from '../../utils/date';
 
+// Row values are frequently numeric-looking strings (codes, amounts) rather
+// than real numbers, so a plain `<`/`>` compares them lexicographically —
+// "10" sorts before "2". This compares numerically whenever both sides are
+// numeric, falls back to a natural-order string compare otherwise (so
+// "Item 2" still sorts before "Item 10"), and always pushes null/undefined/
+// empty values to one end instead of leaving them in whatever order they
+// started in (the previous behavior, since undefined < x and undefined > x
+// are both false, so the comparator never moved them at all).
+function isEmptyCellValue(value) {
+  return value === null || value === undefined || value === '' || String(value).trim() === '-';
+}
+
+function compareCellValues(aVal, bVal) {
+  const aEmpty = isEmptyCellValue(aVal);
+  const bEmpty = isEmptyCellValue(bVal);
+  if (aEmpty && bEmpty) return 0;
+  if (aEmpty) return 1;
+  if (bEmpty) return -1;
+
+  if (typeof aVal === 'number' && typeof bVal === 'number') {
+    return aVal - bVal;
+  }
+
+  const aNum = Number(aVal);
+  const bNum = Number(bVal);
+  const bothNumeric = Number.isFinite(aNum) && Number.isFinite(bNum)
+    && String(aVal).trim() !== '' && String(bVal).trim() !== '';
+  if (bothNumeric) {
+    return aNum - bNum;
+  }
+
+  return String(aVal).localeCompare(String(bVal), undefined, { numeric: true, sensitivity: 'base' });
+}
+
 export function Table({
   columns = [],
   data = [],
@@ -60,12 +94,8 @@ export function Table({
         bVal = column.sortValue(b);
       }
 
-      if (typeof aVal === 'string') aVal = aVal.toLowerCase();
-      if (typeof bVal === 'string') bVal = bVal.toLowerCase();
-
-      if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
-      if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
-      return 0;
+      const result = compareCellValues(aVal, bVal);
+      return sortDirection === 'asc' ? result : -result;
     });
   }, [data, isServerPagination, sortKey, sortDirection, columns]);
 

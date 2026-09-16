@@ -111,7 +111,7 @@ export function CommitteePage() {
             </div>
           </div>
 
-          <CommitteeForm value={draft} setValue={setDraft} onSubmit={saveCommittee} members={members} />
+          <CommitteeForm value={draft} setValue={setDraft} onSubmit={saveCommittee} members={members} canWrite={canWrite} />
 
           <div className="flex justify-end pt-6">
             <Button

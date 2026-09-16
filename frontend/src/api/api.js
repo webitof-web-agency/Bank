@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8001/api';
 const CACHE_PREFIX = 'bank-api-cache:v2';
 const CACHE_TTL_MS = 15 * 60 * 1000;
 const memoryCache = new Map();
@@ -127,7 +127,7 @@ export async function request(path, { method = 'GET', body, token, headers = {},
   };
 
   let finalPath = path;
-  if (isBrowser() && (path.startsWith('/banking/reports') || path.startsWith('/banking/transactions') || path.startsWith('/banking/dashboard'))) {
+  if (isBrowser() && (path.startsWith('/banking/reports') || path.startsWith('/banking/transactions') || path.startsWith('/banking/dashboard') || path.startsWith('/banking/masters/members'))) {
     try {
       const stored = window.localStorage.getItem('bank-active-fy');
       if (stored) {
@@ -226,10 +226,11 @@ export const api = {
     deleteTransactionVoucher: (token, id) => request(`/banking/transactions/vouchers/${id}`, { method: 'DELETE', token }),
     reports: {
       memberLedger: (token, query = {}) => request(`/banking/reports/member-ledger${buildQuery(query)}`, { token, skipCache: true }),
+      employeeLedger: (token, query = {}) => request(`/banking/reports/employee-ledger${buildQuery(query)}`, { token, skipCache: true }),
       accountStatement: (token, query = {}) => request(`/banking/reports/account-statement${buildQuery(query)}`, { token, skipCache: true }),
       demandList: (token, query = {}) => request(`/banking/reports/demand-list${buildQuery(query)}`, { token, skipCache: true }),
-      allMemberList: (token) => request('/banking/reports/all-member-list', { token, skipCache: true }),
-      branchList: (token) => request('/banking/reports/branch-list', { token, skipCache: true }),
+      allMemberList: (token, query = {}) => request(`/banking/reports/all-member-list${buildQuery(query)}`, { token, skipCache: true }),
+      branchList: (token, query = {}) => request(`/banking/reports/branch-list${buildQuery(query)}`, { token, skipCache: true }),
       dividendReport: (token, query = {}) => request(`/banking/reports/dividend-report${buildQuery(query)}`, { token, skipCache: true }),
       voucherSummary: (token, query = {}) => request(`/banking/reports/voucher-summary${buildQuery(query)}`, { token, skipCache: true }),
       paymentReceiptStatement: (token, query = {}) => request(`/banking/reports/payment-receipt-statement${buildQuery(query)}`, { token, skipCache: true }),
@@ -299,10 +300,10 @@ export function getImageUrl(url) {
   if (!url) return '';
   if (url.startsWith('http')) return url;
   if (url.startsWith('/api')) {
-    if (/^\/api\/files\/[^/]+\/view(?:\?.*)?$/i.test(url)) {
-      return appendFileAccessToken(url);
-    }
     const base = API_BASE_URL.endsWith('/api') ? API_BASE_URL.slice(0, -4) : API_BASE_URL;
+    if (/^\/api\/files\/[^/]+\/view(?:\?.*)?$/i.test(url)) {
+      return appendFileAccessToken(`${base}${url}`);
+    }
     return `${base}${url}`;
   }
   return url;

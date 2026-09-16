@@ -84,14 +84,16 @@ export function RolesPage() {
         : <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2.5 py-0.5 text-[11px] font-medium text-rose-700">No</span>
     )},
     { key: 'actions', label: 'Actions', sortable: false, align: 'right', render: (row) => (
-      <div className="flex justify-end gap-1">
-        <button type="button" onClick={() => openEdit(row)} className="rounded-full p-2 text-slate-400 hover:bg-blue-50 hover:text-blue-600">
-          <Edit2 size={16} />
-        </button>
-        <button type="button" onClick={() => setDeleteTarget(row)} className="rounded-full p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600">
-          <Trash2 size={16} />
-        </button>
-      </div>
+      canEdit ? (
+        <div className="flex justify-end gap-1">
+          <button type="button" onClick={() => openEdit(row)} className="rounded-full p-2 text-slate-400 hover:bg-blue-50 hover:text-blue-600">
+            <Edit2 size={16} />
+          </button>
+          <button type="button" onClick={() => setDeleteTarget(row)} className="rounded-full p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600">
+            <Trash2 size={16} />
+          </button>
+        </div>
+      ) : null
     ) }
   ];
 

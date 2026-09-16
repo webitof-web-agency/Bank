@@ -29,7 +29,7 @@ export function RateForm({ value, setValue, onSubmit, ledgers = [] }) {
           <Input
             value={value.code || ''}
             onChange={(event) => setValue((current) => ({ ...current, code: event.target.value }))}
-            placeholder="R01"
+            placeholder="Auto-generated"
           />
         </div>
 

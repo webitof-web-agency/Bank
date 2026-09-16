@@ -16,20 +16,19 @@ function getDefaultHeadOfficeCode(rows = []) {
   return 'HO01';
 }
 
+// Plain numeric, auto-incrementing — matches the real migrated branch codes
+// (e.g. "59", "77"), which never had a "BR" prefix.
 export function buildNextBranchCode(rows = []) {
   let maxNumber = 0;
 
   for (const row of Array.isArray(rows) ? rows : []) {
-    const code = toUpper(row?.code);
-    const match = code.match(/^BR(\d+)$/);
-    if (!match) continue;
-    const number = Number(match[1]);
-    if (Number.isFinite(number) && number > maxNumber) {
-      maxNumber = number;
+    const value = Number(toUpper(row?.code));
+    if (Number.isFinite(value) && value > maxNumber) {
+      maxNumber = value;
     }
   }
 
-  return `BR${String(maxNumber + 1).padStart(2, '0')}`;
+  return String(maxNumber + 1);
 }
 
 export function createEmptyBranchDraft(rows = []) {

@@ -6,7 +6,16 @@ export const SETTINGS_LINKS = [
     path: '/app/settings/head-office',
     icon: Building2,
     permission: 'society.read',
-    description: 'Head office profile, code, and primary branch details.',
+    description: 'Head office code, location, and contact details.',
+    group: 'Configuration',
+    tone: 'slate'
+  },
+  {
+    label: 'Society Details',
+    path: '/app/settings/society-details',
+    icon: Building2,
+    permission: 'society.read',
+    description: 'Registered society identity used on letterheads and printed reports.',
     group: 'Configuration',
     tone: 'slate'
   },
@@ -20,8 +29,8 @@ export const SETTINGS_LINKS = [
     tone: 'slate'
   },
   {
-    label: 'User Rights',
-    path: '/app/settings/user-rights',
+    label: 'Manage Roles',
+    path: '/app/roles',
     icon: ShieldCheck,
     permission: 'roles.manage',
     description: 'Role and permission control center.',

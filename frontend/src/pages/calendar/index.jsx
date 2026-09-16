@@ -100,14 +100,28 @@ function normalizeAttachmentList(attachments = []) {
   return (Array.isArray(attachments) ? attachments : []).map(normalizeAttachment).filter(Boolean);
 }
 
+// startDate/startTime is the event's anchor (which day it's shown/sorted
+// under); endDate/endTime is optional. Reads legacy `date`/`time` (from
+// localStorage records saved before start/end existed) as a fallback so old
+// events keep working without a migration step.
 function normalizeEvent(record = {}) {
+  const legacyDate = String(record.date || '').trim();
+  const legacyTime = String(record.time || '').trim();
+  const startDate = String(record.startDate || legacyDate || formatDateKey(new Date())).trim();
+
   return {
     id: String(record.id || createEventId()),
     title: String(record.title || '').trim(),
-    date: String(record.date || formatDateKey(new Date())).trim(),
-    time: String(record.time || '').trim(),
+    startDate,
+    startTime: String(record.startTime ?? legacyTime ?? '').trim(),
+    endDate: String(record.endDate || startDate).trim(),
+    endTime: String(record.endTime ?? '').trim(),
     color: String(record.color || COLOR_OPTIONS[0].value),
     notes: String(record.notes || '').trim(),
+    completed: Boolean(record.completed),
+    conclusion: String(record.conclusion || '').trim(),
+    completedAt: String(record.completedAt || '').trim(),
+    notificationIds: normalizeList(record.notificationIds || []),
     attachments: normalizeAttachmentList(record.attachments || []),
     visibility: normalizeVisibility(record.visibility, {
       ownerUserId: record.ownerUserId || record.createdBy || ''
@@ -118,10 +132,15 @@ function normalizeEvent(record = {}) {
 function createEmptyForm(date = formatDateKey(new Date()), attachments = [], visibility = {}) {
   return {
     title: '',
-    date,
-    time: '',
+    startDate: date,
+    startTime: '',
+    endDate: date,
+    endTime: '',
     color: COLOR_OPTIONS[0].value,
     notes: '',
+    completed: false,
+    conclusion: '',
+    completedAt: '',
     attachments,
     visibility: normalizeVisibility(visibility, createDefaultVisibility())
   };
@@ -180,13 +199,32 @@ function getDayLabel(value) {
 
 function sortEvents(items) {
   return [...items].sort((left, right) => {
-    const lDate = left?.date || '';
-    const rDate = right?.date || '';
+    const lDate = left?.startDate || '';
+    const rDate = right?.startDate || '';
     if (lDate !== rDate) return lDate.localeCompare(rDate);
-    const leftTime = left?.time || '99:99';
-    const rightTime = right?.time || '99:99';
+    const leftTime = left?.startTime || '99:99';
+    const rightTime = right?.startTime || '99:99';
     return leftTime.localeCompare(rightTime);
   });
+}
+
+function formatTimeRange(item = {}) {
+  if (!item.startTime && !item.endTime) return '';
+  if (item.startTime && item.endTime) return `${item.startTime} - ${item.endTime}`;
+  return item.startTime || item.endTime;
+}
+
+// An event is "past" once its end (or start, if no end time given) has
+// elapsed — used to nudge completion without forcing a modal open.
+function isEventPastDue(item = {}) {
+  const dateKey = item.endDate || item.startDate;
+  if (!dateKey) return false;
+  const timeKey = item.endTime || item.startTime || '23:59';
+  const endMoment = parseDateKey(dateKey);
+  if (!endMoment) return false;
+  const [hours, minutes] = timeKey.split(':').map(Number);
+  endMoment.setHours(Number.isFinite(hours) ? hours : 23, Number.isFinite(minutes) ? minutes : 59, 0, 0);
+  return endMoment.getTime() < Date.now();
 }
 
 function buildMonthGrid(monthDate) {
@@ -350,6 +388,7 @@ function EventColorPicker({ value, onChange }) {
 
 export function CalendarPage() {
   const { token, user, hasPermission } = useAuth();
+  const canManage = hasPermission('calendar.write');
   const attachmentInputRef = useRef(null);
   const draftEventIdRef = useRef(createEventId());
   const originalAttachmentIdsRef = useRef([]);
@@ -378,14 +417,14 @@ export function CalendarPage() {
   const employeeLookup = useMemo(() => new Map(employeeOptions.map((employee) => [String(employee.id || employee._id || ''), employee])), [employeeOptions]);
   const eventsByDate = useMemo(() => {
     return visibleEvents.reduce((acc, item) => {
-      if (!item || !item.date) return acc;
-      if (!acc[item.date]) acc[item.date] = [];
-      acc[item.date].push(item);
+      if (!item || !item.startDate) return acc;
+      if (!acc[item.startDate]) acc[item.startDate] = [];
+      acc[item.startDate].push(item);
       return acc;
     }, {});
   }, [visibleEvents]);
   const monthEvents = useMemo(
-    () => sortEvents(visibleEvents.filter((event) => event?.date?.startsWith(`${currentMonth.getFullYear()}-${pad(currentMonth.getMonth() + 1)}`))),
+    () => sortEvents(visibleEvents.filter((event) => event?.startDate?.startsWith(`${currentMonth.getFullYear()}-${pad(currentMonth.getMonth() + 1)}`))),
     [currentMonth, visibleEvents]
   );
   const selectedEvents = useMemo(
@@ -393,7 +432,7 @@ export function CalendarPage() {
     [eventsByDate, selectedDate]
   );
   const upcomingEvents = useMemo(
-    () => sortEvents(visibleEvents).filter((event) => event?.date && event.date >= formatDateKey(today)).slice(0, 6),
+    () => sortEvents(visibleEvents).filter((event) => !event.completed && event?.startDate && event.startDate >= formatDateKey(today)).slice(0, 6),
     [visibleEvents, today]
   );
   const formVisibility = normalizeVisibility(form.visibility, createDefaultVisibility(String(user?.id || ''), canManageVisibility ? 'all' : 'private'));
@@ -452,10 +491,15 @@ export function CalendarPage() {
     setEditingId(item.id);
     setForm({
       title: item.title || '',
-      date: item.date || formatDateKey(today),
-      time: item.time || '',
+      startDate: item.startDate || formatDateKey(today),
+      startTime: item.startTime || '',
+      endDate: item.endDate || item.startDate || formatDateKey(today),
+      endTime: item.endTime || '',
       color: item.color || COLOR_OPTIONS[0].value,
       notes: item.notes || '',
+      completed: Boolean(item.completed),
+      conclusion: item.conclusion || '',
+      completedAt: item.completedAt || '',
       attachments,
       visibility: normalizeVisibility(item.visibility, {
         ownerUserId: item.ownerUserId || item.createdBy || user?.id || ''
@@ -565,13 +609,30 @@ export function CalendarPage() {
   async function handleSave(event) {
     event.preventDefault();
 
+    if (!canManage) {
+      toast.error('You do not have permission to manage calendar events');
+      return;
+    }
+
     if (!form.title.trim()) {
       toast.error('Event title is required');
       return;
     }
 
-    if (!form.date) {
-      toast.error('Event date is required');
+    if (!form.startDate) {
+      toast.error('Start date is required');
+      return;
+    }
+
+    if (!form.endDate) {
+      toast.error('End date is required');
+      return;
+    }
+
+    const startKey = `${form.startDate} ${form.startTime || '00:00'}`;
+    const endKey = `${form.endDate} ${form.endTime || '23:59'}`;
+    if (endKey < startKey) {
+      toast.error('End date/time cannot be before the start');
       return;
     }
 
@@ -583,13 +644,44 @@ export function CalendarPage() {
     const payload = {
       id: eventId,
       title: form.title.trim(),
-      date: form.date,
-      time: form.time,
+      startDate: form.startDate,
+      startTime: form.startTime,
+      endDate: form.endDate,
+      endTime: form.endTime,
       color: form.color,
       notes: form.notes.trim(),
+      completed: Boolean(existingEvent?.completed),
+      conclusion: existingEvent?.conclusion || '',
+      completedAt: existingEvent?.completedAt || '',
+      notificationIds: existingEvent?.notificationIds || [],
       attachments: normalizeAttachmentList(form.attachments || []),
       visibility
     };
+
+    // A reminder notification stays in the bell dropdown until the event is
+    // marked complete (handleMarkComplete deletes it). Only create it once,
+    // on first save — editing shouldn't spam a new notification every time.
+    if (!editingId && token) {
+      try {
+        const response = await api.notifications.create(token, {
+          title: `Upcoming event: ${payload.title}`,
+          message: `${getDayLabel(payload.startDate)}${payload.startTime ? ` at ${payload.startTime}` : ''}${payload.notes ? ` — ${payload.notes}` : ''}`,
+          type: 'info',
+          module: 'calendar',
+          entityType: 'calendar-event',
+          entityId: eventId,
+          actionUrl: '/app/calendar',
+          recipientUserIds: [String(user?.id || '')].filter(Boolean),
+          includeDefaultRecipients: false,
+          sendEmail: false
+        });
+        const created = response?.data?.notifications || [];
+        payload.notificationIds = created.map((n) => String(n.id || n._id || '')).filter(Boolean);
+      } catch (error) {
+        // Non-fatal — the event itself still saves even if the reminder notification couldn't be created.
+        toast.error('Event saved, but the reminder notification could not be created');
+      }
+    }
 
     setEvents((current) => {
       if (editingId) {
@@ -599,8 +691,8 @@ export function CalendarPage() {
       return sortEvents([...current, payload]);
     });
 
-    setSelectedDate(form.date);
-    setCurrentMonth(startOfMonth(parseDateKey(form.date) || today));
+    setSelectedDate(form.startDate);
+    setCurrentMonth(startOfMonth(parseDateKey(form.startDate) || today));
     originalAttachmentIdsRef.current = payload.attachments.map((attachment) => String(attachment.fileId || attachment.id || ''));
     setIsModalOpen(false);
     setEditingId(null);
@@ -608,7 +700,40 @@ export function CalendarPage() {
     toast.success(editingId ? 'Event updated' : 'Event added');
   }
 
+  async function handleMarkComplete(eventId, conclusionText = '') {
+    const currentRecord = events.find((item) => String(item.id) === String(eventId));
+    if (!currentRecord) return;
+
+    if (token && currentRecord.notificationIds?.length) {
+      await Promise.allSettled(currentRecord.notificationIds.map((id) => api.notifications.remove(token, id)));
+    }
+
+    const updated = {
+      ...currentRecord,
+      completed: true,
+      conclusion: conclusionText.trim(),
+      completedAt: new Date().toISOString(),
+      notificationIds: []
+    };
+    setEvents((current) => sortEvents(current.map((item) => (item.id === eventId ? updated : item))));
+    setForm((current) => ({ ...current, completed: true, conclusion: updated.conclusion, completedAt: updated.completedAt }));
+    toast.success('Event marked complete');
+  }
+
+  function handleReopenEvent(eventId) {
+    setEvents((current) => sortEvents(current.map((item) => (
+      item.id === eventId ? { ...item, completed: false, conclusion: '', completedAt: '' } : item
+    ))));
+    setForm((current) => ({ ...current, completed: false, conclusion: '', completedAt: '' }));
+    toast.success('Event reopened');
+  }
+
   async function handleDelete(eventId) {
+    if (!canManage) {
+      toast.error('You do not have permission to manage calendar events');
+      return;
+    }
+
     const currentRecord = events.find((item) => String(item.id) === String(eventId));
     const attachmentIds = Array.isArray(currentRecord?.attachments)
       ? currentRecord.attachments.map((attachment) => String(attachment.fileId || attachment.id || '')).filter(Boolean)
@@ -616,6 +741,10 @@ export function CalendarPage() {
 
     if (token && attachmentIds.length) {
       await Promise.allSettled(attachmentIds.map((fileId) => api.files.remove(token, fileId)));
+    }
+
+    if (token && currentRecord?.notificationIds?.length) {
+      await Promise.allSettled(currentRecord.notificationIds.map((id) => api.notifications.remove(token, id)));
     }
 
     setEvents((current) => current.filter((item) => item.id !== eventId));
@@ -647,12 +776,12 @@ export function CalendarPage() {
             icon: CalendarDays,
             onClick: handleToday
           },
-          {
+          ...(canManage ? [{
             label: 'Add Event',
             variant: 'primary',
             icon: Plus,
             onClick: () => openNewEvent()
-          }
+          }] : [])
         ]}
       />
 
@@ -751,10 +880,12 @@ export function CalendarPage() {
                 </span>
                 <h3 className="text-lg font-bold text-slate-900">{getDayLabel(selectedDate)}</h3>
               </div>
-              <Button type="button" variant="outline" size="sm" onClick={() => openNewEvent(selectedDate)}>
-                <Plus size={15} />
-                Add
-              </Button>
+              {canManage ? (
+                <Button type="button" variant="outline" size="sm" onClick={() => openNewEvent(selectedDate)}>
+                  <Plus size={15} />
+                  Add
+                </Button>
+              ) : null}
             </div>
 
             <div className="mt-4 space-y-3">
@@ -772,23 +903,34 @@ export function CalendarPage() {
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center justify-between gap-3">
                         <span className="truncate text-sm font-semibold text-slate-900">{item.title}</span>
-                        {item.time ? (
+                        {formatTimeRange(item) ? (
                           <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-500">
                             <Clock3 size={11} />
-                            {item.time}
+                            {formatTimeRange(item)}
                           </span>
                         ) : null}
                       </span>
-                      {(() => {
-                        const visibilityMeta = getVisibilityMeta(item, user, roleLookup, employeeLookup);
-                        const VisibilityIcon = visibilityMeta.icon;
-                        return (
-                          <span className={`mt-2 inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] ${visibilityToneClass(visibilityMeta.tone)}`}>
-                            <VisibilityIcon size={10} />
-                            {visibilityMeta.label}
+                      <span className="mt-2 flex flex-wrap items-center gap-2">
+                        {(() => {
+                          const visibilityMeta = getVisibilityMeta(item, user, roleLookup, employeeLookup);
+                          const VisibilityIcon = visibilityMeta.icon;
+                          return (
+                            <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] ${visibilityToneClass(visibilityMeta.tone)}`}>
+                              <VisibilityIcon size={10} />
+                              {visibilityMeta.label}
+                            </span>
+                          );
+                        })()}
+                        {item.completed ? (
+                          <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-700">
+                            Completed
                           </span>
-                        );
-                      })()}
+                        ) : isEventPastDue(item) ? (
+                          <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-700">
+                            Ended — mark complete
+                          </span>
+                        ) : null}
+                      </span>
                       {item.notes ? <span className="mt-1 block line-clamp-2 text-[12px] leading-5 text-slate-500">{item.notes}</span> : null}
                     </span>
                   </button>
@@ -831,7 +973,7 @@ export function CalendarPage() {
                       <span className="flex items-center justify-between gap-3">
                         <span className="truncate text-sm font-semibold text-slate-900">{item.title}</span>
                         <span className="text-[11px] font-semibold text-slate-400">
-                          {new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric' }).format(parseDateKey(item.date))}
+                          {new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric' }).format(parseDateKey(item.startDate))}
                         </span>
                       </span>
                       <span className={`mt-2 inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] ${visibilityToneClass(visibilityMeta.tone)}`}>
@@ -840,7 +982,7 @@ export function CalendarPage() {
                       </span>
                       <span className="mt-1 flex items-center gap-2 text-[12px] text-slate-500">
                         <MapPin size={12} className="text-slate-400" />
-                        {item.time ? `Time ${item.time}` : 'All day'}
+                        {formatTimeRange(item) ? `Time ${formatTimeRange(item)}` : 'All day'}
                       </span>
                     </span>
                   </button>
@@ -865,7 +1007,7 @@ export function CalendarPage() {
         footer={(
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              {editingId ? (
+              {canManage && editingId ? (
                 <Button type="button" variant="destructive" onClick={() => void handleDelete(editingId)}>
                   <Trash2 size={16} />
                   Delete
@@ -878,58 +1020,130 @@ export function CalendarPage() {
                   void closeModal();
                 }}
               >
-                Cancel
+                {canManage ? 'Cancel' : 'Close'}
               </Button>
-              <Button type="submit" form="calendar-event-form">
-                <PencilLine size={16} />
-                {editingId ? 'Update event' : 'Save event'}
-              </Button>
+              {canManage ? (
+                <Button type="submit" form="calendar-event-form">
+                  <PencilLine size={16} />
+                  {editingId ? 'Update event' : 'Save event'}
+                </Button>
+              ) : null}
             </div>
           </div>
         )}
       >
         <form id="calendar-event-form" className="space-y-5" onSubmit={handleSave}>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-slate-700">Event title</label>
+            <Input
+              value={form.title}
+              onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))}
+              placeholder="Client meeting"
+            />
+          </div>
+
           <div className="grid gap-5 md:grid-cols-2">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-700">Event title</label>
-              <Input
-                value={form.title}
-                onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))}
-                placeholder="Client meeting"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-700">Event date</label>
+              <label className="text-sm font-medium text-slate-700">Start date</label>
               <Input
                 type="date"
-                value={form.date}
+                value={form.startDate}
                 onChange={(event) => {
-                  setForm((current) => ({ ...current, date: event.target.value }));
-                  setSelectedDate(event.target.value);
+                  const nextStart = event.target.value;
+                  setForm((current) => ({
+                    ...current,
+                    startDate: nextStart,
+                    // Keep end from trailing before start when it's pushed forward.
+                    endDate: current.endDate && current.endDate < nextStart ? nextStart : current.endDate
+                  }));
+                  setSelectedDate(nextStart);
                 }}
               />
             </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-700">Start time</label>
+              <Input
+                type="time"
+                value={form.startTime}
+                onChange={(event) => setForm((current) => ({ ...current, startTime: event.target.value }))}
+              />
+            </div>
           </div>
 
           <div className="grid gap-5 md:grid-cols-2">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-700">Time</label>
+              <label className="text-sm font-medium text-slate-700">End date</label>
               <Input
-                type="time"
-                value={form.time}
-                onChange={(event) => setForm((current) => ({ ...current, time: event.target.value }))}
+                type="date"
+                value={form.endDate}
+                min={form.startDate || undefined}
+                onChange={(event) => setForm((current) => ({ ...current, endDate: event.target.value }))}
               />
             </div>
-
             <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-700">Color</label>
-              <EventColorPicker
-                value={form.color}
-                onChange={(value) => setForm((current) => ({ ...current, color: value }))}
+              <label className="text-sm font-medium text-slate-700">End time</label>
+              <Input
+                type="time"
+                value={form.endTime}
+                onChange={(event) => setForm((current) => ({ ...current, endTime: event.target.value }))}
               />
             </div>
           </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-slate-700">Color</label>
+            <EventColorPicker
+              value={form.color}
+              onChange={(value) => setForm((current) => ({ ...current, color: value }))}
+            />
+          </div>
+
+          {editingId ? (
+            <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <label className="text-sm font-medium text-slate-700">Completion</label>
+                {form.completed ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700">
+                    Completed{form.completedAt ? ` • ${new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric' }).format(new Date(form.completedAt))}` : ''}
+                  </span>
+                ) : isEventPastDue(form) ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-700">
+                    Ended
+                  </span>
+                ) : null}
+              </div>
+
+              {form.completed ? (
+                <>
+                  {form.conclusion ? (
+                    <p className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">{form.conclusion}</p>
+                  ) : (
+                    <p className="text-sm text-slate-500">Marked complete with no conclusion note.</p>
+                  )}
+                  {canManage ? (
+                    <Button type="button" variant="outline" size="sm" onClick={() => handleReopenEvent(editingId)}>
+                      Reopen event
+                    </Button>
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  <label className="text-sm font-medium text-slate-700">Conclusion / notes (optional)</label>
+                  <Textarea
+                    value={form.conclusion}
+                    onChange={(event) => setForm((current) => ({ ...current, conclusion: event.target.value }))}
+                    placeholder="What happened, outcome, follow-ups..."
+                    rows={3}
+                  />
+                  {canManage ? (
+                    <Button type="button" variant="outline" size="sm" onClick={() => void handleMarkComplete(editingId, form.conclusion)}>
+                      Mark complete
+                    </Button>
+                  ) : null}
+                </>
+              )}
+            </div>
+          ) : null}
 
           <div className="space-y-3">
             <div className="flex items-center justify-between gap-3">
@@ -1059,18 +1273,20 @@ export function CalendarPage() {
             </div>
 
             <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 p-4">
-              <div className="flex flex-wrap items-center gap-3">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => attachmentInputRef.current?.click()}
-                  disabled={uploadingAttachments}
-                >
-                  <Upload size={15} />
-                  {uploadingAttachments ? 'Uploading...' : 'Add attachment'}
-                </Button>
-              </div>
+              {canManage ? (
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => attachmentInputRef.current?.click()}
+                    disabled={uploadingAttachments}
+                  >
+                    <Upload size={15} />
+                    {uploadingAttachments ? 'Uploading...' : 'Add attachment'}
+                  </Button>
+                </div>
+              ) : null}
 
               <input
                 ref={attachmentInputRef}
@@ -1111,15 +1327,17 @@ export function CalendarPage() {
                             <ExternalLink size={14} />
                             Open
                           </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => void handleAttachmentRemove(attachment)}
-                          >
-                            <Trash2 size={14} />
-                            Remove
-                          </Button>
+                          {canManage ? (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => void handleAttachmentRemove(attachment)}
+                            >
+                              <Trash2 size={14} />
+                              Remove
+                            </Button>
+                          ) : null}
                         </div>
                       </div>
                     );

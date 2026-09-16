@@ -35,7 +35,9 @@ export function FileBrowser({
   uploadModule,
   uploadEntityId
 }) {
-  const { token } = useAuth();
+  const { token, hasPermission } = useAuth();
+  const canWrite = hasPermission('files.write');
+  const canDelete = hasPermission('files.delete');
   const fileInputRef = useRef(null);
   const [path, setPath] = useState([{ id: null, name: 'Home' }]);
   const [search, setSearch] = useState('');
@@ -80,6 +82,7 @@ export function FileBrowser({
   }, [files, search]);
 
   async function handleUpload(event) {
+    if (!canWrite) return;
     const selected = Array.from(event.target.files || []);
     if (!selected.length) return;
 

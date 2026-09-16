@@ -22,6 +22,9 @@ function registerCrud(basePath, controllerGroup, readPermission, writePermission
   router.get(`${basePath}/:id`, requirePermission(...readPermissions), controllerGroup.get);
   router.put(`${basePath}/:id`, requirePermission(...writePermissions), controllerGroup.update);
   router.delete(`${basePath}/:id`, requirePermission(...writePermissions), controllerGroup.delete);
+  if (controllerGroup.restore) {
+    router.post(`${basePath}/:id/restore`, requirePermission(...writePermissions), controllerGroup.restore);
+  }
 }
 
 registerCrud('/masters/branches', banking.resources.branches, 'branches.read', 'branches.write');
@@ -49,6 +52,9 @@ router.post('/transactions/vouchers', requirePermission('transactions.write'), b
 router.get('/transactions/vouchers/:id', requirePermission('transactions.read'), banking.transactions.getVoucher);
 router.put('/transactions/vouchers/:id', requirePermission('transactions.write'), banking.transactions.updateVoucher);
 router.delete('/transactions/vouchers/:id', requirePermission('transactions.write'), banking.transactions.deleteVoucher);
+router.post('/transactions/vouchers/:id/restore', requirePermission('transactions.write'), banking.transactions.restoreVoucher);
+
+router.get('/audit-log', requirePermission('audit.read'), banking.auditLog.list);
 
 
 

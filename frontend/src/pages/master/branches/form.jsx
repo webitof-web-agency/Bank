@@ -18,7 +18,7 @@ export function BranchForm({ value, setValue, onSubmit }) {
           <Input
             value={value.code || ''}
             onChange={(event) => setValue((current) => ({ ...current, code: event.target.value }))}
-            placeholder="BR01"
+            placeholder="Auto-generated"
           />
         </div>
 

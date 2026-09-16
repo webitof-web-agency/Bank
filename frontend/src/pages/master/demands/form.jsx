@@ -62,7 +62,7 @@ export function DemandForm({ value, setValue, onSubmit, branches = [], members =
           <Input
             value={value.demandNo || ''}
             onChange={(event) => setValue((current) => ({ ...current, demandNo: event.target.value }))}
-            placeholder="DM01"
+            placeholder="Auto-generated"
           />
         </div>
 

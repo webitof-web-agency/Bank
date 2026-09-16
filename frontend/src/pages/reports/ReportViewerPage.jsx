@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { Download, Filter, Printer, FileText, Activity, BarChart3, TrendingUp, Wallet, PieChart, DollarSign, Calculator, X } from 'lucide-react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Download, Printer, BarChart3, TrendingUp, Wallet, PieChart, DollarSign, Calculator } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../api/api';
 import { Button } from '../../components/ui/Button';
@@ -13,6 +13,74 @@ import { useFY } from '../../context/FYContext';
 import { getReportConfig, getReportDefaultFilters } from './reportDefinitions';
 import { REPORT_LINK_MAP, REPORT_NAV_LINKS } from './reportLinks';
 import { MemberLedgerPrintTemplate } from './MemberLedgerPrintTemplate';
+import { EmployeeLedgerPrint } from './print/EmployeeLedgerPrint';
+import { BalanceSheetPrint } from './print/BalanceSheetPrint';
+import { TrialBalancePrint } from './print/TrialBalancePrint';
+import { CashBookPrint } from './print/CashBookPrint';
+import { DayBookPrint } from './print/DayBookPrint';
+import { VoucherSummaryPrint } from './print/VoucherSummaryPrint';
+import { DemandListPrint } from './print/DemandListPrint';
+import { ProfitLossPrint } from './print/ProfitLossPrint';
+import { AllMemberListPrint } from './print/AllMemberListPrint';
+import { PaymentReceiptStatementPrint } from './print/PaymentReceiptStatementPrint';
+import { BranchListPrint } from './print/BranchListPrint';
+import { DividendReportPrint } from './print/DividendReportPrint';
+
+const NO_FILTER_PANEL_REPORTS = new Set([
+  'balance-sheet',
+  'trial-balance',
+  'profit-loss',
+  'payment-receipt-statement',
+  'branch-list-report',
+  'account-statement-view'
+]);
+
+const PRINT_TEMPLATES = {
+  'member-ledger': ({ payload, filters, lookups, headerActions }) => (
+    <MemberLedgerPrintTemplate payload={payload?.raw} headerActions={headerActions} />
+  ),
+  'employee-ledger': ({ payload, headerActions }) => (
+    <EmployeeLedgerPrint data={payload?.raw} headerActions={headerActions} />
+  ),
+  'balance-sheet': ({ payload, filters, headerActions }) => (
+    <BalanceSheetPrint data={payload?.raw} filters={filters} headerActions={headerActions} />
+  ),
+  'trial-balance': ({ payload, filters, headerActions }) => (
+    <TrialBalancePrint data={payload?.raw} filters={filters} headerActions={headerActions} />
+  ),
+  'cash-book': ({ payload, filters, headerActions }) => (
+    <CashBookPrint data={payload?.raw} filters={filters} headerActions={headerActions} />
+  ),
+  'day-book': ({ payload, filters, headerActions }) => (
+    <DayBookPrint data={payload?.raw} filters={filters} headerActions={headerActions} />
+  ),
+  'voucher-summary': ({ payload, filters, headerActions }) => (
+    <VoucherSummaryPrint data={payload?.raw} filters={filters} headerActions={headerActions} />
+  ),
+  'demand-list-report': ({ payload, filters, lookups, headerActions }) => (
+    <DemandListPrint data={payload?.raw} filters={filters} branches={lookups?.branches || []} headerActions={headerActions} />
+  ),
+  'profit-loss': ({ payload, filters, headerActions }) => (
+    <ProfitLossPrint data={payload?.raw} filters={filters} headerActions={headerActions} />
+  ),
+  'all-member-list': ({ payload, headerActions }) => (
+    <AllMemberListPrint data={payload?.raw} headerActions={headerActions} />
+  ),
+  'payment-receipt-statement': ({ payload, filters, headerActions }) => (
+    <PaymentReceiptStatementPrint data={payload?.raw} filters={filters} headerActions={headerActions} />
+  ),
+  'branch-list-report': ({ payload, headerActions }) => (
+    <BranchListPrint data={payload?.raw} headerActions={headerActions} />
+  ),
+  'dividend-report': ({ payload, filters, lookups, headerActions }) => (
+    <DividendReportPrint data={payload?.raw} filters={filters} branches={lookups?.branches || []} headerActions={headerActions} />
+  )
+};
+
+const MONTH_NAME_OPTIONS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+].map((label, index) => ({ label, value: String(index + 1).padStart(2, '0') }));
 
 const SUMMARY_PALETTES = [
   { color: 'text-blue-600', bg: 'bg-blue-50', Icon: BarChart3 },
@@ -138,6 +206,7 @@ function downloadCsv(sections, filename) {
 export function ReportViewerPage() {
   const { reportKey } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { token, hasPermission } = useAuth();
   const { activeFY } = useFY();
   const config = useMemo(() => getReportConfig(reportKey), [reportKey]);
@@ -153,7 +222,6 @@ export function ReportViewerPage() {
   const [generatedFilters, setGeneratedFilters] = useState(() => getReportDefaultFilters(reportKey, {}));
   const [payload, setPayload] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [filterDropdownOpen, setFilterDropdownOpen] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -174,9 +242,17 @@ export function ReportViewerPage() {
 
   useEffect(() => {
     const nextDefaults = getReportDefaultFilters(reportKey, lookups);
+    if (reportKey === 'member-ledger') {
+      const memberCode = searchParams.get('memberCode');
+      if (memberCode) nextDefaults.memberCode = memberCode;
+    }
+    if (reportKey === 'employee-ledger') {
+      const employeeCode = searchParams.get('employeeCode');
+      if (employeeCode) nextDefaults.employeeCode = employeeCode;
+    }
     setFilters(nextDefaults);
     setGeneratedFilters(nextDefaults);
-  }, [lookups, reportKey]);
+  }, [lookups, reportKey, searchParams]);
 
   useEffect(() => {
     let mounted = true;
@@ -212,14 +288,12 @@ export function ReportViewerPage() {
 
   function showReport() {
     setGeneratedFilters(filters);
-    setFilterDropdownOpen(false);
   }
 
   function resetFilters() {
     const nextDefaults = getReportDefaultFilters(reportKey, lookups);
     setFilters(nextDefaults);
     setGeneratedFilters(nextDefaults);
-    setFilterDropdownOpen(false);
   }
 
   function renderFilters() {
@@ -253,6 +327,53 @@ export function ReportViewerPage() {
               <Input type="date" value={filters.dateTo || ''} onChange={(event) => setFilters((current) => ({ ...current, dateTo: event.target.value }))} />
             </div>
           </div>
+        </div>
+      );
+    }
+
+    if (config.filterMode === 'employee-ledger') {
+      const employees = Array.isArray(lookups.employees) ? lookups.employees : [];
+      return (
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <label className="text-[13px] font-semibold text-slate-700">Employee</label>
+            <Select
+              searchable
+              value={filters.employeeCode || ''}
+              onChange={(value) => setFilters((current) => ({ ...current, employeeCode: value }))}
+              options={[
+                { label: 'Select employee', value: '' },
+                ...employees.map((employee) => ({ label: `${employee.code} - ${employee.name}`, value: employee.code }))
+              ]}
+            />
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="space-y-1.5">
+              <label className="text-[13px] font-semibold text-slate-700">From</label>
+              <Input type="date" value={filters.dateFrom || ''} onChange={(event) => setFilters((current) => ({ ...current, dateFrom: event.target.value }))} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[13px] font-semibold text-slate-700">To</label>
+              <Input type="date" value={filters.dateTo || ''} onChange={(event) => setFilters((current) => ({ ...current, dateTo: event.target.value }))} />
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (config.filterMode === 'branchwise') {
+      const branches = Array.isArray(lookups.branches) ? lookups.branches : [];
+      return (
+        <div className="space-y-1.5">
+          <label className="text-[13px] font-semibold text-slate-700">Branch</label>
+          <Select
+            value={filters.branchCode || ''}
+            onChange={(value) => setFilters((current) => ({ ...current, branchCode: value }))}
+            options={[
+              { label: 'All branches', value: '' },
+              ...branches.map((branch) => ({ label: `${branch.code} - ${branch.label || branch.place || ''}`, value: branch.code }))
+            ]}
+          />
         </div>
       );
     }
@@ -321,6 +442,44 @@ export function ReportViewerPage() {
       );
     }
 
+    if (config.filterMode === 'demand-list') {
+      const branches = Array.isArray(lookups.branches) ? lookups.branches : [];
+      return (
+        <div className="grid gap-4">
+          <div className="space-y-1.5">
+            <label className="text-[13px] font-semibold text-slate-700">Date</label>
+            <Input
+              type="date"
+              value={filters.date || ''}
+              onChange={(event) => {
+                const value = event.target.value;
+                setFilters((current) => ({ ...current, date: value, year: value ? value.slice(0, 4) : current.year }));
+              }}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-[13px] font-semibold text-slate-700">Branch</label>
+            <Select
+              value={filters.branchCode || ''}
+              onChange={(value) => setFilters((current) => ({ ...current, branchCode: value }))}
+              options={[
+                { label: 'All branches', value: '' },
+                ...branches.map((branch) => ({ label: `${branch.code} - ${branch.label || branch.place || ''}`, value: branch.code }))
+              ]}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-[13px] font-semibold text-slate-700">Month</label>
+            <Select
+              value={filters.month || ''}
+              onChange={(value) => setFilters((current) => ({ ...current, month: value }))}
+              options={MONTH_NAME_OPTIONS}
+            />
+          </div>
+        </div>
+      );
+    }
+
     if (config.filterMode === 'month-only') {
       return (
         <div className="space-y-1.5">
@@ -341,10 +500,6 @@ export function ReportViewerPage() {
 
     return (
       <div className="grid gap-4">
-        <div className="space-y-1.5">
-          <label className="text-[13px] font-semibold text-slate-700">Report Date</label>
-          <Input type="date" value={filters.date || ''} onChange={(event) => setFilters((current) => ({ ...current, date: event.target.value }))} />
-        </div>
         {config.filterMode === 'date-range' ? (
           <div className="grid gap-3 md:grid-cols-2">
             <div className="space-y-1.5">
@@ -356,7 +511,12 @@ export function ReportViewerPage() {
               <Input type="date" value={filters.dateTo || ''} onChange={(event) => setFilters((current) => ({ ...current, dateTo: event.target.value }))} />
             </div>
           </div>
-        ) : null}
+        ) : (
+          <div className="space-y-1.5">
+            <label className="text-[13px] font-semibold text-slate-700">Report Date</label>
+            <Input type="date" value={filters.date || ''} onChange={(event) => setFilters((current) => ({ ...current, date: event.target.value }))} />
+          </div>
+        )}
       </div>
     );
   }
@@ -369,96 +529,80 @@ export function ReportViewerPage() {
     downloadCsv(payload.sections, `${reportKey}.csv`);
   }
 
-  const filterPopover = (
-    <div className="flex items-center gap-2">
-      {hasPermission(printPermission) ? (
-        <Button type="button" variant="outline" className="gap-2 h-9 px-3 text-[13px] border-slate-200 bg-white hover:bg-slate-50" onClick={() => window.print()}>
-          <Printer size={14} />
-          Print
+  const usesPrintTemplate = Boolean(PRINT_TEMPLATES[reportKey]);
+  const canExport = hasPermission(exportPermission) && Boolean(payload?.sections?.length);
+  const showFilterPanel = !NO_FILTER_PANEL_REPORTS.has(reportKey);
+
+  const filterPanel = (
+    <Card className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm print:hidden lg:sticky lg:top-6">
+      <div className="mb-4 space-y-1.5">
+        <label className="text-[13px] font-semibold text-slate-700">Report</label>
+        <Select
+          value={reportKey}
+          onChange={(value) => value && navigate(`/app/reports/${value}`)}
+          options={visibleReports
+            .filter((item) => !NO_FILTER_PANEL_REPORTS.has(item.key))
+            .map((item) => ({ label: item.label, value: item.key }))}
+        />
+      </div>
+      {renderFilters()}
+      <div className="mt-6 flex flex-col gap-2">
+        <Button type="button" className="w-full bg-[var(--primary)] text-white hover:opacity-90" onClick={showReport}>
+          Show Report
         </Button>
-      ) : null}
-      {hasPermission(exportPermission) ? (
-        <Button type="button" variant="outline" className="gap-2 h-9 px-3 text-[13px] border-slate-200 bg-white hover:bg-slate-50" onClick={handleExport}>
-          <Download size={14} />
-          Export
+        <Button type="button" variant="outline" className="w-full" onClick={resetFilters}>
+          Reset
         </Button>
-      ) : null}
-      <div className="relative">
-        <Button
-          type="button"
-          variant="outline"
-          className="gap-2 h-9 px-3 text-[13px] border-slate-200 bg-white hover:bg-slate-50"
-          onClick={() => setFilterDropdownOpen(!filterDropdownOpen)}
-        >
-          <Filter size={14} />
-          Filter
-        </Button>
-      {filterDropdownOpen && (
-        <div className="absolute right-0 top-full mt-2 w-[320px] sm:w-[400px] z-50 rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">
-          <div className="flex items-center justify-between mb-4">
-            <h4 className="font-semibold text-slate-900 text-sm">Filters</h4>
-            <button type="button" onClick={() => setFilterDropdownOpen(false)} className="text-slate-400 hover:text-slate-600">
-              <X size={16} />
-            </button>
-          </div>
-          <div>
-            {renderFilters()}
-          </div>
-          <div className="mt-6 flex flex-wrap gap-2">
-            <Button
-              type="button"
-              className="flex-1 bg-[var(--primary)] text-white hover:opacity-90"
-              onClick={showReport}
-            >
-              Show Report
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="flex-1"
-              onClick={resetFilters}
-            >
-              Reset
-            </Button>
-          </div>
-        </div>
-      )}
-    </div>
-    </div>
+        {canExport ? (
+          <Button type="button" variant="outline" className="w-full gap-2" onClick={handleExport}>
+            <Download size={14} />
+            Export Excel
+          </Button>
+        ) : null}
+        {!usesPrintTemplate && hasPermission(printPermission) ? (
+          <Button type="button" variant="outline" className="w-full gap-2" onClick={() => window.print()}>
+            <Printer size={14} />
+            Print
+          </Button>
+        ) : null}
+      </div>
+    </Card>
   );
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="print:hidden">
         <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{config.label}</h1>
       </div>
 
-      <div className="report-shell">
-        <div className="report-canvas-wrap w-full">
-          {reportKey === 'member-ledger' ? (
-            <MemberLedgerPrintTemplate payload={payload} headerActions={filterPopover} />
+      <div className={`grid grid-cols-1 items-start gap-4 ${showFilterPanel ? 'lg:grid-cols-[minmax(0,1fr)_minmax(0,4fr)]' : ''}`}>
+        {showFilterPanel ? filterPanel : null}
+
+        <div className="report-canvas-wrap w-full min-w-0">
+          {usesPrintTemplate ? (
+            PRINT_TEMPLATES[reportKey]({ payload, filters: generatedFilters, lookups, headerActions: null })
           ) : (
             <div className="report-canvas">
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {(payload?.summary || []).map((item, index) => (
-                <SummaryCard key={item.label} label={item.label} value={item.value} subLabel={item.subLabel} index={index} />
-              ))}
-            </div>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {(payload?.summary || []).map((item, index) => (
+                  <SummaryCard key={item.label} label={item.label} value={item.value} subLabel={item.subLabel} index={index} />
+                ))}
+              </div>
 
-            <div className="mt-5 space-y-5">
-              {loading ? (
-                <div className="flex h-40 items-center justify-center text-sm text-slate-500">Loading report...</div>
-              ) : payload?.sections?.length ? (
-                payload.sections.map((section, index) => <ReportTableSection key={section.title} section={section} headerActions={index === 0 ? filterPopover : null} />)
-              ) : (
-                <Card className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                  <div className="mt-4">
-                    <Table columns={[]} data={[]} emptyMessage="No records found for the selected parameters." headerActions={filterPopover} />
-                  </div>
-                </Card>
-              )}
+              <div className="mt-5 space-y-5">
+                {loading ? (
+                  <div className="flex h-40 items-center justify-center text-sm text-slate-500">Loading report...</div>
+                ) : payload?.sections?.length ? (
+                  payload.sections.map((section) => <ReportTableSection key={section.title} section={section} />)
+                ) : (
+                  <Card className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <div className="mt-4">
+                      <Table columns={[]} data={[]} emptyMessage="No records found for the selected parameters." />
+                    </div>
+                  </Card>
+                )}
+              </div>
             </div>
-          </div>
           )}
         </div>
       </div>

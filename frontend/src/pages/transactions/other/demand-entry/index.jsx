@@ -303,10 +303,12 @@ export function DemandEntryPage({ sectionKey, detailPathBase = '/app/transaction
           <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">Demand List</h1>
           <p className="mt-1 text-sm text-slate-500">Transactions → Supporting → Demand List</p>
         </div>
-        <Button type="button" onClick={openCreate} className="gap-2 bg-amber-500 text-white hover:bg-amber-600">
-          <Plus size={16} />
-          New Entry
-        </Button>
+        {canManage ? (
+          <Button type="button" onClick={openCreate} className="gap-2 bg-amber-500 text-white hover:bg-amber-600">
+            <Plus size={16} />
+            New Entry
+          </Button>
+        ) : null}
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">

@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const { buildAccessProfile } = require('../services/auth.service');
 const { expandPermissionCodes } = require('../config/permissionCatalog');
+const { runWithActor } = require('../utils/requestContext');
 
 function getJwtSecret() {
   if (!process.env.JWT_SECRET) {
@@ -35,7 +36,12 @@ async function requireAuth(req, res, next) {
 
     req.user = user;
     req.auth = decoded;
-    return next();
+    // Everything downstream (route handler, service calls, DB writes) runs as
+    // an async continuation of this call, so AsyncLocalStorage carries the
+    // actor id all the way down to persistMainRow/deleteMainRow in
+    // config/postgres.js for audit-log attribution, with no need to pass a
+    // user id through every function signature in between.
+    return runWithActor(user.id, () => next());
   } catch (error) {
     return res.status(401).json({ success: false, message: 'Authentication failed' });
   }

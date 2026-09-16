@@ -4,7 +4,10 @@ function buildCrudControllers(resource, { allowDelete = true } = {}) {
   return {
     async list(req, res, next) {
       try {
-        const rows = await bankingService.listResource(resource, req.query.search || '', req.user || {});
+        const rows = await bankingService.listResource(resource, req.query.search || '', req.user || {}, {
+          fyStart: req.query.fyStart || '',
+          fyEnd: req.query.fyEnd || ''
+        });
         res.json({ success: true, data: rows });
       } catch (error) {
         next(error);
@@ -56,6 +59,17 @@ function buildCrudControllers(resource, { allowDelete = true } = {}) {
           return res.status(404).json({ success: false, message: 'Record not found' });
         }
         res.json({ success: true, message: 'Deleted successfully' });
+      } catch (error) {
+        next(error);
+      }
+    },
+    async restore(req, res, next) {
+      try {
+        const ok = await bankingService.restoreResource(resource, req.params.id, { actorUser: req.user || null });
+        if (!ok) {
+          return res.status(404).json({ success: false, message: 'Deleted record not found' });
+        }
+        res.json({ success: true, message: 'Restored successfully' });
       } catch (error) {
         next(error);
       }
@@ -157,7 +171,10 @@ const transactions = {
   },
   async getVoucher(req, res, next) {
     try {
-      const record = await bankingService.getResource('vouchers', req.params.id, req.user || {});
+      const id = req.params.id;
+      const record = id.startsWith('legacy:')
+        ? await bankingService.getHistoricalVoucherById(id.slice('legacy:'.length), req.user || {})
+        : await bankingService.getResource('vouchers', id, req.user || {});
       if (!record) {
         return res.status(404).json({ success: false, message: 'Voucher not found' });
       }
@@ -179,6 +196,9 @@ const transactions = {
   },
   async updateVoucher(req, res, next) {
     try {
+      if (req.params.id.startsWith('legacy:')) {
+        return res.status(400).json({ success: false, message: 'This is a read-only historical record and cannot be edited.' });
+      }
       const record = await bankingService.updateVoucher(req.params.id, req.body || {}, {
         actorUserId: req.user?.id || null,
           actorUser: req.user || null
@@ -193,11 +213,25 @@ const transactions = {
   },
   async deleteVoucher(req, res, next) {
     try {
+      if (req.params.id.startsWith('legacy:')) {
+        return res.status(400).json({ success: false, message: 'This is a read-only historical record and cannot be deleted.' });
+      }
       const ok = await bankingService.deleteVoucher(req.params.id);
       if (!ok) {
         return res.status(404).json({ success: false, message: 'Voucher not found' });
       }
       res.json({ success: true, message: 'Deleted successfully' });
+    } catch (error) {
+      next(error);
+    }
+  },
+  async restoreVoucher(req, res, next) {
+    try {
+      const ok = await bankingService.restoreVoucher(req.params.id);
+      if (!ok) {
+        return res.status(404).json({ success: false, message: 'Deleted voucher not found' });
+      }
+      res.json({ success: true, message: 'Restored successfully' });
     } catch (error) {
       next(error);
     }
@@ -350,7 +384,13 @@ const reports = {
   },
   async demandList(req, res, next) {
     try {
-      const data = await bankingService.buildDemandListReport({ month: req.query.month || '', user: req.user || {} });
+      const data = await bankingService.buildDemandListReport({
+        month: req.query.month || '',
+        year: req.query.year || '',
+        date: req.query.date || '',
+        branchCode: req.query.branchCode || '',
+        user: req.user || {}
+      });
       res.json({ success: true, data });
     } catch (error) {
       next(error);
@@ -358,7 +398,10 @@ const reports = {
   },
   async allMemberList(req, res, next) {
     try {
-      const data = await bankingService.buildAllMemberListReport({ user: req.user || {} });
+      const data = await bankingService.buildAllMemberListReport({
+        user: req.user || {},
+        branchCode: req.query.branchCode || ''
+      });
       res.json({ success: true, data });
     } catch (error) {
       next(error);
@@ -378,7 +421,10 @@ const reports = {
   },
   async branchList(req, res, next) {
     try {
-      const data = await bankingService.buildBranchListReport({ user: req.user || {} });
+      const data = await bankingService.buildBranchListReport({
+        user: req.user || {},
+        branchCode: req.query.branchCode || ''
+      });
       res.json({ success: true, data });
     } catch (error) {
       next(error);
@@ -399,10 +445,29 @@ const reports = {
   }
 };
 
+const auditLog = {
+  async list(req, res, next) {
+    try {
+      const data = await bankingService.listAuditLog({
+        tableName: req.query.tableName || '',
+        recordId: req.query.recordId || '',
+        dateFrom: req.query.dateFrom || '',
+        dateTo: req.query.dateTo || '',
+        page: req.query.page || 1,
+        pageSize: req.query.pageSize || 50
+      });
+      res.json({ success: true, ...data });
+    } catch (error) {
+      next(error);
+    }
+  }
+};
+
 module.exports = {
   reports,
   resources,
-  transactions
+  transactions,
+  auditLog
 };
 
 

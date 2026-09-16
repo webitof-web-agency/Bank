@@ -4,15 +4,16 @@ const { initializeDatabase } = require('./postgres');
 const { seedBankingData } = require('../services/banking.service');
 const {
   ensureDefaultRoles,
-  ensureDemoRoles,
-  seedBootstrapAdmin,
-  seedDemoUsers
+  seedBootstrapAdmin
 } = require('../services/auth.service');
 
+// Only default roles + the bootstrap admin are seeded here. Demo login users
+// (rbac.js DEMO_USER_DEFINITIONS) and banking fixture rows (config/bankingSeed.js)
+// are no longer seeded automatically — this DB holds real migrated legacy data
+// and must not be polluted with placeholder rows on every restart.
 async function ensureDatabase() {
   await initializeDatabase();
   const defaultRoles = await ensureDefaultRoles();
-  const demoRoles = await ensureDemoRoles();
   const defaultSettings = { ...DEFAULT_SETTINGS };
   delete defaultSettings.key;
   await Settings.updateOne(
@@ -31,11 +32,10 @@ async function ensureDatabase() {
   await seedBankingData();
 
   const bootstrapAdmin = await seedBootstrapAdmin();
-  const demoUsers = await seedDemoUsers();
 
   return {
-    roles: [...defaultRoles, ...demoRoles],
-    users: [bootstrapAdmin, ...demoUsers].filter(Boolean)
+    roles: defaultRoles,
+    users: [bootstrapAdmin].filter(Boolean)
   };
 }
 

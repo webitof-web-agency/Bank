@@ -29,36 +29,32 @@ export async function prepareMemberAvatarFile(file) {
   return uploadFile;
 }
 
+// Plain numeric, auto-incrementing — matches the real migrated member codes
+// (e.g. "827", "1738"), which never had an "M"/"MB-" prefix.
 export function buildNextMemberCode(rows = []) {
   let maxNumber = 0;
 
   for (const row of Array.isArray(rows) ? rows : []) {
-    const code = String(row?.code || '').trim().toUpperCase();
-    const match = code.match(/^M(\d+)$/);
-    if (!match) continue;
-    const value = Number(match[1]);
+    const value = Number(String(row?.code || '').trim());
     if (Number.isFinite(value) && value > maxNumber) {
       maxNumber = value;
     }
   }
 
-  return `M${String(maxNumber + 1).padStart(4, '0')}`;
+  return String(maxNumber + 1);
 }
 
 export function buildNextMembershipNo(rows = []) {
-  let maxNumber = 1000;
+  let maxNumber = 0;
 
   for (const row of Array.isArray(rows) ? rows : []) {
-    const membershipNo = String(row?.membershipNo || '').trim().toUpperCase();
-    const match = membershipNo.match(/^MB-(\d+)$/);
-    if (!match) continue;
-    const value = Number(match[1]);
+    const value = Number(String(row?.membershipNo || '').trim());
     if (Number.isFinite(value) && value > maxNumber) {
       maxNumber = value;
     }
   }
 
-  return `MB-${maxNumber + 1}`;
+  return String(maxNumber + 1);
 }
 
 export function formatBranchLabel(branch = {}) {

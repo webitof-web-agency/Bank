@@ -32,16 +32,21 @@ const TABLE_SCHEMAS = {
     designation: T.string(120),
     branchCode: T.string(40),
     status: T.string(40),
-    avatarUrl: T.string(255),
+    avatarUrl: T.text,
     avatarFileId: T.string(40),
     documentsFolderId: T.string(40),
     documents: T.json,
     passwordReset: T.json,
     isActive: T.boolean,
     lastLoginAt: T.date,
+    // Optional link to a real HR record (employees.code) — set only when this
+    // login belongs to a staff member. Not every user is an employee, and not
+    // every employee needs a login; see employees.deletedAt below.
+    employeeCode: T.string(80),
     payload: T.json,
     createdByUserId: T.string(40),
-    updatedByUserId: T.string(40)
+    updatedByUserId: T.string(40),
+    deletedAt: T.date
   }, ['code', 'username', 'email']),
 
   roles: schema({
@@ -51,7 +56,8 @@ const TABLE_SCHEMAS = {
     isSystem: T.boolean,
     isActive: T.boolean,
     permissions: T.json,
-    payload: T.json
+    payload: T.json,
+    deletedAt: T.date
   }, ['code']),
 
   settings: schema({
@@ -136,22 +142,25 @@ const TABLE_SCHEMAS = {
     regNo: T.string(120),
     gstNo: T.string(120),
     email: T.string(191),
+    phone: T.string(40),
     address: T.text,
     branchCode: T.string(40),
-    logoUrl: T.string(255),
+    logoUrl: T.text,
     logoFileId: T.string(40),
     watermarkEnabled: T.boolean,
-    watermarkUrl: T.string(255),
+    watermarkUrl: T.text,
     watermarkFileId: T.string(40),
     footerText: T.text,
     payload: T.json,
     createdByUserId: T.string(40),
-    updatedByUserId: T.string(40)
+    updatedByUserId: T.string(40),
+    deletedAt: T.date
   }, ['key']),
 
   financial_years: schema({
     code: T.string(40),
-    isActive: T.boolean
+    isActive: T.boolean,
+    deletedAt: T.date
   }, ['code']),
 
   branches: schema({
@@ -165,7 +174,8 @@ const TABLE_SCHEMAS = {
     isActive: T.boolean,
     payload: T.json,
     createdByUserId: T.string(40),
-    updatedByUserId: T.string(40)
+    updatedByUserId: T.string(40),
+    deletedAt: T.date
   }, ['code']),
 
   committees: schema({
@@ -175,14 +185,16 @@ const TABLE_SCHEMAS = {
     viceChairman2: T.string(191),
     payload: T.json,
     createdByUserId: T.string(40),
-    updatedByUserId: T.string(40)
+    updatedByUserId: T.string(40),
+    deletedAt: T.date
   }, ['key']),
 
   committee_directors: schema({
     committeeKey: T.string(120),
     name: T.string(191),
     designation: T.string(120),
-    orderIndex: T.number
+    orderIndex: T.number,
+    deletedAt: T.date
   }),
 
   employees: schema({
@@ -214,7 +226,8 @@ const TABLE_SCHEMAS = {
     isActive: T.boolean,
     payload: T.json,
     createdByUserId: T.string(40),
-    updatedByUserId: T.string(40)
+    updatedByUserId: T.string(40),
+    deletedAt: T.date
   }, ['code']),
 
   members: schema({
@@ -251,14 +264,15 @@ const TABLE_SCHEMAS = {
     ladInterest: T.money,
     nomineeName: T.string(191),
     nomineeRelation: T.string(191),
-    photoUrl: T.string(255),
+    photoUrl: T.text,
     photoFileId: T.string(40),
     documentsFolderId: T.string(40),
     documents: T.json,
     status: T.string(80),
     payload: T.json,
     createdByUserId: T.string(40),
-    updatedByUserId: T.string(40)
+    updatedByUserId: T.string(40),
+    deletedAt: T.date
   }, ['code']),
 
   member_demand_defaults: schema({
@@ -270,7 +284,8 @@ const TABLE_SCHEMAS = {
     loanAgainstDeposit: T.money,
     insurancePremium: T.money,
     other: T.money,
-    payload: T.json
+    payload: T.json,
+    deletedAt: T.date
   }, ['memberCode']),
 
   ledgers: schema({
@@ -286,7 +301,8 @@ const TABLE_SCHEMAS = {
     isActive: T.boolean,
     payload: T.json,
     createdByUserId: T.string(40),
-    updatedByUserId: T.string(40)
+    updatedByUserId: T.string(40),
+    deletedAt: T.date
   }, ['code', 'semanticRole']),
 
   rates: schema({
@@ -298,7 +314,8 @@ const TABLE_SCHEMAS = {
     effectiveFrom: T.date,
     payload: T.json,
     createdByUserId: T.string(40),
-    updatedByUserId: T.string(40)
+    updatedByUserId: T.string(40),
+    deletedAt: T.date
   }, ['code']),
 
   bank_accounts: schema({
@@ -317,7 +334,8 @@ const TABLE_SCHEMAS = {
     status: T.string(80),
     payload: T.json,
     createdByUserId: T.string(40),
-    updatedByUserId: T.string(40)
+    updatedByUserId: T.string(40),
+    deletedAt: T.date
   }, ['code']),
 
   journal_lines: schema({
@@ -330,7 +348,8 @@ const TABLE_SCHEMAS = {
     branchId: T.string(40),
     accountHead: T.string(120),
     description: T.text,
-    postingOrder: T.number
+    postingOrder: T.number,
+    deletedAt: T.date
   }),
 
   demand_lists: schema({
@@ -343,8 +362,9 @@ const TABLE_SCHEMAS = {
     remarks: T.text,
     payload: T.json,
     createdByUserId: T.string(40),
-    updatedByUserId: T.string(40)
-  }, ['demandListNo']),
+    updatedByUserId: T.string(40),
+    deletedAt: T.date
+  }, [['demandListNo', 'branchCode']]),
 
   demand_lines: schema({
     demandListNo: T.string(120),
@@ -360,7 +380,8 @@ const TABLE_SCHEMAS = {
     totalAmount: T.money,
     recoveredAmount: T.money,
     recoveryStatus: T.string(80),
-    payload: T.json
+    payload: T.json,
+    deletedAt: T.date
   }),
 
   no_interest_members: schema({
@@ -375,7 +396,8 @@ const TABLE_SCHEMAS = {
     status: T.string(80),
     payload: T.json,
     createdByUserId: T.string(40),
-    updatedByUserId: T.string(40)
+    updatedByUserId: T.string(40),
+    deletedAt: T.date
   }, ['code']),
 
   vouchers: schema({
@@ -402,8 +424,33 @@ const TABLE_SCHEMAS = {
     documents: T.json,
     payload: T.json,
     createdByUserId: T.string(40),
-    updatedByUserId: T.string(40)
+    updatedByUserId: T.string(40),
+    deletedAt: T.date
   }, ['voucherNo']),
+
+  // Referenced throughout banking.service.js (createBankTransaction,
+  // normalizeBankTransaction, syncSequence('bank_transactions', ...)) but the
+  // table/model never actually existed — the whole bankTransactions resource
+  // was unusable (any create/list/delete, and even server startup itself via
+  // the sequence sync in seedBankingData, would throw "relation does not
+  // exist"). Field shape matches normalizeBankTransaction's exact fields.
+  bank_transactions: schema({
+    transactionNo: T.string(120),
+    date: T.date,
+    voucherCategory: T.string(191),
+    transactionType: T.string(80),
+    accent: T.string(40),
+    bankAccountCode: T.string(80),
+    branchCode: T.string(40),
+    amount: T.money,
+    narration: T.text,
+    status: T.string(40),
+    documents: T.json,
+    payload: T.json,
+    createdByUserId: T.string(40),
+    updatedByUserId: T.string(40),
+    deletedAt: T.date
+  }, ['transactionNo']),
 
   recovery_lines: schema({
     voucherNo: T.string(120),
@@ -420,7 +467,8 @@ const TABLE_SCHEMAS = {
     suspense: T.money,
     other: T.money,
     total: T.money,
-    payload: T.json
+    payload: T.json,
+    deletedAt: T.date
   }),
 
   recovery_import_batches: schema({
@@ -436,10 +484,11 @@ const TABLE_SCHEMAS = {
     totalImportedAmount: T.money,
     totalDemandAmount: T.money,
     totalAllocatedAmount: T.money,
-    payload: T.json
+    payload: T.json,
+    deletedAt: T.date
   }),
 
-  
+
   legacy_historical_vouchers: schema({
     sourceDatabase: T.string(120),
     sourceTable: T.string(120),
@@ -464,6 +513,45 @@ const TABLE_SCHEMAS = {
     payload: T.json
   }, [['sourceDatabase', 'sourceTable', 'sourceKey']]),
 
+  // Read-only archive of legacy DB-trigger audit trails (see "51. Deleted
+  // transaction/audit flow" in the legacy flow doc). Never read by any live
+  // calculation — purely historical record, same pattern as the two tables above.
+  legacy_deleted_vouchers: schema({
+    sourceDatabase: T.string(120),
+    sourceTable: T.string(120),
+    sourceKey: T.string(120),
+    voucherNo: T.string(120),
+    transType: T.string(40),
+    voucherType: T.string(10),
+    date: T.date,
+    amount: T.money,
+    deletedAt: T.date,
+    payload: T.json
+  }, [['sourceDatabase', 'sourceTable', 'sourceKey']]),
+
+  legacy_deleted_recovery_lines: schema({
+    sourceDatabase: T.string(120),
+    sourceTable: T.string(120),
+    sourceKey: T.string(120),
+    memberCode: T.string(80),
+    totalAmount: T.money,
+    deletedAt: T.date,
+    payload: T.json
+  }, [['sourceDatabase', 'sourceTable', 'sourceKey']]),
+
+  legacy_master_change_log: schema({
+    sourceDatabase: T.string(120),
+    sourceTable: T.string(120),
+    sourceKey: T.string(120),
+    accId: T.string(40),
+    memberCode: T.string(80),
+    employeeCode: T.string(80),
+    ledgerCode: T.string(80),
+    actionType: T.string(10),
+    actionDate: T.date,
+    payload: T.json
+  }, [['sourceDatabase', 'sourceTable', 'sourceKey']]),
+
   recovery_import_rows: schema({
     batchId: T.string(80),
     sourceRowNo: T.number,
@@ -472,7 +560,7 @@ const TABLE_SCHEMAS = {
     sourceBranch: T.string(120),
     sourceEmployeeName: T.string(191),
     sourceGrade: T.string(80),
-    
+
     importedTotalAmount: T.money,
 
     configuredShare: T.money,
@@ -496,7 +584,22 @@ const TABLE_SCHEMAS = {
 
     recoveryVoucherId: T.string(120),
     postedAt: T.date,
-    payload: T.json
+    payload: T.json,
+    deletedAt: T.date
+  }),
+
+  // Full change history for every soft-delete-enabled table (any table above
+  // with a `deletedAt` field). Written automatically by persistMainRow/
+  // deleteMainRow/restoreMainRow in config/postgres.js — never written to
+  // directly by application code. Backs the `audit.read` permission and
+  // `admin/audit-trail` page, which existed as UI/permission scaffolding with
+  // no backend before this.
+  audit_log: schema({
+    tableName: T.string(120),
+    recordId: T.string(80),
+    action: T.string(20),
+    actorUserId: T.string(40),
+    changes: T.json
   })
 };
 
@@ -508,13 +611,15 @@ function getTableSchema(tableName) {
   return schemaDef;
 }
 
+function isSoftDeleteEnabled(tableName) {
+  const schemaDef = TABLE_SCHEMAS[tableName];
+  return Boolean(schemaDef && schemaDef.fields && schemaDef.fields.deletedAt);
+}
+
 module.exports = {
   TABLE_SCHEMAS,
   T,
   getTableSchema,
-  schema
+  schema,
+  isSoftDeleteEnabled
 };
-
-
-
-

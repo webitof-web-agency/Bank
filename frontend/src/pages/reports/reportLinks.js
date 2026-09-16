@@ -43,6 +43,15 @@ export const REPORT_LINKS = [
     description: 'Member ledger with running balance and summary balances.'
   },
   {
+    key: 'employee-ledger',
+    label: 'Employee Ledger',
+    path: '/app/reports/employee-ledger',
+    icon: Users,
+    category: 'member-reports',
+    permission: 'reports.employee-ledger.view',
+    description: 'Employee ledger with running balance and summary balances.'
+  },
+  {
     key: 'balance-sheet',
     label: 'Balance Sheet',
     path: '/app/reports/balance-sheet',

@@ -91,7 +91,7 @@ export function InterestVoucherWorkspacePage({ sectionKey, itemKey, detailPathBa
   }, [token, activeFY]);
 
   const visibleRows = useMemo(() => {
-    const baseRows = filterTransactionRows(rows, sectionItems, sectionKey);
+    const baseRows = filterTransactionRows(rows, sectionItems, itemKey);
     const searchValue = String(search || '').trim().toLowerCase();
 
     return baseRows.filter((row) => {
@@ -102,6 +102,13 @@ export function InterestVoucherWorkspacePage({ sectionKey, itemKey, detailPathBa
       return matchesSearch && matchesStatus;
     });
   }, [rows, sectionItems, sectionKey, search, filterStatus, lookups]);
+
+  const stats = useMemo(() => ({
+    total: visibleRows.length,
+    posted: visibleRows.filter((row) => String(row.status || '').toLowerCase() === 'posted').length,
+    draft: visibleRows.filter((row) => String(row.status || '').toLowerCase() === 'draft').length,
+    amount: visibleRows.reduce((sum, row) => sum + Number(row.amount || 0), 0)
+  }), [visibleRows]);
 
   function openCreate() {
     const next = createEmptyTransactionDraft(sectionKey, sectionItems);
@@ -252,7 +259,7 @@ export function InterestVoucherWorkspacePage({ sectionKey, itemKey, detailPathBa
           <button type="button" onClick={() => navigate(`${detailPathBase}/${row.id}`)} className="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-900" title="View">
             <Eye size={16} />
           </button>
-          {canWrite ? (
+          {canWrite && !row.isHistorical ? (
             <>
               <button type="button" onClick={() => openEdit(row)} className="rounded-full p-2 text-slate-400 hover:bg-blue-50 hover:text-blue-600" title="Edit">
                 <Edit2 size={16} />
@@ -303,7 +310,7 @@ export function InterestVoucherWorkspacePage({ sectionKey, itemKey, detailPathBa
               </Button>
               {dropdownOpen && (
                 <div className="absolute right-0 top-full z-50 mt-2 w-max min-w-[18rem] origin-top-right rounded-2xl border border-slate-200 bg-white p-2 shadow-xl ring-1 ring-slate-900/5">
-                  {(activeItems || sectionItems || []).map((item) => (
+                  {(sectionItems || []).map((item) => (
                     <button
                       key={item.key}
                       onClick={() => {

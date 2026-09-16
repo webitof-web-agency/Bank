@@ -262,7 +262,10 @@ const RECOVERY_LINE_SEEDS = [
   { voucherNo: '0', memberCode: '0', demandLineId: '', share: 0, compulsoryDeposit: 1000, ssa: 0, regularLoan: 4200, depositLoan: 0, premium: 0, admission: 0, suspense: 0, other: 0, total: 5200 }
 ];
 
-const NO_INTEREST_MEMBER_SEEDS = [];
+const NO_INTEREST_MEMBER_SEEDS = [
+  { code: '0', memberCode: '0', branchCode: '0', setOnDate: '2026-04-01', narration: 'Suspended pending KYC update', reason: 'KYC documents pending', fromDate: '2026-04-01', toDate: '2027-03-31', status: 'Active' },
+  { code: '1', memberCode: '3', branchCode: '0', setOnDate: '2026-04-01', narration: 'Interest waived on member request', reason: 'Member request', fromDate: '2026-04-01', toDate: '2026-09-30', status: 'Active' }
+];
 
 module.exports = {
   BANK_ACCOUNT_SEEDS,

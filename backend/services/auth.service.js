@@ -3,6 +3,8 @@ const jwt = require('jsonwebtoken');
 const { randomInt } = require('crypto');
 const User = require('../models/user.model');
 const Role = require('../models/role.model');
+const { Employee } = require('../models/banking.models');
+const { restoreMainRow } = require('../config/postgres');
 const {
   DEFAULT_ROLE_DEFINITIONS,
   DEMO_ROLE_DEFINITIONS,
@@ -210,6 +212,120 @@ function getPermissionTemplates() {
   }));
 }
 
+// HR fields (father's name, DOB, category, caste, qualification, salary,
+// loans) belong on the real `employees` table now, not schemaless JSON on a
+// login row. The frontend (frontend/src/pages/master/employees/employeeUtils.js
+// buildEmployeePayload) still sends them bundled inside `data.payload` — this
+// maps that bundle onto Employee's real columns. `fatherOrHusbandName` has no
+// dedicated employees column, so it's kept in the Employee row's own payload.
+function extractEmployeeHrFields(data = {}) {
+  const payload = data.payload || {};
+  const hr = {};
+
+  if (payload.fatherName !== undefined) hr.fatherName = String(payload.fatherName || '').trim();
+  if (payload.dateOfBirth !== undefined) hr.dateOfBirth = payload.dateOfBirth || null;
+  if (payload.appointmentDate !== undefined) hr.appointmentDate = payload.appointmentDate || null;
+  if (payload.category !== undefined) hr.category = String(payload.category || '').trim();
+  if (payload.caste !== undefined) hr.caste = String(payload.caste || '').trim();
+  if (payload.qualification !== undefined) hr.qualification = String(payload.qualification || '').trim();
+  if (payload.basicSalary !== undefined) hr.basicSalary = payload.basicSalary === '' ? null : Number(payload.basicSalary);
+  if (payload.housingLoan !== undefined) hr.homeLoanBalance = payload.housingLoan === '' ? null : Number(payload.housingLoan);
+  if (payload.housingSide !== undefined) hr.homeLoanCrDr = String(payload.housingSide || 'Dr').trim();
+  if (payload.vehicleLoan !== undefined) hr.vehicleLoanBalance = payload.vehicleLoan === '' ? null : Number(payload.vehicleLoan);
+  if (payload.vehicleSide !== undefined) hr.vehicleLoanCrDr = String(payload.vehicleSide || 'Dr').trim();
+  if (payload.grainAdvance !== undefined) hr.grainAdvanceBalance = payload.grainAdvance === '' ? null : Number(payload.grainAdvance);
+  if (payload.grainSide !== undefined) hr.grainAdvanceCrDr = String(payload.grainSide || 'Dr').trim();
+  if (payload.retired !== undefined) hr.retired = Boolean(payload.retired);
+  if (payload.retiredDate !== undefined) hr.retirementDate = payload.retiredDate || null;
+
+  // Login-side facts the HR record should mirror too (so an employee with no
+  // login still has correct designation/branch/contact/documents on their own
+  // HR record, and reports/lookups sourced from `employees` stay accurate).
+  if (data.designation !== undefined) hr.designation = String(data.designation || '').trim();
+  if (data.branchCode !== undefined) hr.branchCode = normalizeUpper(data.branchCode);
+  if (data.mobileNo !== undefined) hr.mobileNo = normalizePhone(data.mobileNo);
+  if (data.address !== undefined) hr.address = String(data.address || '').trim();
+  if (data.documents !== undefined) hr.documents = data.documents || {};
+  if (data.documentsFolderId !== undefined) hr.documentsFolderId = data.documentsFolderId || null;
+  if (data.fullName !== undefined || data.name !== undefined) {
+    hr.name = String(data.fullName || data.name || '').trim();
+  }
+  if (data.status !== undefined) {
+    hr.isActive = data.status !== 'Inactive';
+  } else if (data.isActive !== undefined) {
+    hr.isActive = Boolean(data.isActive);
+  }
+  if (payload.fatherOrHusbandName !== undefined) {
+    hr.payload = { fatherOrHusbandName: String(payload.fatherOrHusbandName || '').trim() };
+  }
+
+  return hr;
+}
+
+// Merges a linked Employee's HR fields onto a user's response, at the TOP
+// LEVEL (not nested in `payload`) — the frontend already checks
+// `user.fieldName || payload.fieldName` for every HR field
+// (createEmployeeDraftFromRecord in employeeUtils.js), preferring top-level,
+// so no frontend change is needed for it to pick these up correctly.
+function mergeEmployeeIntoResponse(response, employee) {
+  if (!employee) return response;
+  const employeePayload = typeof employee.payload === 'string' ? JSON.parse(employee.payload || '{}') : (employee.payload || {});
+  return {
+    ...response,
+    employeeCode: employee.code || '',
+    fatherName: employee.fatherName || '',
+    fatherOrHusbandName: employeePayload.fatherOrHusbandName || '',
+    dateOfBirth: employee.dateOfBirth || '',
+    appointmentDate: employee.appointmentDate || '',
+    category: employee.category || '',
+    caste: employee.caste || '',
+    qualification: employee.qualification || '',
+    basicSalary: employee.basicSalary ?? '',
+    housingLoan: employee.homeLoanBalance ?? '',
+    housingSide: employee.homeLoanCrDr || 'Dr',
+    vehicleLoan: employee.vehicleLoanBalance ?? '',
+    vehicleSide: employee.vehicleLoanCrDr || 'Dr',
+    grainAdvance: employee.grainAdvanceBalance ?? '',
+    grainSide: employee.grainAdvanceCrDr || 'Dr',
+    retired: employee.retired ?? false,
+    retiredDate: employee.retirementDate || ''
+  };
+}
+
+// Creates or updates the linked Employee HR row for a user. Returns the
+// employee's code (to be stored as user.employeeCode) — reuses the SAME
+// employees_code_seq sequence Employee seeding already numbers itself from,
+// so employees.code stays the one canonical code space.
+async function syncLinkedEmployee(existingEmployeeCode, data, desiredCode = null, { alwaysLink = false } = {}) {
+  const hrFields = extractEmployeeHrFields(data);
+  const targetCode = existingEmployeeCode || (desiredCode ? normalizeUpper(desiredCode) : null);
+
+  // On update, don't spontaneously create an Employee from an edit that
+  // touched no HR fields and isn't already linked (e.g. a password change).
+  // On create, every login made through this endpoint IS "adding an
+  // employee" in the current UI, so it must always get a code — callers
+  // pass alwaysLink: true there.
+  if (!alwaysLink && Object.keys(hrFields).length === 0 && !targetCode) return null;
+
+  if (targetCode) {
+    const existing = await Employee.findOne({ code: targetCode });
+    if (existing) {
+      existing.set(hrFields);
+      await existing.save();
+      return targetCode;
+    }
+    if (desiredCode) {
+      // Caller explicitly asked for this code (e.g. data.code on create) — honor it.
+      await Employee.create({ code: targetCode, isActive: true, ...hrFields });
+      return targetCode;
+    }
+  }
+
+  const code = normalizeUpper(await generateNextEmployeeCode());
+  await Employee.create({ code, isActive: true, ...hrFields });
+  return code;
+}
+
 function applyStaffFields(user, data = {}) {
   if (!user) return user;
 
@@ -298,7 +414,7 @@ async function buildAccessProfile(userDoc) {
     }
   }
 
-  return {
+  const profile = {
     id: String(user._id),
     code: user.code || '',
     fullName: user.fullName,
@@ -317,12 +433,23 @@ async function buildAccessProfile(userDoc) {
     documents: user.documents || {},
     isActive: user.isActive !== false,
     lastLoginAt: user.lastLoginAt || null,
+    employeeCode: user.employeeCode || '',
     payload: user.payload || {},
     roles,
     permissions: [...permissionMap.keys()],
     permissionObjects: [...permissionMap.values()],
     isSuperAdmin: roles.some((role) => role.code === 'admin')
   };
+
+  // Optional link (see users.employeeCode in config/tableSchemas.js) — not
+  // every login belongs to a staff member. When it does, merge in the real HR
+  // fields so the Employees admin screen keeps working exactly as before,
+  // now backed by the real employees table instead of schemaless JSON.
+  if (user.employeeCode) {
+    const employee = await Employee.findOne({ code: user.employeeCode }).lean();
+    return mergeEmployeeIntoResponse(profile, employee);
+  }
+  return profile;
 }
 
 async function findUserByLogin(identifier) {
@@ -762,10 +889,14 @@ async function createUser(data = {}) {
   const roleIds = Array.isArray(data.roleIds) ? data.roleIds.filter(Boolean) : [];
   const passwordHash = await hashPassword(password);
   const status = normalizeStatus(data.status, data.isActive === false ? 'Inactive' : 'Active');
-  const code = normalizeUpper(data.code || await generateNextEmployeeCode());
+  // The HR record (employees table) is the canonical code source
+  // (employees_code_seq) — create/reuse it first, then this login shares
+  // the same code and links to it via employeeCode.
+  const code = await syncLinkedEmployee(null, data, data.code, { alwaysLink: true });
 
   const user = await User.create({
     code,
+    employeeCode: code,
     fullName,
     name: String(data.name || fullName).trim(),
     username,
@@ -833,6 +964,12 @@ async function updateUser(userId, data = {}) {
   if (data.password) {
     user.passwordHash = await hashPassword(data.password);
   }
+
+  const linkedEmployeeCode = await syncLinkedEmployee(user.employeeCode || null, data);
+  if (linkedEmployeeCode && !user.employeeCode) {
+    user.employeeCode = linkedEmployeeCode;
+  }
+
   await user.save();
 
   await syncEmployeeDocumentsFolder(user);
@@ -872,6 +1009,16 @@ async function deleteUser(userId) {
   }
 
   await user.deleteOne();
+
+  // Soft-delete (see deleteMainRow in config/postgres.js) the linked HR
+  // record too — from this UI's perspective "delete employee" is one action.
+  // Revoking someone's login doesn't happen here without also retiring their
+  // HR record; a future frontend split could separate the two.
+  if (user.employeeCode) {
+    const employee = await Employee.findOne({ code: user.employeeCode });
+    if (employee) await employee.deleteOne();
+  }
+
   await notifySafely({
     title: 'Employee Deleted',
     message: `Employee ${user.fullName || user.username || user.email} was deleted.`,
@@ -884,6 +1031,25 @@ async function deleteUser(userId) {
     entityId: String(user._id),
     entityCode: user.code || ''
   });
+  return true;
+}
+
+// Mirrors deleteUser's reach — restoring a login must also restore its linked
+// HR record together (same pattern as restoreVoucher in banking.service.js
+// restoring a voucher's journal_lines/recovery_lines together).
+async function restoreUser(userId) {
+  const user = await User.findById(userId).withDeleted().lean();
+  if (!user || !user.deletedAt) return false;
+
+  const restored = await restoreMainRow('users', userId);
+  if (!restored) return false;
+
+  if (user.employeeCode) {
+    const employee = await Employee.findOne({ code: user.employeeCode }).withDeleted().lean();
+    if (employee && employee.deletedAt) {
+      await restoreMainRow('employees', employee.id);
+    }
+  }
   return true;
 }
 
@@ -1090,6 +1256,7 @@ module.exports = {
   createUser,
   deleteRole,
   deleteUser,
+  restoreUser,
   getPermissionCatalog,
   getRolePermissionMatrix,
   ensureDefaultRoles,

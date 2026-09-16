@@ -138,7 +138,8 @@ function useNotificationStream(token, onChange) {
 
 export function NotificationsPage() {
   const navigate = useNavigate();
-  const { token } = useAuth();
+  const { token, hasPermission } = useAuth();
+  const canManage = hasPermission('notifications.write');
   const [items, setItems] = useState([]);
   const [meta, setMeta] = useState({ total: 0, unreadCount: 0, page: 1, limit: 10 });
   const [loading, setLoading] = useState(true);
@@ -457,14 +458,16 @@ export function NotificationsPage() {
           >
             <RefreshCw size={16} />
           </button>
-          <button
-            type="button"
-            onClick={() => handleDelete(row.id)}
-            className="rounded-full p-2 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
-            title="Delete"
-          >
-            <Trash2 size={16} />
-          </button>
+          {canManage ? (
+            <button
+              type="button"
+              onClick={() => handleDelete(row.id)}
+              className="rounded-full p-2 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
+              title="Delete"
+            >
+              <Trash2 size={16} />
+            </button>
+          ) : null}
         </div>
       )
     }
@@ -481,12 +484,12 @@ export function NotificationsPage() {
           </div>
         )}
         actions={[
-          {
+          ...(canManage ? [{
             label: 'Create Notification',
             variant: 'primary',
             icon: Plus,
             onClick: () => setCreateOpen(true)
-          },
+          }] : []),
           {
             label: 'Mark all read',
             variant: 'outline',
@@ -547,10 +550,12 @@ export function NotificationsPage() {
             </span>
             <h3 className="text-lg font-bold text-slate-900">Group-wise notification view</h3>
           </div>
-          <button type="button" onClick={() => setCreateOpen(true)} className="inline-flex items-center gap-1.5 rounded-[var(--radius-button,1rem)] border border-[var(--primary)] px-3 py-1.5 text-[12px] font-semibold text-[var(--primary)] transition-colors">
-            <Plus size={14} />
-            Create Notification
-          </button>
+          {canManage ? (
+            <button type="button" onClick={() => setCreateOpen(true)} className="inline-flex items-center gap-1.5 rounded-[var(--radius-button,1rem)] border border-[var(--primary)] px-3 py-1.5 text-[12px] font-semibold text-[var(--primary)] transition-colors">
+              <Plus size={14} />
+              Create Notification
+            </button>
+          ) : null}
         </div>
 
         <div className="mt-5 flex flex-col">

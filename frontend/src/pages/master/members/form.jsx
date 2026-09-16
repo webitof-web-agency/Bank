@@ -78,8 +78,8 @@ export function MemberForm({
   const tabs = [
     { id: 'basic', label: 'Basic Info', icon: User },
     { id: 'membership', label: 'Membership', icon: Briefcase },
-    { id: 'documents', label: 'Documents', icon: FileText },
-    { id: 'financial', label: 'Financial & Nominee', icon: Wallet }
+    { id: 'financial', label: 'Financial & Nominee', icon: Wallet },
+    { id: 'documents', label: 'Documents', icon: FileText }
   ];
 
   return (
@@ -268,7 +268,7 @@ export function MemberForm({
 
             <div className="space-y-1.5">
               <label className="text-[13px] font-semibold text-slate-700">Membership No</label>
-              <Input placeholder="MB-1009" value={value.membershipNo || ''} onChange={(e) => setValue({ ...value, membershipNo: e.target.value.toUpperCase() })} className="font-mono uppercase tracking-wider" />
+              <Input placeholder="Auto-generated" value={value.membershipNo || ''} disabled className="font-mono tracking-wider" />
             </div>
 
             <div className="space-y-1.5">

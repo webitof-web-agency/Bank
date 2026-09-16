@@ -29,8 +29,8 @@ import { RatesPage } from './pages/master/rates';
 import { SettingsHomePage } from './pages/settings/SettingsHomePage';
 import { BusinessIdentityPage } from './pages/settings/BusinessIdentityPage';
 import { SocietyDetailsPage } from './pages/settings/SocietyDetailsPage';
+import { HeadOfficeDetailsPage } from './pages/settings/HeadOfficeDetailsPage';
 import { ChangePasswordPage } from './pages/settings/ChangePasswordPage';
-import { UserRightsPage } from './pages/settings/UserRightsPage';
 import { BackupRestorePage } from './pages/settings/BackupRestorePage';
 import { FinancialYearClosingPage } from './pages/settings/FinancialYearClosingPage';
 import { StorageSettingsPage } from './pages/settings/StorageSettingsPage';
@@ -91,9 +91,6 @@ function LegacyEmployeeRedirect() {
   } = useParams();
   return <Navigate to={id ? `/app/master/employees/${id}` : '/app/master/employees'} replace />;
 }
-function LegacySettingsRedirect() {
-  return <Navigate to="/app/settings/overview" replace />;
-}
 function TitleUpdater() {
   const location = useLocation();
   useEffect(() => {
@@ -139,15 +136,15 @@ function AppRoutes() {
               <RoleFormPage />
             </PermissionRoute>} />
         <Route path="settings" element={<PermissionRoute permission="settings.read">
-              <Navigate to="/app/settings/overview" replace />
+              <Navigate to="/app/settings/head-office" replace />
             </PermissionRoute>} />
         <Route path="profile" element={<ProfilePage />} />
         <Route path="notifications" element={<PermissionRoute permission="notifications.read"><NotificationsPage /></PermissionRoute>} />
         <Route path="notifications/:id" element={<PermissionRoute permission="notifications.read"><NotificationDetailPage /></PermissionRoute>} />
-        <Route path="settings/head-office" element={<PermissionRoute permission="society.read"><SocietyDetailsPage /></PermissionRoute>} />
-        <Route path="settings/society-details" element={<Navigate to="/app/settings/head-office" replace />} />
+        <Route path="settings/head-office" element={<PermissionRoute permission="society.read"><HeadOfficeDetailsPage /></PermissionRoute>} />
+        <Route path="settings/society-details" element={<PermissionRoute permission="society.read"><SocietyDetailsPage /></PermissionRoute>} />
         <Route path="settings/change-password" element={<ChangePasswordPage />} />
-        <Route path="settings/user-rights" element={<PermissionRoute permission="roles.manage"><UserRightsPage /></PermissionRoute>} />
+        <Route path="settings/user-rights" element={<Navigate to="/app/roles" replace />} />
         <Route path="settings/backup-restore" element={<PermissionRoute permission="settings.read"><BackupRestorePage /></PermissionRoute>} />
         <Route path="settings/financial-year-closing" element={<PermissionRoute permission="settings.read"><FinancialYearClosingPage /></PermissionRoute>} />
         <Route path="settings/storage" element={<PermissionRoute permission="settings_manage"><StorageSettingsPage /></PermissionRoute>} />
@@ -270,17 +267,17 @@ function AppRoutes() {
         <Route path="transactions/transfer-voucher/transfer-voucher-paid/:id" element={<PermissionRoute permission="transactions.transfer-voucher.view"><TransferVoucherTransactionWorkspaceDetailPage sectionKey="transfer-voucher" itemKey="transfer-voucher-paid" /></PermissionRoute>} />
         <Route path="transactions/transfer-voucher/transfer-voucher-recover" element={<PermissionRoute permission="transactions.transfer-voucher.view"><TransferVoucherTransactionWorkspacePage sectionKey="transfer-voucher" itemKey="transfer-voucher-recover" detailPathBase="/app/transactions/transfer-voucher/transfer-voucher-recover" /></PermissionRoute>} />
         <Route path="transactions/transfer-voucher/transfer-voucher-recover/:id" element={<PermissionRoute permission="transactions.transfer-voucher.view"><TransferVoucherTransactionWorkspaceDetailPage sectionKey="transfer-voucher" itemKey="transfer-voucher-recover" /></PermissionRoute>} />
-        <Route path="transactions/transfer-voucher/payment" element={<PermissionRoute permission="transactions.transfer-voucher.view"><OtherTransactionsPage sectionKey="transfer-voucher" detailPathBase="/app/transactions/transfer-voucher/payment" /></PermissionRoute>} />
-        <Route path="transactions/transfer-voucher/receipt" element={<PermissionRoute permission="transactions.transfer-voucher.view"><OtherTransactionsPage sectionKey="transfer-voucher" detailPathBase="/app/transactions/transfer-voucher/receipt" /></PermissionRoute>} />
+        <Route path="transactions/transfer-voucher/payment" element={<PermissionRoute permission="transactions.transfer-voucher.view"><OtherTransactionsPage sectionKey="transfer-voucher" itemKey="transfer-voucher-payment" detailPathBase="/app/transactions/transfer-voucher/payment" /></PermissionRoute>} />
+        <Route path="transactions/transfer-voucher/receipt" element={<PermissionRoute permission="transactions.transfer-voucher.view"><OtherTransactionsPage sectionKey="transfer-voucher" itemKey="transfer-voucher-receipt" detailPathBase="/app/transactions/transfer-voucher/receipt" /></PermissionRoute>} />
         <Route path="transactions/transfer-voucher/:type/:id" element={<PermissionRoute permission="transactions.transfer-voucher.view"><TransferVoucherTransactionWorkspaceDetailPage sectionKey="transfer-voucher" /></PermissionRoute>} />
 
         <Route path="transactions/interest" element={<PermissionRoute permission="transactions.read"><InterestHomePage /></PermissionRoute>} />
         <Route path="transactions/interest/interest-paid-member" element={<PermissionRoute permission="transactions.read"><InterestVoucherWorkspacePage sectionKey="interest" itemKey="interest-paid-member" detailPathBase="/app/transactions/interest/interest-paid-member" /></PermissionRoute>} />
         <Route path="transactions/interest/interest-paid-member/:id" element={<PermissionRoute permission="transactions.read"><InterestVoucherWorkspaceDetailPage sectionKey="interest" itemKey="interest-paid-member" detailPathBase="/app/transactions/interest/interest-paid-member" /></PermissionRoute>} />
-        <Route path="transactions/interest/interest-receive-member" element={<PermissionRoute permission="transactions.read"><InterestVoucherWorkspacePage sectionKey="interest" itemKey="interest-receive-member" detailPathBase="/app/transactions/interest/interest-receive-member" /></PermissionRoute>} />
-        <Route path="transactions/interest/interest-receive-member/:id" element={<PermissionRoute permission="transactions.read"><InterestVoucherWorkspaceDetailPage sectionKey="interest" itemKey="interest-receive-member" detailPathBase="/app/transactions/interest/interest-receive-member" /></PermissionRoute>} />
-        <Route path="transactions/interest/interest-receive-employee" element={<PermissionRoute permission="transactions.read"><InterestVoucherWorkspacePage sectionKey="interest" itemKey="interest-receive-employee" detailPathBase="/app/transactions/interest/interest-receive-employee" /></PermissionRoute>} />
-        <Route path="transactions/interest/interest-receive-employee/:id" element={<PermissionRoute permission="transactions.read"><InterestVoucherWorkspaceDetailPage sectionKey="interest" itemKey="interest-receive-employee" detailPathBase="/app/transactions/interest/interest-receive-employee" /></PermissionRoute>} />
+        <Route path="transactions/interest/interest-receive-member" element={<PermissionRoute permission="transactions.read"><InterestVoucherWorkspacePage sectionKey="interest" itemKey="interest-recv-member" detailPathBase="/app/transactions/interest/interest-receive-member" /></PermissionRoute>} />
+        <Route path="transactions/interest/interest-receive-member/:id" element={<PermissionRoute permission="transactions.read"><InterestVoucherWorkspaceDetailPage sectionKey="interest" itemKey="interest-recv-member" detailPathBase="/app/transactions/interest/interest-receive-member" /></PermissionRoute>} />
+        <Route path="transactions/interest/interest-receive-employee" element={<PermissionRoute permission="transactions.read"><InterestVoucherWorkspacePage sectionKey="interest" itemKey="interest-recv-employee" detailPathBase="/app/transactions/interest/interest-receive-employee" /></PermissionRoute>} />
+        <Route path="transactions/interest/interest-receive-employee/:id" element={<PermissionRoute permission="transactions.read"><InterestVoucherWorkspaceDetailPage sectionKey="interest" itemKey="interest-recv-employee" detailPathBase="/app/transactions/interest/interest-receive-employee" /></PermissionRoute>} />
         <Route path="transactions/interest/:type/:id" element={<PermissionRoute permission="transactions.read"><InterestVoucherWorkspaceDetailPage sectionKey="interest" /></PermissionRoute>} />
 
         <Route path="transactions/other/payment-voucher" element={<PermissionRoute permission="transactions.read"><OtherTransactionsPage sectionKey="other" itemKey="payment-voucher" detailPathBase="/app/transactions/other/payment-voucher" /></PermissionRoute>} />

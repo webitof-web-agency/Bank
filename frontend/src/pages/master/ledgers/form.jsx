@@ -19,7 +19,7 @@ export function LedgerForm({ value, setValue, onSubmit, isEdit = false }) {
           <Input
             value={value.code || ''}
             onChange={(event) => setValue((current) => ({ ...current, code: event.target.value }))}
-            placeholder="L001"
+            placeholder="Auto-generated"
           />
         </div>
 

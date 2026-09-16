@@ -328,7 +328,7 @@ export function EmployeeTransactionWorkspacePage({ sectionKey, itemKey, detailPa
           <button type="button" onClick={() => navigate(`${detailPathBase}/${row.id}`)} className="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-900" title="View">
             <Eye size={16} />
           </button>
-          {canWrite ? (
+          {canWrite && !row.isHistorical ? (
             <>
               <button type="button" onClick={() => openEdit(row)} className="rounded-full p-2 text-slate-400 hover:bg-blue-50 hover:text-blue-600" title="Edit">
                 <Edit2 size={16} />

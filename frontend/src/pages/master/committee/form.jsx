@@ -4,7 +4,7 @@ import { Select } from '../../../components/ui/Select';
 import { Button } from '../../../components/ui/Button';
 import { User, X, Plus } from 'lucide-react';
 
-export function CommitteeForm({ value, setValue, onSubmit, members = [] }) {
+export function CommitteeForm({ value, setValue, onSubmit, members = [], canWrite = true }) {
   const [selectedMember, setSelectedMember] = useState('');
 
   const memberOptions = members.map((m) => ({
@@ -32,6 +32,7 @@ export function CommitteeForm({ value, setValue, onSubmit, members = [] }) {
             value={value.chairman || ''}
             onChange={(e) => setValue({ ...value, chairman: e.target.value })}
             placeholder="Chairman name"
+            disabled={!canWrite}
           />
         </div>
 
@@ -41,6 +42,7 @@ export function CommitteeForm({ value, setValue, onSubmit, members = [] }) {
             value={value.viceChairman1 || ''}
             onChange={(e) => setValue({ ...value, viceChairman1: e.target.value })}
             placeholder="First vice chairman"
+            disabled={!canWrite}
           />
         </div>
 
@@ -50,6 +52,7 @@ export function CommitteeForm({ value, setValue, onSubmit, members = [] }) {
             value={value.viceChairman2 || ''}
             onChange={(e) => setValue({ ...value, viceChairman2: e.target.value })}
             placeholder="Second vice chairman"
+            disabled={!canWrite}
           />
         </div>
 
@@ -63,11 +66,14 @@ export function CommitteeForm({ value, setValue, onSubmit, members = [] }) {
                 onChange={setSelectedMember}
                 placeholder="Select a member..."
                 searchable
+                disabled={!canWrite}
               />
             </div>
-            <Button type="button" onClick={addDirector} className="shrink-0 gap-2 border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-slate-50" variant="outline">
-              <Plus size={16} /> Add
-            </Button>
+            {canWrite ? (
+              <Button type="button" onClick={addDirector} className="shrink-0 gap-2 border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-slate-50" variant="outline">
+                <Plus size={16} /> Add
+              </Button>
+            ) : null}
           </div>
 
           {value.directors && value.directors.length > 0 && (
@@ -76,9 +82,11 @@ export function CommitteeForm({ value, setValue, onSubmit, members = [] }) {
                 <div key={name} className="inline-flex items-center rounded-full border border-slate-200 bg-white pl-3 pr-1 py-1 text-[13px] font-medium text-slate-700 shadow-sm">
                   <User size={14} className="mr-2 text-slate-400" />
                   {name}
-                  <button type="button" onClick={() => removeDirector(name)} className="ml-2 rounded-full p-1 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-500">
-                    <X size={14} />
-                  </button>
+                  {canWrite ? (
+                    <button type="button" onClick={() => removeDirector(name)} className="ml-2 rounded-full p-1 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-500">
+                      <X size={14} />
+                    </button>
+                  ) : null}
                 </div>
               ))}
             </div>

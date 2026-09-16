@@ -1,6 +1,7 @@
 ﻿const {
   createUser,
   deleteUser,
+  restoreUser,
   buildAccessProfile,
   listUsers,
   updateUser
@@ -87,9 +88,22 @@ async function deleteController(req, res, next) {
   }
 }
 
+async function restoreController(req, res, next) {
+  try {
+    const ok = await restoreUser(req.params.id);
+    if (!ok) {
+      return res.status(404).json({ success: false, message: 'Deleted employee not found' });
+    }
+    res.json({ success: true, message: 'Restored successfully' });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   createController,
   deleteController,
+  restoreController,
   getController,
   listController,
   lookupController,

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { NavLink, useLocation } from 'react-router-dom';
 import { ChevronDown, ChevronRight, Menu, X } from 'lucide-react';
@@ -59,19 +59,56 @@ function PopoverLink({ item, onNavigate }) {
   );
 }
 
-function PopoverDropdown({ item, onNavigate, pathname }) {
+function getFlyoutPosition(rect, leftGap) {
+  if (!rect) return {};
+  const viewportPadding = 12;
+  const top = Math.max(viewportPadding, Math.min(rect.top, window.innerHeight - viewportPadding - 120));
+  return {
+    top,
+    left: rect.right + leftGap,
+    maxHeight: window.innerHeight - top - viewportPadding
+  };
+}
+
+const FLYOUT_CLOSE_DELAY = 250;
+
+function useHoverFlyout() {
   const [isHovered, setIsHovered] = useState(false);
   const [rect, setRect] = useState(null);
+  const closeTimeoutRef = useRef(null);
+
+  const clearCloseTimeout = () => {
+    if (closeTimeoutRef.current) {
+      clearTimeout(closeTimeoutRef.current);
+      closeTimeoutRef.current = null;
+    }
+  };
+
+  const open = (e) => {
+    clearCloseTimeout();
+    if (e) setRect(e.currentTarget.getBoundingClientRect());
+    setIsHovered(true);
+  };
+
+  const scheduleClose = () => {
+    clearCloseTimeout();
+    closeTimeoutRef.current = setTimeout(() => setIsHovered(false), FLYOUT_CLOSE_DELAY);
+  };
+
+  useEffect(() => clearCloseTimeout, []);
+
+  return { isHovered, rect, open, scheduleClose };
+}
+
+function PopoverDropdown({ item, onNavigate, pathname }) {
+  const { isHovered, rect, open, scheduleClose } = useHoverFlyout();
   const activeChild = item.children.some((child) => isItemActive(pathname, child));
 
   return (
     <div
       className="relative"
-      onMouseEnter={(e) => {
-        setRect(e.currentTarget.getBoundingClientRect());
-        setIsHovered(true);
-      }}
-      onMouseLeave={() => setIsHovered(false)}
+      onMouseEnter={open}
+      onMouseLeave={scheduleClose}
     >
       <div
         className={cn(
@@ -84,11 +121,11 @@ function PopoverDropdown({ item, onNavigate, pathname }) {
       </div>
 
       {isHovered && rect ? createPortal(
-        <div 
-          className="fixed z-[110] w-52 rounded-md bg-white py-1.5 shadow-lg ring-1 ring-black/5 border border-slate-100"
-          style={{ top: rect.top, left: rect.right + 4 }}
-          onMouseEnter={() => setIsHovered(true)}
-          onMouseLeave={() => setIsHovered(false)}
+        <div
+          className="fixed z-[110] w-52 overflow-y-auto rounded-md bg-white py-1.5 shadow-lg ring-1 ring-black/5 border border-slate-100"
+          style={getFlyoutPosition(rect, 4)}
+          onMouseEnter={open}
+          onMouseLeave={scheduleClose}
         >
           {item.children.map((child) => (
             child.children ? (
@@ -115,8 +152,7 @@ function isItemActive(pathname, item) {
 function SidebarDropdown({ item, onNavigate, open, pathname, expanded, onToggle }) {
   const [localExpanded, setLocalExpanded] = useState(false);
   const [expandedChild, setExpandedChild] = useState(null);
-  const [isHovered, setIsHovered] = useState(false);
-  const [rect, setRect] = useState(null);
+  const { isHovered, rect, open: openFlyout, scheduleClose } = useHoverFlyout();
 
   const activeChild = item.children.some((child) => isItemActive(pathname, child));
   const activeParent = isPathActive(pathname, item.path);
@@ -138,12 +174,9 @@ function SidebarDropdown({ item, onNavigate, open, pathname, expanded, onToggle 
     <div
       className="relative transition-all duration-200"
       onMouseEnter={(e) => {
-        if (!open) {
-          setRect(e.currentTarget.getBoundingClientRect());
-          setIsHovered(true);
-        }
+        if (!open) openFlyout(e);
       }}
-      onMouseLeave={() => !open && setIsHovered(false)}
+      onMouseLeave={() => !open && scheduleClose()}
       style={{
         marginLeft: open ? '0.5rem' : '0.35rem',
         marginRight: open ? '0.5rem' : '0.35rem'
@@ -197,11 +230,11 @@ function SidebarDropdown({ item, onNavigate, open, pathname, expanded, onToggle 
 
       {/* Popover children (when collapsed) */}
       {!open && isHovered && rect ? createPortal(
-        <div 
-          className="fixed z-[100] w-56 rounded-xl bg-white py-2 shadow-xl ring-1 ring-black/5 border border-slate-100"
-          style={{ top: rect.top, left: rect.right + 12 }}
-          onMouseEnter={() => setIsHovered(true)}
-          onMouseLeave={() => setIsHovered(false)}
+        <div
+          className="fixed z-[100] w-56 overflow-y-auto rounded-xl bg-white py-2 shadow-xl ring-1 ring-black/5 border border-slate-100"
+          style={getFlyoutPosition(rect, 12)}
+          onMouseEnter={openFlyout}
+          onMouseLeave={scheduleClose}
         >
           <div className="px-4 pb-2 mb-1 border-b border-slate-100 font-semibold text-slate-800 text-sm">
             {item.label}
@@ -275,7 +308,7 @@ export function Sidebar({ open = false, onClose, onToggleCollapse }) {
       {open ? <div className="fixed inset-0 z-30 bg-slate-900/40 backdrop-blur-sm lg:hidden" onClick={onClose} /> : null}
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-40 flex flex-col border-r border-slate-200 bg-white shadow-sm transition-all duration-300 lg:translate-x-0',
+          'fixed inset-y-0 left-0 z-40 flex flex-col border-r border-slate-200 bg-white shadow-sm transition-all duration-300 lg:translate-x-0 print:hidden',
           open ? 'translate-x-0 w-64' : '-translate-x-full w-64 lg:w-20'
         )}
       >
@@ -286,8 +319,8 @@ export function Sidebar({ open = false, onClose, onToggleCollapse }) {
                 <img src={getImageUrl(branding?.sidebarExpandedUrl || branding?.logoUrl)} alt={branding?.appName || 'Logo'} className="h-16 w-auto max-w-[200px] object-contain" />
               ) : null
             ) : (
-              branding?.sidebarCollapsedUrl ? (
-                <img src={getImageUrl(branding.sidebarCollapsedUrl)} alt={branding?.appName || 'Logo'} className="hidden h-12 w-auto max-w-[64px] object-contain lg:block" />
+              (branding?.sidebarCollapsedUrl || branding?.logoUrl) ? (
+                <img src={getImageUrl(branding?.sidebarCollapsedUrl || branding?.logoUrl)} alt={branding?.appName || 'Logo'} className="hidden h-12 w-auto max-w-[64px] object-contain lg:block" />
               ) : null
             )}
           </div>

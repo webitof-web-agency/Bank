@@ -91,6 +91,12 @@ const Voucher = createSqlModel('vouchers', {
   uniqueFields: ['voucherNo']
 });
 
+const BankTransaction = createSqlModel('bank_transactions', {
+  schema: TABLE_SCHEMAS.bank_transactions,
+  modelName: 'BankTransaction',
+  uniqueFields: ['transactionNo']
+});
+
 const RecoveryLine = createSqlModel('recovery_lines', {
   schema: TABLE_SCHEMAS.recovery_lines,
   modelName: 'RecoveryLine',
@@ -115,6 +121,12 @@ const FinancialYear = createSqlModel('financial_years', {
   uniqueFields: ['code']
 });
 
+const AuditLog = createSqlModel('audit_log', {
+  schema: TABLE_SCHEMAS.audit_log,
+  modelName: 'AuditLog',
+  uniqueFields: []
+});
+
 module.exports = {
   BankAccount,
   JournalLine,
@@ -134,7 +146,9 @@ module.exports = {
   RecoveryLine,
   RecoveryImportBatch,
   RecoveryImportRow,
-  FinancialYear
+  FinancialYear,
+  AuditLog,
+  BankTransaction
 };
 
 

@@ -130,10 +130,11 @@ function pageCodes(sectionKey, pageKey, actions) {
 const LEGACY_PERMISSION_ALIASES = {
   'dashboard.read': pageCodes('workspace', 'dashboard', ['view']),
   'calendar.read': pageCodes('workspace', 'calendar', ['view']),
+  'calendar.write': pageCodes('workspace', 'calendar', ['create', 'edit', 'delete']),
   'notifications.read': pageCodes('workspace', 'notifications', ['view']),
-  'notifications.write': pageCodes('workspace', 'notifications', ['view', 'create', 'delete']),
+  'notifications.write': pageCodes('workspace', 'notifications', ['create', 'delete']),
   'files.read': pageCodes('workspace', 'files', ['view']),
-  'files.write': pageCodes('workspace', 'files', ['view', 'create', 'edit']),
+  'files.write': pageCodes('workspace', 'files', ['create', 'edit']),
   'files.delete': pageCodes('workspace', 'files', ['delete']),
   'society.read': pageCodes('master', 'society', ['view']),
   'society.write': pageCodes('master', 'society', ['edit']),

@@ -339,6 +339,16 @@ class SqlQuery {
     this._populate = [];
     this._lean = false;
     this._tx = null;
+    this._withDeleted = false;
+  }
+
+  // Opts this query out of the default `deletedAt: null` filter applied to
+  // every soft-delete-enabled table (see isSoftDeleteEnabled in
+  // config/tableSchemas.js). Needed to look up an already soft-deleted row
+  // (e.g. to restore it) or for an audit/admin view that must see everything.
+  withDeleted() {
+    this._withDeleted = true;
+    return this;
   }
 
   tx(transactionClient) {
@@ -390,7 +400,8 @@ class SqlQuery {
       select: this._select,
       skip: this._skip,
       sort: this._sort,
-      tx: this._tx
+      tx: this._tx,
+      withDeleted: this._withDeleted
     });
   }
 
@@ -607,7 +618,15 @@ function createSqlModel(tableName, options = {}) {
   async function executeQuery(query) {
     await initializeDatabase();
     const rawRows = findAllRows();
-    let rows = rawRows.filter((row) => matchesFilter(row, query.filter));
+    // Every read on a soft-delete-enabled table (one whose schema declares a
+    // `deletedAt` field) excludes soft-deleted rows by default — the same way
+    // for every one of this app's query sites, with no per-call-site changes
+    // needed. `.withDeleted()` (see SqlQuery above) opts a specific query out,
+    // for restoring a row or an audit/admin view that needs to see everything.
+    const effectiveFilter = (fieldNames.has('deletedAt') && !query.withDeleted)
+      ? { ...(query.filter || {}), deletedAt: null }
+      : query.filter;
+    let rows = rawRows.filter((row) => matchesFilter(row, effectiveFilter));
     rows = sortDocuments(rows, query.sort);
 
     const op = query.op;

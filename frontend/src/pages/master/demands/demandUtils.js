@@ -17,16 +17,13 @@ export function buildNextDemandNo(rows = []) {
   let maxNumber = 0;
 
   for (const row of Array.isArray(rows) ? rows : []) {
-    const value = toUpper(row?.demandNo);
-    const match = value.match(/^DM(\d+)$/);
-    if (!match) continue;
-    const number = Number(match[1]);
-    if (Number.isFinite(number) && number > maxNumber) {
-      maxNumber = number;
+    const value = Number(toUpper(row?.demandNo));
+    if (Number.isFinite(value) && value > maxNumber) {
+      maxNumber = value;
     }
   }
 
-  return `DM${String(maxNumber + 1).padStart(2, '0')}`;
+  return String(maxNumber + 1);
 }
 
 export function createEmptyDemandDraft(rows = []) {
