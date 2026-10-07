@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Eye, Edit2, Plus, Trash2, RotateCcw, ArrowRight, Sparkles, Link2, ChevronDown, FileText, CheckCircle, Banknote, Filter, X } from 'lucide-react';
+import { Eye, Edit2, Plus, Trash2, Sparkles, Link2, ChevronDown, FileText, Banknote, Filter, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../api/api';
 import { Button } from '../../../components/ui/Button';
@@ -28,14 +28,6 @@ import {
 import { toneClassName } from './transactionUtils';
 import { getMemberTransactionTypeByKey } from './memberConfig';
 
-function getStatusBadge(status = '') {
-  const value = String(status || '').toLowerCase();
-  if (value === 'posted') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
-  if (value === 'reversed') return 'border-rose-200 bg-rose-50 text-rose-700';
-  if (value === 'draft') return 'border-amber-200 bg-amber-50 text-amber-700';
-  return 'border-slate-200 bg-slate-50 text-slate-700';
-}
-
 export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '' }) {
   const navigate = useNavigate();
   const { token, hasPermission } = useAuth();
@@ -49,9 +41,7 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '
   const [draft, setDraft] = useState(createEmptyTransactionDraft(sectionKey, []));
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
-  const [reverseTarget, setReverseTarget] = useState(null);
   const [search, setSearch] = useState('');
-  const [filterStatus, setFilterStatus] = useState('');
   const [filterPartyType, setFilterPartyType] = useState('');
   const [filterDateFrom, setFilterDateFrom] = useState('');
   const [filterDateTo, setFilterDateTo] = useState('');
@@ -76,15 +66,13 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '
         row.referenceNo,
         row.instrumentNo
       ].some((value) => String(value || '').toLowerCase().includes(searchValue));
-      const matchesStatus = !filterStatus || String(row.status || '').toLowerCase() === String(filterStatus || '').toLowerCase();
       const matchesPartyType = !filterPartyType || String(row.partyType || '').toLowerCase() === String(filterPartyType || '').toLowerCase();
       const matchesFrom = !filterDateFrom || String(row.date || '') >= filterDateFrom;
       const matchesTo = !filterDateTo || String(row.date || '') <= filterDateTo;
-      return matchesSearch && matchesStatus && matchesPartyType && matchesFrom && matchesTo;
+      return matchesSearch && matchesPartyType && matchesFrom && matchesTo;
     });
-  }, [rows, activeSectionItems, currentItemKey, search, filterStatus, filterPartyType, filterDateFrom, filterDateTo]);
+  }, [rows, activeSectionItems, currentItemKey, search, filterPartyType, filterDateFrom, filterDateTo]);
   const canWrite = hasPermission('transactions.write');
-  const canReverse = hasPermission('transactions.reverse');
 
   useEffect(() => {
     let mounted = true;
@@ -153,7 +141,7 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '
   }
 
   function exportCsv() {
-    const headers = ['Voucher No', 'Date', 'Category', 'Party', 'Amount', 'Status', 'Narration'];
+    const headers = ['Voucher No', 'Date', 'Category', 'Party', 'Amount', 'Narration'];
     const escape = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
     const csv = [
       headers.map(escape).join(','),
@@ -163,7 +151,6 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '
         row.voucherCategory,
         getTransactionPartyLabel(row.partyCode, lookups, row.partyType),
         row.amount ?? 0,
-        row.status || 'Draft',
         row.narration || ''
       ].map(escape).join(',')))
     ].join('\n');
@@ -237,24 +224,8 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '
     }
   }
 
-  async function confirmReverse() {
-    if (!reverseTarget) return;
-    try {
-      const response = await api.banking.reverseTransactionVoucher(token, reverseTarget.id);
-      const nextRecord = response.data || response;
-      setRows((current) => [nextRecord, ...current.map((item) => (item.id === nextRecord.id ? nextRecord : item))]);
-      toast.success('Transaction reversed');
-    } catch (error) {
-      toast.error(error.message || 'Unable to reverse transaction');
-    } finally {
-      setReverseTarget(null);
-    }
-  }
-
   const stats = useMemo(() => ({
     total: visibleRows.length,
-    posted: visibleRows.filter((row) => String(row.status || '').toLowerCase() === 'posted').length,
-    draft: visibleRows.filter((row) => String(row.status || '').toLowerCase() === 'draft').length,
     amount: visibleRows.reduce((sum, row) => sum + Number(row.amount || 0), 0)
   }), [visibleRows]);
 
@@ -286,20 +257,8 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '
               </button>
             </>
           ) : null}
-          {canReverse && String(row.status || '').toLowerCase() === 'posted' ? (
-            <button type="button" onClick={() => setReverseTarget(row)} className="rounded-full p-2 text-slate-400 hover:bg-amber-50 hover:text-amber-600" title="Reverse">
-              <RotateCcw size={16} />
-            </button>
-          ) : null}
         </div>
       )
-    };
-
-    const statusColumn = {
-      key: 'status',
-      label: 'Status',
-      sortable: true,
-      render: (row) => <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${getStatusBadge(row.status)}`}>{row.status || 'Draft'}</span>
     };
 
     if (currentItemKey === 'ssa-paid-member') {
@@ -310,9 +269,8 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '
         { key: 'branch', label: 'Branch', sortable: true, sortValue: (row) => getBranch(row.partyCode), render: (row) => <span className="text-slate-700">{getBranch(row.partyCode)}</span> },
         { key: 'designation', label: 'Designation', sortable: true, sortValue: (row) => getDesignation(row.partyCode), render: (row) => <span className="text-slate-700">{getDesignation(row.partyCode)}</span> },
         { key: 'mode', label: 'Paymode', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionModeLabel(row.details?.payMode || row.mode)}</span> },
-        { key: 'instrument', label: 'Cheque No.', sortable: true, render: (row) => <span className="text-slate-700">{row.instrumentNo || '-'}</span> },
+        { key: 'instrument', label: 'Cheque No', sortable: true, render: (row) => <span className="text-slate-700">{row.instrumentNo || '-'}</span> },
         { key: 'amount', label: 'Amount', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionAmount(row.amount ?? 0)}</span> },
-        statusColumn,
         actionsColumn
       ];
     }
@@ -325,7 +283,6 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '
         { key: 'mode', label: 'Mode', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionModeLabel(row.details?.payMode || row.mode)}</span> },
         { key: 'instrument', label: 'Instrument', sortable: true, render: (row) => <span className="text-slate-700">{row.instrumentNo || '-'}</span> },
         { key: 'amount', label: 'Amount', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionAmount(row.amount ?? 0)}</span> },
-        statusColumn,
         actionsColumn
       ];
     }
@@ -335,10 +292,8 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '
         { key: 'voucherNo', label: 'Voucher No', sortable: true, render: (row) => <span className="font-medium text-slate-900">{row.voucherNo || '-'}</span> },
         { key: 'date', label: 'Date', sortable: true, render: (row) => <span className="text-slate-700">{row.date || '-'}</span> },
         { key: 'member', label: 'Member', sortable: true, sortValue: (row) => getTransactionPartyLabel(row.partyCode, lookups, row.partyType), render: (row) => <span className="text-slate-700">{getTransactionPartyLabel(row.partyCode, lookups, row.partyType)}</span> },
-        { key: 'settlement', label: 'Settlement A/c', sortable: true, sortValue: (row) => getTransactionLedgerLabel(row.details?.settlementAccount || row.details?.ledgerTarget || '', lookups), render: (row) => <span className="text-slate-700">{getTransactionLedgerLabel(row.details?.settlementAccount || row.details?.ledgerTarget || '', lookups)}</span> },
         { key: 'loan', label: 'Loan Amount', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionAmount(Number(row.details?.components?.loanAmt || 0))}</span> },
         { key: 'lad', label: 'LAD', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionAmount(Number(row.details?.components?.lad || 0))}</span> },
-        statusColumn,
         actionsColumn
       ];
     }
@@ -348,9 +303,7 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '
         { key: 'voucherNo', label: 'Voucher No', sortable: true, render: (row) => <span className="font-medium text-slate-900">{row.voucherNo || '-'}</span> },
         { key: 'date', label: 'Date', sortable: true, render: (row) => <span className="text-slate-700">{row.date || '-'}</span> },
         { key: 'member', label: 'Member', sortable: true, sortValue: (row) => getTransactionPartyLabel(row.partyCode, lookups, row.partyType), render: (row) => <span className="text-slate-700">{getTransactionPartyLabel(row.partyCode, lookups, row.partyType)}</span> },
-        { key: 'settlement', label: 'Settlement A/c', sortable: true, sortValue: (row) => getTransactionLedgerLabel(row.details?.settlementAccount || row.details?.ledgerTarget || '', lookups), render: (row) => <span className="text-slate-700">{getTransactionLedgerLabel(row.details?.settlementAccount || row.details?.ledgerTarget || '', lookups)}</span> },
         { key: 'amount', label: 'Amount', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionAmount(row.amount ?? 0)}</span> },
-        statusColumn,
         actionsColumn
       ];
     }
@@ -360,10 +313,7 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '
         { key: 'voucherNo', label: 'Voucher No', sortable: true, render: (row) => <span className="font-medium text-slate-900">{row.voucherNo || '-'}</span> },
         { key: 'date', label: 'Date', sortable: true, render: (row) => <span className="text-slate-700">{row.date || '-'}</span> },
         { key: 'member', label: 'Member', sortable: true, sortValue: (row) => getTransactionPartyLabel(row.partyCode, lookups, row.partyType), render: (row) => <span className="text-slate-700">{getTransactionPartyLabel(row.partyCode, lookups, row.partyType)}</span> },
-        { key: 'policy', label: 'Policy No', sortable: true, render: (row) => <span className="text-slate-700">{row.details?.policyNo || '-'}</span> },
-        { key: 'claim', label: 'Claim Ref', sortable: true, render: (row) => <span className="text-slate-700">{row.details?.claimRef || '-'}</span> },
         { key: 'amount', label: 'Amount', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionAmount(row.amount ?? 0)}</span> },
-        statusColumn,
         actionsColumn
       ];
     }
@@ -373,12 +323,10 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '
       { key: 'date', label: 'Date', sortable: true, render: (row) => <span className="text-slate-700">{row.date || '-'}</span> },
       { key: 'type', label: 'Type', sortable: true, sortValue: (row) => getTransactionVoucherTitle(row, activeSectionItems, currentItemKey), render: (row) => <span className="text-slate-700">{getTransactionVoucherTitle(row, activeSectionItems, currentItemKey)}</span> },
       { key: 'party', label: 'Member', sortable: true, sortValue: (row) => getTransactionPartyLabel(row.partyCode, lookups, row.partyType), render: (row) => <span className="text-slate-700">{getTransactionPartyLabel(row.partyCode, lookups, row.partyType)}</span> },
-      { key: 'settlement', label: 'Settlement A/c', sortable: true, sortValue: (row) => getTransactionLedgerLabel(row.details?.settlementAccount || row.details?.ledgerTarget || row.details?.depositIn || row.details?.fromAccount || '', lookups), render: (row) => <span className="text-slate-700">{getTransactionLedgerLabel(row.details?.settlementAccount || row.details?.ledgerTarget || row.details?.depositIn || row.details?.fromAccount || '', lookups)}</span> },
       { key: 'amount', label: 'Amount', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionAmount(row.amount ?? 0)}</span> },
-      statusColumn,
       actionsColumn
     ];
-  }, [activeSectionItems, canReverse, canWrite, currentItemKey, detailPathBase, lookups, navigate]);
+  }, [activeSectionItems, canWrite, currentItemKey, detailPathBase, lookups, navigate]);
 
   return (
     <div className="space-y-6">
@@ -441,10 +389,9 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2">
         {[
           { label: 'Total Transactions', subLabel: 'Voucher records loaded in this section', value: stats.total, icon: FileText, color: 'text-blue-500', bg: 'bg-blue-50' },
-          { label: 'Posted', subLabel: 'Posted and active entries', value: stats.posted, icon: CheckCircle, color: 'text-emerald-500', bg: 'bg-emerald-50' },
           { label: 'Amount', subLabel: 'Total voucher amount for the filtered section', value: formatTransactionAmount(stats.amount), icon: Banknote, color: 'text-purple-500', bg: 'bg-purple-50' }
         ].map((item) => {
           const Icon = item.icon;
@@ -517,20 +464,6 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '
                     </div>
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div className="space-y-1.5">
-                        <label className="text-[12px] font-semibold text-slate-600">Status</label>
-                        <Select
-                          value={filterStatus}
-                          onChange={setFilterStatus}
-                          options={[
-                            { value: '', label: 'All' },
-                            { value: 'Draft', label: 'Draft' },
-                            { value: 'Posted', label: 'Posted' },
-                            { value: 'Reversed', label: 'Reversed' }
-                          ]}
-                          size="sm"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
                         <label className="text-[12px] font-semibold text-slate-600">Party Type</label>
                         <Select
                           value={filterPartyType}
@@ -559,7 +492,6 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '
                         type="button"
                         className="w-full h-10 bg-[var(--primary)] text-white hover:opacity-90 rounded-[0.75rem]"
                         onClick={() => {
-                          setFilterStatus('');
                           setFilterPartyType('');
                           setFilterDateFrom('');
                           setFilterDateTo('');
@@ -624,16 +556,6 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '
         tone="destructive"
         onConfirm={confirmDelete}
         onClose={() => setDeleteTarget(null)}
-      />
-
-      <ConfirmDialog
-        open={Boolean(reverseTarget)}
-        title="Reverse transaction"
-        description={`Reverse ${reverseTarget?.voucherNo || 'this posted transaction'}?`}
-        confirmLabel="Reverse"
-        tone="outline"
-        onConfirm={confirmReverse}
-        onClose={() => setReverseTarget(null)}
       />
     </div>
   );

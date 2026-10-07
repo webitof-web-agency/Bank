@@ -1,5 +1,5 @@
 ﻿import { useEffect, useMemo } from 'react';
-import { FileText, Plus } from 'lucide-react';
+import { FileText } from 'lucide-react';
 import { Card } from '../../../components/ui/Card';
 import { Input, Textarea } from '../../../components/ui/Input';
 import { Select as CustomSelect } from '../../../components/ui/Select';
@@ -175,7 +175,7 @@ export function TransferVoucherPaymentForm({ section, itemKey, lookups = {}, val
             <LookupSelect
               label="Paid From"
               required
-              value={value.details?.settlementAccount || ''}
+              value={''}
               onChange={(next) => updateDetails('settlementAccount', String(next || '').toUpperCase())}
               placeholder="Select cash/bank account"
               groups={accountGroups}
@@ -209,7 +209,7 @@ export function TransferVoucherPaymentForm({ section, itemKey, lookups = {}, val
           </div>
 
           <div className="space-y-1.5">
-            <FieldLabel>Instrument No</FieldLabel>
+            <FieldLabel>Cheque No</FieldLabel>
             <Input
               value={value.instrumentNo || ''}
               onChange={(event) => updateRoot('instrumentNo', event.target.value)}
@@ -218,7 +218,7 @@ export function TransferVoucherPaymentForm({ section, itemKey, lookups = {}, val
           </div>
 
           <div className="space-y-1.5">
-            <FieldLabel>Instrument Date</FieldLabel>
+            <FieldLabel>Cheque Date</FieldLabel>
             <Input
               type="date"
               value={value.instrumentDate || ''}

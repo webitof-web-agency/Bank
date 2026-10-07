@@ -368,6 +368,132 @@ export function OtherTransactionForm({ section, lookups = {}, value, setValue, o
 
   const notes = getSectionNotes(section?.key || '', activeKey);
 
+  if (activeKey === 'payment-voucher' || activeKey === 'receipt-voucher') {
+    return (
+      <form id="transaction-voucher-form" className="mx-auto w-full max-w-4xl space-y-4" onSubmit={onSubmit}>
+        <div className="mb-2 flex items-center justify-between gap-3 px-1">
+          <div>
+            <h3 className="text-xl font-semibold text-slate-900">{activeItem?.label || 'Transaction'}</h3>
+          </div>
+          <div className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] ${toneClassName(activeItem?.accent || 'slate')}`}>
+            {activeKey === 'payment-voucher' ? 'Payment' : 'Receipt'}
+          </div>
+        </div>
+        
+        <Card className="rounded-[var(--radius-card,1.75rem)] border border-slate-200 bg-white p-6 md:p-8 shadow-sm">
+          <div className="grid gap-6 md:grid-cols-2">
+            {/* Left Column */}
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <FieldLabel>Voucher No</FieldLabel>
+                <Input
+                  value={value.voucherNo || ''}
+                  onChange={(e) => setRootValue(setValue, 'voucherNo', String(e.target.value || '').toUpperCase())}
+                  placeholder="Auto generated on save"
+                  className="font-mono uppercase tracking-wider bg-slate-50"
+                  readOnly
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <FieldLabel required>Date</FieldLabel>
+                <Input
+                  type="date"
+                  value={value.date || ''}
+                  onChange={(e) => setRootValue(setValue, 'date', e.target.value)}
+                />
+              </div>
+
+              {activeKey === 'payment-voucher' ? (
+                <>
+                  <div className="space-y-1.5">
+                    <FieldLabel required>Payment By</FieldLabel>
+                    <LookupSelect
+                      label=""
+                      value={value.partyCode || ''}
+                      onChange={(next) => setRootValue(setValue, 'partyCode', next.toUpperCase())}
+                      placeholder="Search or select ledger"
+                      groups={accountGroups}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <FieldLabel required>Payment To</FieldLabel>
+                    <LookupSelect
+                      label=""
+                      value={value.details?.ledgerTarget || ''}
+                      onChange={(next) => updateDetails('ledgerTarget', next.toUpperCase())}
+                      placeholder="Search or select ledger"
+                      groups={accountGroups}
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="space-y-1.5">
+                    <FieldLabel required>Receipt By</FieldLabel>
+                    <LookupSelect
+                      label=""
+                      value={value.details?.receiptBy || ''}
+                      onChange={(next) => updateDetails('receiptBy', next.toUpperCase())}
+                      placeholder="Search or select ledger"
+                      groups={accountGroups}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <FieldLabel required>Receipt To</FieldLabel>
+                    <LookupSelect
+                      label=""
+                      value={value.partyCode || ''}
+                      onChange={(next) => setRootValue(setValue, 'partyCode', next.toUpperCase())}
+                      placeholder="Search or select ledger"
+                      groups={accountGroups}
+                    />
+                  </div>
+                </>
+              )}
+
+              <div className="space-y-1.5">
+                <FieldLabel required>Amount</FieldLabel>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={value.amount ?? ''}
+                  onChange={(e) => setRootValue(setValue, 'amount', e.target.value)}
+                  placeholder="0.00"
+                />
+              </div>
+            </div>
+
+            {/* Right Column */}
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <FieldLabel>Total Amount</FieldLabel>
+                <Input
+                  type="number"
+                  value={value.amount ?? ''}
+                  readOnly
+                  className="bg-slate-50 text-slate-500"
+                  placeholder="0.00"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <FieldLabel>Narration</FieldLabel>
+                <Textarea
+                  value={value.narration || ''}
+                  onChange={(e) => setRootValue(setValue, 'narration', e.target.value)}
+                  placeholder="Enter narration or particulars..."
+                  className="min-h-[140px] resize-y"
+                />
+              </div>
+            </div>
+          </div>
+        </Card>
+      </form>
+    );
+  }
+
   return (
     <form id="transaction-voucher-form" className="mx-auto w-full space-y-3" onSubmit={onSubmit}>
       <Card className="rounded-[var(--radius-card,1.75rem)] border border-slate-200 bg-white p-6 shadow-sm">
@@ -453,7 +579,7 @@ export function OtherTransactionForm({ section, lookups = {}, value, setValue, o
           </div>
 
           <div className="space-y-1.5">
-            <FieldLabel>Instrument No</FieldLabel>
+            <FieldLabel>Cheque No</FieldLabel>
             <Input
               value={value.instrumentNo || ''}
               onChange={(e) => setRootValue(setValue, 'instrumentNo', e.target.value)}
@@ -462,7 +588,7 @@ export function OtherTransactionForm({ section, lookups = {}, value, setValue, o
           </div>
 
           <div className="space-y-1.5">
-            <FieldLabel>Instrument Date</FieldLabel>
+            <FieldLabel>Cheque Date</FieldLabel>
             <Input
               type="date"
               value={value.instrumentDate || ''}
@@ -475,7 +601,7 @@ export function OtherTransactionForm({ section, lookups = {}, value, setValue, o
               <FieldLabel>Settlement Account</FieldLabel>
               <LookupSelect
                 label=""
-                value={value.details?.settlementAccount || ''}
+                value={''}
                 onChange={(next) => updateDetails('settlementAccount', next)}
                 placeholder="Select settlement account"
                 groups={accountGroups}

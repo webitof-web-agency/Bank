@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Eye, Edit2, Plus, Trash2, ChevronDown, FileText, Banknote, Filter, X } from 'lucide-react';
+import { Eye, Edit2, Plus, Trash2, ChevronDown, FileText, Banknote, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../api/api';
 import { Button } from '../../../components/ui/Button';
@@ -126,7 +126,7 @@ export function InterestVoucherWorkspacePage({ sectionKey, itemKey, detailPathBa
   }
 
   function exportCsv() {
-    const headers = ['Voucher No', 'Date', 'Category', 'Party', 'Amount', 'Status', 'Narration'];
+    const headers = ['Voucher No', 'Date', 'Category', 'Party', 'Amount', 'Narration'];
     const escape = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
     const csv = [
       headers.map(escape).join(','),
@@ -136,7 +136,6 @@ export function InterestVoucherWorkspacePage({ sectionKey, itemKey, detailPathBa
         row.voucherCategory,
         getTransactionPartyLabel(row.partyCode, lookups, row.partyType),
         row.amount ?? 0,
-        row.status || 'Draft',
         row.narration || ''
       ].map(escape).join(',')))
     ].join('\n');

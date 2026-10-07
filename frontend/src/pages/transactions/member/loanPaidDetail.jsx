@@ -22,7 +22,6 @@ export function LoanPaidMemberTransactionDetailPage() {
             <DetailRow label="Date" value={record.date} />
             <DetailRow label="Transaction Type" value={record.transactionType} />
             <DetailRow label="Party Type" value={record.partyType} />
-            <DetailRow label="Settlement A/c" value={details.settlementAccount || '-'} />
             <DetailRow label="Branch" value={record.branchCode} />
             <DetailRow label="FY Code" value={record.fyCode} />
           </div>
@@ -37,8 +36,8 @@ export function LoanPaidMemberTransactionDetailPage() {
             <DetailRow label="Loan Amount" value={formatTransactionAmount(details.components?.loanAmt || 0)} />
             <DetailRow label="LAD Amount" value={formatTransactionAmount(details.components?.lad || 0)} />
             <DetailRow label="Mode" value={formatTransactionModeLabel(record.mode)} />
-            <DetailRow label="Instrument No" value={record.instrumentNo || details.instrumentNo || '-'} />
-            <DetailRow label="Instrument Date" value={record.instrumentDate || details.instrumentDate || '-'} />
+            <DetailRow label="Cheque No" value={record.instrumentNo || details.instrumentNo || '-'} />
+            <DetailRow label="Cheque Date" value={record.instrumentDate || details.instrumentDate || '-'} />
             <DetailRow label="Narration" value={record.narration || details.narration || '-'} />
           </div>
         </Card>

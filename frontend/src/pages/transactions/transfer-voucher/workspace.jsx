@@ -1,6 +1,6 @@
 ﻿import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Eye, Edit2, Plus, Trash2, RotateCcw, ChevronDown } from 'lucide-react';
+import { Eye, Edit2, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../api/api';
 import { Button } from '../../../components/ui/Button';
@@ -26,14 +26,6 @@ import {
   getTransferVoucherAllocationTotal
 } from './transactionUtils';
 
-function badgeClass(status = '') {
-  const value = String(status || '').toLowerCase();
-  if (value === 'posted') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
-  if (value === 'reversed') return 'border-rose-200 bg-rose-50 text-rose-700';
-  if (value === 'draft') return 'border-amber-200 bg-amber-50 text-amber-700';
-  return 'border-slate-200 bg-slate-50 text-slate-700';
-}
-
 export function TransferVoucherTransactionWorkspacePage({ sectionKey, itemKey, detailPathBase }) {
   const navigate = useNavigate();
   const { token, hasPermission } = useAuth();
@@ -47,9 +39,7 @@ export function TransferVoucherTransactionWorkspacePage({ sectionKey, itemKey, d
   const [draft, setDraft] = useState(createEmptyTransactionDraft(sectionKey, []));
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
-  const [reverseTarget, setReverseTarget] = useState(null);
   const [search, setSearch] = useState('');
-  const [filterStatus, setFilterStatus] = useState('');
   const [removedDocumentIds, setRemovedDocumentIds] = useState([]);
 
   const section = useMemo(() => catalog.find((entry) => entry.key === sectionKey) || null, [catalog, sectionKey]);
@@ -59,7 +49,6 @@ export function TransferVoucherTransactionWorkspacePage({ sectionKey, itemKey, d
   }, [catalog, sectionKey, itemKey]);
   const activeItem = sectionItems[0] || null;
   const canWrite = hasPermission('transactions.write');
-  const canReverse = hasPermission('transactions.reverse');
 
   useEffect(() => {
     let mounted = true;
@@ -104,10 +93,9 @@ export function TransferVoucherTransactionWorkspacePage({ sectionKey, itemKey, d
         row.referenceNo,
         String(amount)
       ].some((value) => String(value || '').toLowerCase().includes(searchValue));
-      const matchesStatus = !filterStatus || String(row.status || '').toLowerCase() === String(filterStatus || '').toLowerCase();
-      return matchesSearch && matchesStatus;
+      return matchesSearch;
     });
-  }, [rows, sectionItems, sectionKey, search, filterStatus, lookups, itemKey]);
+  }, [rows, sectionItems, sectionKey, search, lookups, itemKey]);
 
   function openCreate() {
     const next = createEmptyTransactionDraft(sectionKey, sectionItems);
@@ -143,7 +131,7 @@ export function TransferVoucherTransactionWorkspacePage({ sectionKey, itemKey, d
   }
 
   function exportCsv() {
-    const headers = ['Voucher No', 'Date', 'Category', 'Party', 'Amount', 'Status', 'Narration'];
+    const headers = ['Voucher No', 'Date', 'Category', 'Party', 'Amount', 'Narration'];
     const escape = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
     const csv = [
       headers.map(escape).join(','),
@@ -153,7 +141,6 @@ export function TransferVoucherTransactionWorkspacePage({ sectionKey, itemKey, d
         row.voucherCategory,
         getTransactionPartyLabel(row.partyCode, lookups, row.partyType),
         row.amount ?? 0,
-        row.status || 'Draft',
         row.narration || ''
       ].map(escape).join(',')))
     ].join('\n');
@@ -230,20 +217,6 @@ export function TransferVoucherTransactionWorkspacePage({ sectionKey, itemKey, d
     }
   }
 
-  async function confirmReverse() {
-    if (!reverseTarget) return;
-    try {
-      const response = await api.banking.reverseTransactionVoucher(token, reverseTarget.id);
-      const nextRecord = response.data || response;
-      setRows((current) => [nextRecord, ...current.map((item) => (item.id === nextRecord.id ? nextRecord : item))]);
-      toast.success('Transfer voucher reversed');
-    } catch (error) {
-      toast.error(error.message || 'Unable to reverse transfer voucher');
-    } finally {
-      setReverseTarget(null);
-    }
-  }
-
   const columns = [
     {
       key: 'voucherNo',
@@ -274,16 +247,6 @@ export function TransferVoucherTransactionWorkspacePage({ sectionKey, itemKey, d
       }
     },
     {
-      key: 'status',
-      label: 'Status',
-      sortable: true,
-      render: (row) => (
-        <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${badgeClass(row.status)}`}>
-          {row.status || 'Draft'}
-        </span>
-      )
-    },
-    {
       key: 'actions',
       label: 'Actions',
       sortable: false,
@@ -302,11 +265,6 @@ export function TransferVoucherTransactionWorkspacePage({ sectionKey, itemKey, d
                 <Trash2 size={16} />
               </button>
             </>
-          ) : null}
-          {canReverse && String(row.status || '').toLowerCase() === 'posted' ? (
-            <button type="button" onClick={() => setReverseTarget(row)} className="rounded-full p-2 text-slate-400 hover:bg-amber-50 hover:text-amber-600" title="Reverse">
-              <RotateCcw size={16} />
-            </button>
           ) : null}
         </div>
       )
@@ -330,18 +288,8 @@ export function TransferVoucherTransactionWorkspacePage({ sectionKey, itemKey, d
       </div>
 
       <Card className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="grid gap-3 md:grid-cols-[1.2fr_220px]">
+        <div className="grid gap-3">
           <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search voucher, member or narration" />
-          <Select
-            value={filterStatus}
-            onChange={setFilterStatus}
-            options={[
-              { value: '', label: 'All statuses' },
-              { value: 'Draft', label: 'Draft' },
-              { value: 'Posted', label: 'Posted' },
-              { value: 'Reversed', label: 'Reversed' }
-            ]}
-          />
         </div>
       </Card>
 
@@ -376,15 +324,6 @@ export function TransferVoucherTransactionWorkspacePage({ sectionKey, itemKey, d
         confirmLabel="Delete"
         onConfirm={confirmDelete}
         onCancel={() => setDeleteTarget(null)}
-      />
-
-      <ConfirmDialog
-        open={Boolean(reverseTarget)}
-        title="Reverse Transfer Voucher"
-        description="This voucher will be reversed and marked accordingly."
-        confirmLabel="Reverse"
-        onConfirm={confirmReverse}
-        onCancel={() => setReverseTarget(null)}
       />
     </div>
   );

@@ -1,21 +1,5 @@
 import { useMemo } from 'react';
-import {
-  Banknote,
-  Building2,
-  CalendarDays,
-  ChevronRight,
-  FileText,
-  Landmark,
-  Layers3,
-  Plus,
-  Repeat2,
-  ShieldCheck,
-  Sparkles,
-  Trash2,
-  UserRound,
-  Users,
-  WalletCards
-} from 'lucide-react';
+import { FileText, Layers3, Plus, Trash2 } from 'lucide-react';
 import { Button } from '../../../components/ui/Button';
 import { Card } from '../../../components/ui/Card';
 import { Input, Select, Textarea } from '../../../components/ui/Input';
@@ -453,7 +437,7 @@ export function ReceiptInterestTransactionForm({ section, lookups = {}, value, s
           </div>
 
           <div className="space-y-1.5">
-            <FieldLabel>Instrument No</FieldLabel>
+            <FieldLabel>Cheque No</FieldLabel>
             <Input
               value={value.instrumentNo || ''}
               onChange={(e) => setRootValue(setValue, 'instrumentNo', e.target.value)}
@@ -462,7 +446,7 @@ export function ReceiptInterestTransactionForm({ section, lookups = {}, value, s
           </div>
 
           <div className="space-y-1.5">
-            <FieldLabel>Instrument Date</FieldLabel>
+            <FieldLabel>Cheque Date</FieldLabel>
             <Input
               type="date"
               value={value.instrumentDate || ''}
@@ -475,7 +459,7 @@ export function ReceiptInterestTransactionForm({ section, lookups = {}, value, s
               <FieldLabel>Settlement Account</FieldLabel>
               <LookupSelect
                 label=""
-                value={value.details?.settlementAccount || ''}
+                value={''}
                 onChange={(next) => updateDetails('settlementAccount', next)}
                 placeholder="Select settlement account"
                 groups={accountGroups}

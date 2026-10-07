@@ -39,11 +39,10 @@ export function RecoveryMemberTransactionDetailPage() {
             <div className="divide-y divide-slate-100 px-6">
               <DetailRow label="Amount" value={formatTransactionAmount(record.amount || 0)} />
               <DetailRow label="Mode" value={formatTransactionModeLabel(record.mode)} />
-              <DetailRow label="Instrument No" value={record.instrumentNo || details.instrumentNo || '-'} />
-              <DetailRow label="Instrument Date" value={record.instrumentDate || details.instrumentDate || '-'} />
+              <DetailRow label="Cheque No" value={record.instrumentNo || details.instrumentNo || '-'} />
+              <DetailRow label="Cheque Date" value={record.instrumentDate || details.instrumentDate || '-'} />
               <DetailRow label="Settlement Account" value={details.settlementAccount || '-'} />
               <DetailRow label="Narration" value={record.narration || details.narration || '-'} />
-              <DetailRow label="Status" value={<StatusBadge status={record.status} />} />
             </div>
           </Card>
           {recoveryLines.length > 0 && (

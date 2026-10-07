@@ -1,6 +1,6 @@
 ﻿import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Edit2, FileText, RotateCcw, ShieldCheck, Trash2, Sparkles, WalletCards } from 'lucide-react';
+import { ArrowLeft, Edit2, FileText, ShieldCheck, Trash2, Sparkles, WalletCards } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../api/api';
 import { Button } from '../../../components/ui/Button';
@@ -31,16 +31,6 @@ function DetailRow({ label, value }) {
       <div className="text-[14px] font-medium text-slate-900">{value || '—'}</div>
     </div>
   );
-}
-
-function StatusBadge({ status = '' }) {
-  const value = String(status || '').toLowerCase();
-  const className =
-    value === 'posted' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' :
-    value === 'reversed' ? 'border-rose-200 bg-rose-50 text-rose-700' :
-    value === 'draft' ? 'border-amber-200 bg-amber-50 text-amber-700' :
-    'border-slate-200 bg-slate-50 text-slate-700';
-  return <span className={`inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-medium ${className}`}>{status || 'Draft'}</span>;
 }
 
 function SimpleTable({ headers = [], rows = [], emptyMessage = 'No records found.' }) {
@@ -75,11 +65,9 @@ export function TransferVoucherPaymentWorkspaceDetailPage({ sectionKey, itemKey,
   const [editorOpen, setEditorOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState(null);
-  const [reverseOpen, setReverseOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [removedDocumentIds, setRemovedDocumentIds] = useState([]);
   const canWrite = hasPermission('transactions.write');
-  const canReverse = hasPermission('transactions.reverse');
 
   const section = useMemo(() => catalog.find((entry) => entry.key === sectionKey) || null, [catalog, sectionKey]);
   const sectionItems = useMemo(() => {
@@ -158,19 +146,6 @@ export function TransferVoucherPaymentWorkspaceDetailPage({ sectionKey, itemKey,
     }
   }
 
-  async function confirmReverse() {
-    if (!record) return;
-    try {
-      const response = await api.banking.reverseTransactionVoucher(token, record.id);
-      setRecord(response.data || response);
-      toast.success('Transfer voucher payment reversed');
-    } catch (error) {
-      toast.error(error.message || 'Unable to reverse transfer voucher payment');
-    } finally {
-      setReverseOpen(false);
-    }
-  }
-
   async function confirmDelete() {
     if (!record) return;
     try {
@@ -202,7 +177,7 @@ export function TransferVoucherPaymentWorkspaceDetailPage({ sectionKey, itemKey,
   const templateItem = getVoucherSectionItem(record, sectionItems);
   const documentDefs = getTransferVoucherDocumentDefinitions(templateItem?.key || record?.details?.key || '');
   const partyLabel = getTransactionPartyLabel(record.partyCode, lookups, record.partyType);
-  const paidFromLabel = getTransactionLedgerLabel(record.details?.settlementAccount || '', lookups);
+  const paidFromLabel = getTransactionLedgerLabel('', lookups);
   const details = record.details || {};
   const journalLines = Array.isArray(record.journalLines) ? record.journalLines : [];
   const tabs = [
@@ -215,7 +190,6 @@ export function TransferVoucherPaymentWorkspaceDetailPage({ sectionKey, itemKey,
 
   const headerCards = [
     { label: 'Amount', value: formatTransactionAmount(record.amount ?? 0) },
-    { label: 'Status', value: record.status || 'Draft' },
     { label: 'Type', value: record.transactionType || 'payment' },
     { label: 'Rows', value: String(journalLines.length || 0) }
   ];
@@ -224,8 +198,8 @@ export function TransferVoucherPaymentWorkspaceDetailPage({ sectionKey, itemKey,
     { key: 'payto', cells: ['Pay To (Ledger)', partyLabel] },
     { key: 'paidfrom', cells: ['Paid From', paidFromLabel] },
     { key: 'mode', cells: ['Payment', record.mode || '—'] },
-    { key: 'instrumentNo', cells: ['Instrument No', record.instrumentNo || '—'] },
-    { key: 'instrumentDate', cells: ['Instrument Date', record.instrumentDate || '—'] },
+    { key: 'instrumentNo', cells: ['Cheque No', record.instrumentNo || '—'] },
+    { key: 'instrumentDate', cells: ['Cheque Date', record.instrumentDate || '—'] },
     { key: 'amount', cells: ['Amount', formatTransactionAmount(record.amount ?? 0)] },
     { key: 'narration', cells: ['Narration', record.narration || '—'] }
   ];
@@ -273,9 +247,6 @@ export function TransferVoucherPaymentWorkspaceDetailPage({ sectionKey, itemKey,
             <div className="flex flex-col md:items-end gap-4 print:hidden">
               <div className="flex flex-wrap items-center gap-2">
                 <Button type="button" variant="outline" onClick={() => window.print()} className="gap-2 border-slate-200 shadow-sm rounded-[var(--radius-input,0.75rem)] hover:bg-slate-50 text-slate-700 font-semibold text-sm h-10 px-4">Print</Button>
-                {canReverse && String(record.status || '').toLowerCase() === 'posted' ? (
-                  <Button type="button" variant="outline" onClick={() => setReverseOpen(true)} className="gap-2 border-slate-200 shadow-sm rounded-[var(--radius-input,0.75rem)] hover:bg-slate-50 text-slate-700 font-semibold text-sm h-10 px-4"><RotateCcw size={16} />Reverse</Button>
-                ) : null}
                 {canWrite ? (
                   <>
                     <Button type="button" variant="outline" onClick={() => setDeleteOpen(true)} className="gap-2 border-slate-200 shadow-sm rounded-[var(--radius-input,0.75rem)] hover:bg-slate-50 text-slate-700 font-semibold text-sm h-10 px-4"><Trash2 size={16} />Delete</Button>
@@ -326,9 +297,8 @@ export function TransferVoucherPaymentWorkspaceDetailPage({ sectionKey, itemKey,
                 <div className="divide-y divide-slate-100 px-6">
                   <DetailRow label="Amount" value={formatTransactionAmount(record.amount ?? 0)} />
                   <DetailRow label="Mode" value={record.mode} />
-                  <DetailRow label="Instrument No" value={record.instrumentNo} />
-                  <DetailRow label="Instrument Date" value={record.instrumentDate} />
-                  <DetailRow label="Status" value={<StatusBadge status={record.status} />} />
+                  <DetailRow label="Cheque No" value={record.instrumentNo} />
+                  <DetailRow label="Cheque Date" value={record.instrumentDate} />
                 </div>
               </Card>
             </div>
@@ -384,8 +354,6 @@ export function TransferVoucherPaymentWorkspaceDetailPage({ sectionKey, itemKey,
         </div>
         
       </Modal>
-
-      <ConfirmDialog open={reverseOpen} title="Reverse Transfer Voucher Payment" description="This payment voucher will be reversed and marked accordingly." confirmLabel="Reverse" onConfirm={confirmReverse} onCancel={() => setReverseOpen(false)} />
       <ConfirmDialog open={deleteOpen} title="Delete Transfer Voucher Payment" description="This payment voucher will be removed permanently." confirmLabel="Delete" onConfirm={confirmDelete} onCancel={() => setDeleteOpen(false)} />
     </div>
   );

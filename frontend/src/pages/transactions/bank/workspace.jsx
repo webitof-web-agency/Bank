@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, Banknote, CheckCircle, ChevronDown, Edit2, Eye, FileText, Filter, Landmark, Link2, Plus, RotateCcw, Sparkles, Trash2, X } from 'lucide-react';
+import { Banknote, ChevronDown, Edit2, Eye, FileText, Filter, Plus, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../api/api';
 import { Button } from '../../../components/ui/Button';
@@ -24,14 +24,6 @@ import {
   getTransactionPartyLabel,
   getTransactionVoucherTitle
 } from './transactionUtils';
-
-function getStatusBadge(status = '') {
-  const value = String(status || '').toLowerCase();
-  if (value === 'posted') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
-  if (value === 'reversed') return 'border-rose-200 bg-rose-50 text-rose-700';
-  if (value === 'draft') return 'border-amber-200 bg-amber-50 text-amber-700';
-  return 'border-slate-200 bg-slate-50 text-slate-700';
-}
 
 function matchesWorkspaceRow(row, itemKey, activeItems = []) {
   const normalizedKey = String(itemKey || '').trim().toLowerCase();
@@ -57,9 +49,7 @@ export function BankTransactionWorkspacePage({ sectionKey, itemKey = '', detailP
   const [draft, setDraft] = useState(createEmptyTransactionDraft(sectionKey, []));
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
-  const [reverseTarget, setReverseTarget] = useState(null);
   const [search, setSearch] = useState('');
-  const [filterStatus, setFilterStatus] = useState('');
   const [filterPartyType, setFilterPartyType] = useState('');
   const [filterDateFrom, setFilterDateFrom] = useState('');
   const [filterDateTo, setFilterDateTo] = useState('');
@@ -76,15 +66,13 @@ export function BankTransactionWorkspacePage({ sectionKey, itemKey = '', detailP
     return rows.filter((row) => {
       if (!matchesWorkspaceRow(row, itemKey, activeItems)) return false;
       const matchesSearch = !searchValue || [row.voucherNo, row.voucherCategory, row.partyCode, row.narration, row.referenceNo, row.instrumentNo].some((value) => String(value || '').toLowerCase().includes(searchValue));
-      const matchesStatus = !filterStatus || String(row.status || '').toLowerCase() === String(filterStatus || '').toLowerCase();
       const matchesPartyType = !filterPartyType || String(row.partyType || '').toLowerCase() === String(filterPartyType || '').toLowerCase();
       const matchesFrom = !filterDateFrom || String(row.date || '') >= filterDateFrom;
       const matchesTo = !filterDateTo || String(row.date || '') <= filterDateTo;
-      return matchesSearch && matchesStatus && matchesPartyType && matchesFrom && matchesTo;
+      return matchesSearch && matchesPartyType && matchesFrom && matchesTo;
     });
-  }, [rows, itemKey, activeItems, search, filterStatus, filterPartyType, filterDateFrom, filterDateTo]);
+  }, [rows, itemKey, activeItems, search, filterPartyType, filterDateFrom, filterDateTo]);
   const canWrite = hasPermission('transactions.write');
-  const canReverse = hasPermission('transactions.reverse');
 
   useEffect(() => {
     let mounted = true;
@@ -152,7 +140,7 @@ export function BankTransactionWorkspacePage({ sectionKey, itemKey = '', detailP
   }
 
   function exportCsv() {
-    const headers = ['Voucher No', 'Date', 'Category', 'Party', 'Amount', 'Status', 'Narration'];
+    const headers = ['Voucher No', 'Date', 'Category', 'Party', 'Amount', 'Narration'];
     const escape = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
     const csv = [
       headers.map(escape).join(','),
@@ -162,7 +150,6 @@ export function BankTransactionWorkspacePage({ sectionKey, itemKey = '', detailP
         row.voucherCategory,
         getTransactionPartyLabel(row.partyCode, lookups, row.partyType),
         row.amount ?? 0,
-        row.status || 'Draft',
         row.narration || ''
       ].map(escape).join(',')))
     ].join('\n');
@@ -221,27 +208,6 @@ export function BankTransactionWorkspacePage({ sectionKey, itemKey = '', detailP
     }
   }
 
-  async function confirmReverse() {
-    if (!reverseTarget) return;
-    try {
-      const response = await api.banking.reverseTransactionVoucher(token, reverseTarget.id);
-      const nextRecord = response.data || response;
-      setRows((current) => [nextRecord, ...current.map((item) => (item.id === nextRecord.id ? nextRecord : item))]);
-      toast.success('Transaction reversed');
-    } catch (error) {
-      toast.error(error.message || 'Unable to reverse transaction');
-    } finally {
-      setReverseTarget(null);
-    }
-  }
-
-  const makeStatusColumn = () => ({
-    key: 'status',
-    label: 'Status',
-    sortable: true,
-    render: (row) => <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${getStatusBadge(row.status)}`}>{row.status || 'Draft'}</span>
-  });
-
   const makeActionsColumn = () => ({
     key: 'actions',
     label: 'Actions',
@@ -255,9 +221,6 @@ export function BankTransactionWorkspacePage({ sectionKey, itemKey = '', detailP
             <button type="button" onClick={() => openEdit(row)} className="rounded-full p-2 text-slate-400 hover:bg-blue-50 hover:text-blue-600" title="Edit"><Edit2 size={16} /></button>
             <button type="button" onClick={() => setDeleteTarget(row)} className="rounded-full p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600" title="Delete"><Trash2 size={16} /></button>
           </>
-        ) : null}
-        {canReverse && String(row.status || '').toLowerCase() === 'posted' ? (
-          <button type="button" onClick={() => setReverseTarget(row)} className="rounded-full p-2 text-slate-400 hover:bg-amber-50 hover:text-amber-600" title="Reverse"><RotateCcw size={16} /></button>
         ) : null}
       </div>
     )
@@ -273,20 +236,16 @@ export function BankTransactionWorkspacePage({ sectionKey, itemKey = '', detailP
       ...baseColumns,
       { key: 'type', label: 'Type', sortable: true, sortValue: (row) => getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems), render: (row) => <span className="text-slate-700">{getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems)}</span> },
       { key: 'party', label: 'Party', sortable: true, sortValue: (row) => getTransactionPartyLabel(row.partyCode, lookups, row.partyType), render: (row) => <span className="text-slate-700">{getTransactionPartyLabel(row.partyCode, lookups, row.partyType)}</span> },
-      { key: 'settlement', label: 'Settlement A/c', sortable: true, sortValue: (row) => getTransactionLedgerLabel(row.details?.fixedSettlement || row.details?.settlementAccount || '', lookups), render: (row) => <span className="text-slate-700">{getTransactionLedgerLabel(row.details?.fixedSettlement || row.details?.settlementAccount || '', lookups)}</span> },
       { key: 'instrument', label: 'Instrument / Ref', sortable: true, render: (row) => <span className="text-slate-700">{row.instrumentNo || row.referenceNo || '-'}</span> },
       { key: 'amount', label: 'Amount', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionAmount(row.amount ?? 0)}</span> },
-      makeStatusColumn(),
       makeActionsColumn()
     ],
     'loan-recv-saving': [
       ...baseColumns,
       { key: 'type', label: 'Type', sortable: true, sortValue: (row) => getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems), render: (row) => <span className="text-slate-700">{getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems)}</span> },
       { key: 'party', label: 'Party', sortable: true, sortValue: (row) => getTransactionPartyLabel(row.partyCode, lookups, row.partyType), render: (row) => <span className="text-slate-700">{getTransactionPartyLabel(row.partyCode, lookups, row.partyType)}</span> },
-      { key: 'settlement', label: 'Settlement A/c', sortable: true, sortValue: (row) => getTransactionLedgerLabel(row.details?.fixedSettlement || row.details?.settlementAccount || '', lookups), render: (row) => <span className="text-slate-700">{getTransactionLedgerLabel(row.details?.fixedSettlement || row.details?.settlementAccount || '', lookups)}</span> },
       { key: 'instrument', label: 'Cheque / Ref', sortable: true, render: (row) => <span className="text-slate-700">{row.instrumentNo || row.referenceNo || '-'}</span> },
       { key: 'amount', label: 'Amount', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionAmount(row.amount ?? 0)}</span> },
-      makeStatusColumn(),
       makeActionsColumn()
     ],
     'deposit-in-bank': [
@@ -296,27 +255,22 @@ export function BankTransactionWorkspacePage({ sectionKey, itemKey = '', detailP
       { key: 'depositBy', label: 'Deposit By', sortable: true, render: (row) => <span className="text-slate-700">{row.details?.depositBy || '-'}</span> },
       { key: 'instrument', label: 'Slip / Ref', sortable: true, render: (row) => <span className="text-slate-700">{row.instrumentNo || row.referenceNo || '-'}</span> },
       { key: 'amount', label: 'Amount', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionAmount(row.amount ?? 0)}</span> },
-      makeStatusColumn(),
       makeActionsColumn()
     ],
     'cheque-issue-saving': [
       ...baseColumns,
       { key: 'type', label: 'Type', sortable: true, sortValue: (row) => getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems), render: (row) => <span className="text-slate-700">{getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems)}</span> },
-      { key: 'settlement', label: 'Settlement A/c', sortable: true, sortValue: (row) => getTransactionLedgerLabel(row.details?.fixedSettlement || row.details?.settlementAccount || '', lookups), render: (row) => <span className="text-slate-700">{getTransactionLedgerLabel(row.details?.fixedSettlement || row.details?.settlementAccount || '', lookups)}</span> },
       { key: 'selfUse', label: 'Self Use', sortable: true, render: (row) => <span className="text-slate-700">{row.details?.selfUse ? 'Yes' : 'No'}</span> },
-      { key: 'instrument', label: 'Cheque No.', sortable: true, render: (row) => <span className="text-slate-700">{row.instrumentNo || '-'}</span> },
+      { key: 'instrument', label: 'Cheque No', sortable: true, render: (row) => <span className="text-slate-700">{row.instrumentNo || '-'}</span> },
       { key: 'amount', label: 'Amount', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionAmount(row.amount ?? 0)}</span> },
-      makeStatusColumn(),
       makeActionsColumn()
     ],
     'cheque-issue-loan': [
       ...baseColumns,
       { key: 'type', label: 'Type', sortable: true, sortValue: (row) => getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems), render: (row) => <span className="text-slate-700">{getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems)}</span> },
-      { key: 'settlement', label: 'Settlement A/c', sortable: true, sortValue: (row) => getTransactionLedgerLabel(row.details?.fixedSettlement || row.details?.settlementAccount || '', lookups), render: (row) => <span className="text-slate-700">{getTransactionLedgerLabel(row.details?.fixedSettlement || row.details?.settlementAccount || '', lookups)}</span> },
       { key: 'selfUse', label: 'Self Use', sortable: true, render: (row) => <span className="text-slate-700">{row.details?.selfUse ? 'Yes' : 'No'}</span> },
-      { key: 'instrument', label: 'Cheque No.', sortable: true, render: (row) => <span className="text-slate-700">{row.instrumentNo || '-'}</span> },
+      { key: 'instrument', label: 'Cheque No', sortable: true, render: (row) => <span className="text-slate-700">{row.instrumentNo || '-'}</span> },
       { key: 'amount', label: 'Amount', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionAmount(row.amount ?? 0)}</span> },
-      makeStatusColumn(),
       makeActionsColumn()
     ],
     'transfer-saving': [
@@ -327,7 +281,6 @@ export function BankTransactionWorkspacePage({ sectionKey, itemKey = '', detailP
       { key: 'to', label: 'To Account', sortable: true, sortValue: (row) => getTransactionLedgerLabel(row.details?.fixedTo || row.details?.toAccount || '', lookups), render: (row) => <span className="text-slate-700">{getTransactionLedgerLabel(row.details?.fixedTo || row.details?.toAccount || '', lookups)}</span> },
       { key: 'instrument', label: 'Ref / Cheque', sortable: true, render: (row) => <span className="text-slate-700">{row.instrumentNo || row.referenceNo || '-'}</span> },
       { key: 'amount', label: 'Amount', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionAmount(row.amount ?? 0)}</span> },
-      makeStatusColumn(),
       makeActionsColumn()
     ],
     'transfer-cashcredit': [
@@ -338,7 +291,6 @@ export function BankTransactionWorkspacePage({ sectionKey, itemKey = '', detailP
       { key: 'to', label: 'To Account', sortable: true, sortValue: (row) => getTransactionLedgerLabel(row.details?.fixedTo || row.details?.toAccount || '', lookups), render: (row) => <span className="text-slate-700">{getTransactionLedgerLabel(row.details?.fixedTo || row.details?.toAccount || '', lookups)}</span> },
       { key: 'instrument', label: 'Ref / Cheque', sortable: true, render: (row) => <span className="text-slate-700">{row.instrumentNo || row.referenceNo || '-'}</span> },
       { key: 'amount', label: 'Amount', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionAmount(row.amount ?? 0)}</span> },
-      makeStatusColumn(),
       makeActionsColumn()
     ]
   };
@@ -347,14 +299,11 @@ export function BankTransactionWorkspacePage({ sectionKey, itemKey = '', detailP
     ...baseColumns,
     { key: 'type', label: 'Type', sortable: true, sortValue: (row) => getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems), render: (row) => <span className="text-slate-700">{getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems)}</span> },
     { key: 'reference', label: 'Reference / Instrument', sortable: true, sortValue: (row) => row.referenceNo || row.instrumentNo || '', render: (row) => <span className="text-slate-700">{row.referenceNo || row.instrumentNo || '-'}</span> },
-    { key: 'bank', label: 'Bank A/c', sortable: true, sortValue: (row) => getTransactionLedgerLabel(row.details?.settlementAccount || row.details?.ledgerTarget || row.details?.depositIn || row.details?.fromAccount || '', lookups), render: (row) => <span className="text-slate-700">{getTransactionLedgerLabel(row.details?.settlementAccount || row.details?.ledgerTarget || row.details?.depositIn || row.details?.fromAccount || '', lookups)}</span> },
+    { key: 'bank', label: 'Bank A/c', sortable: true, sortValue: (row) => getTransactionLedgerLabel(row.details?.ledgerTarget || row.details?.depositIn || row.details?.fromAccount || '', lookups), render: (row) => <span className="text-slate-700">{getTransactionLedgerLabel(row.details?.ledgerTarget || row.details?.depositIn || row.details?.fromAccount || '', lookups)}</span> },
     { key: 'amount', label: 'Amount', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionAmount(row.amount ?? 0)}</span> },
-    makeStatusColumn(),
     makeActionsColumn()
   ];  const stats = useMemo(() => ({
     total: visibleRows.length,
-    posted: visibleRows.filter((row) => String(row.status || '').toLowerCase() === 'posted').length,
-    draft: visibleRows.filter((row) => String(row.status || '').toLowerCase() === 'draft').length,
     amount: visibleRows.reduce((sum, row) => sum + Number(row.amount || 0), 0)
   }), [visibleRows]);
 
@@ -412,10 +361,9 @@ export function BankTransactionWorkspacePage({ sectionKey, itemKey = '', detailP
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2">
         {[
           { label: 'Total Transactions', subLabel: 'Voucher records loaded in this section', value: stats.total, icon: FileText, color: 'text-blue-500', bg: 'bg-blue-50' },
-          { label: 'Posted', subLabel: 'Posted and active entries', value: stats.posted, icon: CheckCircle, color: 'text-emerald-500', bg: 'bg-emerald-50' },
           { label: 'Amount', subLabel: 'Total voucher amount for the filtered section', value: formatTransactionAmount(stats.amount), icon: Banknote, color: 'text-purple-500', bg: 'bg-purple-50' }
         ].map((item) => {
           const Icon = item.icon;
@@ -462,10 +410,6 @@ export function BankTransactionWorkspacePage({ sectionKey, itemKey = '', detailP
                     </div>
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div className="space-y-1.5">
-                        <label className="text-[12px] font-semibold text-slate-600">Status</label>
-                        <Select value={filterStatus} onChange={setFilterStatus} options={[{ value: '', label: 'All' }, { value: 'Draft', label: 'Draft' }, { value: 'Posted', label: 'Posted' }, { value: 'Reversed', label: 'Reversed' }]} size="sm" />
-                      </div>
-                      <div className="space-y-1.5">
                         <label className="text-[12px] font-semibold text-slate-600">Party Type</label>
                         <Select value={filterPartyType} onChange={setFilterPartyType} options={[{ value: '', label: 'All' }, { value: 'ledger', label: 'Ledger' }, { value: 'member', label: 'Member' }, { value: 'employee', label: 'Employee' }, { value: 'bank', label: 'Bank' }]} size="sm" />
                       </div>
@@ -479,7 +423,7 @@ export function BankTransactionWorkspacePage({ sectionKey, itemKey = '', detailP
                       </div>
                     </div>
                     <div className="mt-6">
-                      <Button type="button" className="h-10 w-full rounded-[0.75rem] bg-[var(--primary)] text-white hover:opacity-90" onClick={() => { setFilterStatus(''); setFilterPartyType(''); setFilterDateFrom(''); setFilterDateTo(''); setSearch(''); setFilterDropdownOpen(false); }}>
+                      <Button type="button" className="h-10 w-full rounded-[0.75rem] bg-[var(--primary)] text-white hover:opacity-90" onClick={() => { setFilterPartyType(''); setFilterDateFrom(''); setFilterDateTo(''); setSearch(''); setFilterDropdownOpen(false); }}>
                         Clear Filters
                       </Button>
                     </div>
@@ -516,7 +460,6 @@ export function BankTransactionWorkspacePage({ sectionKey, itemKey = '', detailP
       </Modal>
 
       <ConfirmDialog open={Boolean(deleteTarget)} title="Delete transaction" description={`Delete ${deleteTarget?.voucherNo || 'this transaction'}?`} confirmLabel="Delete" tone="destructive" onConfirm={confirmDelete} onClose={() => setDeleteTarget(null)} />
-      <ConfirmDialog open={Boolean(reverseTarget)} title="Reverse transaction" description={`Reverse ${reverseTarget?.voucherNo || 'this posted transaction'}?`} confirmLabel="Reverse" tone="outline" onConfirm={confirmReverse} onClose={() => setReverseTarget(null)} />
     </div>
   );
 }

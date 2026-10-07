@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Edit2, FileText, RotateCcw, ShieldCheck, Trash2, Sparkles, WalletCards } from 'lucide-react';
+import { ArrowLeft, Edit2, FileText, ShieldCheck, Sparkles, WalletCards } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../api/api';
 import { Button } from '../../../components/ui/Button';
@@ -30,16 +30,6 @@ function DetailRow({ label, value }) {
       <div className="text-[14px] font-medium text-slate-900">{value || '—'}</div>
     </div>
   );
-}
-
-function StatusBadge({ status = '' }) {
-  const value = String(status || '').toLowerCase();
-  const className =
-    value === 'posted' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' :
-    value === 'reversed' ? 'border-rose-200 bg-rose-50 text-rose-700' :
-    value === 'draft' ? 'border-amber-200 bg-amber-50 text-amber-700' :
-    'border-slate-200 bg-slate-50 text-slate-700';
-  return <span className={`inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-medium ${className}`}>{status || 'Draft'}</span>;
 }
 
 function SimpleTable({ headers = [], rows = [], emptyMessage = 'No records found.' }) {
@@ -74,12 +64,10 @@ export function ReceiptVoucherWorkspaceDetailPage({ sectionKey, itemKey, detailP
   const [editorOpen, setEditorOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState(null);
-  const [reverseOpen, setReverseOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [removedDocumentIds, setRemovedDocumentIds] = useState([]);
   const [activeTab, setActiveTab] = useState('overview');
   const canWrite = hasPermission('transactions.write');
-  const canReverse = hasPermission('transactions.reverse');
 
   const section = useMemo(() => catalog.find((entry) => entry.key === sectionKey) || null, [catalog, sectionKey]);
   const sectionItems = useMemo(() => {
@@ -158,19 +146,6 @@ export function ReceiptVoucherWorkspaceDetailPage({ sectionKey, itemKey, detailP
     }
   }
 
-  async function confirmReverse() {
-    if (!record) return;
-    try {
-      const response = await api.banking.reverseTransactionVoucher(token, record.id);
-      setRecord(response.data || response);
-      toast.success('Receipt reversed');
-    } catch (error) {
-      toast.error(error.message || 'Unable to reverse receipt');
-    } finally {
-      setReverseOpen(false);
-    }
-  }
-
   async function confirmDelete() {
     if (!record) return;
     try {
@@ -202,7 +177,7 @@ export function ReceiptVoucherWorkspaceDetailPage({ sectionKey, itemKey, detailP
   const templateItem = getVoucherSectionItem(record, sectionItems);
   const documentDefs = getReceiptInterestDocumentDefinitions(templateItem?.key || record?.details?.key || 'receipt-voucher');
   const receiptToLabel = getTransactionPartyLabel(record.partyCode, lookups, record.partyType);
-  const receiptByLabel = getTransactionLedgerLabel(record.details?.settlementAccount || '', lookups);
+  const receiptByLabel = getTransactionLedgerLabel('', lookups);
   const details = record.details || {};
   const journalLines = Array.isArray(record.journalLines) ? record.journalLines : [];
   const tabs = [
@@ -241,11 +216,6 @@ export function ReceiptVoucherWorkspaceDetailPage({ sectionKey, itemKey, detailP
                 <Button type="button" variant="outline" onClick={() => window.print()} className="gap-2 border-slate-200 shadow-sm rounded-[var(--radius-input,0.75rem)] hover:bg-slate-50 text-slate-700 font-semibold text-sm h-10 px-4">
                   Print
                 </Button>
-                {canReverse && String(record.status || '').toLowerCase() === 'posted' ? (
-                  <Button type="button" variant="outline" onClick={() => setReverseOpen(true)} className="gap-2 border-slate-200 shadow-sm rounded-[var(--radius-input,0.75rem)] hover:bg-slate-50 text-slate-700 font-semibold text-sm h-10 px-4">
-                    <RotateCcw size={16} /> Reverse
-                  </Button>
-                ) : null}
                 {canWrite ? (
                   <Button type="button" variant="outline" onClick={openEditor} className="gap-2 border-slate-200 shadow-sm rounded-[var(--radius-input,0.75rem)] hover:bg-slate-50 text-slate-700 font-semibold text-sm h-10 px-4 bg-slate-50">
                     <Edit2 size={16} /> Edit Transaction
@@ -276,7 +246,6 @@ export function ReceiptVoucherWorkspaceDetailPage({ sectionKey, itemKey, detailP
                 <DetailRow label="Receipt By" value={receiptByLabel} />
                 <DetailRow label="Branch" value={record.branchCode} />
                 <DetailRow label="FY Code" value={record.fyCode} />
-                <DetailRow label="Status" value={<StatusBadge status={record.status} />} />
               </div>
             </Card>
 
@@ -285,8 +254,8 @@ export function ReceiptVoucherWorkspaceDetailPage({ sectionKey, itemKey, detailP
                 <DetailRow label="Amount" value={formatTransactionAmount(record.amount ?? 0)} />
                 <DetailRow label="Mode" value={record.mode} />
                 <DetailRow label="Reference No" value={record.referenceNo} />
-                <DetailRow label="Instrument No" value={record.instrumentNo} />
-                <DetailRow label="Instrument Date" value={record.instrumentDate} />
+                <DetailRow label="Cheque No" value={record.instrumentNo} />
+                <DetailRow label="Cheque Date" value={record.instrumentDate} />
                 <DetailRow label="Approved By" value={record.approvedBy} />
                 <DetailRow label="Created By" value={record.createdBy} />
                 <DetailRow label="Narration" value={record.narration} />
@@ -337,14 +306,10 @@ export function ReceiptVoucherWorkspaceDetailPage({ sectionKey, itemKey, detailP
       >
         {draft ? <ReceiptVoucherForm section={section} lookups={lookups} value={draft} setValue={setDraft} onSubmit={saveVoucher} onDocumentRemove={handleDocumentRemove} /> : null}
       </Modal>
-
-      <ConfirmDialog open={reverseOpen} title="Reverse receipt" description="This receipt will be reversed and marked accordingly." confirmLabel="Reverse" onConfirm={confirmReverse} onClose={() => setReverseOpen(false)} />
       <ConfirmDialog open={deleteOpen} title="Delete receipt" description="This receipt will be removed permanently." confirmLabel="Delete" onConfirm={confirmDelete} onClose={() => setDeleteOpen(false)} />
     </div>
   );
 }
 
 export default ReceiptVoucherWorkspaceDetailPage;
-
-
 

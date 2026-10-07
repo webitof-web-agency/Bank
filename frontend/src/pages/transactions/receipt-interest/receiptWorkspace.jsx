@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Eye, Edit2, Plus, Trash2, RotateCcw, ChevronDown, FileText, CheckCircle, Banknote, Filter, X } from 'lucide-react';
+import { Eye, Edit2, Plus, Trash2, ChevronDown, FileText, Banknote, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../api/api';
 import { Button } from '../../../components/ui/Button';
@@ -25,14 +25,6 @@ import {
   getTransactionVoucherTitle
 } from './transactionUtils';
 
-function badgeClass(status = '') {
-  const value = String(status || '').toLowerCase();
-  if (value === 'posted') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
-  if (value === 'reversed') return 'border-rose-200 bg-rose-50 text-rose-700';
-  if (value === 'draft') return 'border-amber-200 bg-amber-50 text-amber-700';
-  return 'border-slate-200 bg-slate-50 text-slate-700';
-}
-
 export function ReceiptVoucherWorkspacePage({ sectionKey, itemKey, detailPathBase }) {
   const navigate = useNavigate();
   const { token, hasPermission } = useAuth();
@@ -46,9 +38,7 @@ export function ReceiptVoucherWorkspacePage({ sectionKey, itemKey, detailPathBas
   const [draft, setDraft] = useState(createEmptyTransactionDraft(sectionKey, []));
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
-  const [reverseTarget, setReverseTarget] = useState(null);
   const [search, setSearch] = useState('');
-  const [filterStatus, setFilterStatus] = useState('');
   const [removedDocumentIds, setRemovedDocumentIds] = useState([]);
   const [filterDropdownOpen, setFilterDropdownOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -60,7 +50,6 @@ export function ReceiptVoucherWorkspacePage({ sectionKey, itemKey, detailPathBas
   }, [catalog, sectionKey, itemKey]);
   const activeItem = sectionItems[0] || null;
   const canWrite = hasPermission('transactions.write');
-  const canReverse = hasPermission('transactions.reverse');
 
   useEffect(() => {
     let mounted = true;
@@ -96,17 +85,14 @@ export function ReceiptVoucherWorkspacePage({ sectionKey, itemKey, detailPathBas
 
     return baseRows.filter((row) => {
       const receiptTo = getTransactionPartyLabel(row.partyCode, lookups, row.partyType);
-      const receiptBy = getTransactionLedgerLabel(row.details?.settlementAccount || '', lookups);
+      const receiptBy = getTransactionLedgerLabel('', lookups);
       const matchesSearch = !searchValue || [row.voucherNo, receiptTo, receiptBy, row.narration, row.amount, row.mode].some((value) => String(value || '').toLowerCase().includes(searchValue));
-      const matchesStatus = !filterStatus || String(row.status || '').toLowerCase() === String(filterStatus || '').toLowerCase();
-      return matchesSearch && matchesStatus;
+      return matchesSearch;
     });
-  }, [rows, sectionItems, sectionKey, search, filterStatus, lookups]);
+  }, [rows, sectionItems, sectionKey, search, lookups]);
 
   const stats = useMemo(() => ({
     total: visibleRows.length,
-    posted: visibleRows.filter((row) => String(row.status || '').toLowerCase() === 'posted').length,
-    draft: visibleRows.filter((row) => String(row.status || '').toLowerCase() === 'draft').length,
     amount: visibleRows.reduce((sum, row) => sum + Number(row.amount || 0), 0)
   }), [visibleRows]);
 
@@ -146,7 +132,7 @@ export function ReceiptVoucherWorkspacePage({ sectionKey, itemKey, detailPathBas
   }
 
   function exportCsv() {
-    const headers = ['Voucher No', 'Date', 'Category', 'Party', 'Amount', 'Status', 'Narration'];
+    const headers = ['Voucher No', 'Date', 'Category', 'Party', 'Amount', 'Narration'];
     const escape = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
     const csv = [
       headers.map(escape).join(','),
@@ -156,7 +142,6 @@ export function ReceiptVoucherWorkspacePage({ sectionKey, itemKey, detailPathBas
         row.voucherCategory,
         getTransactionPartyLabel(row.partyCode, lookups, row.partyType),
         row.amount ?? 0,
-        row.status || 'Draft',
         row.narration || ''
       ].map(escape).join(',')))
     ].join('\n');
@@ -228,27 +213,12 @@ export function ReceiptVoucherWorkspacePage({ sectionKey, itemKey, detailPathBas
     }
   }
 
-  async function confirmReverse() {
-    if (!reverseTarget) return;
-    try {
-      const response = await api.banking.reverseTransactionVoucher(token, reverseTarget.id);
-      const nextRecord = response.data || response;
-      setRows((current) => [nextRecord, ...current.map((item) => (item.id === nextRecord.id ? nextRecord : item))]);
-      toast.success('Receipt reversed');
-    } catch (error) {
-      toast.error(error.message || 'Unable to reverse receipt');
-    } finally {
-      setReverseTarget(null);
-    }
-  }
-
   const columns = [
     { key: 'voucherNo', label: 'Voucher No', sortable: true, render: (row) => <span className="font-medium text-slate-900">{row.voucherNo || '-'}</span> },
     { key: 'date', label: 'Date', sortable: true, render: (row) => <span className="text-slate-700">{row.date || '-'}</span> },
     { key: 'receiptTo', label: 'Receipt To', sortable: true, sortValue: (row) => getTransactionPartyLabel(row.partyCode, lookups, row.partyType), render: (row) => <span className="text-slate-700">{getTransactionPartyLabel(row.partyCode, lookups, row.partyType)}</span> },
-    { key: 'receiptBy', label: 'Receipt By', sortable: true, sortValue: (row) => getTransactionLedgerLabel(row.details?.settlementAccount || '', lookups), render: (row) => <span className="text-slate-700">{getTransactionLedgerLabel(row.details?.settlementAccount || '', lookups)}</span> },
+    { key: 'receiptBy', label: 'Receipt By', sortable: true, sortValue: (row) => getTransactionLedgerLabel('', lookups), render: (row) => <span className="text-slate-700">{getTransactionLedgerLabel('', lookups)}</span> },
     { key: 'amount', label: 'Amount', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionAmount(row.amount ?? 0)}</span> },
-    { key: 'status', label: 'Status', sortable: true, render: (row) => <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${badgeClass(row.status)}`}>{row.status || 'Draft'}</span> },
     {
       key: 'actions',
       label: 'Actions',
@@ -268,11 +238,6 @@ export function ReceiptVoucherWorkspacePage({ sectionKey, itemKey, detailPathBas
                 <Trash2 size={16} />
               </button>
             </>
-          ) : null}
-          {canReverse && String(row.status || '').toLowerCase() === 'posted' ? (
-            <button type="button" onClick={() => setReverseTarget(row)} className="rounded-full p-2 text-slate-400 hover:bg-amber-50 hover:text-amber-600" title="Reverse">
-              <RotateCcw size={16} />
-            </button>
           ) : null}
         </div>
       )
@@ -332,10 +297,9 @@ export function ReceiptVoucherWorkspacePage({ sectionKey, itemKey, detailPathBas
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2">
         {[
           { label: 'Total Transactions', subLabel: 'Voucher records loaded in this section', value: stats.total, icon: FileText, color: 'text-blue-500', bg: 'bg-blue-50' },
-          { label: 'Posted', subLabel: 'Posted and active entries', value: stats.posted, icon: CheckCircle, color: 'text-emerald-500', bg: 'bg-emerald-50' },
           { label: 'Amount', subLabel: 'Total voucher amount for the filtered section', value: formatTransactionAmount(stats.amount), icon: Banknote, color: 'text-purple-500', bg: 'bg-purple-50' }
         ].map((item) => {
           const Icon = item.icon;
@@ -379,22 +343,8 @@ export function ReceiptVoucherWorkspacePage({ sectionKey, itemKey, detailPathBas
                       </button>
                     </div>
                     <div className="grid gap-4">
-                      <div className="space-y-1.5">
-                        <label className="text-[12px] font-semibold text-slate-600">Status</label>
-                        <Select
-                          value={filterStatus}
-                          onChange={setFilterStatus}
-                          options={[
-                            { value: '', label: 'All' },
-                            { value: 'Draft', label: 'Draft' },
-                            { value: 'Posted', label: 'Posted' },
-                            { value: 'Reversed', label: 'Reversed' }
-                          ]}
-                          size="sm"
-                        />
-                      </div>
                       <div className="flex items-end mt-2">
-                        <Button type="button" className="w-full gap-2 bg-[var(--primary,#1661F6)] text-white hover:opacity-90" onClick={() => { setFilterStatus(''); setSearch(''); setFilterDropdownOpen(false); }}>
+                        <Button type="button" className="w-full gap-2 bg-[var(--primary,#1661F6)] text-white hover:opacity-90" onClick={() => { setSearch(''); setFilterDropdownOpen(false); }}>
                           Clear Filters
                         </Button>
                       </div>
@@ -425,7 +375,6 @@ export function ReceiptVoucherWorkspacePage({ sectionKey, itemKey, detailPathBas
       </Modal>
 
       <ConfirmDialog open={Boolean(deleteTarget)} title="Delete receipt" description="This receipt entry will be removed permanently." confirmLabel="Delete" tone="destructive" onConfirm={confirmDelete} onClose={() => setDeleteTarget(null)} />
-      <ConfirmDialog open={Boolean(reverseTarget)} title="Reverse receipt" description="This receipt entry will be reversed and marked accordingly." confirmLabel="Reverse" tone="outline" onConfirm={confirmReverse} onClose={() => setReverseTarget(null)} />
     </div>
   );
 }

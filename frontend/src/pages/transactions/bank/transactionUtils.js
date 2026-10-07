@@ -91,7 +91,6 @@ export function createEmptyTransactionDraft(sectionKey = '', sectionItems = [], 
     partyCode: '',
     amount: '',
     mode: firstItem?.mode || '',
-    status: 'Draft',
     narration: '',
     referenceNo: '',
     instrumentNo: '',
@@ -112,7 +111,6 @@ export function createEmptyTransactionDraft(sectionKey = '', sectionItems = [], 
       fromAccount: '',
       toAccount: '',
       accountHead: '',
-      fixedSettlement: '',
       fixedFrom: '',
       fixedTo: '',
       selfUse: false,
@@ -143,7 +141,6 @@ export function createTransactionDraftFromRecord(record = {}, sectionItems = [],
     partyCode: record.partyCode || '',
     amount: record.amount ?? '',
     mode: record.mode || details.transferType || firstItem?.mode || '',
-    status: record.status || 'Draft',
     narration: record.narration || '',
     referenceNo: record.referenceNo || '',
     instrumentNo: record.instrumentNo || '',
@@ -164,7 +161,6 @@ export function createTransactionDraftFromRecord(record = {}, sectionItems = [],
       fromAccount: details.fromAccount || '',
       toAccount: details.toAccount || '',
       accountHead: details.accountHead || '',
-      fixedSettlement: details.fixedSettlement || '',
       fixedFrom: details.fixedFrom || '',
       fixedTo: details.fixedTo || '',
       selfUse: Boolean(details.selfUse),
@@ -199,7 +195,6 @@ export function buildTransactionVoucherPayload(draft = {}) {
 
   const details = deepMerge(advancedDetails, baseDetails);
   details.key = cleanText(details.key || baseDetails.key);
-  details.fixedSettlement = cleanText(details.fixedSettlement || baseDetails.fixedSettlement);
   details.fixedFrom = cleanText(details.fixedFrom || baseDetails.fixedFrom);
   details.fixedTo = cleanText(details.fixedTo || baseDetails.fixedTo);
   details.selfUse = Boolean(details.selfUse);
@@ -224,7 +219,6 @@ export function buildTransactionVoucherPayload(draft = {}) {
     partyType: cleanText(draft.partyType, 'ledger'),
     amount: toNumberOrZero(draft.amount),
     mode: cleanText(draft.mode || draft.details?.transferType),
-    status: cleanText(draft.status, 'Draft'),
     narration: cleanText(draft.narration),
     referenceNo: cleanText(draft.referenceNo),
     instrumentNo: cleanText(draft.instrumentNo),

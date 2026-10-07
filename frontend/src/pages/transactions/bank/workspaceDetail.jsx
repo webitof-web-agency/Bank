@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Edit2, FileText, Layers3, RotateCcw, ShieldCheck, Sparkles, Trash2 } from 'lucide-react';
+import { ArrowLeft, Edit2, FileText, Layers3, ShieldCheck, Sparkles, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../api/api';
 import { Button } from '../../../components/ui/Button';
@@ -30,16 +30,6 @@ function DetailRow({ label, value }) {
       <div className="text-[14px] font-medium text-slate-900">{value || '-'}</div>
     </div>
   );
-}
-
-function StatusBadge({ status = '' }) {
-  const value = String(status || '').toLowerCase();
-  const className =
-    value === 'posted' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' :
-    value === 'reversed' ? 'border-rose-200 bg-rose-50 text-rose-700' :
-    value === 'draft' ? 'border-amber-200 bg-amber-50 text-amber-700' :
-    'border-slate-200 bg-slate-50 text-slate-700';
-  return <span className={`inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-medium ${className}`}>{status || 'Draft'}</span>;
 }
 
 function EmptyState({ title, description }) {
@@ -86,7 +76,6 @@ export function BankTransactionWorkspaceDetailPage({ sectionKey, itemKey = '', d
   const [editorOpen, setEditorOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState(null);
-  const [reverseOpen, setReverseOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
   const [removedDocumentIds, setRemovedDocumentIds] = useState([]);
@@ -95,7 +84,6 @@ export function BankTransactionWorkspaceDetailPage({ sectionKey, itemKey = '', d
   const sectionItems = useMemo(() => getSectionItems(catalog, sectionKey), [catalog, sectionKey]);
   const activeItem = useMemo(() => getBankTransactionTypeByKey(itemKey) || sectionItems.find((item) => item.key === itemKey) || null, [itemKey, sectionItems]);
   const canWrite = hasPermission('transactions.write');
-  const canReverse = hasPermission('transactions.reverse');
 
   useEffect(() => {
     let mounted = true;
@@ -163,19 +151,6 @@ export function BankTransactionWorkspaceDetailPage({ sectionKey, itemKey = '', d
     }
   }
 
-  async function confirmReverse() {
-    if (!record) return;
-    try {
-      const response = await api.banking.reverseTransactionVoucher(token, record.id);
-      setRecord(response.data || response);
-      toast.success('Transaction reversed');
-    } catch (error) {
-      toast.error(error.message || 'Unable to reverse transaction');
-    } finally {
-      setReverseOpen(false);
-    }
-  }
-
   async function confirmDelete() {
     if (!record) return;
     try {
@@ -221,7 +196,7 @@ export function BankTransactionWorkspaceDetailPage({ sectionKey, itemKey = '', d
   const templateItem = activeItem || sectionItems.find((item) => item.key === record?.details?.key) || null;
   const documentDefs = getBankDocumentDefinitions(templateItem?.key || record?.details?.key || itemKey || '');
   const partyLabel = getTransactionPartyLabel(record.partyCode, lookups, record.partyType);
-  const settlementLabel = getTransactionLedgerLabel(record.details?.settlementAccount || record.details?.ledgerTarget || record.details?.depositIn || record.details?.fromAccount || '', lookups);
+  const settlementLabel = getTransactionLedgerLabel(record.details?.ledgerTarget || record.details?.depositIn || record.details?.fromAccount || '', lookups);
   const mainAmount = formatTransactionAmount(record.amount ?? 0);
   const details = record.details || {};
   const primitiveEntries = getPrimitiveEntries(details);
@@ -253,7 +228,6 @@ export function BankTransactionWorkspaceDetailPage({ sectionKey, itemKey = '', d
             </div>
             <div className="flex flex-wrap items-center gap-2 print:hidden">
               <Button type="button" variant="outline" onClick={() => window.print()} className="gap-2 border-slate-200 shadow-sm rounded-[var(--radius-input,0.75rem)] hover:bg-slate-50 text-slate-700 font-semibold text-sm h-10 px-4">Print</Button>
-              {canReverse && String(record.status || '').toLowerCase() === 'posted' ? <Button type="button" variant="outline" onClick={() => setReverseOpen(true)} className="gap-2 border-slate-200 shadow-sm rounded-[var(--radius-input,0.75rem)] hover:bg-slate-50 text-slate-700 font-semibold text-sm h-10 px-4"><RotateCcw size={16} /> Reverse</Button> : null}
               {canWrite ? <Button type="button" variant="outline" onClick={openEditor} className="gap-2 border-slate-200 shadow-sm rounded-[var(--radius-input,0.75rem)] hover:bg-slate-50 text-slate-700 font-semibold text-sm h-10 px-4 bg-slate-50"><Edit2 size={16} /> Edit Transaction</Button> : null}
               {canWrite ? <Button type="button" variant="outline" onClick={() => setDeleteOpen(true)} className="gap-2 border-slate-200 shadow-sm rounded-[var(--radius-input,0.75rem)] hover:bg-slate-50 text-slate-700 font-semibold text-sm h-10 px-4"><Trash2 size={16} /> Delete</Button> : null}
             </div>
@@ -261,7 +235,7 @@ export function BankTransactionWorkspaceDetailPage({ sectionKey, itemKey = '', d
           <div className="flex flex-wrap items-center gap-5 overflow-x-auto rounded-[14px] border border-slate-100 bg-slate-50/80 px-5 py-3 shadow-sm">
             <div><p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Amount</p><p className="mt-0.5 text-base font-bold text-slate-900">{mainAmount}</p></div>
             <div className="w-px h-8 bg-slate-200" />
-            <div><p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Status</p><p className="mt-0.5 text-base font-bold text-slate-900"><StatusBadge status={record.status} /></p></div>
+            
             <div className="w-px h-8 bg-slate-200" />
             <div><p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Type</p><p className="mt-0.5 text-base font-bold text-slate-900">{record.transactionType || '-'}</p></div>
           </div>
@@ -292,7 +266,6 @@ export function BankTransactionWorkspaceDetailPage({ sectionKey, itemKey = '', d
                 <DetailRow label="Bank A/c" value={settlementLabel} />
                 <DetailRow label="Branch" value={record.branchCode} />
                 <DetailRow label="FY Code" value={record.fyCode} />
-                <DetailRow label="Status" value={<StatusBadge status={record.status} />} />
               </div>
             </Card>
           ) : null}
@@ -303,8 +276,8 @@ export function BankTransactionWorkspaceDetailPage({ sectionKey, itemKey = '', d
                 <DetailRow label="Amount" value={mainAmount} />
                 <DetailRow label="Mode" value={record.mode} />
                 <DetailRow label="Reference No" value={record.referenceNo} />
-                <DetailRow label="Instrument No" value={record.instrumentNo} />
-                <DetailRow label="Instrument Date" value={record.instrumentDate} />
+                <DetailRow label="Cheque No" value={record.instrumentNo} />
+                <DetailRow label="Cheque Date" value={record.instrumentDate} />
                 <DetailRow label="Approved By" value={record.approvedBy} />
                 <DetailRow label="Created By" value={record.createdBy} />
                 <DetailRow label="Narration" value={record.narration} />
@@ -324,7 +297,6 @@ export function BankTransactionWorkspaceDetailPage({ sectionKey, itemKey = '', d
                 <div className="divide-y divide-slate-100 px-6">
                   <DetailRow label="Voucher No" value={record.voucherNo} />
                   <DetailRow label="Category" value={record.voucherCategory} />
-                  <DetailRow label="Status" value={<StatusBadge status={record.status} />} />
                   <DetailRow label="Created By" value={record.createdBy || '-'} />
                   <DetailRow label="Approved By" value={record.approvedBy || '-'} />
                   <DetailRow label="Party Type" value={record.partyType} />
@@ -356,7 +328,6 @@ export function BankTransactionWorkspaceDetailPage({ sectionKey, itemKey = '', d
       </Modal>
 
       <ConfirmDialog open={deleteOpen} title="Delete transaction" description={`Delete ${record.voucherNo || 'this transaction'}?`} confirmLabel="Delete" tone="destructive" onConfirm={confirmDelete} onClose={() => setDeleteOpen(false)} />
-      <ConfirmDialog open={reverseOpen} title="Reverse transaction" description={`Reverse ${record.voucherNo || 'this posted transaction'}?`} confirmLabel="Reverse" tone="outline" onConfirm={confirmReverse} onClose={() => setReverseOpen(false)} />
     </div>
   );
 }

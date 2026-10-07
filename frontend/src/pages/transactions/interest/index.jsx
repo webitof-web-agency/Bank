@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Eye, Edit2, Plus, Trash2, ArrowRight, Sparkles, Link2, ChevronDown, FileText, Banknote, Filter, X } from 'lucide-react';
+import { Eye, Edit2, Plus, Trash2, Sparkles, Link2, ChevronDown, FileText, Banknote, Filter, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../api/api';
 import { Button } from '../../../components/ui/Button';
@@ -252,13 +252,6 @@ export function ReceiptInterestTransactionsPage({ sectionKey, detailPathBase }) 
       sortable: true,
       sortValue: (row) => getTransactionPartyLabel(row.partyCode, lookups, row.partyType),
       render: (row) => <span className="text-slate-700">{getTransactionPartyLabel(row.partyCode, lookups, row.partyType)}</span>
-    },
-    {
-      key: 'settlement',
-      label: 'Settlement A/c',
-      sortable: true,
-      sortValue: (row) => getTransactionLedgerLabel(row.details?.settlementAccount || row.details?.ledgerTarget || row.details?.depositIn || row.details?.fromAccount || '', lookups),
-      render: (row) => <span className="text-slate-700">{getTransactionLedgerLabel(row.details?.settlementAccount || row.details?.ledgerTarget || row.details?.depositIn || row.details?.fromAccount || '', lookups)}</span>
     },
     {
       key: 'amount',

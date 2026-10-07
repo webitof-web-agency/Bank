@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Edit2, FileText, ShieldCheck, Trash2, Sparkles, WalletCards } from 'lucide-react';
+import { ArrowLeft, Edit2, FileText, ShieldCheck, Sparkles, WalletCards } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../api/api';
 import { Button } from '../../../components/ui/Button';
@@ -259,8 +259,8 @@ export function InterestVoucherWorkspaceDetailPage({ sectionKey, itemKey, detail
                   <DetailRow label="Party Type" value={record.partyType} />
                   <DetailRow label="Mode" value={record.mode} />
                   <DetailRow label="Reference No" value={record.referenceNo} />
-                  <DetailRow label="Instrument No" value={record.instrumentNo} />
-                  <DetailRow label="Instrument Date" value={record.instrumentDate} />
+                  <DetailRow label="Cheque No" value={record.instrumentNo} />
+                  <DetailRow label="Cheque Date" value={record.instrumentDate} />
                   <DetailRow label="Approved By" value={record.approvedBy} />
                   <DetailRow label="Created By" value={record.createdBy} />
                   <DetailRow label="Narration" value={record.narration} />

@@ -258,13 +258,6 @@ export function OtherTransactionsPage({ sectionKey, itemKey, detailPathBase }) {
       render: (row) => <span className="text-slate-700">{getTransactionPartyLabel(row.partyCode, lookups, row.partyType)}</span>
     },
     {
-      key: 'settlement',
-      label: 'Settlement A/c',
-      sortable: true,
-      sortValue: (row) => getTransactionLedgerLabel(row.details?.settlementAccount || row.details?.ledgerTarget || row.details?.depositIn || row.details?.fromAccount || '', lookups),
-      render: (row) => <span className="text-slate-700">{getTransactionLedgerLabel(row.details?.settlementAccount || row.details?.ledgerTarget || row.details?.depositIn || row.details?.fromAccount || '', lookups)}</span>
-    },
-    {
       key: 'amount',
       label: 'Amount',
       sortable: true,

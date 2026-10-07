@@ -1,21 +1,5 @@
 import { useEffect, useMemo } from 'react';
-import {
-  Banknote,
-  Building2,
-  CalendarDays,
-  ChevronRight,
-  FileText,
-  Landmark,
-  Layers3,
-  Plus,
-  Repeat2,
-  ShieldCheck,
-  Sparkles,
-  Trash2,
-  UserRound,
-  Users,
-  WalletCards
-} from 'lucide-react';
+import { FileText, Landmark, Layers3, Plus, Trash2 } from 'lucide-react';
 import { Button } from '../../../components/ui/Button';
 import { Card } from '../../../components/ui/Card';
 import { Input, Select, Textarea } from '../../../components/ui/Input';
@@ -333,15 +317,14 @@ function getPartyGroupsForSelection(partyType, lookups) {
 }
 
 const BANK_DEPOSIT_IN_OPTIONS = [
-  { value: 'L001', label: 'Cash-in-hand' },
-  { value: 'L002', label: 'Union Bank - CC A/c' },
-  { value: 'L013', label: 'SBI - Saving A/c' }
+  { value: 'L002', label: 'Cash-Credit A/c' },
+  { value: 'L013', label: 'Saving A/c' },
+  { value: 'CORPORATE', label: 'Corporate Bank' }
 ];
 
 const BANK_DEPOSIT_BY_OPTIONS = [
-  { value: 'CASH', label: 'Cash' },
-  { value: 'CHEQUE', label: 'Cheque' },
-  { value: 'TRANSFER', label: 'Bank Transfer' }
+  { value: 'DD/CHEQUE', label: 'DD/Cheque' },
+  { value: 'CASH', label: 'Cash' }
 ];
 
 const BANK_TRANSFER_TYPE_OPTIONS = [
@@ -483,15 +466,18 @@ export function BankTransactionForm({ section, lookups = {}, value, setValue, on
     return (
       <Card className="rounded-[var(--radius-card,1.75rem)] border border-slate-200 bg-white p-6 shadow-sm">
         <div className="grid gap-3 md:grid-cols-4">
-          <LedgerValue label="Settlement Account" value={getTransactionLedgerLabel(settlementCode, lookups)} />
           {renderAmountInput()}
           <div className="space-y-1.5">
-            <FieldLabel>Instrument No.</FieldLabel>
+            <FieldLabel>Cheque No.</FieldLabel>
             <Input value={draft.instrumentNo || ''} onChange={(event) => setRootValue(setValue, 'instrumentNo', event.target.value)} placeholder="Cheque / reference no" />
           </div>
           <div className="space-y-1.5">
-            <FieldLabel>Instrument Date</FieldLabel>
+            <FieldLabel>Cheque Date</FieldLabel>
             <Input type="date" value={draft.instrumentDate || ''} onChange={(event) => setRootValue(setValue, 'instrumentDate', event.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel>Total Amount</FieldLabel>
+            <Input value={draft.amount ? Number(draft.amount).toLocaleString('en-IN') : '0.00'} disabled className="bg-slate-50 cursor-not-allowed text-slate-700 font-medium" />
           </div>
           {renderCommonNarration()}
         </div>
@@ -525,12 +511,16 @@ export function BankTransactionForm({ section, lookups = {}, value, setValue, on
           </div>
           {renderAmountInput()}
           <div className="space-y-1.5">
-            <FieldLabel>Instrument No.</FieldLabel>
+            <FieldLabel>Cheque No.</FieldLabel>
             <Input value={draft.instrumentNo || ''} onChange={(event) => setRootValue(setValue, 'instrumentNo', event.target.value)} placeholder="Deposit slip / cheque no" />
           </div>
           <div className="space-y-1.5">
-            <FieldLabel>Instrument Date</FieldLabel>
+            <FieldLabel>Cheque Date</FieldLabel>
             <Input type="date" value={draft.instrumentDate || ''} onChange={(event) => setRootValue(setValue, 'instrumentDate', event.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel>Total Amount</FieldLabel>
+            <Input value={draft.amount ? Number(draft.amount).toLocaleString('en-IN') : '0.00'} disabled className="bg-slate-50 cursor-not-allowed text-slate-700 font-medium" />
           </div>
           {renderCommonNarration()}
         </div>
@@ -539,22 +529,26 @@ export function BankTransactionForm({ section, lookups = {}, value, setValue, on
   }
 
   function renderChequeIssueForm() {
-    const settlementCode = isChequeIssueLoan ? 'L012' : 'L013';
     return (
       <Card className="rounded-[var(--radius-card,1.75rem)] border border-slate-200 bg-white p-6 shadow-sm">
         <div className="grid gap-3 md:grid-cols-4">
-          <LedgerValue label="Settlement Account" value={getTransactionLedgerLabel(settlementCode, lookups)} />
           {renderAmountInput()}
-          <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 md:col-span-3">
-            <input type="checkbox" checked={!!draft.details?.selfUse} onChange={(event) => updateDetails('selfUse', event.target.checked)} />
-            Withdrawal for self use
-          </label>
-          <div className="space-y-1.5">
-            <FieldLabel>Instrument No.</FieldLabel>
+          <div className="space-y-1.5 md:col-span-1">
+            <FieldLabel>Total Amount</FieldLabel>
+            <Input value={draft.amount ? Number(draft.amount).toLocaleString('en-IN') : '0.00'} disabled className="bg-slate-50 cursor-not-allowed text-slate-700 font-medium" />
+          </div>
+          <div className="space-y-1.5 md:col-span-2">
+            <label className="flex h-full items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+              <input type="checkbox" checked={!!draft.details?.selfUse} onChange={(event) => updateDetails('selfUse', event.target.checked)} />
+              Withdrawal for self use
+            </label>
+          </div>
+          <div className="space-y-1.5 md:col-span-2">
+            <FieldLabel>Cheque No.</FieldLabel>
             <Input value={draft.instrumentNo || ''} onChange={(event) => setRootValue(setValue, 'instrumentNo', event.target.value)} placeholder="Cheque number" />
           </div>
-          <div className="space-y-1.5">
-            <FieldLabel>Instrument Date</FieldLabel>
+          <div className="space-y-1.5 md:col-span-2">
+            <FieldLabel>Cheque Date</FieldLabel>
             <Input type="date" value={draft.instrumentDate || ''} onChange={(event) => setRootValue(setValue, 'instrumentDate', event.target.value)} />
           </div>
           {renderCommonNarration()}
@@ -564,31 +558,21 @@ export function BankTransactionForm({ section, lookups = {}, value, setValue, on
   }
 
   function renderTransferForm() {
-    const fromCode = draft.details?.fixedFrom || (isTransferSaving ? 'L002' : 'L013');
-    const toCode = draft.details?.fixedTo || (isTransferSaving ? 'L013' : 'L002');
     return (
       <Card className="rounded-[var(--radius-card,1.75rem)] border border-slate-200 bg-white p-6 shadow-sm">
         <div className="grid gap-3 md:grid-cols-4">
-          <div className="space-y-1.5">
-            <FieldLabel required>Transfer Type</FieldLabel>
-            <CustomSelect
-              value={draft.details?.transferType || ''}
-              onChange={(next) => updateDetails('transferType', next)}
-              options={BANK_TRANSFER_TYPE_OPTIONS}
-              placeholder="Select type"
-              searchable={false}
-            />
-          </div>
           {renderAmountInput()}
-          <LedgerValue label="From Account" value={getTransactionLedgerLabel(fromCode, lookups)} />
-          <LedgerValue label="To Account" value={getTransactionLedgerLabel(toCode, lookups)} />
           <div className="space-y-1.5">
-            <FieldLabel>Instrument No.</FieldLabel>
+            <FieldLabel>Cheque No.</FieldLabel>
             <Input value={draft.instrumentNo || ''} onChange={(event) => setRootValue(setValue, 'instrumentNo', event.target.value)} placeholder="Cheque / transfer ref" />
           </div>
           <div className="space-y-1.5">
-            <FieldLabel>Instrument Date</FieldLabel>
+            <FieldLabel>Cheque Date</FieldLabel>
             <Input type="date" value={draft.instrumentDate || ''} onChange={(event) => setRootValue(setValue, 'instrumentDate', event.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel>Total Amount</FieldLabel>
+            <Input value={draft.amount ? Number(draft.amount).toLocaleString('en-IN') : '0.00'} disabled className="bg-slate-50 cursor-not-allowed text-slate-700 font-medium" />
           </div>
           {renderCommonNarration()}
         </div>
@@ -610,12 +594,16 @@ export function BankTransactionForm({ section, lookups = {}, value, setValue, on
         <div className="grid gap-3 md:grid-cols-4">
           {renderAmountInput()}
           <div className="space-y-1.5">
-            <FieldLabel>Instrument No.</FieldLabel>
+            <FieldLabel>Cheque No.</FieldLabel>
             <Input value={draft.instrumentNo || ''} onChange={(event) => setRootValue(setValue, 'instrumentNo', event.target.value)} placeholder="Reference no" />
           </div>
           <div className="space-y-1.5">
-            <FieldLabel>Instrument Date</FieldLabel>
+            <FieldLabel>Cheque Date</FieldLabel>
             <Input type="date" value={draft.instrumentDate || ''} onChange={(event) => setRootValue(setValue, 'instrumentDate', event.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel>Total Amount</FieldLabel>
+            <Input value={draft.amount ? Number(draft.amount).toLocaleString('en-IN') : '0.00'} disabled className="bg-slate-50 cursor-not-allowed text-slate-700 font-medium" />
           </div>
           {renderCommonNarration()}
         </div>

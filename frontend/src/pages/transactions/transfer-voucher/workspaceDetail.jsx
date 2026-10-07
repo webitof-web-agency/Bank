@@ -1,6 +1,6 @@
 ﻿import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Edit2, FileText, Layers3, RotateCcw, ShieldCheck, Trash2, Sparkles } from 'lucide-react';
+import { ArrowLeft, Edit2, FileText, Layers3, ShieldCheck, Trash2, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../api/api';
 import { Button } from '../../../components/ui/Button';
@@ -33,17 +33,6 @@ function DetailRow({ label, value }) {
       <div className="text-[14px] font-medium text-slate-900">{value || '—'}</div>
     </div>
   );
-}
-
-function StatusBadge({ status = '' }) {
-  const value = String(status || '').toLowerCase();
-  const className =
-    value === 'posted' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' :
-    value === 'reversed' ? 'border-rose-200 bg-rose-50 text-rose-700' :
-    value === 'draft' ? 'border-amber-200 bg-amber-50 text-amber-700' :
-    'border-slate-200 bg-slate-50 text-slate-700';
-
-  return <span className={`inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-medium ${className}`}>{status || 'Draft'}</span>;
 }
 
 function EmptyState({ title, description }) {
@@ -95,7 +84,6 @@ export function TransferVoucherTransactionWorkspaceDetailPage({ sectionKey, item
   const [editorOpen, setEditorOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState(null);
-  const [reverseOpen, setReverseOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
   const [removedDocumentIds, setRemovedDocumentIds] = useState([]);
@@ -106,7 +94,6 @@ export function TransferVoucherTransactionWorkspaceDetailPage({ sectionKey, item
     return itemKey ? items.filter((entry) => entry.key === itemKey) : items;
   }, [catalog, sectionKey, itemKey]);
   const canWrite = hasPermission('transactions.write');
-  const canReverse = hasPermission('transactions.reverse');
 
   useEffect(() => {
     let mounted = true;
@@ -179,19 +166,6 @@ export function TransferVoucherTransactionWorkspaceDetailPage({ sectionKey, item
     }
   }
 
-  async function confirmReverse() {
-    if (!record) return;
-    try {
-      const response = await api.banking.reverseTransactionVoucher(token, record.id);
-      setRecord(response.data || response);
-      toast.success('Transfer voucher reversed');
-    } catch (error) {
-      toast.error(error.message || 'Unable to reverse transfer voucher');
-    } finally {
-      setReverseOpen(false);
-    }
-  }
-
   async function confirmDelete() {
     if (!record) return;
     try {
@@ -245,7 +219,6 @@ export function TransferVoucherTransactionWorkspaceDetailPage({ sectionKey, item
 
   const headerCards = [
     { label: 'Amount', value: formatTransactionAmount(record.amount ?? allocationTotal ?? 0) },
-    { label: 'Status', value: record.status || 'Draft' },
     { label: 'Type', value: record.transactionType || 'payment' },
     { label: 'Rows', value: String(allocationRows.filter((row) => Number(row.amount || 0) > 0).length || journalLines.length || 0) }
   ];
@@ -260,7 +233,6 @@ export function TransferVoucherTransactionWorkspaceDetailPage({ sectionKey, item
       ['Party Type', record.partyType],
       ['Party', partyLabel],
       ['Amount', formatTransactionAmount(record.amount ?? allocationTotal ?? 0)],
-      ['Status', record.status],
       ['Mode', record.mode],
       ['Reference No', record.referenceNo],
       ['Narration', record.narration]
@@ -340,12 +312,6 @@ export function TransferVoucherTransactionWorkspaceDetailPage({ sectionKey, item
                 <Button type="button" variant="outline" onClick={() => window.print()} className="gap-2 border-slate-200 shadow-sm rounded-[var(--radius-input,0.75rem)] hover:bg-slate-50 text-slate-700 font-semibold text-sm h-10 px-4">
                   Print
                 </Button>
-                {canReverse && String(record.status || '').toLowerCase() === 'posted' ? (
-                  <Button type="button" variant="outline" onClick={() => setReverseOpen(true)} className="gap-2 border-slate-200 shadow-sm rounded-[var(--radius-input,0.75rem)] hover:bg-slate-50 text-slate-700 font-semibold text-sm h-10 px-4">
-                    <RotateCcw size={16} />
-                    Reverse
-                  </Button>
-                ) : null}
 
                 {canWrite ? (
                   <>
@@ -407,7 +373,6 @@ export function TransferVoucherTransactionWorkspaceDetailPage({ sectionKey, item
                   <DetailRow label="Category" value={record.voucherCategory} />
                   <DetailRow label="Transaction Type" value={record.transactionType} />
                   <DetailRow label="Party" value={partyLabel} />
-                  <DetailRow label="Status" value={<StatusBadge status={record.status} />} />
                 </div>
               </Card>
 
@@ -503,15 +468,6 @@ export function TransferVoucherTransactionWorkspaceDetailPage({ sectionKey, item
       </Modal>
 
       <ConfirmDialog
-        open={reverseOpen}
-        title="Reverse Transfer Voucher"
-        description="This voucher will be reversed and marked accordingly."
-        confirmLabel="Reverse"
-        onConfirm={confirmReverse}
-        onCancel={() => setReverseOpen(false)}
-      />
-
-      <ConfirmDialog
         open={deleteOpen}
         title="Delete Transfer Voucher"
         description="This transfer voucher will be removed permanently."
@@ -524,7 +480,4 @@ export function TransferVoucherTransactionWorkspaceDetailPage({ sectionKey, item
 }
 
 export default TransferVoucherTransactionWorkspaceDetailPage;
-
-
-
 

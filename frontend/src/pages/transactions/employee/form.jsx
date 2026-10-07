@@ -1,5 +1,5 @@
-﻿import { useEffect, useMemo } from 'react';
-import { FileText, Plus } from 'lucide-react';
+import { useEffect, useMemo } from 'react';
+import { Plus } from 'lucide-react';
 import { Button } from '../../../components/ui/Button';
 import { Card } from '../../../components/ui/Card';
 import { Input, Select, Textarea } from '../../../components/ui/Input';
@@ -231,11 +231,6 @@ export function EmployeeTransactionForm({ section, itemKey, lookups = {}, value,
             <FieldLabel>Designation</FieldLabel>
             <Input value={employeeDetails.designation} readOnly placeholder="—" />
           </div>
-
-          <div className="space-y-1.5">
-            <FieldLabel>Total Amount</FieldLabel>
-            <Input value={totalAmount || 0} readOnly />
-          </div>
         </div>
       </Card>
 
@@ -257,6 +252,10 @@ export function EmployeeTransactionForm({ section, itemKey, lookups = {}, value,
             <FieldLabel>Grain Advance</FieldLabel>
             <Input type="number" min="0" step="0.01" value={value.details?.components?.grain ?? ''} onChange={(e) => updateComponent('grain', e.target.value)} placeholder="0.00" />
           </div>
+          <div className="space-y-1.5">
+            <FieldLabel>Total Amount</FieldLabel>
+            <Input value={totalAmount ? Number(totalAmount).toLocaleString('en-IN') : '0.00'} disabled className="bg-slate-50 cursor-not-allowed text-slate-700 font-medium" />
+          </div>
         </div>
       </Card>
 
@@ -273,18 +272,18 @@ export function EmployeeTransactionForm({ section, itemKey, lookups = {}, value,
           </div>
 
           <div className="space-y-1.5">
-            <FieldLabel>Amount</FieldLabel>
+            <FieldLabel>Total Amount</FieldLabel>
             <Input value={totalAmount || 0} readOnly />
           </div>
 
           {instrumentVisible ? (
             <>
               <div className="space-y-1.5">
-                <FieldLabel>Instrument No.</FieldLabel>
+                <FieldLabel>Cheque No.</FieldLabel>
                 <Input value={value.instrumentNo || ''} onChange={(e) => updateRoot('instrumentNo', e.target.value)} placeholder="Cheque No." />
               </div>
               <div className="space-y-1.5">
-                <FieldLabel>Instrument Date</FieldLabel>
+                <FieldLabel>Cheque Date</FieldLabel>
                 <Input type="date" value={value.instrumentDate || ''} onChange={(e) => updateRoot('instrumentDate', e.target.value)} />
               </div>
             </>

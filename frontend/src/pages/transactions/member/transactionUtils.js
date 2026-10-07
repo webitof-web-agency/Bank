@@ -91,7 +91,6 @@ export function createEmptyTransactionDraft(sectionKey = '', sectionItems = [], 
     partyCode: '',
     amount: '',
     mode: firstItem?.mode || '',
-    status: 'Draft',
     narration: '',
     referenceNo: '',
     instrumentNo: '',
@@ -113,7 +112,6 @@ export function createEmptyTransactionDraft(sectionKey = '', sectionItems = [], 
       accountHead: '',
       payMode: '',
       sms: false,
-      fixedSettlement: '',
       components: {
         loanAmt: '',
         lad: ''
@@ -140,7 +138,6 @@ export function createTransactionDraftFromRecord(record = {}, sectionItems = [],
     partyCode: record.partyCode || '',
     amount: record.amount ?? '',
     mode: record.mode || details.payMode || firstItem?.mode || '',
-    status: record.status || 'Draft',
     narration: record.narration || '',
     referenceNo: record.referenceNo || '',
     instrumentNo: record.instrumentNo || '',
@@ -163,7 +160,6 @@ export function createTransactionDraftFromRecord(record = {}, sectionItems = [],
       accountHead: details.accountHead || '',
       payMode: details.payMode || record.payMode || record.mode || '',
       sms: Boolean(details.sms),
-      fixedSettlement: details.fixedSettlement || '',
       components: {
         ...(details.components || {}),
         loanAmt: details.components?.loanAmt ?? '',
@@ -198,9 +194,7 @@ export function buildTransactionVoucherPayload(draft = {}) {
   details.payMode = cleanText(details.payMode || draft.payMode || draft.mode);
   details.sms = Boolean(details.sms);
   if (cleanText(details.fixedSettlement)) {
-    details.fixedSettlement = cleanText(details.fixedSettlement);
   } else if (details.key === 'ssa-paid-member') {
-    details.fixedSettlement = details.payMode === 'CHEQUE' ? 'L013' : 'L001';
   }
   details.components = {
     loanAmt: toNumberOrZero(details.components?.loanAmt),
@@ -221,7 +215,6 @@ export function buildTransactionVoucherPayload(draft = {}) {
     partyType: cleanText(draft.partyType, 'ledger'),
     amount: toNumberOrZero(draft.amount),
     mode: cleanText(draft.mode || draft.payMode),
-    status: cleanText(draft.status, 'Draft'),
     narration: cleanText(draft.narration),
     referenceNo: cleanText(draft.referenceNo),
     instrumentNo: cleanText(draft.instrumentNo),

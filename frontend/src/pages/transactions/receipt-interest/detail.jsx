@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Edit2, FileText, Layers3, RotateCcw, Sparkles, ShieldCheck, Trash2 } from 'lucide-react';
+import { ArrowLeft, Edit2, FileText, Layers3, Sparkles, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../api/api';
 import { Button } from '../../../components/ui/Button';
@@ -32,21 +32,6 @@ function DetailRow({ label, value }) {
     </div>
   );
 }
-
-function StatusBadge({ status = '' }) {
-  const value = String(status || '').toLowerCase();
-  const className =
-    value === 'posted' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' :
-    value === 'reversed' ? 'border-rose-200 bg-rose-50 text-rose-700' :
-    value === 'draft' ? 'border-amber-200 bg-amber-50 text-amber-700' :
-    'border-slate-200 bg-slate-50 text-slate-700';
-  return (
-    <span className={`inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-medium ${className}`}>
-      {status || 'Draft'}
-    </span>
-  );
-}
-
 
 function EmptyState({ title, description }) {
   return (
@@ -126,7 +111,6 @@ export function ReceiptInterestTransactionDetailPage({ sectionKey }) {
   const [editorOpen, setEditorOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState(null);
-  const [reverseOpen, setReverseOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
   const [removedDocumentIds, setRemovedDocumentIds] = useState([]);
@@ -134,7 +118,6 @@ export function ReceiptInterestTransactionDetailPage({ sectionKey }) {
   const section = useMemo(() => catalog.find((item) => item.key === sectionKey) || null, [catalog, sectionKey]);
   const sectionItems = useMemo(() => getSectionItems(catalog, sectionKey), [catalog, sectionKey]);
   const canWrite = hasPermission('transactions.write');
-  const canReverse = hasPermission('transactions.reverse');
 
   useEffect(() => {
     let mounted = true;
@@ -207,19 +190,6 @@ export function ReceiptInterestTransactionDetailPage({ sectionKey }) {
     }
   }
 
-  async function confirmReverse() {
-    if (!record) return;
-    try {
-      const response = await api.banking.reverseTransactionVoucher(token, record.id);
-      setRecord(response.data || response);
-      toast.success('Transaction reversed');
-    } catch (error) {
-      toast.error(error.message || 'Unable to reverse transaction');
-    } finally {
-      setReverseOpen(false);
-    }
-  }
-
   async function confirmDelete() {
     if (!record) return;
     try {
@@ -242,15 +212,14 @@ export function ReceiptInterestTransactionDetailPage({ sectionKey }) {
       ['Transaction Type', record.transactionType],
       ['Party Type', record.partyType],
       ['Party', getTransactionPartyLabel(record.partyCode, lookups, record.partyType)],
-      ['Settlement', getTransactionLedgerLabel(record.details?.settlementAccount || record.details?.ledgerTarget || record.details?.depositIn || record.details?.fromAccount || '', lookups)],
+      ['Settlement', getTransactionLedgerLabel(record.details?.ledgerTarget || record.details?.depositIn || record.details?.fromAccount || '', lookups)],
       ['Branch', record.branchCode],
       ['FY Code', record.fyCode],
       ['Amount', formatTransactionAmount(record.amount ?? 0)],
-      ['Status', record.status],
       ['Mode', record.mode],
       ['Reference No', record.referenceNo],
-      ['Instrument No', record.instrumentNo],
-      ['Instrument Date', record.instrumentDate],
+      ['Cheque No', record.instrumentNo],
+      ['Cheque Date', record.instrumentDate],
       ['Approved By', record.approvedBy],
       ['Created By', record.createdBy],
       ['Narration', record.narration]
@@ -307,7 +276,7 @@ export function ReceiptInterestTransactionDetailPage({ sectionKey }) {
   const documentDefs = getReceiptInterestDocumentDefinitions(templateItem?.key || record?.details?.key || '');
   const partyLabel = getTransactionPartyLabel(record.partyCode, lookups, record.partyType);
   const settlementLabel = getTransactionLedgerLabel(
-    record.details?.settlementAccount || record.details?.ledgerTarget || record.details?.depositIn || record.details?.fromAccount || '',
+    record.details?.ledgerTarget || record.details?.depositIn || record.details?.fromAccount || '',
     lookups
   );
   const mainAmount = formatTransactionAmount(record.amount ?? 0);
@@ -326,7 +295,6 @@ export function ReceiptInterestTransactionDetailPage({ sectionKey }) {
 
   const headerCards = [
     { label: 'Amount', value: mainAmount },
-    { label: 'Status', value: record.status || 'Draft' },
     { label: 'Type', value: record.transactionType || 'payment' },
     { label: 'Rows', value: String(journalLines.length || recoveryLines.length || allocations.length || 0) }
   ];
@@ -364,12 +332,6 @@ export function ReceiptInterestTransactionDetailPage({ sectionKey }) {
                 <Button type="button" variant="outline" onClick={() => window.print()} className="gap-2 border-slate-200 shadow-sm rounded-[var(--radius-input,0.75rem)] hover:bg-slate-50 text-slate-700 font-semibold text-sm h-10 px-4">
                   Print
                 </Button>
-                {canReverse && String(record.status || '').toLowerCase() === 'posted' ? (
-                  <Button type="button" variant="outline" onClick={() => setReverseOpen(true)} className="gap-2 border-slate-200 shadow-sm rounded-[var(--radius-input,0.75rem)] hover:bg-slate-50 text-slate-700 font-semibold text-sm h-10 px-4">
-                    <RotateCcw size={16} />
-                    Reverse
-                  </Button>
-                ) : null}
 
                 {canWrite ? (
                   <Button type="button" variant="outline" onClick={openEditor} className="gap-2 border-slate-200 shadow-sm rounded-[var(--radius-input,0.75rem)] hover:bg-slate-50 text-slate-700 font-semibold text-sm h-10 px-4 bg-slate-50">
@@ -429,10 +391,8 @@ export function ReceiptInterestTransactionDetailPage({ sectionKey }) {
               <DetailRow label="Transaction Type" value={record.transactionType} />
               <DetailRow label="Party Type" value={record.partyType} />
               <DetailRow label="Received From" value={partyLabel} />
-              <DetailRow label="Settlement A/c" value={settlementLabel} />
               <DetailRow label="Branch" value={record.branchCode} />
               <DetailRow label="FY Code" value={record.fyCode} />
-              <DetailRow label="Status" value={<StatusBadge status={record.status} />} />
             </div>
           </Card>
 
@@ -441,8 +401,8 @@ export function ReceiptInterestTransactionDetailPage({ sectionKey }) {
               <DetailRow label="Amount" value={mainAmount} />
               <DetailRow label="Mode" value={record.mode} />
               <DetailRow label="Reference No" value={record.referenceNo} />
-              <DetailRow label="Instrument No" value={record.instrumentNo} />
-              <DetailRow label="Instrument Date" value={record.instrumentDate} />
+              <DetailRow label="Cheque No" value={record.instrumentNo} />
+              <DetailRow label="Cheque Date" value={record.instrumentDate} />
               <DetailRow label="Approved By" value={record.approvedBy} />
               <DetailRow label="Created By" value={record.createdBy} />
               <DetailRow label="Narration" value={record.narration} />
@@ -521,7 +481,6 @@ export function ReceiptInterestTransactionDetailPage({ sectionKey }) {
             <div className="divide-y divide-slate-100 px-6">
               <DetailRow label="Journal Lines" value={journalLines.length} />
               <DetailRow label="Main Amount" value={mainAmount} />
-              <DetailRow label="Posted Status" value={<StatusBadge status={record.status} />} />
               <DetailRow label="Reversal Of" value={record.reversalOf || '—'} />
             </div>
           </Card>
@@ -578,7 +537,6 @@ export function ReceiptInterestTransactionDetailPage({ sectionKey }) {
             <div className="divide-y divide-slate-100 px-6">
               <DetailRow label="Voucher No" value={record.voucherNo} />
               <DetailRow label="Category" value={record.voucherCategory} />
-              <DetailRow label="Status" value={<StatusBadge status={record.status} />} />
               <DetailRow label="Created By" value={record.createdBy || '—'} />
               <DetailRow label="Approved By" value={record.approvedBy || '—'} />
               <DetailRow label="Party Type" value={record.partyType} />
@@ -639,16 +597,6 @@ export function ReceiptInterestTransactionDetailPage({ sectionKey }) {
           />
         ) : null}
       </Modal>
-
-      <ConfirmDialog
-        open={reverseOpen}
-        title="Reverse transaction"
-        description={`Reverse ${record.voucherNo || 'this transaction'}?`}
-        confirmLabel="Reverse"
-        tone="outline"
-        onConfirm={confirmReverse}
-        onClose={() => setReverseOpen(false)}
-      />
 
       <ConfirmDialog
         open={deleteOpen}

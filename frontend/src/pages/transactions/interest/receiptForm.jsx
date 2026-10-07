@@ -39,7 +39,7 @@ export function ReceiptVoucherForm({ section, lookups = {}, value, setValue, onS
   const ledgerOptions = useMemo(() => buildOptions(lookups.ledgers || []), [lookups]);
   const bankOptions = useMemo(() => buildOptions(lookups.bankAccounts || []), [lookups]);
   const receiptToLabel = getTransactionLedgerLabel(value.partyCode || '', lookups);
-  const receiptByLabel = getTransactionLedgerLabel(value.details?.settlementAccount || '', lookups);
+  const receiptByLabel = getTransactionLedgerLabel('', lookups);
 
   function setRoot(key, nextValue) {
     setValue((current) => ({ ...(current || {}), [key]: nextValue }));
@@ -76,7 +76,7 @@ export function ReceiptVoucherForm({ section, lookups = {}, value, setValue, onS
 
           <LookupSelect
             label="Receipt By"
-            value={value.details?.settlementAccount || ''}
+            value={''}
             onChange={(next) => setDetail('settlementAccount', next)}
             placeholder="Select receipt by"
             options={[...ledgerOptions, ...bankOptions]}

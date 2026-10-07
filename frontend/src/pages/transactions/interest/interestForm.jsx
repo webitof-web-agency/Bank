@@ -33,9 +33,34 @@ function LookupSelect({ label, value, onChange, options = [], placeholder = 'Sel
 
 export function InterestVoucherForm({ section, lookups = {}, value, setValue, onSubmit, onDocumentRemove }) {
   const activeItem = useMemo(() => (section?.items || []).find((item) => item.key === value?.details?.key) || section?.items?.[0] || null, [section, value]);
+  const isEmployee = activeItem?.key === 'interest-recv-employee';
+
   const memberOptions = useMemo(() => buildOptions(lookups.members || [], (item) => ({ value: item.code || '', label: `${item.code || ''}${item.name ? ` - ${item.name}` : ''}`.trim() })), [lookups]);
-  const ledgerOptions = useMemo(() => buildOptions(lookups.ledgers || [], (item) => ({ value: item.code || '', label: `${item.code || ''}${item.name ? ` - ${item.name}` : ''}`.trim() })), [lookups]);
+  const employeeOptions = useMemo(() => buildOptions(lookups.employees || [], (item) => ({ value: item.code || '', label: `${item.code || ''}${item.name || item.fullName ? ` - ${item.name || item.fullName}` : ''}`.trim() })), [lookups]);
+  
   const selectedMember = useMemo(() => (lookups.members || []).find((member) => String(member.code || '').trim().toUpperCase() === String(value.partyCode || '').trim().toUpperCase()) || null, [lookups, value]);
+  const selectedEmployee = useMemo(() => (lookups.employees || []).find((employee) => String(employee.code || '').trim().toUpperCase() === String(value.partyCode || '').trim().toUpperCase()) || null, [lookups, value]);
+
+  const accountTypeOptions = useMemo(() => {
+    switch (activeItem?.key) {
+      case 'interest-paid-member':
+        return [
+          { value: 'Compulsary Deposit', label: 'Compulsary Deposit' },
+          { value: 'Saving Deposit', label: 'Saving Deposit' }
+        ];
+      case 'interest-recv-employee':
+        return [
+          { value: 'House Loan to Employee', label: 'House Loan to Employee' },
+          { value: 'Vehicle Loan to Employee', label: 'Vehicle Loan to Employee' }
+        ];
+      case 'interest-recv-member':
+      default:
+        return [
+          { value: 'Loan to Member', label: 'Loan to Member' },
+          { value: 'Deposit Loan to Member', label: 'Deposit Loan to Member' }
+        ];
+    }
+  }, [activeItem?.key]);
 
   function setRoot(key, nextValue) {
     setValue((current) => ({ ...(current || {}), [key]: nextValue }));
@@ -71,41 +96,59 @@ export function InterestVoucherForm({ section, lookups = {}, value, setValue, on
           </div>
 
           <LookupSelect
-            label="Member Code"
+            label={isEmployee ? "Employee Code" : "Member Code"}
             value={value.partyCode || ''}
             onChange={(next) => {
               setRoot('partyCode', String(next || '').toUpperCase());
-              setRoot('partyType', 'member');
+              setRoot('partyType', isEmployee ? 'employee' : 'member');
             }}
-            options={memberOptions}
-            placeholder="Search member by code"
+            options={isEmployee ? employeeOptions : memberOptions}
+            placeholder={`Search ${isEmployee ? 'employee' : 'member'} by code`}
             required
-            helper="Member code from the master members table."
+            helper={`${isEmployee ? 'Employee' : 'Member'} code from the master table.`}
           />
 
           <div className="space-y-1.5">
-            <FieldLabel>Member Name</FieldLabel>
-            <Input value={selectedMember?.name || ''} readOnly />
+            <FieldLabel>{isEmployee ? "Employee Name" : "Member Name"}</FieldLabel>
+            <Input value={isEmployee ? (selectedEmployee?.name || selectedEmployee?.fullName || '—') : (selectedMember?.name || '—')} readOnly />
+          </div>
+
+          {!isEmployee && (
+            <div className="space-y-1.5">
+              <FieldLabel>Branch</FieldLabel>
+              <Input value={selectedMember?.branchCode || selectedMember?.branch || '—'} readOnly />
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            <FieldLabel>{isEmployee ? "Employee Post" : "Designation"}</FieldLabel>
+            <Input value={isEmployee ? (selectedEmployee?.designation || '—') : (selectedMember?.designation || '—')} readOnly />
           </div>
 
           <div className="space-y-1.5">
-            <FieldLabel>Branch</FieldLabel>
-            <Input value={selectedMember?.branchCode || selectedMember?.branch || ''} readOnly />
+            <FieldLabel>A/C</FieldLabel>
+            <CustomSelect
+              value={value.details?.accountType || ''}
+              onChange={(next) => setDetail('accountType', next)}
+              className="w-full"
+              placeholder="Select A/C Type"
+              options={accountTypeOptions}
+            />
           </div>
 
           <div className="space-y-1.5">
-            <FieldLabel>Designation</FieldLabel>
-            <Input value={selectedMember?.designation || ''} readOnly />
+            <FieldLabel>Payment Mode</FieldLabel>
+            <CustomSelect
+              value={value.mode || ''}
+              onChange={(next) => setRoot('mode', next)}
+              className="w-full"
+              placeholder="Select Mode"
+              options={[
+                { value: 'Cash', label: 'Cash' },
+                { value: 'Transfer', label: 'Transfer' }
+              ]}
+            />
           </div>
-
-          <LookupSelect
-            label="Account Head"
-            value={value.details?.accountHead || ''}
-            onChange={(next) => setDetail('accountHead', next)}
-            options={ledgerOptions}
-            placeholder="Select account head"
-            helper="Ledger head used for interest posting."
-          />
 
           <div className="space-y-1.5">
             <FieldLabel required>Amount</FieldLabel>
@@ -127,6 +170,17 @@ export function InterestVoucherForm({ section, lookups = {}, value, setValue, on
               step="0.01"
               value={value.details?.interestAmount ?? ''}
               onChange={(e) => setDetail('interestAmount', e.target.value)}
+              placeholder="0.00"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <FieldLabel>Total Amount</FieldLabel>
+            <Input
+              type="number"
+              value={value.amount ?? ''}
+              readOnly
+              className="bg-slate-50 text-slate-500"
               placeholder="0.00"
             />
           </div>
@@ -189,8 +243,12 @@ export function InterestVoucherForm({ section, lookups = {}, value, setValue, on
       </Card>
 
       <div className="flex items-center gap-3 text-sm text-slate-500">
-        <span>Member:</span>
-        <span className="font-medium text-slate-900">{selectedMember?.code ? `${selectedMember.code} - ${selectedMember.name || ''}`.trim() : ''}</span>
+        <span>{isEmployee ? "Employee:" : "Member:"}</span>
+        <span className="font-medium text-slate-900">
+          {isEmployee
+            ? selectedEmployee?.code ? `${selectedEmployee.code} - ${selectedEmployee.name || selectedEmployee.fullName || ''}`.trim() : '—'
+            : selectedMember?.code ? `${selectedMember.code} - ${selectedMember.name || ''}`.trim() : '—'}
+        </span>
         <span className="text-slate-300">•</span>
         <span>Interest:</span>
         <span className="font-medium text-slate-900">{formatTransactionAmount(value.details?.interestAmount ?? 0)}</span>

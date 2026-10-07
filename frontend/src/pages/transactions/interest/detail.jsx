@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Edit2, FileText, Layers3, Sparkles, ShieldCheck, Trash2 } from 'lucide-react';
+import { ArrowLeft, Edit2, FileText, Layers3, Sparkles, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../api/api';
 import { Button } from '../../../components/ui/Button';
@@ -32,7 +32,6 @@ function DetailRow({ label, value }) {
     </div>
   );
 }
-
 
 function EmptyState({ title, description }) {
   return (
@@ -213,14 +212,14 @@ export function ReceiptInterestTransactionDetailPage({ sectionKey }) {
       ['Transaction Type', record.transactionType],
       ['Party Type', record.partyType],
       ['Party', getTransactionPartyLabel(record.partyCode, lookups, record.partyType)],
-      ['Settlement', getTransactionLedgerLabel(record.details?.settlementAccount || record.details?.ledgerTarget || record.details?.depositIn || record.details?.fromAccount || '', lookups)],
+      ['Settlement', getTransactionLedgerLabel(record.details?.ledgerTarget || record.details?.depositIn || record.details?.fromAccount || '', lookups)],
       ['Branch', record.branchCode],
       ['FY Code', record.fyCode],
       ['Amount', formatTransactionAmount(record.amount ?? 0)],
       ['Mode', record.mode],
       ['Reference No', record.referenceNo],
-      ['Instrument No', record.instrumentNo],
-      ['Instrument Date', record.instrumentDate],
+      ['Cheque No', record.instrumentNo],
+      ['Cheque Date', record.instrumentDate],
       ['Approved By', record.approvedBy],
       ['Created By', record.createdBy],
       ['Narration', record.narration]
@@ -277,7 +276,7 @@ export function ReceiptInterestTransactionDetailPage({ sectionKey }) {
   const documentDefs = getReceiptInterestDocumentDefinitions(templateItem?.key || record?.details?.key || '');
   const partyLabel = getTransactionPartyLabel(record.partyCode, lookups, record.partyType);
   const settlementLabel = getTransactionLedgerLabel(
-    record.details?.settlementAccount || record.details?.ledgerTarget || record.details?.depositIn || record.details?.fromAccount || '',
+    record.details?.ledgerTarget || record.details?.depositIn || record.details?.fromAccount || '',
     lookups
   );
   const mainAmount = formatTransactionAmount(record.amount ?? 0);
@@ -392,7 +391,6 @@ export function ReceiptInterestTransactionDetailPage({ sectionKey }) {
               <DetailRow label="Transaction Type" value={record.transactionType} />
               <DetailRow label="Party Type" value={record.partyType} />
               <DetailRow label="Received From" value={partyLabel} />
-              <DetailRow label="Settlement A/c" value={settlementLabel} />
               <DetailRow label="Branch" value={record.branchCode} />
               <DetailRow label="FY Code" value={record.fyCode} />
             </div>
@@ -403,8 +401,8 @@ export function ReceiptInterestTransactionDetailPage({ sectionKey }) {
               <DetailRow label="Amount" value={mainAmount} />
               <DetailRow label="Mode" value={record.mode} />
               <DetailRow label="Reference No" value={record.referenceNo} />
-              <DetailRow label="Instrument No" value={record.instrumentNo} />
-              <DetailRow label="Instrument Date" value={record.instrumentDate} />
+              <DetailRow label="Cheque No" value={record.instrumentNo} />
+              <DetailRow label="Cheque Date" value={record.instrumentDate} />
               <DetailRow label="Approved By" value={record.approvedBy} />
               <DetailRow label="Created By" value={record.createdBy} />
               <DetailRow label="Narration" value={record.narration} />

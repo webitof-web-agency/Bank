@@ -1,6 +1,6 @@
 ﻿import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Edit2, FileText, Layers3, RotateCcw, ShieldCheck, Trash2, Sparkles } from 'lucide-react';
+import { ArrowLeft, Edit2, FileText, Layers3, ShieldCheck, Trash2, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../api/api';
 import { Button } from '../../../components/ui/Button';
@@ -31,17 +31,6 @@ function DetailRow({ label, value }) {
       <div className="text-[14px] font-medium text-slate-900">{value || '—'}</div>
     </div>
   );
-}
-
-function StatusBadge({ status = '' }) {
-  const value = String(status || '').toLowerCase();
-  const className =
-    value === 'posted' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' :
-    value === 'reversed' ? 'border-rose-200 bg-rose-50 text-rose-700' :
-    value === 'draft' ? 'border-amber-200 bg-amber-50 text-amber-700' :
-    'border-slate-200 bg-slate-50 text-slate-700';
-
-  return <span className={`inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-medium ${className}`}>{status || 'Draft'}</span>;
 }
 
 function EmptyState({ title, description }) {
@@ -102,7 +91,6 @@ export function EmployeeTransactionWorkspaceDetailPage({ sectionKey, itemKey }) 
   const [editorOpen, setEditorOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState(null);
-  const [reverseOpen, setReverseOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
   const [removedDocumentIds, setRemovedDocumentIds] = useState([]);
@@ -113,7 +101,6 @@ export function EmployeeTransactionWorkspaceDetailPage({ sectionKey, itemKey }) 
     return itemKey ? items.filter((entry) => entry.key === itemKey) : items;
   }, [catalog, sectionKey, itemKey]);
   const canWrite = hasPermission('transactions.write');
-  const canReverse = hasPermission('transactions.reverse');
 
   useEffect(() => {
     let mounted = true;
@@ -183,19 +170,6 @@ export function EmployeeTransactionWorkspaceDetailPage({ sectionKey, itemKey }) 
       toast.error(error.message || 'Unable to save employee transaction');
     } finally {
       setSaving(false);
-    }
-  }
-
-  async function confirmReverse() {
-    if (!record) return;
-    try {
-      const response = await api.banking.reverseTransactionVoucher(token, record.id);
-      setRecord(response.data || response);
-      toast.success('Employee transaction reversed');
-    } catch (error) {
-      toast.error(error.message || 'Unable to reverse employee transaction');
-    } finally {
-      setReverseOpen(false);
     }
   }
 
@@ -273,12 +247,6 @@ export function EmployeeTransactionWorkspaceDetailPage({ sectionKey, itemKey }) 
             </div>
 
             <div className="flex flex-wrap items-center gap-2 print:hidden">
-              {canReverse && String(record.status || '').toLowerCase() === 'posted' ? (
-                <Button type="button" variant="outline" onClick={() => setReverseOpen(true)} className="gap-2 border-slate-200 text-slate-700">
-                  <RotateCcw size={16} />
-                  Reverse
-                </Button>
-              ) : null}
               {canWrite ? (
                 <Button type="button" variant="outline" onClick={openEditor} className="gap-2 border-slate-200 text-slate-700">
                   <Edit2 size={16} />
@@ -297,7 +265,6 @@ export function EmployeeTransactionWorkspaceDetailPage({ sectionKey, itemKey }) 
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {[
               { label: 'Amount', value: mainAmount },
-              { label: 'Status', value: <StatusBadge status={record.status} /> },
               { label: 'Mode', value: record.mode || '—' },
               { label: 'Total Head Amount', value: formatTransactionAmount(componentTotal) }
             ].map((item) => (
@@ -341,7 +308,6 @@ export function EmployeeTransactionWorkspaceDetailPage({ sectionKey, itemKey }) 
                   <DetailRow label="Employee Name" value={partyLabel} />
                   <DetailRow label="Branch" value={record.branchCode || '—'} />
                   <DetailRow label="Designation" value={record.designation || '—'} />
-                  <DetailRow label="Status" value={<StatusBadge status={record.status} />} />
                 </div>
               </Card>
 
@@ -349,8 +315,8 @@ export function EmployeeTransactionWorkspaceDetailPage({ sectionKey, itemKey }) 
                 <div className="divide-y divide-slate-100 px-6">
                   <DetailRow label="Amount" value={mainAmount} />
                   <DetailRow label="Mode" value={record.mode} />
-                  <DetailRow label="Instrument No" value={record.instrumentNo} />
-                  <DetailRow label="Instrument Date" value={record.instrumentDate} />
+                  <DetailRow label="Cheque No" value={record.instrumentNo} />
+                  <DetailRow label="Cheque Date" value={record.instrumentDate} />
                   <DetailRow label="Narration" value={record.narration} />
                 </div>
               </Card>
@@ -420,7 +386,6 @@ export function EmployeeTransactionWorkspaceDetailPage({ sectionKey, itemKey }) 
                 <div className="divide-y divide-slate-100 px-6">
                   <DetailRow label="Voucher No" value={record.voucherNo} />
                   <DetailRow label="Category" value={record.voucherCategory} />
-                  <DetailRow label="Status" value={<StatusBadge status={record.status} />} />
                   <DetailRow label="Party Type" value={record.partyType} />
                   <DetailRow label="Branch" value={record.branchCode || '—'} />
                   <DetailRow label="Transaction Type" value={record.transactionType || '—'} />
@@ -476,16 +441,6 @@ export function EmployeeTransactionWorkspaceDetailPage({ sectionKey, itemKey }) 
           />
         ) : null}
       </Modal>
-
-      <ConfirmDialog
-        open={reverseOpen}
-        title="Reverse employee transaction"
-        description={`Reverse ${record.voucherNo || 'this transaction'}?`}
-        confirmLabel="Reverse"
-        tone="outline"
-        onConfirm={confirmReverse}
-        onClose={() => setReverseOpen(false)}
-      />
 
       <ConfirmDialog
         open={deleteOpen}

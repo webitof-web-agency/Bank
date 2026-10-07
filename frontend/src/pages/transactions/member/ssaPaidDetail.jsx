@@ -1,4 +1,4 @@
-﻿import { MemberTransactionDetailPage, DetailRow, StatusBadge } from './detail';
+﻿import { MemberTransactionDetailPage, DetailRow } from './detail';
 import { Card } from '../../../components/ui/Card';
 import { formatTransactionAmount, formatTransactionModeLabel } from './transactionUtils';
 import { Sparkles, Layers3, FileText, ShieldCheck } from 'lucide-react';
@@ -40,7 +40,6 @@ export function SsaPaidMemberTransactionDetailPage() {
             <DetailRow label="Fixed Settlement" value={details.fixedSettlement || '-'} />
             <DetailRow label="Send SMS" value={details.sms ? 'Yes' : 'No'} />
             <DetailRow label="Narration" value={record.narration || details.narration || '-'} />
-            <DetailRow label="Status" value={<StatusBadge status={record.status} />} />
           </div>
         </Card>
       );

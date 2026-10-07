@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { FileText, Plus } from 'lucide-react';
 import { Card } from '../../../components/ui/Card';
 import { Input, Textarea } from '../../../components/ui/Input';
@@ -155,6 +155,110 @@ export function TransferVoucherTransactionForm({ section, itemKey, lookups = {},
       updateRoot('mode', 'Transfer');
     }
   }, [activeKey]);
+
+  const ledgerGroups = buildGroups(lookups.ledgers, 'Ledger Accounts');
+
+  if (activeKey === 'transfer-voucher-payment' || activeKey === 'transfer-voucher-receipt') {
+    return (
+      <form id="transaction-voucher-form" className="mx-auto w-full max-w-4xl space-y-4" onSubmit={onSubmit}>
+        <div className="mb-2 flex items-center justify-between gap-3 px-1">
+          <div>
+            <h3 className="text-xl font-semibold text-slate-900">{activeItem?.label || 'Transfer Voucher'}</h3>
+          </div>
+          <div className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] ${toneClassName(activeItem?.accent || 'violet')}`}>
+            {activeKey === 'transfer-voucher-payment' ? 'Payment' : 'Receipt'}
+          </div>
+        </div>
+        
+        <Card className="rounded-[var(--radius-card,1.75rem)] border border-slate-200 bg-white p-6 md:p-8 shadow-sm">
+          <div className="grid gap-6 md:grid-cols-2">
+            {/* Left Column */}
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <FieldLabel>Voucher No</FieldLabel>
+                <Input
+                  value={value.voucherNo || ''}
+                  onChange={(e) => updateRoot('voucherNo', String(e.target.value || '').toUpperCase())}
+                  placeholder="Auto generated on save"
+                  className="font-mono uppercase tracking-wider bg-slate-50"
+                  readOnly
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <FieldLabel required>Date</FieldLabel>
+                <Input
+                  type="date"
+                  value={value.date || ''}
+                  onChange={(e) => updateRoot('date', e.target.value)}
+                />
+              </div>
+
+              {activeKey === 'transfer-voucher-payment' ? (
+                <div className="space-y-1.5">
+                  <FieldLabel required>Payment By</FieldLabel>
+                  <LookupSelect
+                    label=""
+                    value={value.partyCode || ''}
+                    onChange={(next) => updateRoot('partyCode', String(next || '').toUpperCase())}
+                    placeholder="Search or select ledger"
+                    groups={ledgerGroups}
+                  />
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <FieldLabel required>Receipt To</FieldLabel>
+                  <LookupSelect
+                    label=""
+                    value={value.partyCode || ''}
+                    onChange={(next) => updateRoot('partyCode', String(next || '').toUpperCase())}
+                    placeholder="Search or select ledger"
+                    groups={ledgerGroups}
+                  />
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <FieldLabel required>Amount</FieldLabel>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={value.amount ?? ''}
+                  onChange={(e) => updateRoot('amount', e.target.value)}
+                  placeholder="0.00"
+                />
+              </div>
+            </div>
+
+            {/* Right Column */}
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <FieldLabel>Total Amount</FieldLabel>
+                <Input
+                  type="number"
+                  value={value.amount ?? ''}
+                  readOnly
+                  className="bg-slate-50 text-slate-500"
+                  placeholder="0.00"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <FieldLabel>Narration</FieldLabel>
+                <Textarea
+                  value={value.narration || ''}
+                  onChange={(e) => updateRoot('narration', e.target.value)}
+                  placeholder="Enter narration or particulars..."
+                  className="min-h-[140px] resize-y"
+                />
+              </div>
+            </div>
+          </div>
+        </Card>
+      </form>
+    );
+  }
 
   return (
     <form id="transaction-voucher-form" className="mx-auto w-full space-y-3" onSubmit={onSubmit}>

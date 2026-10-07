@@ -1,6 +1,6 @@
 ﻿import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Eye, Edit2, Trash2, RotateCcw, ChevronDown, Filter, X } from 'lucide-react';
+import { Plus, Eye, Edit2, Trash2, Filter, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../api/api';
 import { Button } from '../../../components/ui/Button';
@@ -25,14 +25,6 @@ import {
   getEmployeeComponentTotal
 } from './transactionUtils';
 
-function badgeClass(status = '') {
-  const value = String(status || '').toLowerCase();
-  if (value === 'posted') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
-  if (value === 'reversed') return 'border-rose-200 bg-rose-50 text-rose-700';
-  if (value === 'draft') return 'border-amber-200 bg-amber-50 text-amber-700';
-  return 'border-slate-200 bg-slate-50 text-slate-700';
-}
-
 export function EmployeeTransactionWorkspacePage({ sectionKey, itemKey, detailPathBase }) {
   const navigate = useNavigate();
   const { token, hasPermission } = useAuth();
@@ -46,9 +38,7 @@ export function EmployeeTransactionWorkspacePage({ sectionKey, itemKey, detailPa
   const [draft, setDraft] = useState(createEmptyTransactionDraft(sectionKey, []));
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
-  const [reverseTarget, setReverseTarget] = useState(null);
   const [search, setSearch] = useState('');
-  const [filterStatus, setFilterStatus] = useState('');
   const [filterDropdownOpen, setFilterDropdownOpen] = useState(false);
   const [removedDocumentIds, setRemovedDocumentIds] = useState([]);
 
@@ -61,7 +51,6 @@ export function EmployeeTransactionWorkspacePage({ sectionKey, itemKey, detailPa
   const isAdvancePaid = activeItem?.key === 'advance-paid-emp';
   const isAdvanceRecovery = activeItem?.key === 'advance-recovery-emp';
   const canWrite = hasPermission('transactions.write');
-  const canReverse = hasPermission('transactions.reverse');
 
   useEffect(() => {
     let mounted = true;
@@ -106,10 +95,9 @@ export function EmployeeTransactionWorkspacePage({ sectionKey, itemKey, detailPa
         row.instrumentNo,
         String(total)
       ].some((value) => String(value || '').toLowerCase().includes(searchValue));
-      const matchesStatus = !filterStatus || String(row.status || '').toLowerCase() === String(filterStatus || '').toLowerCase();
-      return matchesSearch && matchesStatus;
+      return matchesSearch;
     });
-  }, [rows, sectionItems, search, filterStatus, lookups]);
+  }, [rows, sectionItems, search, lookups]);
 
   function openCreate() {
     const next = createEmptyTransactionDraft(sectionKey, sectionItems);
@@ -145,7 +133,7 @@ export function EmployeeTransactionWorkspacePage({ sectionKey, itemKey, detailPa
   }
 
   function exportCsv() {
-    const headers = ['Voucher No', 'Date', 'Category', 'Party', 'Amount', 'Status', 'Narration'];
+    const headers = ['Voucher No', 'Date', 'Category', 'Party', 'Amount', 'Narration'];
     const escape = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
     const csv = [
       headers.map(escape).join(','),
@@ -155,7 +143,6 @@ export function EmployeeTransactionWorkspacePage({ sectionKey, itemKey, detailPa
         row.voucherCategory,
         getTransactionPartyLabel(row.partyCode, lookups, row.partyType),
         row.amount ?? 0,
-        row.status || 'Draft',
         row.narration || ''
       ].map(escape).join(',')))
     ].join('\n');
@@ -230,20 +217,6 @@ export function EmployeeTransactionWorkspacePage({ sectionKey, itemKey, detailPa
     }
   }
 
-  async function confirmReverse() {
-    if (!reverseTarget) return;
-    try {
-      const response = await api.banking.reverseTransactionVoucher(token, reverseTarget.id);
-      const nextRecord = response.data || response;
-      setRows((current) => [nextRecord, ...current.map((item) => (item.id === nextRecord.id ? nextRecord : item))]);
-      toast.success('Employee transaction reversed');
-    } catch (error) {
-      toast.error(error.message || 'Unable to reverse employee transaction');
-    } finally {
-      setReverseTarget(null);
-    }
-  }
-
   const columns = [
     {
       key: 'voucherNo',
@@ -291,13 +264,13 @@ export function EmployeeTransactionWorkspacePage({ sectionKey, itemKey, detailPa
     ...(isAdvancePaid ? [
       {
         key: 'instrumentNo',
-        label: 'Instrument No',
+        label: 'Cheque No',
         sortable: true,
         render: (row) => <span className="text-slate-700">{row.instrumentNo || '-'}</span>
       },
       {
         key: 'instrumentDate',
-        label: 'Instrument Date',
+        label: 'Cheque Date',
         sortable: true,
         render: (row) => <span className="text-slate-700">{row.instrumentDate || '-'}</span>
       }
@@ -307,16 +280,6 @@ export function EmployeeTransactionWorkspacePage({ sectionKey, itemKey, detailPa
       label: 'Amount',
       sortable: true,
       render: (row) => <span className="text-slate-700">{formatTransactionAmount(row.amount ?? 0)}</span>
-    },
-    {
-      key: 'status',
-      label: 'Status',
-      sortable: true,
-      render: (row) => (
-        <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${badgeClass(row.status)}`}>
-          {row.status || 'Draft'}
-        </span>
-      )
     },
     {
       key: 'actions',
@@ -337,11 +300,6 @@ export function EmployeeTransactionWorkspacePage({ sectionKey, itemKey, detailPa
                 <Trash2 size={16} />
               </button>
             </>
-          ) : null}
-          {canReverse && String(row.status || '').toLowerCase() === 'posted' ? (
-            <button type="button" onClick={() => setReverseTarget(row)} className="rounded-full p-2 text-slate-400 hover:bg-amber-50 hover:text-amber-600" title="Reverse">
-              <RotateCcw size={16} />
-            </button>
           ) : null}
         </div>
       )
@@ -388,26 +346,11 @@ export function EmployeeTransactionWorkspacePage({ sectionKey, itemKey, detailPa
                     </button>
                   </div>
                   <div className="space-y-4">
-                    <div className="space-y-1.5">
-                      <label className="text-[12px] font-semibold text-slate-600">Status</label>
-                      <Select
-                        value={filterStatus}
-                        onChange={setFilterStatus}
-                        options={[
-                          { value: '', label: 'All' },
-                          { value: 'Draft', label: 'Draft' },
-                          { value: 'Posted', label: 'Posted' },
-                          { value: 'Reversed', label: 'Reversed' }
-                        ]}
-                        size="sm"
-                      />
-                    </div>
                     <Button
                       type="button"
                       className="w-full bg-[var(--primary,#1661F6)] text-white hover:opacity-90"
                       onClick={() => {
                         setSearch('');
-                        setFilterStatus('');
                         setFilterDropdownOpen(false);
                       }}
                     >
@@ -456,16 +399,6 @@ export function EmployeeTransactionWorkspacePage({ sectionKey, itemKey, detailPa
         tone="destructive"
         onConfirm={confirmDelete}
         onClose={() => setDeleteTarget(null)}
-      />
-
-      <ConfirmDialog
-        open={Boolean(reverseTarget)}
-        title="Reverse employee transaction"
-        description={`Reverse ${reverseTarget?.voucherNo || 'this posted transaction'}?`}
-        confirmLabel="Reverse"
-        tone="outline"
-        onConfirm={confirmReverse}
-        onClose={() => setReverseTarget(null)}
       />
     </div>
   );

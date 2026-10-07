@@ -21,7 +21,6 @@ export function InsurancePaidMemberTransactionDetailPage() {
             <DetailRow label="Date" value={record.date} />
             <DetailRow label="Transaction Type" value={record.transactionType} />
             <DetailRow label="Party Type" value={record.partyType} />
-            <DetailRow label="Settlement A/c" value={details.settlementAccount || '-'} />
             <DetailRow label="Branch" value={record.branchCode} />
             <DetailRow label="FY Code" value={record.fyCode} />
           </div>
@@ -34,11 +33,9 @@ export function InsurancePaidMemberTransactionDetailPage() {
           <div className="divide-y divide-slate-100 px-6">
             <DetailRow label="Settlement Account" value={details.settlementAccount || '-'} />
             <DetailRow label="Premium Amount" value={formatTransactionAmount(record.amount || 0)} />
-            <DetailRow label="Policy No" value={details.policyNo || '-'} />
-            <DetailRow label="Claim Ref" value={details.claimRef || '-'} />
             <DetailRow label="Mode" value={formatTransactionModeLabel(record.mode)} />
-            <DetailRow label="Instrument No" value={record.instrumentNo || details.instrumentNo || '-'} />
-            <DetailRow label="Instrument Date" value={record.instrumentDate || details.instrumentDate || '-'} />
+            <DetailRow label="Cheque No" value={record.instrumentNo || details.instrumentNo || '-'} />
+            <DetailRow label="Cheque Date" value={record.instrumentDate || details.instrumentDate || '-'} />
             <DetailRow label="Narration" value={record.narration || details.narration || '-'} />
           </div>
         </Card>
