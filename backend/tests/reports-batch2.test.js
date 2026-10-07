@@ -55,7 +55,10 @@ test('Phase 3 Batch 2 Reports Engine', async (t) => {
     assert.strictEqual(bs.liabilities[0].ledgerCode, 'L-SHARE');
     assert.strictEqual(bs.liabilities[0].amount, 20500); // 20000 + 500
     
-    assert.strictEqual(bs.totalAssets, 10400);
+    // Unclosed profit/loss (Income + Expenses) sits on the side that balances
+    // it: 200 income - 300 expense = 100 loss, on the assets side.
+    assert.deepStrictEqual(bs.profitLoss, { ledgerName: 'Profit & Loss A/c', amount: 100, side: 'ASSET' });
+    assert.strictEqual(bs.totalAssets, 10500);
     assert.strictEqual(bs.totalLiabilities, 20500);
   });
 
@@ -77,26 +80,28 @@ test('Phase 3 Batch 2 Reports Engine', async (t) => {
 
   await t.test('Day Book Report', async () => {
     const db = await buildDayBookReport({ date: '2023-03-05' }); // only v2
-    
-    assert.strictEqual(db.length, 2, 'Should have 2 lines for 1 voucher');
-    const cashLine = db.find(l => l.ledgerCode === 'L-CASH');
-    const incLine = db.find(l => l.ledgerCode === 'L-INTINC');
-    
-    assert.ok(cashLine, 'Cash line should be resolved correctly');
-    assert.ok(incLine, 'Income line should be resolved correctly');
-    
-    assert.strictEqual(cashLine.debit, 200);
-    assert.strictEqual(incLine.credit, 200);
+
+    assert.strictEqual(db.source, 'live');
+    assert.strictEqual(db.vouchers.length, 1, 'One voucher on the date');
+    const [voucher] = db.vouchers;
+    assert.strictEqual(voucher.voucherNo, 'V-002');
+    assert.strictEqual(voucher.heading, 'Interest By Cash', 'Cash receipt heading');
+    assert.strictEqual(voucher.credit, 200, 'Receipt amount shows as credit');
+    assert.strictEqual(voucher.debit, 0);
+    assert.strictEqual(db.openingCash, 10500, 'Cash before 5-Mar: 10000 + 500');
+    assert.strictEqual(db.closingCash, 10700);
   });
 
   await t.test('Voucher Summary Report', async () => {
-    const vs = await buildVoucherSummaryReport({});
-    
-    assert.strictEqual(vs.length, 3);
-    const expSum = vs.find(v => v.voucherCategory === 'Expense');
-    assert.strictEqual(expSum.amount, 300);
-    
-    const intSum = vs.find(v => v.voucherCategory === 'Interest');
-    assert.strictEqual(intSum.amount, 200);
+    // Day Book vouchers grouped by heading (type + pay mode), with counts and
+    // credit (receipts) / debit (payments) totals.
+    const vs = await buildVoucherSummaryReport({ dateFrom: '2023-03-01', dateTo: '2023-03-31' });
+
+    assert.strictEqual(vs.rows.length, 3);
+    const expSum = vs.rows.find((r) => r.voucherType === 'Expense By Cash');
+    assert.deepStrictEqual([expSum.count, expSum.credit, expSum.debit], [1, 0, 300]);
+
+    const intSum = vs.rows.find((r) => r.voucherType === 'Interest By Cash');
+    assert.deepStrictEqual([intSum.count, intSum.credit, intSum.debit], [1, 200, 0]);
   });
 });

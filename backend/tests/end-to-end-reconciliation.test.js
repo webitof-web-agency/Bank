@@ -162,7 +162,7 @@ test('Phase 7: End-to-End Functional Reconciliation', async (t) => {
       partyCode: ctx.m1.code,
       amount: 5000,
       details: { key: 'loan-paid-member' },
-      voucherDate: '2024-01-10'
+      date: '2024-01-10', mode: 'Cash'
     });
     assert.ok(v && v.id, 'Voucher created with id');
     assert.strictEqual(Number(v.amount), 5000, 'Amount preserved');
@@ -176,7 +176,7 @@ test('Phase 7: End-to-End Functional Reconciliation', async (t) => {
       partyCode: ctx.m1.code,
       amount: 5000,
       details: { key: 'loan-paid-member' },
-      voucherDate: '2024-01-10'
+      date: '2024-01-10', mode: 'Cash'
     });
     
     const lines = await JournalLine.find({ voucherId: v.id }).exec();
@@ -205,7 +205,7 @@ test('Phase 7: End-to-End Functional Reconciliation', async (t) => {
       partyCode: ctx.m1.code,
       amount: 1000,
       details: { key: 'deposit-paid-member' },
-      voucherDate: '2024-01-11'
+      date: '2024-01-11', mode: 'Cash'
     });
     assert.ok(v && v.id);
     assert.strictEqual(Number(v.amount), 1000);
@@ -228,7 +228,7 @@ test('Phase 7: End-to-End Functional Reconciliation', async (t) => {
       partyCode: ctx.m1.code,
       amount: 2000,
       details: { key: 'ssa-paid-member' },
-      voucherDate: '2024-01-12'
+      date: '2024-01-12', mode: 'Cash'
     });
     assert.ok(v && v.id);
     assert.strictEqual(Number(v.amount), 2000);
@@ -262,7 +262,7 @@ test('Phase 7: End-to-End Functional Reconciliation', async (t) => {
       branchCode: ctx.br1.code,
       partyCode:  ctx.m1.code,
       details: { key: 'recovery-member', recoveryType: 'MANUAL', recoveryLines: rLines },
-      voucherDate: '2024-02-01'
+      date: '2024-02-01', mode: 'Cash'
     });
     assert.ok(v && v.id, 'Voucher created');
 
@@ -287,6 +287,7 @@ test('Phase 7: End-to-End Functional Reconciliation', async (t) => {
       total: 1200
     }];
     const v = await createVoucher({
+      date: '2024-01-15', mode: 'Cash',
       amount: 1200,
       partyCode: ctx.m1.code,
       details: { key: 'recovery-member', recoveryLines }
@@ -310,13 +311,14 @@ test('Phase 7: End-to-End Functional Reconciliation', async (t) => {
       branchCode: ctx.br1.code,
       partyCode:  ctx.e1.code,
       details: { key: 'advance-paid-emp', components: { house: 5000, vehicle: 3000, grain: 1000 } },
-      voucherDate: '2024-03-01'
+      date: '2024-03-01', mode: 'Cash'
     });
     assert.ok(v && v.id);
   });
 
   await t.test('7b. Employee Advance Paid — Posting engine lines balanced', async () => {
     const v = await createVoucher({
+      date: '2024-01-15', mode: 'Cash',
       amount: 9000,
       partyCode: ctx.e1.code,
       details: { key: 'advance-paid-emp', components: { house: 5000, vehicle: 3000, grain: 1000 } }
@@ -332,6 +334,7 @@ test('Phase 7: End-to-End Functional Reconciliation', async (t) => {
   // ── 8. Employee Advance Recovery ─────────────────────────────────
   await t.test('8. Employee Advance Recovery — Posting engine balanced', async () => {
     const v = await createVoucher({
+      date: '2024-01-15', mode: 'Cash',
       amount: 900,
       partyCode: ctx.e1.code,
       details: { key: 'advance-recovery-emp', components: { house: 500, vehicle: 300, grain: 100 } }
@@ -429,6 +432,7 @@ test('Phase 7: End-to-End Functional Reconciliation', async (t) => {
     for (const key of blockedTypes) {
       await assert.rejects(
         () => createVoucher({
+          date: '2024-01-15', mode: 'Cash',
           amount: 100,
           details: { key },
           partyCode: ctx.m1.code
@@ -454,7 +458,7 @@ test('Phase 7: End-to-End Functional Reconciliation', async (t) => {
       partyCode: ctx.m1.code,
       amount: 1600.03,
       details: { key: 'loan-paid-member' },
-      voucherDate: '2024-06-01'
+      date: '2024-06-01', mode: 'Cash'
     });
     assert.strictEqual(Number(v.amount), 1600.03, 'Voucher amount = 1600.03');
 

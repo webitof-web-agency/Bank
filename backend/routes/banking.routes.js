@@ -46,6 +46,13 @@ router.get(
   requirePermission('transactions.read', 'bank-transactions.read', 'demands.read', 'no-interest-members.read'),
   banking.transactions.catalog
 );
+router.get('/demand-entry', requirePermission('demands.read'), banking.reports.demandEntryList);
+router.get('/demand-entry/members', requirePermission('demands.write'), banking.reports.demandEntryMembers);
+router.get('/demand-entry/:id', requirePermission('demands.read'), banking.reports.demandEntryGet);
+router.post('/demand-entry', requirePermission('demands.write'), banking.reports.demandEntrySave);
+router.put('/demand-entry/:id', requirePermission('demands.write'), banking.reports.demandEntrySave);
+router.delete('/demand-entry/:id', requirePermission('demands.write'), banking.reports.demandEntryDelete);
+router.get('/transactions/recovery/demand-candidates', requirePermission('transactions.read'), banking.reports.recoveryDemandCandidates);
 router.get('/transactions/vouchers/next', requirePermission('transactions.read'), banking.transactions.getNextVoucher);
 router.get('/transactions/vouchers', requirePermission('transactions.read'), banking.transactions.listVouchers);
 router.post('/transactions/vouchers', requirePermission('transactions.write'), banking.transactions.createVoucher);

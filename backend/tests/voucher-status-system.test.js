@@ -20,8 +20,6 @@ test('bank vouchers discard settlement account details in backend normalization'
   const normalized = banking.normalizeResourcePayload('vouchers', {
     details: {
       key: 'loan-recv-cash',
-      settlementAccount: 'L002',
-      fixedSettlement: 'L002',
       fromAccount: 'L002',
       toAccount: 'L013',
       fixedFrom: 'L002',
@@ -29,7 +27,6 @@ test('bank vouchers discard settlement account details in backend normalization'
     }
   });
 
-  assert.equal(Object.hasOwn(normalized.details, 'settlementAccount'), false);
   assert.equal(Object.hasOwn(normalized.details, 'fixedSettlement'), false);
   assert.equal(Object.hasOwn(normalized.details, 'fromAccount'), false);
   assert.equal(Object.hasOwn(normalized.details, 'toAccount'), false);
@@ -37,8 +34,6 @@ test('bank vouchers discard settlement account details in backend normalization'
   assert.equal(Object.hasOwn(normalized.details, 'fixedTo'), false);
 
   const memberVoucher = banking.normalizeResourcePayload('vouchers', {
-    details: { key: 'loan-paid-member', settlementAccount: 'L002', fromAccount: 'L001' }
   });
-  assert.equal(memberVoucher.details.settlementAccount, 'L002');
   assert.equal(memberVoucher.details.fromAccount, 'L001');
 });

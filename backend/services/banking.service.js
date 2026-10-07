@@ -53,6 +53,7 @@ const { getNextSequenceValue, syncSequence } = require('./sequence.service');
 const { buildFileViewUrl } = require('../utils/file-url');
 const { withTransaction, restoreMainRow, initializeDatabase } = require('../config/postgres');
 const { buildJournalLinesForVoucher } = require('./posting.service');
+const rateHistory = require('../utils/rateHistory');
 // The 'employees' resource here is a second, historically-unused entry point
 // (no frontend caller) alongside the real one at /users — delegating to
 // auth.service.js keeps employees<->users linking logic (creating/syncing the
@@ -208,7 +209,6 @@ const BANK_VOUCHER_KEY_SET = new Set(BANK_VOUCHER_KEYS);
 function sanitizeBankVoucherDetails(value = {}) {
   const details = clone(toMixed(value, {}));
   if (BANK_VOUCHER_KEY_SET.has(cleanLower(details.key))) {
-    delete details.settlementAccount;
     delete details.fixedSettlement;
     delete details.fromAccount;
     delete details.toAccount;
@@ -231,21 +231,27 @@ const DEFAULT_RATES_CONFIG = clone(DEFAULT_SETTINGS.payload?.ratesConfig || {});
 
 function normalizeRatesConfig(config = {}) {
   const source = config || {};
-  return {
-    interestRates: {
-      paid: {
-        compulsoryDeposit: toNumber(source.interestRates?.paid?.compulsoryDeposit, DEFAULT_RATES_CONFIG.interestRates.paid.compulsoryDeposit),
-        specialSaving: toNumber(source.interestRates?.paid?.specialSaving, DEFAULT_RATES_CONFIG.interestRates.paid.specialSaving),
-        cashCredit: toNumber(source.interestRates?.paid?.cashCredit, DEFAULT_RATES_CONFIG.interestRates.paid.cashCredit),
-        dividend: toNumber(source.interestRates?.paid?.dividend, DEFAULT_RATES_CONFIG.interestRates.paid.dividend)
-      },
-      receive: {
-        loan: toNumber(source.interestRates?.receive?.loan, DEFAULT_RATES_CONFIG.interestRates.receive.loan),
-        loanAgainstDeposit: toNumber(source.interestRates?.receive?.loanAgainstDeposit, DEFAULT_RATES_CONFIG.interestRates.receive.loanAgainstDeposit),
-        houseLoanStaff: toNumber(source.interestRates?.receive?.houseLoanStaff, DEFAULT_RATES_CONFIG.interestRates.receive.houseLoanStaff),
-        vehicleLoanStaff: toNumber(source.interestRates?.receive?.vehicleLoanStaff, DEFAULT_RATES_CONFIG.interestRates.receive.vehicleLoanStaff)
-      }
+  const flatRates = {
+    paid: {
+      compulsoryDeposit: toNumber(source.interestRates?.paid?.compulsoryDeposit, DEFAULT_RATES_CONFIG.interestRates.paid.compulsoryDeposit),
+      specialSaving: toNumber(source.interestRates?.paid?.specialSaving, DEFAULT_RATES_CONFIG.interestRates.paid.specialSaving),
+      cashCredit: toNumber(source.interestRates?.paid?.cashCredit, DEFAULT_RATES_CONFIG.interestRates.paid.cashCredit),
+      dividend: toNumber(source.interestRates?.paid?.dividend, DEFAULT_RATES_CONFIG.interestRates.paid.dividend)
     },
+      receive: {
+      loan: toNumber(source.interestRates?.receive?.loan, DEFAULT_RATES_CONFIG.interestRates.receive.loan),
+      loanAgainstDeposit: toNumber(source.interestRates?.receive?.loanAgainstDeposit, DEFAULT_RATES_CONFIG.interestRates.receive.loanAgainstDeposit),
+      houseLoanStaff: toNumber(source.interestRates?.receive?.houseLoanStaff, DEFAULT_RATES_CONFIG.interestRates.receive.houseLoanStaff),
+      vehicleLoanStaff: toNumber(source.interestRates?.receive?.vehicleLoanStaff, DEFAULT_RATES_CONFIG.interestRates.receive.vehicleLoanStaff)
+    }
+  };
+  // Before rate history existed the flat interestRates were the only record;
+  // they become the opening period. Once history exists it is authoritative
+  // and interestRates is just the set in force today.
+  const interestRateHistory = rateHistory.normalizeRateHistory(source.interestRateHistory, flatRates);
+  return {
+    interestRates: rateHistory.ratesAsOf(interestRateHistory, rateHistory.todayIso()),
+    interestRateHistory,
     limits: {
       loan: {
         maxAmount: toNumber(source.limits?.loan?.maxAmount, DEFAULT_RATES_CONFIG.limits.loan.maxAmount),
@@ -278,15 +284,62 @@ async function getGlobalRatesConfig() {
   return normalizeRatesConfig(mergeDeep(DEFAULT_RATES_CONFIG, config));
 }
 
+// Interest rate edits are recorded as a dated period rather than overwriting
+// the rates, so reports keep using the old rate for days before the change.
+// `effectiveFrom` defaults to today; an explicit '' corrects the opening
+// period. `removeRatePeriod` deletes the period starting on that date.
 async function updateGlobalRatesConfig(patch = {}) {
+  const {
+    interestRates,
+    interestRateHistory: _ignoredHistory,
+    effectiveFrom,
+    rateNote = '',
+    removeRatePeriod,
+    ...rest
+  } = patch || {};
   const current = await getGlobalRatesConfig();
-  const next = normalizeRatesConfig(mergeDeep(current, patch));
+  let history = current.interestRateHistory;
+  try {
+    if (removeRatePeriod) {
+      history = rateHistory.removeRatePeriod(history, cleanText(removeRatePeriod));
+    }
+    if (interestRates) {
+      history = rateHistory.applyRateChange(history, {
+        rates: interestRates,
+        effectiveFrom: effectiveFrom === undefined || effectiveFrom === null ? rateHistory.todayIso() : cleanText(effectiveFrom),
+        note: cleanText(rateNote),
+        recordedAt: new Date().toISOString()
+      });
+    }
+  } catch (cause) {
+    const error = new Error(cause.message);
+    error.statusCode = 400;
+    throw error;
+  }
+  const next = normalizeRatesConfig({ ...mergeDeep(current, rest), interestRateHistory: history });
   await updateSettings({
     payload: {
       ratesConfig: next
     }
   });
   return next;
+}
+
+// Member ledger interest columns -> rate heads on the Rates Dashboard.
+const MEMBER_INTEREST_HEADS = {
+  specialDeposit: ['paid', 'specialSaving'],
+  compulsoryDeposit: ['paid', 'compulsoryDeposit'],
+  loan: ['receive', 'loan'],
+  loanAgainstDeposit: ['receive', 'loanAgainstDeposit']
+};
+
+// Per-head rate timelines for interest accrual, keyed the way each report
+// names its columns: { columnKey: ['paid' | 'receive', rateKey] }.
+async function getInterestRateTimelines(heads = {}) {
+  const { interestRateHistory } = await getGlobalRatesConfig();
+  return Object.fromEntries(Object.entries(heads).map(([column, [group, key]]) => (
+    [column, rateHistory.rateTimeline(interestRateHistory, group, key)]
+  )));
 }
 
 function humanizeLabel(value = '') {
@@ -636,6 +689,21 @@ function sanitizeMemberResponse(doc) {
   response.documentsFolderId = response.documentsFolderId ? String(response.documentsFolderId) : null;
   response.photoUrl = buildFileViewUrl(response.photoFileId || response.photoUrl || '');
   return response;
+}
+
+// The society logo/watermark are stored as file-view URLs whose access token
+// expires (FILE_VIEW_TOKEN_EXPIRES_IN, 2h by default) — re-sign them from the
+// file id on every read, as members' photos are, so the images don't break.
+function sanitizeSocietyResponse(doc) {
+  const response = toResponse(doc);
+  if (!response) return null;
+  response.logoUrl = buildFileViewUrl(response.logoFileId || response.logoUrl || '');
+  response.watermarkUrl = buildFileViewUrl(response.watermarkFileId || response.watermarkUrl || '');
+  return response;
+}
+
+function sanitizeSingletonResponse(resource, doc) {
+  return resource === 'society' ? sanitizeSocietyResponse(doc) : toResponse(doc);
 }
 
 async function syncRecordDocumentsFolder(resource, record, createdBy = null) {
@@ -1013,7 +1081,7 @@ const RESOURCE_DEFS = {
   },
   bankTransactions: {
     model: BankTransaction,
-    searchFields: ['transactionNo', 'bankAccountCode', 'transactionType', 'branchCode', 'linkedClientCode', 'linkedProjectCode', 'linkedInvoiceNo', 'linkedExpenseCode', 'notes', 'voucherNo', 'status'],
+    searchFields: ['transactionNo', 'bankAccountCode', 'transactionType', 'branchCode', 'linkedClientCode', 'linkedProjectCode', 'linkedInvoiceNo', 'linkedExpenseCode', 'notes', 'voucherNo'],
     normalize(data = {}) {
       return {
         transactionNo: cleanUpper(data.transactionNo),
@@ -1028,7 +1096,6 @@ const RESOURCE_DEFS = {
         linkedExpenseCode: cleanText(data.linkedExpenseCode),
         notes: cleanText(data.notes),
         voucherNo: cleanUpper(data.voucherNo),
-        status: cleanText(data.status, 'Posted'),
         payload: toMixed(data.payload, {})
       };
     }
@@ -1214,6 +1281,7 @@ async function listResource(resource, search = '', user = {}, options = {}) {
     : rows;
   return filtered.map((row) => {
     if (resource === 'members') return sanitizeMemberResponse(row);
+    if (resource === 'society') return sanitizeSocietyResponse(row);
     if (resource === 'vouchers') return sanitizeVoucherResponse(row);
     return toResponse(row);
   });
@@ -1230,7 +1298,7 @@ async function getResource(resource, id, user = {}) {
   }
   if (def.singleton) {
     const record = await def.model.findOne({ key: 'default' }).lean();
-    return record ? toResponse(record) : null;
+    return record ? sanitizeSingletonResponse(resource, record) : null;
   }
 
   const record = await def.model.findById(id).lean();
@@ -1298,7 +1366,7 @@ async function createResource(resource, data = {}, meta = {}) {
       buildUpsertUpdate(def.uniqueQuery || { key: 'default' }, payload),
       { new: true, upsert: true, runValidators: true }
     ).lean();
-    const response = record ? toResponse(record) : null;
+    const response = record ? sanitizeSingletonResponse(resource, record) : null;
     if (response) {
       await notifySafely(buildResourceNotificationPayload(resource, 'updated', response, meta));
     }
@@ -1311,9 +1379,32 @@ async function createResource(resource, data = {}, meta = {}) {
   return response;
 }
 
+// A recovered demand line is the record of what a saved recovery collected
+// against; changing or deleting it would silently invalidate that recovery.
+async function assertDemandNotRecovered(resource, id, { deleting = false } = {}) {
+  if (resource === 'demandLines') {
+    const line = await DemandLine.findById(id).lean();
+    if (line && cleanUpper(line.recoveryStatus) === DEMAND_RECOVERED) {
+      const ref = line?.payload?.recoveryVoucherNo ? ` (recovery voucher ${line.payload.recoveryVoucherNo})` : '';
+      throw recoveryHttpError(`This demand has already been recovered${ref}. Edit or delete the linked recovery first.`, 409);
+    }
+  }
+  if (resource === 'demandLists' && deleting) {
+    const list = await DemandList.findById(id).lean();
+    if (list) {
+      const recovered = (await DemandLine.find({ demandListNo: list.demandListNo }).lean())
+        .filter((line) => cleanUpper(line.postedBranch) === cleanUpper(list.branchCode) && cleanUpper(line.recoveryStatus) === DEMAND_RECOVERED);
+      if (recovered.length) {
+        throw recoveryHttpError(`This demand list has ${recovered.length} recovered member line(s). Edit or delete the linked recovery first.`, 409);
+      }
+    }
+  }
+}
+
 async function updateResource(resource, id, data = {}, meta = {}) {
   const def = getResourceDef(resource);
   const actorUser = meta.actorUser || {};
+  await assertDemandNotRecovered(resource, id);
 
   if (resource === 'branches' && getScopedBranchCode(actorUser)) {
     const error = new Error('Branch access denied');
@@ -1367,7 +1458,7 @@ async function updateResource(resource, id, data = {}, meta = {}) {
       buildUpsertUpdate(def.uniqueQuery || { key: 'default' }, payload),
       { new: true, upsert: true, runValidators: true }
     ).lean();
-    const response = record ? (resource === 'members' ? sanitizeMemberResponse(record) : toResponse(record)) : null;
+    const response = record ? sanitizeSingletonResponse(resource, record) : null;
     if (response) {
       await notifySafely(buildResourceNotificationPayload(resource, 'updated', response, meta));
     }
@@ -1398,6 +1489,7 @@ async function updateResource(resource, id, data = {}, meta = {}) {
 async function deleteResource(resource, id, meta = {}) {
   const def = getResourceDef(resource);
   const actorUser = meta.actorUser || {};
+  await assertDemandNotRecovered(resource, id, { deleting: true });
 
   if (resource === 'branches' && getScopedBranchCode(actorUser)) {
     const error = new Error('Branch access denied');
@@ -1530,6 +1622,7 @@ function ledgerSnapshotFromDocuments(ledgers = [], journalLines = [], openingLin
       name: ledger.name,
       nature: cleanUpper(ledger.nature),
       group: cleanUpper(ledger.group),
+      sortOrder: toNumber(ledger.sortOrder, 0),
       openingDr: balanceSide === 'DR' ? opening : 0,
       openingCr: balanceSide === 'CR' ? opening : 0
     });
@@ -1561,13 +1654,255 @@ function ledgerSnapshotFromDocuments(ledgers = [], journalLines = [], openingLin
       name: row.name,
       nature: row.nature,
       group: row.group,
+      sortOrder: row.sortOrder || 0,
       opening: openingBalance,
       openingSide,
       totalDr: row.totalDr,
       totalCr: row.totalCr,
       balance,
       closing: balance,
-      closingSide
+      closingSide,
+      // Credit-positive, the legacy vwLedgerBalance sign convention.
+      signedBalance: Number((credit - debit).toFixed(2))
+    };
+  }).sort((a, b) => compareCodesNumerically(a.code, b.code));
+}
+
+// ---------------------------------------------------------------------------
+// Closed legacy FYs (every JilaSahkariDB<yy><yy> before the cutover DB).
+//
+// Their vouchers live only in legacy_historical_vouchers (never posted to
+// journal_lines), and `ledgers.openingBalance` is the cutover-FY figure, so
+// the journal-line snapshot above can't see them. Instead this reproduces the
+// legacy app's own vwLedgerBalance for that FY's database:
+//   balance = MstAccountMaster.OpeningBal + SUM(Cr) + SUM(Dr)   (Cr +, Dr -)
+// with Cr/Dr assigned per EntTrans row by the same rules as the legacy
+// VwLedgerTransaction view (see legacyLedgerEntries). Verified ledger-by-ledger
+// against every restored legacy FY database.
+//
+// The per-FY OpeningBal isn't migrated, but legacy's year-end carry-forward
+// makes it derivable: Asset/Liability ledgers open each FY at the previous
+// FY's closing, while Income/Expense/Primary open at 0. So walking back from
+// the cutover FY's opening (payload.raw.OpeningBal):
+//   opening(N) = opening(N+1) - movement(N)   for Asset/Liability ledgers.
+// ---------------------------------------------------------------------------
+
+const LEGACY_RESETTING_NATURES = new Set(['INCOME', 'EXPENSE', 'PRIMARY']);
+const LEGACY_LEDGER_CACHE_TTL_MS = 10 * 60 * 1000;
+let legacyLedgerEntriesCache = null;
+let legacyLedgerEntriesLoadedAt = 0;
+
+function legacyNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : 0;
+}
+
+// One EntTrans row -> [{ code, cr, dr, viaPayMode }] ledger entries (dr is
+// negative), mirroring each UNION branch of legacy VwLedgerTransaction.
+// viaPayMode marks the pay-mode side (cash / bank) of the voucher, which the
+// legacy Cash Book leaves out of its particulars.
+function legacyLedgerEntries(raw = {}, codeByAccId = new Map(), cashAccId = '') {
+  const entries = [];
+  const type = Number(raw.TransType);
+  const isReceipt = String(raw.VoucherType).toUpperCase() === 'R';
+  const isPayment = String(raw.VoucherType).toUpperCase() === 'P';
+  const total = legacyNumber(raw.TotalAmt);
+  const push = (code, cr, dr, viaPayMode = false) => {
+    if (code && (cr || dr)) entries.push({ code, cr, dr, viaPayMode });
+  };
+  // "Normal" direction: receipt credits the account, payment debits it.
+  const normal = (code, amount) => push(code, isReceipt ? amount : 0, isPayment ? -amount : 0);
+  const codeOf = (accId) => codeByAccId.get(String(accId ?? '')) || '';
+
+  // Cash pay mode: payment credits cash, receipt debits it.
+  if (cashAccId && String(raw.PayModeAccID) === cashAccId) {
+    push(codeOf(cashAccId), isPayment ? total : 0, isReceipt ? -total : 0, true);
+  }
+  const particular = codeOf(raw.ParticularAccID);
+  if (particular && particular !== '2') normal(particular, total);
+  if ([2, 20, 21, 22].includes(type)) normal(codeOf(raw.LedgerAccID), total);
+  const payMode = codeOf(raw.PayModeAccID);
+  if (legacyNumber(raw.PayModeAccID) > 0 && payMode && payMode !== '2') {
+    push(payMode, isReceipt ? total : 0, isPayment ? -total : 0, true);
+  }
+
+  const component = (field, code, types) => {
+    const amount = legacyNumber(raw[field]);
+    if (amount !== 0 && types.includes(type)) normal(code, amount);
+  };
+  component('ShareAmt', '5', [5]);
+  component('CDAmt', '6', [5]);
+  component('SSAamt', '7', [5]);
+  component('RLoanAmt', '8', [5]);
+  component('DLoanAmt', '9', [5]);
+  component('ShareAmt', '5', [14, 15]);
+  component('CDAmt', '6', [14, 15]);
+  component('SSAamt', '7', [14, 15, 1, 3]);
+  component('RLoanAmt', '8', [14, 15, 1]);
+  component('DLoanAmt', '9', [14, 15]);
+  component('DLoanAmt', '9', [1]);
+  component('AdmissionFee', '10', [5]);
+  component('HomeLoan', '33', [12, 13]);
+  component('VehicleLoan', '34', [12, 13]);
+  component('GrainAdvance', '35', [12, 13]);
+  return entries;
+}
+
+// Map of sourceDatabase -> [{ date, entries }], plus the cutover DB name.
+// Archive tables are read-only, so this is cached like the party index.
+async function loadLegacyLedgerEntries(ledgers = []) {
+  const now = Date.now();
+  if (legacyLedgerEntriesCache && (now - legacyLedgerEntriesLoadedAt) < LEGACY_LEDGER_CACHE_TTL_MS) {
+    return legacyLedgerEntriesCache;
+  }
+
+  const codeByAccId = new Map();
+  let cutoverDb = '';
+  for (const ledger of ledgers) {
+    const accId = ledger?.payload?.raw?.AccID;
+    if (accId != null) codeByAccId.set(String(accId), cleanUpper(ledger.code));
+    if (!cutoverDb && ledger?.payload?.sourceDatabase) cutoverDb = String(ledger.payload.sourceDatabase);
+  }
+  const cashLedger = ledgers.find((ledger) => cleanUpper(ledger.code) === '2');
+  const cashAccId = cashLedger?.payload?.raw?.AccID != null ? String(cashLedger.payload.raw.AccID) : '';
+
+  const database = await initializeDatabase();
+  const result = await database.query(`SELECT "sourceDatabase", payload->'raw' AS raw FROM legacy_historical_vouchers`);
+  const byDb = new Map();
+  for (const row of result.rows) {
+    const raw = row.raw || {};
+    const list = byDb.get(row.sourceDatabase) || [];
+    list.push({
+      date: raw.VoucherDate ? String(raw.VoucherDate).slice(0, 10) : '',
+      // Legacy Cash Book's Cash column = vouchers whose pay mode is Cash-In-Hand.
+      isCash: Boolean(cashAccId) && String(raw.PayModeAccID) === cashAccId,
+      entries: legacyLedgerEntries(raw, codeByAccId, cashAccId),
+      // Voucher header fields the Day Book prints.
+      voucher: {
+        sourceDatabase: row.sourceDatabase,
+        transNo: raw.TransNo != null ? String(raw.TransNo) : '',
+        voucherNo: raw.VoucherNo != null ? String(raw.VoucherNo) : '',
+        voucherType: cleanUpper(raw.VoucherType),
+        transType: Number(raw.TransType),
+        paymode: cleanText(raw.Paymode),
+        chequeNo: cleanText(raw.ChequeNo),
+        chequeDate: raw.ChequeDate ? String(raw.ChequeDate).slice(0, 10) : '',
+        narration: cleanText(raw.Narration),
+        particularAccId: raw.ParticularAccID != null ? String(raw.ParticularAccID) : '',
+        total: legacyNumber(raw.TotalAmt)
+      }
+    });
+    byDb.set(row.sourceDatabase, list);
+  }
+
+  legacyLedgerEntriesCache = { byDb, cutoverDb, cashCode: cashLedger ? cleanUpper(cashLedger.code) : '' };
+  legacyLedgerEntriesLoadedAt = now;
+  return legacyLedgerEntriesCache;
+}
+
+function fyStartYearOf(date = '') {
+  const text = cleanText(date);
+  const year = parseInt(text.slice(0, 4), 10);
+  const month = parseInt(text.slice(5, 7), 10);
+  if (!Number.isFinite(year) || !Number.isFinite(month)) return null;
+  return month >= 4 ? year : year - 1;
+}
+
+function legacyDbForFyStartYear(startYear) {
+  return `JilaSahkariDB${deriveLegacySourceSuffix(`${startYear}-04-01`)}`;
+}
+
+function sumLegacyMovement(rows = [], include = () => true) {
+  const totals = new Map();
+  for (const row of rows) {
+    if (!include(row)) continue;
+    for (const { code, cr, dr } of row.entries) {
+      const entry = totals.get(code) || { cr: 0, dr: 0 };
+      entry.cr += cr;
+      entry.dr += dr;
+      totals.set(code, entry);
+    }
+  }
+  return totals;
+}
+
+// Returns snapshot rows (same shape as ledgerSnapshotFromDocuments) for a
+// closed legacy FY, or null when the window isn't one (current/cutover FY,
+// or no archived data for that year) so the caller uses the live path.
+// Legacy reports have no date filter at all — each FY is its own database —
+// so a window covering the whole FY includes every row of that database,
+// even ones whose VoucherDate is out of range; a partial window filters by
+// VoucherDate.
+async function getLegacyFyLedgerSnapshots({ dateFrom = '', periodEnd = '', ledgers = [] } = {}) {
+  const startYear = fyStartYearOf(periodEnd || dateFrom);
+  if (startYear == null) return null;
+
+  const { byDb, cutoverDb } = await loadLegacyLedgerEntries(ledgers);
+  const targetDb = legacyDbForFyStartYear(startYear);
+  if (!cutoverDb || targetDb >= cutoverDb || !byDb.has(targetDb)) return null;
+
+  // Opening for the target FY: walk back from the cutover FY's opening.
+  const opening = new Map();
+  for (const ledger of ledgers) {
+    const code = cleanUpper(ledger.code);
+    const resets = LEGACY_RESETTING_NATURES.has(cleanUpper(ledger.nature));
+    opening.set(code, resets ? 0 : legacyNumber(ledger?.payload?.raw?.OpeningBal));
+  }
+  // "JilaSahkariDB2627" -> 2026.
+  const cutoverStartYear = 2000 + parseInt(cutoverDb.slice(-4, -2), 10);
+  for (let year = cutoverStartYear - 1; year >= startYear; year -= 1) {
+    const movement = sumLegacyMovement(byDb.get(legacyDbForFyStartYear(year)) || []);
+    for (const ledger of ledgers) {
+      const code = cleanUpper(ledger.code);
+      if (LEGACY_RESETTING_NATURES.has(cleanUpper(ledger.nature))) continue;
+      const move = movement.get(code);
+      if (move) opening.set(code, opening.get(code) - move.cr - move.dr);
+    }
+  }
+  // The walk-back can't see profit appropriations legacy wrote straight into
+  // a year's OpeningBal (no voucher), so the FY's own migrated OpeningBal
+  // (payload.fyOpeningBal, see tools/legacy-migration extract) wins when present.
+  const suffix = targetDb.slice(-4);
+  for (const ledger of ledgers) {
+    const own = ledger?.payload?.fyOpeningBal?.[suffix];
+    if (own != null && Number.isFinite(Number(own))) opening.set(cleanUpper(ledger.code), Number(own));
+  }
+
+  const fyStart = `${startYear}-04-01`;
+  const fyEnd = `${startYear + 1}-03-31`;
+  const from = cleanText(dateFrom);
+  const to = cleanText(periodEnd);
+  const wholeYear = (!from || from <= fyStart) && (!to || to >= fyEnd);
+  const rows = byDb.get(targetDb);
+  const before = wholeYear ? new Map() : sumLegacyMovement(rows, (row) => row.date && from && row.date < from);
+  const period = wholeYear
+    ? sumLegacyMovement(rows)
+    : sumLegacyMovement(rows, (row) => row.date && (!from || row.date >= from) && (!to || row.date <= to));
+
+  const round = (value) => Number(value.toFixed(2));
+  return ledgers.map((ledger) => {
+    const code = cleanUpper(ledger.code);
+    const pre = before.get(code) || { cr: 0, dr: 0 };
+    const move = period.get(code) || { cr: 0, dr: 0 };
+    const openingSigned = opening.get(code) + pre.cr + pre.dr;
+    const closingSigned = openingSigned + move.cr + move.dr;
+    return {
+      id: String(ledger.id || ledger._id),
+      code,
+      // The name the ledger had in that FY's database (renamed since, e.g.
+      // "CORPORATION BANK A/C NO. 01021060" is now "UNION BANK").
+      name: cleanText(ledger?.payload?.fyAccountName?.[suffix]).replace(/\s+/g, ' ') || ledger.name,
+      nature: cleanUpper(ledger.nature),
+      group: cleanUpper(ledger.group),
+      sortOrder: toNumber(ledger.sortOrder, 0),
+      opening: round(Math.abs(openingSigned)),
+      openingSide: openingSigned < 0 ? 'DR' : 'CR',
+      totalDr: round(-move.dr),
+      totalCr: round(move.cr),
+      balance: round(Math.abs(closingSigned)),
+      closing: round(Math.abs(closingSigned)),
+      closingSide: closingSigned < 0 ? 'DR' : 'CR',
+      signedBalance: round(closingSigned)
     };
   }).sort((a, b) => compareCodesNumerically(a.code, b.code));
 }
@@ -1585,6 +1920,12 @@ function compareCodesNumerically(a, b) {
 
 async function getLedgerSnapshots({ dateFrom = '', dateTo = '', uptoDate = '', branchCode = '' } = {}) {
   const ledgers = (await Ledger.find({}).lean()).sort((a, b) => compareCodesNumerically(a.code, b.code));
+
+  // A closed pre-cutover FY comes from the legacy archive. Ledgers aren't
+  // branch-owned (society-wide GL), so this path isn't branch-filtered.
+  const legacySnapshots = await getLegacyFyLedgerSnapshots({ dateFrom, periodEnd: dateTo || uptoDate, ledgers });
+  if (legacySnapshots) return legacySnapshots;
+
   const branchFilter = {};
   if (branchCode) {
     branchFilter.branchCode = cleanUpper(branchCode);
@@ -1621,7 +1962,108 @@ async function getLedgerSnapshots({ dateFrom = '', dateTo = '', uptoDate = '', b
 // Transaction-level statement for a single ledger: an OPENING row (ledger's
 // base opening balance plus all activity strictly before dateFrom) followed
 // by one row per journal_line in [dateFrom, dateTo], with a running balance.
+// Statement rows for a closed pre-cutover FY, from the legacy archive: the
+// opening is the one Statement of Ledgers uses for that window (so the two
+// reports agree), then one row per archived voucher touching the ledger.
+// Returns Map(code -> rows), or null when the window isn't a legacy FY.
+// Credit-positive signed balances, as getLegacyFyLedgerSnapshots.
+async function buildLegacyLedgerStatements(ledgers, allLedgers, { dateFrom = '', dateTo = '' } = {}) {
+  const snapshots = await getLegacyFyLedgerSnapshots({ dateFrom, periodEnd: dateTo, ledgers: allLedgers });
+  if (!snapshots) return null;
+
+  const { byDb } = await loadLegacyLedgerEntries(allLedgers);
+  const startYear = fyStartYearOf(dateTo || dateFrom);
+  const fyStart = `${startYear}-04-01`;
+  const fyEnd = `${startYear + 1}-03-31`;
+  const from = cleanText(dateFrom);
+  const to = cleanText(dateTo);
+  // Same window rule as the snapshot: a whole-FY window takes every row of
+  // that FY's database, even ones dated outside it.
+  const wholeYear = (!from || from <= fyStart) && (!to || to >= fyEnd);
+  const inWindow = (row) => wholeYear || (row.date && (!from || row.date >= from) && (!to || row.date <= to));
+  const legacyRows = (byDb.get(legacyDbForFyStartYear(startYear)) || []).filter(inWindow);
+
+  const snapshotByCode = new Map(snapshots.map((row) => [row.code, row]));
+  const wanted = new Set(ledgers.map((ledger) => cleanUpper(ledger.code)));
+  const movesByCode = new Map();
+  for (const row of legacyRows) {
+    const net = new Map();
+    for (const { code, cr, dr } of row.entries) {
+      if (!wanted.has(code)) continue;
+      const entry = net.get(code) || { cr: 0, dr: 0 };
+      entry.cr += cr;
+      entry.dr += dr;
+      net.set(code, entry);
+    }
+    for (const [code, { cr, dr }] of net) {
+      const list = movesByCode.get(code) || [];
+      list.push({ row, credit: cr, debit: -dr });
+      movesByCode.set(code, list);
+    }
+  }
+
+  const round = (value) => Number(value.toFixed(2));
+  const result = new Map();
+  for (const ledger of ledgers) {
+    const code = cleanUpper(ledger.code);
+    const snap = snapshotByCode.get(code);
+    let signed = snap ? (snap.openingSide === 'DR' ? -snap.opening : snap.opening) : 0;
+    const rows = [{
+      voucherNo: 'OPENING',
+      voucherId: null,
+      date: from || fyStart,
+      debit: 0,
+      credit: 0,
+      balance: round(Math.abs(signed)),
+      balanceSide: signed < 0 ? 'DR' : 'CR',
+      narration: 'Opening Balance'
+    }];
+    const moves = (movesByCode.get(code) || []).sort((a, b) => (
+      String(a.row.date).localeCompare(String(b.row.date))
+      || compareCodesNumerically(a.row.voucher.voucherNo, b.row.voucher.voucherNo)
+    ));
+    for (const { row, credit, debit } of moves) {
+      signed += credit - debit;
+      rows.push({
+        voucherNo: row.voucher.voucherNo,
+        voucherId: null,
+        date: row.date,
+        debit: round(debit),
+        credit: round(credit),
+        balance: round(Math.abs(signed)),
+        balanceSide: signed < 0 ? 'DR' : 'CR',
+        narration: row.voucher.narration || ''
+      });
+    }
+    result.set(code, rows);
+  }
+  return result;
+}
+
+// Statement of Account for every ledger (legacy's blank-Account print):
+// alphabetical, and only ledgers with an opening balance or a movement in
+// the window. Returns [{ ledgerCode, ledgerName, rows }].
+async function buildAllLedgerStatements({ dateFrom = '', dateTo = '', branchCode = '' } = {}) {
+  const allLedgers = await Ledger.find({}).lean();
+  const ledgers = [...allLedgers].sort((a, b) => cleanText(a.name).localeCompare(cleanText(b.name), undefined, { sensitivity: 'base' }));
+  const legacy = await buildLegacyLedgerStatements(ledgers, allLedgers, { dateFrom, dateTo });
+
+  const statements = [];
+  for (const ledger of ledgers) {
+    const code = cleanUpper(ledger.code);
+    const rows = legacy ? legacy.get(code) : await buildLedgerTransactionStatement(ledger, { dateFrom, dateTo, branchCode });
+    const hasActivity = rows.length > 1 || Math.abs(Number(rows[0]?.balance || 0)) >= 0.005;
+    if (hasActivity) statements.push({ ledgerCode: code, ledgerName: ledger.name, rows });
+  }
+  return statements;
+}
+
 async function buildLedgerTransactionStatement(ledger, { dateFrom = '', dateTo = '', branchCode = '' } = {}) {
+  // A closed pre-cutover FY has no journal lines; its vouchers are archived.
+  const allLedgers = await Ledger.find({}).lean();
+  const legacy = await buildLegacyLedgerStatements([ledger], allLedgers, { dateFrom, dateTo });
+  if (legacy) return legacy.get(cleanUpper(ledger.code)) || [];
+
   const ledgerId = String(ledger.id || ledger._id);
   const allLines = await JournalLine.find({ ledgerId }).lean();
   const relevantLines = branchCode
@@ -2057,99 +2499,7 @@ function getPartyMemberCode(voucher) {
 // joined back to its parent voucher via (sourceDatabase, TransNo) — same
 // crosswalk used for the transaction list/detail views.
 async function getHistoricalMemberLedgerRows(member) {
-  const accId = member?.payload?.raw?.AccID != null ? String(member.payload.raw.AccID) : '';
-  const database = await initializeDatabase();
-  const rows = [];
-
-  if (accId) {
-    // Categories 1/2/3 are the single-component "Paid To Member" screens
-    // (Loan/CD/SSA). Categories 14/15 are "Transfer Voucher (Paid To Member /
-    // Receipt From Member)" — the only other legacy screens that both (a) key
-    // ParticularAccID to a member's own AccID and (b) carry genuine component
-    // amounts (Share/CD/SSA/RLoan/DLoan), so they can touch several components
-    // in one voucher. Every other category either targets a ledger/employee
-    // AccID instead of a member, or (like interest categories 20-22) reuses
-    // these same amount columns to carry an unrelated GL-side figure — adding
-    // those without an accountant confirming each mapping risks inventing a
-    // component movement the member never actually had.
-    const directResult = await database.query(
-      `SELECT "voucherNo", "voucherCategory", narration, payload
-       FROM legacy_historical_vouchers
-       WHERE "voucherCategory" IN ('1','2','3','14','15')
-         AND payload->'raw'->>'ParticularAccID' = $1`,
-      [accId]
-    );
-    for (const v of directResult.rows) {
-      const raw = v.payload?.raw || {};
-      const date = raw.VoucherDate ? String(raw.VoucherDate).slice(0, 10) : null;
-      if (!date) continue;
-
-      const row = {
-        voucherNo: `LGCY-${v.voucherNo}`,
-        date,
-        share: { credit: 0, debit: 0, balance: 0 },
-        specialDeposit: { credit: 0, debit: 0, balance: 0, interest: 0 },
-        compulsoryDeposit: { credit: 0, debit: 0, balance: 0, interest: 0 },
-        loan: { credit: 0, debit: 0, balance: 0, interest: 0 },
-        loanAgainstDeposit: { credit: 0, debit: 0, balance: 0, interest: 0 },
-        isOpening: false,
-        isHistorical: true,
-        narration: v.narration || raw.Narration || ''
-      };
-
-      if (v.voucherCategory === '1') {
-        row.loan.debit = toPaise(raw.RLoanAmt);
-        row.loanAgainstDeposit.debit = toPaise(raw.DLoanAmt);
-      } else if (v.voucherCategory === '2') {
-        row.compulsoryDeposit.debit = toPaise(raw.CDAmt);
-      } else if (v.voucherCategory === '3') {
-        row.specialDeposit.debit = toPaise(raw.SSAamt);
-      } else if (v.voucherCategory === '14' || v.voucherCategory === '15') {
-        // '14' = Payment (debit from the member's side), '15' = Receipt (credit).
-        const side = v.voucherCategory === '14' ? 'debit' : 'credit';
-        row.share[side] = toPaise(raw.ShareAmt);
-        row.compulsoryDeposit[side] = toPaise(raw.CDAmt);
-        row.specialDeposit[side] = toPaise(raw.SSAamt);
-        row.loan[side] = toPaise(raw.RLoanAmt);
-        row.loanAgainstDeposit[side] = toPaise(raw.DLoanAmt);
-      }
-
-      rows.push(row);
-    }
-  }
-
-  const recoveryResult = await database.query(
-    `SELECT r.payload AS recovery_payload, v."voucherNo" AS parent_voucher_no, v.payload AS voucher_payload
-     FROM legacy_historical_recovery r
-     LEFT JOIN legacy_historical_vouchers v
-       ON v."sourceDatabase" = r."sourceDatabase"
-      AND v.payload->'raw'->>'TransNo' = r.payload->'raw'->>'TransNo'
-      AND v."voucherCategory" = '5'
-     WHERE r."memberCode" = $1`,
-    [member.code]
-  );
-  for (const r of recoveryResult.rows) {
-    const rraw = r.recovery_payload?.raw || {};
-    const vraw = r.voucher_payload?.raw || {};
-    const date = vraw.VoucherDate ? String(vraw.VoucherDate).slice(0, 10) : null;
-    if (!date) continue;
-
-    rows.push({
-      voucherNo: r.parent_voucher_no ? `LGCY-${r.parent_voucher_no}` : 'LGCY-RECOVERY',
-      date,
-      share: { credit: toPaise(rraw.Share), debit: 0, balance: 0 },
-      specialDeposit: { credit: toPaise(rraw.SSA), debit: 0, balance: 0, interest: 0 },
-      compulsoryDeposit: { credit: toPaise(rraw.CD), debit: 0, balance: 0, interest: 0 },
-      loan: { credit: toPaise(rraw.RLoan), debit: 0, balance: 0, interest: 0 },
-      loanAgainstDeposit: { credit: toPaise(rraw.DLoan), debit: 0, balance: 0, interest: 0 },
-      isOpening: false,
-      isHistorical: true,
-      narration: vraw.Narration || ''
-    });
-  }
-
-  rows.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
-  return rows;
+  return (await getHistoricalMemberLedgerRowsBatch([member])).get(member.code) || [];
 }
 
 async function buildMemberLedgerReport({ memberCode, dateFrom = '', dateTo = '', user = {} } = {}) {
@@ -2158,11 +2508,11 @@ async function buildMemberLedgerReport({ memberCode, dateFrom = '', dateTo = '',
     return null;
   }
 
-  const branchCode = resolveBranchCode(user, member.branchCode);
+  // Not filtered by the member's branch: access is checked on the member
+  // above, and a voucher only counts when it is this member's (party or a
+  // recovery line). A Recovery From Member voucher carries lines for members
+  // of many branches, so filtering by branch hid a member's recoveries.
   const query = {};
-  if (branchCode) {
-    query.branchCode = branchCode;
-  }
   if (dateFrom || dateTo) {
     query.date = {};
     if (dateFrom) query.date.$gte = cleanText(dateFrom);
@@ -2251,57 +2601,38 @@ async function buildMemberLedgerReport({ memberCode, dateFrom = '', dateTo = '',
   allRows = historicalRows.concat(allRows);
   allRows.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 
+  // Anchors are member.balances as migrated: signed credit-positive, so a
+  // loan owed is negative and a repayment (credit) moves it toward zero.
+  // Undoing a row is therefore the same for every bucket. (member.loanOutstanding
+  // is Loan + D.Loan combined, so it can't anchor the Loan column alone.)
   const BALANCE_GROUPS = [
-    { key: 'share', anchor: shareBal, sign: 1, fallback: toPaise(balancesObj.share || 0) },
-    { key: 'specialDeposit', anchor: specialDepositBal, sign: 1, fallback: toPaise(balancesObj.specialDeposit || balancesObj.ssa || 0) },
-    { key: 'compulsoryDeposit', anchor: cdBal, sign: 1, fallback: toPaise(balancesObj.compulsoryDeposit || balancesObj.cd || 0) },
-    { key: 'loan', anchor: loanBal, sign: -1, fallback: toPaise(balancesObj.loan || balancesObj.regularLoan || 0) },
-    { key: 'loanAgainstDeposit', anchor: ladBal, sign: -1, fallback: toPaise(balancesObj.loanAgainstDeposit || balancesObj.lad || 0) }
+    { key: 'share', sign: 1, fallback: toPaise(balancesObj.share || 0) },
+    { key: 'specialDeposit', sign: 1, fallback: toPaise(balancesObj.specialDeposit || balancesObj.ssa || 0) },
+    { key: 'compulsoryDeposit', sign: 1, fallback: toPaise(balancesObj.compulsoryDeposit || balancesObj.cd || 0) },
+    { key: 'loan', sign: -1, fallback: toPaise(balancesObj.loan || balancesObj.regularLoan || 0) },
+    { key: 'loanAgainstDeposit', sign: -1, fallback: toPaise(balancesObj.loanAgainstDeposit || balancesObj.lad || 0) }
   ];
-  for (const { key, anchor, sign } of BALANCE_GROUPS) {
-    let running = anchor;
+  for (const { key, fallback } of BALANCE_GROUPS) {
+    let running = fallback;
     for (let i = allRows.length - 1; i >= 0; i -= 1) {
       const row = allRows[i];
+      row[key].signed = running;
       row[key].balance = Math.abs(running);
-      running -= sign * (row[key].credit - row[key].debit);
+      running -= row[key].credit - row[key].debit;
     }
   }
 
-  // Per-transaction interest accrual. The legacy system's own rate*days/12
-  // formula was found commented out (dead) in its stored procedures, and no
-  // live per-voucher interest value was migrated — so this is a fresh simple-
-  // interest calculation (annual rate / 365 days), applied to the balance that
-  // was actually outstanding since the previous transaction on this account.
-  // Chosen over the legacy formula specifically because that formula is known
-  // dead code, not a verified reproduction of it.
-  const ratesConfig = await getGlobalRatesConfig();
-  const INTEREST_RATE = {
-    specialDeposit: toNumber(ratesConfig.interestRates?.paid?.specialSaving, 0),
-    compulsoryDeposit: toNumber(ratesConfig.interestRates?.paid?.compulsoryDeposit, 0),
-    loan: toNumber(ratesConfig.interestRates?.receive?.loan, 0),
-    loanAgainstDeposit: toNumber(ratesConfig.interestRates?.receive?.loanAgainstDeposit, 0)
-  };
-  const MS_PER_DAY = 24 * 60 * 60 * 1000;
-  for (const key of Object.keys(INTEREST_RATE)) {
-    const rate = INTEREST_RATE[key];
-    let priorBalance = null;
-    let priorDate = null;
-    for (let i = 0; i < allRows.length; i += 1) {
-      const row = allRows[i];
-      if (priorDate != null && rate) {
-        const days = Math.max(0, Math.round((new Date(row.date) - new Date(priorDate)) / MS_PER_DAY));
-        row[key].interest = Math.round(priorBalance * (rate / 100) * (days / 365));
-      } else {
-        row[key].interest = 0;
-      }
-      priorBalance = row[key].balance;
-      priorDate = row.date;
-    }
-  }
+  // Per-transaction interest, as the legacy printout computes it (see
+  // accrueMemberLedgerInterest). Each day accrues at the rate in force on that
+  // day, so a later rate change leaves earlier spans alone.
+  const rateTimelines = await getInterestRateTimelines(MEMBER_INTEREST_HEADS);
+  accrueMemberLedgerInterest(allRows, rateTimelines, cleanText(dateTo));
 
   const fromDateStr = cleanText(dateFrom);
   const toDateStr = cleanText(dateTo);
-  const visibleRows = allRows.filter(r => (!fromDateStr || r.date >= fromDateStr) && (!toDateStr || r.date <= toDateStr));
+  // That FY's legacy master row (designation etc. as legacy printed them).
+  let memberExtras = {};
+  const visibleRows = allRows.filter((r) => isInMemberWindow(r, fromDateStr, toDateStr));
   // The row immediately before visibleRows[0] in the FULL merged timeline —
   // not just "before fromDateStr" — carries the true balance the visible
   // window opens with, consistent with the backward computation above.
@@ -2318,7 +2649,7 @@ async function buildMemberLedgerReport({ memberCode, dateFrom = '', dateTo = '',
       balance = allRows[firstVisibleIndex - 1][key].balance;
     } else if (firstVisibleIndex === 0) {
       const first = visibleRows[0][key];
-      balance = Math.abs(first.balance - sign * (first.credit - first.debit));
+      balance = Math.abs(first.signed - (first.credit - first.debit));
     } else {
       balance = Math.abs(fallback);
     }
@@ -2327,8 +2658,35 @@ async function buildMemberLedgerReport({ memberCode, dateFrom = '', dateTo = '',
     // itself, matching the legacy printout. Loan/LoanAgainstDeposit are
     // Dr-nature and the legacy printout leaves their opening Credit/Debit
     // blank (balance-only), so that's left untouched here.
-    const openingCredit = sign > 0 ? balance : 0;
-    openingRow[key] = { credit: openingCredit, debit: 0, balance, interest: 0 };
+    // Loan/LoanAgainstDeposit (Dr-nature) show it as an opening Debit, as the
+    // legacy printout does, so TOTAL Credit/Debit include the opening.
+    openingRow[key] = { credit: sign > 0 ? balance : 0, debit: sign < 0 ? balance : 0, balance, interest: 0 };
+  }
+
+  // A full FY legacy has closed: make each bucket's FY interest equal
+  // legacy's own MbrCBlnc figure, which the desktop app computed and the
+  // archive keeps. The rules above reproduce it exactly for most members; the
+  // rest differ by a rupee of rounding, by legacy closing a year late (FY
+  // 2025-26 accrued ~16 days into April) or by a member legacy paid no
+  // interest. The difference goes on the bucket's last movement, where legacy
+  // puts its year-end interest; a legacy total of 0 clears the bucket.
+  if (fromDateStr && toDateStr === fyEndOf(fromDateStr) && fromDateStr === fyStartOf(fromDateStr)) {
+    const legacyFy = await getLegacyFyAccountRows('member', [member.code], fromDateStr);
+    const legacyInterest = legacyFy.closed ? legacyFy.rows.get(member.code)?.MbrCBlnc : null;
+    if (legacyInterest) {
+      const fields = { specialDeposit: 'MSSAIntr', compulsoryDeposit: 'MContryIntr', loan: 'MRLoanIntr', loanAgainstDeposit: 'MDLoanIntr' };
+      for (const [key, field] of Object.entries(fields)) {
+        const target = toPaise(legacyInterest[field] || 0);
+        const movers = visibleRows.filter((r) => r[key].credit || r[key].debit);
+        if (!target) {
+          movers.forEach((r) => { r[key].interest = 0; });
+          continue;
+        }
+        const last = movers[movers.length - 1];
+        if (last) last[key].interest += target - movers.reduce((total, r) => total + (r[key].interest || 0), 0);
+      }
+      memberExtras = legacyFy.rows.get(member.code) || {};
+    }
   }
 
   let finalRows = [openingRow].concat(visibleRows);
@@ -2342,8 +2700,24 @@ async function buildMemberLedgerReport({ memberCode, dateFrom = '', dateTo = '',
     loanAgainstDeposit: { credit: toRupees(row.loanAgainstDeposit.credit), debit: toRupees(row.loanAgainstDeposit.debit), balance: toRupees(row.loanAgainstDeposit.balance), interest: toRupees(row.loanAgainstDeposit.interest || 0) },
   }));
 
+  if (!memberExtras.Designation && fromDateStr) {
+    memberExtras = (await getLegacyFyAccountRows('member', [member.code], fromDateStr)).rows.get(member.code) || {};
+  }
+  // Contact fields the migration left in the legacy master row only.
+  const raw = member.payload?.raw || {};
+  const branch = member.branchCode ? await Branch.findOne({ code: member.branchCode }).lean() : null;
+  const memberResponse = {
+    ...toResponse(member),
+    fatherOrHusbandName: member.fatherOrHusbandName || cleanText(memberExtras.FathersName || raw.FathersName),
+    designation: member.designation || cleanText(memberExtras.Designation || raw.Designation),
+    pfNo: member.pfNo || cleanText(raw.PFNo),
+    mobileNo: cleanText(raw.MobileNo) || member.mobileNo || '',
+    postedBranch: cleanText(memberExtras.PostedBranch || raw.PostedBranch) || branch?.place || branch?.label || member.branchCode || ''
+  };
+
   return {
-    member: toResponse(member),
+    member: memberResponse,
+    asOnDate: toDateStr,
     balances: {
       share: Math.abs(shareBal / 100),
       compulsoryDeposit: Math.abs(cdBal / 100),
@@ -2364,10 +2738,26 @@ async function buildAccountStatementReport({ type = 'ledger', ledgerId = '', mem
   const branchCode = resolveBranchCode(user);
   
   if (type === 'member') {
-    return await buildMemberAccountStatement({ memberId: memberId || ledgerId, dateFrom, dateTo, user });
+    const targetMember = memberId || ledgerId;
+    if (targetMember) return await buildMemberAccountStatement({ memberId: targetMember, dateFrom, dateTo, user });
+    return await buildMemberAccountStatementList({ branchCode, search, dateFrom, dateTo, user });
   }
   if (type === 'employee') {
-    return await buildEmployeeAccountStatement({ employeeId: employeeId || ledgerId, dateFrom, dateTo, user });
+    const targetEmployee = employeeId || ledgerId;
+    if (targetEmployee) return await buildEmployeeAccountStatement({ employeeId: targetEmployee, dateFrom, dateTo, user });
+    return await buildEmployeeAccountStatementList({ branchCode, search, dateFrom, dateTo, user });
+  }
+  if (type === 'members-opening-balance') {
+    return await buildMembersOpeningBalanceReport({ branchCode, dateFrom, user });
+  }
+  if (type === 'members-closing-balance') {
+    return await buildMembersClosingBalanceReport({ branchCode, dateFrom, dateTo, user });
+  }
+  if (type === 'statement-of-member-ledger') {
+    return await buildStatementOfMemberLedgerReport({ dateFrom, dateTo, user });
+  }
+  if (type === 'ledger-statements') {
+    return await buildAllLedgerStatements({ dateFrom, dateTo, branchCode });
   }
 
   if (ledgerId) {
@@ -2386,6 +2776,7 @@ async function buildAccountStatementReport({ type = 'ledger', ledgerId = '', mem
   return filtered.map((row) => ({
     ledgerCode: row.code,
     ledgerName: row.name,
+    nature: row.nature,
     openingBalance: row.opening,
     openingSide: row.openingSide,
     totalCr: row.totalCr,
@@ -2394,20 +2785,861 @@ async function buildAccountStatementReport({ type = 'ledger', ledgerId = '', mem
     balanceSide: row.closingSide
   }));
 }
+
+// Account Statement View's MEMBER type: one row per member (the grid view,
+// not the single-member drill-down buildMemberAccountStatement above), with
+// the full legacy column set (Share/CD/SSA/Loan/DLoan + their interest,
+// Premium, Dismembered), mirroring legacy's VwMemberBalance. Balances are as at
+// the end of the selected FY from the shared member balance walk, signed
+// credit-positive like legacy (a loan owed is negative).
+// Interest: for a FY legacy has closed, legacy's own figure (MbrCBlnc, which
+// the desktop app computed — not reproducible from SQL) from the openings
+// archive, so it matches legacy to the rupee; for the open FY, our accrual.
+// Share interest and Premium have no transaction history to walk, so those
+// two still come from the migrated snapshot.
+async function buildMemberAccountStatementList({ branchCode = '', search = '', dateFrom = '', dateTo = '', user = {} } = {}) {
+  const members = await findMembersForReport({ branchCode, search, user });
+  const [periods, branches, legacyFy] = await Promise.all([
+    computeMemberPeriodBalances({ members, dateFrom, dateTo, user }),
+    Branch.find({}).lean(),
+    getLegacyFyAccountRows('member', members.map((m) => m.code), dateFrom)
+  ]);
+  const branchByCode = new Map(branches.map((b) => [cleanUpper(b.code), b]));
+  // Newest members first: highest member code at the top.
+  const byCodeDesc = [...periods].sort((a, b) => String(b.member.code || '').localeCompare(String(a.member.code || ''), undefined, { numeric: true }));
+
+  return byCodeDesc.map(({ member: row, buckets }) => {
+    const b = typeof row.balances === 'string' ? JSON.parse(row.balances || '{}') : (row.balances || {});
+    const branch = branchByCode.get(cleanUpper(row.branchCode)) || {};
+    const raw = row.payload?.raw || {};
+    const fyRaw = legacyFy.rows.get(row.code) || {};
+    const legacyInterest = legacyFy.closed ? fyRaw.MbrCBlnc : null;
+    const interest = (bucket, legacyField) => (legacyInterest
+      ? toNumber(legacyInterest[legacyField], 0)
+      : toRupees(buckets[bucket].interest));
+    return {
+      memberCode: row.code,
+      memberName: row.name,
+      branchCode: row.branchCode || '',
+      branchName: branch.label || branch.place || row.branchCode || '',
+      // Legacy's PostedBranch is the member's own free-text posting (e.g.
+      // HATHBAND), not the branch master's name.
+      postedBranch: cleanText(fyRaw.PostedBranch || raw.PostedBranch) || branch.label || branch.place || '',
+      designation: row.designation || cleanText(fyRaw.Designation || raw.Designation),
+      fhName: row.fatherOrHusbandName || cleanText(fyRaw.FathersName || raw.FathersName),
+      share: toRupees(buckets.share.closing),
+      shareInt: toNumber(b.shareInterest, 0),
+      cdAmt: toRupees(buckets.compulsoryDeposit.closing),
+      cdInt: interest('compulsoryDeposit', 'MContryIntr'),
+      ssa: toRupees(buckets.specialDeposit.closing),
+      ssaInt: interest('specialDeposit', 'MSSAIntr'),
+      loan: toRupees(buckets.loan.closing),
+      loanInt: interest('loan', 'MRLoanIntr'),
+      dloan: toRupees(buckets.loanAgainstDeposit.closing),
+      dloanInt: interest('loanAgainstDeposit', 'MDLoanIntr'),
+      premium: toNumber(b.insurancePremium, 0),
+      dismembered: !!row.dismembered
+    };
+  });
+}
+
+// Account Statement View's EMPLOYEE type, mirroring legacy's VwEmployeeBalance:
+// closing balances as at the end of the selected FY, signed credit-positive (a
+// loan owed is negative). Like members, legacy rolls each FY's interest into
+// the next FY's employee opening with no voucher, so a walk across FY
+// boundaries drifts; for a FY legacy holds, the closing is that FY's archived
+// legacy opening plus the FY's own movements from the employee ledger walk
+// (otherwise the walk alone). Interest is legacy's
+// own EmpCBlnc figure for that FY, shown negated as VwEmployeeBalance does
+// (interest due on a loan is a debit). Falls back to the migrated snapshot
+// when the FY was never in legacy.
+async function buildEmployeeAccountStatementList({ branchCode = '', search = '', dateFrom = '', dateTo = '', user = {} } = {}) {
+  const effectiveBranchCode = resolveBranchCode(user, branchCode);
+  const query = effectiveBranchCode ? { branchCode: effectiveBranchCode } : {};
+  const rows = (await Employee.find(query).lean())
+    .sort((a, b) => String(a.code || '').localeCompare(String(b.code || ''), undefined, { numeric: true }));
+
+  const filtered = search
+    ? rows.filter((row) => [row.code, row.name].some((value) => cleanLower(value).includes(cleanLower(search))))
+    : rows;
+
+  const legacyFy = await getLegacyFyAccountRows('employee', filtered.map((row) => row.code), dateFrom);
+  const ledgers = await Promise.all(filtered.map((row) => buildEmployeeLedgerReport({ employeeCode: row.code, dateFrom, dateTo, user })));
+
+  return filtered.map((row, index) => {
+    const raw = row.payload?.raw || {};
+    const fyRaw = legacyFy.rows.get(row.code) || {};
+    const ledger = ledgers[index] || {};
+    const closing = (key) => {
+      const walked = toNumber(ledger.signedBalances?.[key], 0);
+      if (!fyRaw.opening) return walked;
+      return Number((fyRaw.opening[key] + walked - toNumber(ledger.signedOpening?.[key], 0)).toFixed(2));
+    };
+    const legacyInterest = fyRaw.EmpCBlnc;
+    return {
+      employeeCode: row.code,
+      employeeName: row.name,
+      branchCode: row.branchCode || '',
+      designation: row.designation || cleanText(fyRaw.Designation || raw.Designation),
+      fhName: row.fatherName || cleanText(fyRaw.FathersName || raw.FathersName),
+      housingLoan: closing('housingLoan'),
+      housingLoanInt: -toNumber(legacyInterest ? legacyInterest.HLoanIntr : row.homeLoanInterest, 0),
+      vehicleLoan: closing('vehicleLoan'),
+      vehicleLoanInt: -toNumber(legacyInterest ? legacyInterest.VLoanIntr : row.vehicleLoanInterest, 0),
+      retired: !!row.retired
+    };
+  });
+}
+
+// One legacy FY's archived master rows (legacy_historical_member_openings /
+// legacy_historical_employee_openings payload.raw) for the FY starting on
+// fyStart, keyed by member/employee code; employee rows also carry that FY's
+// legacy opening balances (`opening`, rupees, credit-positive). `closed` is
+// true once legacy holds a later FY too — only then is that FY's interest final.
+async function getLegacyFyAccountRows(kind, codes = [], fyStart = '') {
+  const empty = { rows: new Map(), closed: false };
+  const start = cleanText(fyStart);
+  if (!codes.length || !start) return empty;
+  const table = kind === 'employee' ? 'legacy_historical_employee_openings' : 'legacy_historical_member_openings';
+  const codeColumn = kind === 'employee' ? '"employeeCode"' : '"memberCode"';
+  const database = await initializeDatabase();
+  try {
+    const [result, later] = await Promise.all([
+      database.query(`SELECT * FROM ${table} WHERE "fyStart" = $1 AND ${codeColumn} = ANY($2)`, [start, codes]),
+      database.query(`SELECT 1 FROM ${table} WHERE "fyStart" > $1 LIMIT 1`, [start])
+    ]);
+    return {
+      rows: new Map(result.rows.map((r) => {
+        const raw = { ...(r.payload?.raw || {}) };
+        if (kind === 'employee') {
+          raw.opening = { housingLoan: toNumber(r.housingLoan, 0), vehicleLoan: toNumber(r.vehicleLoan, 0), grainAdvance: toNumber(r.grainAdvance, 0) };
+        }
+        return [kind === 'employee' ? r.employeeCode : r.memberCode, raw];
+      })),
+      closed: later.rows.length > 0
+    };
+  } catch (error) {
+    // Not loaded yet (tools/legacy-migration/src/load-member-openings.js).
+    if (error.code === '42P01') return empty;
+    throw error;
+  }
+}
+
+// Legacy "Member's Opening Balance": one row per member, no per-member
+// selection — legacy's own Code/Member filter on this report is ignored in
+// practice (verified against a real capture), so this intentionally always
+// returns every member rather than reproducing that as a feature. The balance
+// is what each bucket stood at just before the selected FY's 1 April, from the
+// shared member balance walk (for the cutover FY that is the migrated
+// `member.balances` snapshot itself).
+// Balances are credit-positive (a loan owed is negative): positive is CR,
+// negative DR, and a nil balance prints on the head's own side as legacy does
+// (deposits CR, loans DR).
+function balanceSide(amount, naturalSide = 'CR') {
+  if (amount > 0) return 'CR';
+  if (amount < 0) return 'DR';
+  return naturalSide;
+}
+
+// Legacy lists only the members present in that FY's database; members who
+// left earlier (some still carry a few paise) are left out the same way.
+function inLegacyFy(periods, legacyFy) {
+  return legacyFy.rows.size ? periods.filter(({ member }) => legacyFy.rows.has(member.code)) : periods;
+}
+
+async function buildMembersOpeningBalanceReport({ branchCode = '', dateFrom = '', user = {} } = {}) {
+  const members = await findMembersForReport({ branchCode, user });
+  // Walk only what happened before the FY starts, so this equals the previous
+  // FY's closing balance exactly.
+  const [periods, legacyFy] = await Promise.all([
+    computeMemberPeriodBalances({ members, dateFrom, dateTo: previousDay(dateFrom), user }),
+    getLegacyFyAccountRows('member', members.map((m) => m.code), dateFrom)
+  ]);
+
+  return inLegacyFy(periods, legacyFy).map(({ member: row, buckets }) => {
+    // No FY given -> the migrated snapshot (closing with no dateTo), as before.
+    const opening = (key) => toRupees(dateFrom ? buckets[key].opening : buckets[key].closing);
+    const share = opening('share');
+    const specialDeposit = opening('specialDeposit');
+    const compulsoryDeposit = opening('compulsoryDeposit');
+    const loan = opening('loan');
+    const loanAgainstDeposit = opening('loanAgainstDeposit');
+    return {
+      memberCode: row.code,
+      memberName: row.name,
+      share: { amount: Math.abs(share), side: balanceSide(share) },
+      specialDeposit: { amount: Math.abs(specialDeposit), side: balanceSide(specialDeposit) },
+      compulsoryDeposit: { amount: Math.abs(compulsoryDeposit), side: balanceSide(compulsoryDeposit) },
+      loan: { amount: Math.abs(loan), side: balanceSide(loan, 'DR') },
+      loanAgainstDeposit: { amount: Math.abs(loanAgainstDeposit), side: balanceSide(loanAgainstDeposit, 'DR') }
+    };
+  });
+}
+
+// Legacy "Member's Closing Balance": one row per member, no per-member
+// selection. Balance is as at the selected FY's 31 March from the shared
+// member balance walk; interest is legacy's own MbrCBlnc figure for a FY
+// legacy has closed (as Account Statement View), otherwise that FY's accrual.
+// Total = balance + interest. Like legacy, only members with a non-zero
+// balance in some head are listed (an interest-only row is left out), and
+// their interest is printed whatever their status — a member dismembered
+// mid-year who still owes a loan keeps the year's interest (FY 2025-26
+// member 826). Matches legacy's FY 2024-25 and 2025-26 printouts.
+async function buildMembersClosingBalanceReport({ branchCode = '', dateFrom = '', dateTo = '', user = {} } = {}) {
+  const members = await findMembersForReport({ branchCode, user });
+  const [periods, legacyFy] = await Promise.all([
+    computeMemberPeriodBalances({ members, dateFrom, dateTo, user }),
+    getLegacyFyAccountRows('member', members.map((m) => m.code), dateFrom)
+  ]);
+  const legacyField = { specialDeposit: 'MSSAIntr', compulsoryDeposit: 'MContryIntr', loan: 'MRLoanIntr', loanAgainstDeposit: 'MDLoanIntr' };
+
+  const hasBalance = ({ buckets }) => MEMBER_BALANCE_BUCKETS.some((key) => Math.abs(toRupees(buckets[key].closing)) >= 0.005);
+  return inLegacyFy(periods, legacyFy).filter(hasBalance).map(({ member: row, buckets }) => {
+    const share = toRupees(buckets.share.closing);
+    const legacyRow = legacyFy.rows.get(row.code);
+    const legacyInterest = legacyFy.closed && legacyRow ? (legacyRow.MbrCBlnc || {}) : null;
+    // Legacy's MbrCBlnc interest keeps its sign (a few are negative, e.g.
+    // FY 2025-26 member 1623's LAD -2): it prints unsigned, but Total and the
+    // footer add it signed (2.00 DR + -2 = 0.00), so it is passed on signed.
+    const closingBucket = (key, naturalSide = 'CR') => {
+      const amount = toRupees(buckets[key].closing);
+      const interest = legacyInterest ? toNumber(legacyInterest[legacyField[key]], 0) : Math.abs(toRupees(buckets[key].interest));
+      return { balance: Math.abs(amount), side: balanceSide(amount, naturalSide), interest, total: Number((Math.abs(amount) + interest).toFixed(2)) };
+    };
+    return {
+      memberCode: row.code,
+      memberName: row.name,
+      share: { amount: Math.abs(share), side: balanceSide(share) },
+      specialDeposit: closingBucket('specialDeposit'),
+      compulsoryDeposit: closingBucket('compulsoryDeposit'),
+      loan: closingBucket('loan', 'DR'),
+      loanAgainstDeposit: closingBucket('loanAgainstDeposit', 'DR')
+    };
+  });
+}
+
+// Batched counterpart of getHistoricalMemberLedgerRows — same two source
+// queries (legacy_historical_vouchers by ParticularAccID, legacy_historical_
+// recovery by memberCode) but issued ONCE across every member with an IN/ANY
+// filter instead of once per member, then grouped in memory. Bulk reports
+// (all ~1000 members) would otherwise run 2 queries per member.
+async function getHistoricalMemberLedgerRowsBatch(members) {
+  const database = await initializeDatabase();
+  const accIdToCode = new Map();
+  const codes = [];
+  for (const m of members) {
+    codes.push(m.code);
+    const accId = m?.payload?.raw?.AccID != null ? String(m.payload.raw.AccID) : '';
+    if (accId) accIdToCode.set(accId, m.code);
+  }
+  const rowsByMember = new Map(members.map((m) => [m.code, []]));
+
+  const accIds = [...accIdToCode.keys()];
+  if (accIds.length) {
+    const directResult = await database.query(
+      `SELECT "voucherNo", "voucherCategory", narration, payload, "sourceDatabase"
+       FROM legacy_historical_vouchers
+       WHERE "voucherCategory" IN ('1','2','3','14','15')
+         AND payload->'raw'->>'ParticularAccID' = ANY($1)`,
+      [accIds]
+    );
+    for (const v of directResult.rows) {
+      const raw = v.payload?.raw || {};
+      const memberCode = accIdToCode.get(String(raw.ParticularAccID));
+      const list = memberCode ? rowsByMember.get(memberCode) : null;
+      if (!list) continue;
+      const date = bookedInLegacyFy(raw.VoucherDate, v.sourceDatabase);
+      if (!date) continue;
+
+      const row = {
+        voucherNo: `LGCY-${v.voucherNo}`,
+        date,
+        share: { credit: 0, debit: 0, balance: 0 },
+        specialDeposit: { credit: 0, debit: 0, balance: 0, interest: 0 },
+        compulsoryDeposit: { credit: 0, debit: 0, balance: 0, interest: 0 },
+        loan: { credit: 0, debit: 0, balance: 0, interest: 0 },
+        loanAgainstDeposit: { credit: 0, debit: 0, balance: 0, interest: 0 },
+        isOpening: false,
+        isHistorical: true,
+        fyStart: legacyFyStart(v.sourceDatabase),
+        narration: withLegacyDateNote(v.narration || raw.Narration || '', raw.VoucherDate, date)
+      };
+
+      if (v.voucherCategory === '1') {
+        row.loan.debit = toPaise(raw.RLoanAmt);
+        row.loanAgainstDeposit.debit = toPaise(raw.DLoanAmt);
+      } else if (v.voucherCategory === '2') {
+        row.compulsoryDeposit.debit = toPaise(raw.CDAmt);
+      } else if (v.voucherCategory === '3') {
+        row.specialDeposit.debit = toPaise(raw.SSAamt);
+      } else if (v.voucherCategory === '14' || v.voucherCategory === '15') {
+        const rowSide = v.voucherCategory === '14' ? 'debit' : 'credit';
+        row.share[rowSide] = toPaise(raw.ShareAmt);
+        row.compulsoryDeposit[rowSide] = toPaise(raw.CDAmt);
+        row.specialDeposit[rowSide] = toPaise(raw.SSAamt);
+        row.loan[rowSide] = toPaise(raw.RLoanAmt);
+        row.loanAgainstDeposit[rowSide] = toPaise(raw.DLoanAmt);
+      }
+
+      list.push(row);
+    }
+  }
+
+  if (codes.length) {
+    const recoveryResult = await database.query(
+      `SELECT r."memberCode" AS member_code, r."sourceDatabase" AS source_database, r.payload AS recovery_payload, v."voucherNo" AS parent_voucher_no, v.payload AS voucher_payload
+       FROM legacy_historical_recovery r
+       LEFT JOIN legacy_historical_vouchers v
+         ON v."sourceDatabase" = r."sourceDatabase"
+        AND v.payload->'raw'->>'TransNo' = r.payload->'raw'->>'TransNo'
+        AND v."voucherCategory" = '5'
+       WHERE r."memberCode" = ANY($1)`,
+      [codes]
+    );
+    for (const r of recoveryResult.rows) {
+      const list = rowsByMember.get(r.member_code);
+      if (!list) continue;
+      const rraw = r.recovery_payload?.raw || {};
+      const vraw = r.voucher_payload?.raw || {};
+      const date = bookedInLegacyFy(vraw.VoucherDate, r.source_database);
+      if (!date) continue;
+
+      list.push({
+        voucherNo: r.parent_voucher_no ? `LGCY-${r.parent_voucher_no}` : 'LGCY-RECOVERY',
+        date,
+        share: { credit: toPaise(rraw.Share), debit: 0, balance: 0 },
+        specialDeposit: { credit: toPaise(rraw.SSA), debit: 0, balance: 0, interest: 0 },
+        compulsoryDeposit: { credit: toPaise(rraw.CD), debit: 0, balance: 0, interest: 0 },
+        loan: { credit: toPaise(rraw.RLoan), debit: 0, balance: 0, interest: 0 },
+        loanAgainstDeposit: { credit: toPaise(rraw.DLoan), debit: 0, balance: 0, interest: 0 },
+        isOpening: false,
+        isHistorical: true,
+        fyStart: legacyFyStart(r.source_database),
+        narration: withLegacyDateNote(vraw.Narration || '', vraw.VoucherDate, date)
+      });
+    }
+  }
+
+  const openingsByMember = await getLegacyMemberFyOpenings(codes);
+  for (const [code, list] of rowsByMember) {
+    list.push(...yearEndCarryForwardRows(list, openingsByMember.get(code)));
+    // A carry-forward row opens its FY, so it goes ahead of anything else
+    // dated that same 1 April.
+    list.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : (b.isCarryForward ? 1 : 0) - (a.isCarryForward ? 1 : 0)));
+  }
+  return rowsByMember;
+}
+
+// 'JilaSahkariDB2425' -> '2024-04-01' (each legacy database is one FY).
+function legacyFyStart(sourceDatabase = '') {
+  const match = /(\d{2})(\d{2})$/.exec(cleanText(sourceDatabase));
+  return match ? `20${match[1]}-04-01` : '';
+}
+
+// Rows a member report shows for [from, to]. A year-end carry-forward dated
+// exactly `from` is part of that period's opening balance, not a movement in
+// it — legacy's FY opening already includes the interest it carries.
+function isInMemberWindow(row, fromDate, toDate) {
+  if (fromDate && (row.date < fromDate || (row.date === fromDate && row.isCarryForward))) return false;
+  return !toDate || row.date <= toDate;
+}
+
+// Each legacy database is one FY, and legacy counts a voucher in the FY whose
+// database holds it whatever date was typed on it. The odd voucher dated
+// outside its own FY (one in the whole archive: 24-02-2024 in the 2024-25
+// database) is booked at the nearest edge of that FY so balances match legacy.
+function bookedInLegacyFy(voucherDate, sourceDatabase) {
+  const date = voucherDate ? String(voucherDate).slice(0, 10) : '';
+  const fyStart = legacyFyStart(sourceDatabase);
+  if (!date || !fyStart) return date || null;
+  const fyEnd = `${Number(fyStart.slice(0, 4)) + 1}-03-31`;
+  if (date < fyStart) return fyStart;
+  if (date > fyEnd) return fyEnd;
+  return date;
+}
+
+function withLegacyDateNote(narration, voucherDate, bookedDate) {
+  const original = voucherDate ? String(voucherDate).slice(0, 10) : '';
+  if (!original || original === bookedDate) return narration;
+  const [y, m, d] = original.split('-');
+  const note = `(dated ${d}-${m}-${y} in legacy)`;
+  return narration ? `${narration} ${note}` : note;
+}
+
+// Every legacy FY's member opening balances (legacy_historical_member_openings),
+// in paise, credit-positive signed like member.balances, oldest FY first.
+async function getLegacyMemberFyOpenings(codes = []) {
+  const byMember = new Map();
+  if (!codes.length) return byMember;
+  const database = await initializeDatabase();
+  let result;
+  try {
+    result = await database.query(
+      `SELECT "memberCode", "fyStart", share, "compulsoryDeposit", "specialDeposit", loan, "loanAgainstDeposit"
+       FROM legacy_historical_member_openings
+       WHERE "memberCode" = ANY($1)
+       ORDER BY "fyStart"`,
+      [codes]
+    );
+  } catch (error) {
+    // Not loaded yet (tools/legacy-migration/src/load-member-openings.js):
+    // reports fall back to the vouchers alone.
+    if (error.code === '42P01') return byMember;
+    throw error;
+  }
+  for (const row of result.rows) {
+    if (!byMember.has(row.memberCode)) byMember.set(row.memberCode, []);
+    byMember.get(row.memberCode).push({
+      fyStart: row.fyStart,
+      share: toPaise(row.share),
+      compulsoryDeposit: toPaise(row.compulsoryDeposit),
+      specialDeposit: toPaise(row.specialDeposit),
+      loan: toPaise(row.loan),
+      loanAgainstDeposit: toPaise(row.loanAgainstDeposit)
+    });
+  }
+  return byMember;
+}
+
+// Legacy closes each FY by adding that year's computed interest (MbrCBlnc)
+// straight into the next FY's opening balance — no voucher. Without it the
+// balance history drifts by the accumulated interest for every earlier year.
+// For each pair of consecutive FYs this adds one row on the later FY's 1 April
+// carrying the difference between that FY's legacy opening and the earlier
+// FY's opening plus its movements, so every FY opens exactly where legacy says.
+// Because the gap is measured against the rows actually present, it also
+// absorbs any legacy movement these rows don't model.
+function yearEndCarryForwardRows(rows = [], openings = []) {
+  const carryRows = [];
+  for (let i = 1; i < openings.length; i += 1) {
+    const previous = openings[i - 1];
+    const current = openings[i];
+    if (Number(current.fyStart.slice(0, 4)) - Number(previous.fyStart.slice(0, 4)) !== 1) continue;
+
+    const row = {
+      voucherNo: 'FY-CARRY-FORWARD',
+      date: current.fyStart,
+      share: { credit: 0, debit: 0, balance: 0 },
+      specialDeposit: { credit: 0, debit: 0, balance: 0, interest: 0 },
+      compulsoryDeposit: { credit: 0, debit: 0, balance: 0, interest: 0 },
+      loan: { credit: 0, debit: 0, balance: 0, interest: 0 },
+      loanAgainstDeposit: { credit: 0, debit: 0, balance: 0, interest: 0 },
+      isOpening: false,
+      isHistorical: true,
+      isCarryForward: true,
+      fyStart: current.fyStart,
+      narration: 'Year-end interest carried forward (legacy FY opening)'
+    };
+    let changed = false;
+    for (const key of MEMBER_BALANCE_BUCKETS) {
+      const movement = rows
+        .filter((r) => r.fyStart === previous.fyStart)
+        .reduce((total, r) => total + (r[key].credit || 0) - (r[key].debit || 0), 0);
+      const gap = current[key] - (previous[key] + movement);
+      if (gap > 0) row[key].credit = gap;
+      if (gap < 0) row[key].debit = -gap;
+      if (gap) changed = true;
+    }
+    if (changed) carryRows.push(row);
+  }
+  return carryRows;
+}
+
+const MEMBER_BALANCE_BUCKETS = ['share', 'specialDeposit', 'compulsoryDeposit', 'loan', 'loanAgainstDeposit'];
+
+// '2024-11-07' -> FY '2024-04-01'..'2025-03-31'.
+function fyStartOf(isoDate) {
+  const year = Number(isoDate.slice(0, 4));
+  return `${Number(isoDate.slice(5, 7)) >= 4 ? year : year - 1}-04-01`;
+}
+function fyEndOf(isoDate) {
+  return `${Number(fyStartOf(isoDate).slice(0, 4)) + 1}-03-31`;
+}
+
+// Fills row[key].interest (paise) on a member's merged, date-sorted timeline
+// the way the legacy member ledger printout does (verified to the rupee on
+// member 1068, FY 2024-25, and on every member's FY total against MbrCBlnc):
+//  - a bucket shows interest only on rows where that bucket itself moves,
+//    accrued on its balance since its own previous movement;
+//  - each FY starts afresh on 1 April (legacy keeps one database per FY);
+//  - a bucket's last movement in a FY also earns interest from its date to
+//    the FY end (or `asOnDate`, the report's as-on date, if earlier), added to
+//    that row;
+//  - every amount is rounded to the whole rupee.
+// `toFyEnd: false` drops that year-end span, as legacy's Statement of Member
+// Ledger does (interest only up to each head's last movement).
+// Rows need row[key].signed/.balance set (balance walk) before this runs.
+function accrueMemberLedgerInterest(allRows, rateTimelines, asOnDate = '', { toFyEnd = true } = {}) {
+  const toRupeePaise = (paise) => Math.round((paise || 0) / 100) * 100;
+  for (const key of Object.keys(rateTimelines)) {
+    const timeline = rateTimelines[key];
+    for (const row of allRows) row[key].interest = 0;
+    const movers = allRows.filter((row) => row[key].credit || row[key].debit);
+    if (!movers.length) continue;
+
+    const first = movers[0][key];
+    let priorBalance = Math.abs(first.signed - (first.credit - first.debit));
+    let priorDate = fyStartOf(movers[0].date);
+    movers.forEach((row, index) => {
+      const fyStart = fyStartOf(row.date);
+      const from = priorDate < fyStart ? fyStart : priorDate;
+      row[key].interest = toRupeePaise(rateHistory.accrueInterest(priorBalance, from, row.date, timeline));
+      priorBalance = row[key].balance;
+      priorDate = row.date;
+
+      const next = movers[index + 1];
+      let tailEnd = fyEndOf(row.date);
+      if (asOnDate && asOnDate < tailEnd) tailEnd = asOnDate;
+      if (!toFyEnd || (!next && !asOnDate)) return;
+      if (tailEnd > row.date && (!next || next.date > tailEnd)) {
+        row[key].interest += toRupeePaise(rateHistory.accrueInterest(row[key].balance, row.date, tailEnd, timeline));
+      }
+    });
+  }
+}
+
+// '2025-04-01' -> '2025-03-31'; '' stays ''.
+function previousDay(isoDate = '') {
+  const date = cleanText(isoDate);
+  if (!date) return '';
+  const time = new Date(`${date}T00:00:00Z`).getTime();
+  return Number.isFinite(time) ? new Date(time - 24 * 60 * 60 * 1000).toISOString().slice(0, 10) : '';
+}
+
+async function findMembersForReport({ branchCode = '', search = '', user = {} } = {}) {
+  const effectiveBranchCode = resolveBranchCode(user, branchCode);
+  const memberQuery = effectiveBranchCode ? { branchCode: effectiveBranchCode } : {};
+  const members = (await Member.find(memberQuery).lean()).sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+  return search
+    ? members.filter((row) => [row.code, row.name].some((value) => cleanLower(value).includes(cleanLower(search))))
+    : members;
+}
+
+// Bulk counterpart of buildMemberLedgerReport — same balance-walk and simple-
+// interest rules (see the comments there), run for every member against
+// shared, pre-fetched vouchers/recovery-lines/historical rows instead of one
+// member at a time. Returns, per member and bucket, the signed balance (paise,
+// same sign convention as member.balances) just before dateFrom and at the end
+// of dateTo, plus the period credit/debit/interest totals — which is what every
+// FY-scoped member report (Statement of Member Ledger, Opening/Closing Balance,
+// Account Statement member view) needs. Keep the per-row calculation here in
+// sync with buildMemberLedgerReport.
+// Interest the way legacy's Statement of Member Ledger computes it: its
+// GetLedger procedure adds a nil row at every month end of the FY (30 April
+// to the last month end before the as-on date — so 28 February for a full
+// FY), and the desktop app accrues each head's balance across every row,
+// movement or not. So a head with no movement still earns interest up to
+// that last month end, and one that moved later in the year up to its last
+// movement; never on to 31 March. Amounts are summed unrounded and the
+// total rounded once. Verified member by member against legacy FY 2024-25.
+function statementOfMemberLedgerInterest(rows, key, openingPaise, fromDate, toDate, timeline) {
+  if (!fromDate || !toDate) return 0;
+  const points = new Map();
+  for (const row of rows) {
+    const cell = row[key];
+    if (!cell || (!cell.credit && !cell.debit)) continue;
+    points.set(row.date, (points.get(row.date) || 0) + (cell.credit || 0) - (cell.debit || 0));
+  }
+  // Month ends whose next day is still on/before the as-on date.
+  const start = new Date(`${fromDate}T00:00:00Z`);
+  for (let n = 1; n <= 240; n += 1) {
+    const next = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + n, start.getUTCDate()));
+    if (next.toISOString().slice(0, 10) > toDate) break;
+    const monthEnd = new Date(next.getTime() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    if (!points.has(monthEnd)) points.set(monthEnd, 0);
+  }
+  let signed = openingPaise;
+  let prior = fromDate;
+  let total = 0;
+  for (const date of [...points.keys()].sort()) {
+    if (date < fromDate || date > toDate) continue;
+    total += rateHistory.accrueInterest(Math.abs(signed), prior, date, timeline);
+    signed += points.get(date);
+    prior = date;
+  }
+  return Math.round(total / 100) * 100;
+}
+
+async function computeMemberPeriodBalances({ members = [], dateFrom = '', dateTo = '', user = {}, interestToFyEnd = true, statementInterest = false } = {}) {
+  const effectiveBranchCode = resolveBranchCode(user);
+  const voucherQuery = {};
+  if (effectiveBranchCode) voucherQuery.branchCode = effectiveBranchCode;
+  if (dateTo) voucherQuery.date = { $lte: cleanText(dateTo) };
+  const vouchers = await Voucher.find(voucherQuery).sort({ date: 1, createdAt: 1 }).lean();
+  const voucherIds = vouchers.map((v) => String(v._id || v.id));
+  const voucherNos = vouchers.map((v) => v.voucherNo).filter(Boolean);
+  const recoveryLinesAll = (voucherIds.length || voucherNos.length)
+    ? await RecoveryLine.find({ $or: [{ voucherId: { $in: voucherIds } }, { voucherNo: { $in: voucherNos } }] }).lean()
+    : [];
+
+  const historicalByMember = await getHistoricalMemberLedgerRowsBatch(members);
+  const rateTimelines = await getInterestRateTimelines(MEMBER_INTEREST_HEADS);
+  const fromDateStr = cleanText(dateFrom);
+  const toDateStr = cleanText(dateTo);
+
+  return members.map((member) => {
+    const balancesObj = typeof member.balances === 'string' ? JSON.parse(member.balances || '{}') : (member.balances || {});
+    const anchors = {
+      share: toPaise(balancesObj.share || 0),
+      specialDeposit: toPaise(balancesObj.specialDeposit || balancesObj.ssa || 0),
+      compulsoryDeposit: toPaise(balancesObj.compulsoryDeposit || balancesObj.cd || 0),
+      loan: toPaise(balancesObj.loan || balancesObj.regularLoan || 0),
+      loanAgainstDeposit: toPaise(balancesObj.loanAgainstDeposit || balancesObj.lad || 0)
+    };
+
+    let allRows = [];
+    for (const voucher of vouchers) {
+      const voucherMember = getPartyMemberCode(voucher);
+      const vId = String(voucher._id || voucher.id);
+      const isPartyMatch = voucherMember && voucherMember === member.code;
+      const lineMatch = recoveryLinesAll.find((line) => cleanUpper(line.memberCode) === cleanUpper(member.code)
+        && (line.voucherId === vId || (!line.voucherId && line.voucherNo === voucher.voucherNo)));
+
+      if (!isPartyMatch && !lineMatch) continue;
+
+      const row = {
+        date: voucher.date,
+        share: { credit: 0, debit: 0, balance: 0 },
+        specialDeposit: { credit: 0, debit: 0, balance: 0, interest: 0 },
+        compulsoryDeposit: { credit: 0, debit: 0, balance: 0, interest: 0 },
+        loan: { credit: 0, debit: 0, balance: 0, interest: 0 },
+        loanAgainstDeposit: { credit: 0, debit: 0, balance: 0, interest: 0 },
+        isOpening: false
+      };
+
+      if (lineMatch) {
+        row.share.credit = toPaise(lineMatch.share);
+        row.specialDeposit.credit = toPaise(lineMatch.specialDeposit || lineMatch.ssa);
+        row.compulsoryDeposit.credit = toPaise(lineMatch.compulsoryDeposit);
+        row.loan.credit = toPaise(lineMatch.regularLoan);
+        row.loanAgainstDeposit.credit = toPaise(lineMatch.loanAgainstDeposit || lineMatch.depositLoan);
+      } else {
+        const components = voucher.details?.components || {};
+        const key = voucher.details?.key || '';
+
+        if (key === 'loan-paid-member') {
+          row.loan.debit = toPaise(components.loanAmt);
+          row.loanAgainstDeposit.debit = toPaise(components.lad);
+        } else if (key === 'deposit-paid-member') {
+          row.compulsoryDeposit.debit = toPaise(components.cd || voucher.amount);
+        } else if (key === 'ssa-paid-member') {
+          row.specialDeposit.debit = toPaise(components.specialDeposit || components.ssa || voucher.amount);
+        } else if (key === 'share-paid-member') {
+          row.share.debit = toPaise(components.share || voucher.amount);
+        } else if (cleanLower(voucher.accent) === 'pink' || cleanLower(voucher.transactionType) === 'payment') {
+          row.loan.debit = toPaise(voucher.amount);
+        } else {
+          row.loan.credit = toPaise(voucher.amount);
+        }
+      }
+
+      allRows.push(row);
+    }
+
+    allRows = (historicalByMember.get(member.code) || []).concat(allRows);
+    allRows.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+
+    // Signed balance before the first row of the timeline, per bucket.
+    // Anchors are credit-positive (a loan owed is negative), so undoing a row
+    // is the same for every bucket.
+    const balanceBeforeAll = {};
+    for (const key of MEMBER_BALANCE_BUCKETS) {
+      let running = anchors[key];
+      for (let i = allRows.length - 1; i >= 0; i -= 1) {
+        const row = allRows[i];
+        row[key].signed = running;
+        row[key].balance = Math.abs(running);
+        running -= row[key].credit - row[key].debit;
+      }
+      balanceBeforeAll[key] = running;
+    }
+
+    accrueMemberLedgerInterest(allRows, rateTimelines, toDateStr, { toFyEnd: interestToFyEnd });
+
+    const visibleRows = allRows.filter((r) => isInMemberWindow(r, fromDateStr, toDateStr));
+    // Balance carried by the last row on/before a date. A window with no rows
+    // of its own still has a real balance (whatever the previous row left),
+    // so this looks across the full timeline, not just visibleRows.
+    // An opening (inclusive = false) includes a year-end carry-forward dated
+    // that same day, as legacy's FY opening does.
+    const signedBalanceUpTo = (key, date, inclusive) => {
+      for (let i = allRows.length - 1; i >= 0; i -= 1) {
+        const row = allRows[i];
+        if (inclusive ? row.date <= date : (row.date < date || (row.date === date && row.isCarryForward))) return row[key].signed;
+      }
+      return balanceBeforeAll[key];
+    };
+
+    const buckets = {};
+    for (const key of MEMBER_BALANCE_BUCKETS) {
+      buckets[key] = {
+        opening: fromDateStr ? signedBalanceUpTo(key, fromDateStr, false) : balanceBeforeAll[key],
+        closing: toDateStr ? signedBalanceUpTo(key, toDateStr, true) : anchors[key],
+        credit: visibleRows.reduce((total, r) => total + (r[key].credit || 0), 0),
+        debit: visibleRows.reduce((total, r) => total + (r[key].debit || 0), 0),
+        interest: visibleRows.reduce((total, r) => total + (r[key].interest || 0), 0)
+      };
+      if (statementInterest && rateTimelines[key]) {
+        buckets[key].statementInterest = statementOfMemberLedgerInterest(visibleRows, key, buckets[key].opening, fromDateStr, toDateStr, rateTimelines[key]);
+      }
+    }
+
+    return { member, buckets };
+  });
+}
+
+async function buildStatementOfMemberLedgerReport({ dateFrom = '', dateTo = '', user = {} } = {}) {
+  const members = await findMembersForReport({ user });
+  const [periods, legacyFy] = await Promise.all([
+    computeMemberPeriodBalances({ members, dateFrom, dateTo, user, statementInterest: true }),
+    getLegacyFyAccountRows('member', members.map((m) => m.code), dateFrom)
+  ]);
+
+  // Legacy lists only that FY's Active members here (members who left in
+  // the year drop out, their balances already nil), and folds the opening
+  // into the period columns: a credit (positive) opening into Credit, a debit
+  // opening into Debit, so Credit - Debit is the closing balance and the
+  // TOTAL line adds up. Verified against legacy FY 2024-25's TOTAL line.
+  const active = inLegacyFy(periods, legacyFy)
+    .filter(({ member }) => !legacyFy.rows.size || legacyFy.rows.get(member.code)?.Status === 'Active');
+  // Interest is this report's own legacy calculation (see
+  // statementOfMemberLedgerInterest), not the Member Ledger's MbrCBlnc figure;
+  // a member on that FY's no-interest list (EntNoInterestMbr) gets none.
+  //
+  // Legacy's desktop app (VwReports.ShowMemberLedgerStatementS) reads the
+  // no-interest flag (EndIntrstCal) from the FIRST row of the whole report —
+  // the lowest-AccID Active member — and skips the accrual for EVERY member
+  // when that one member is on the no-interest list. That is the case in FY
+  // 2025-26 and 2026-27 (member 525), so those years' ledgers carry no accrued
+  // interest at all, only interest posted by vouchers (below).
+  const accrualOff = legacyAccrualSwitchedOff(legacyFy);
+  // Interest posted by TransType 20 (paid to member) / 21 (received from
+  // member) vouchers: in legacy's VwMbrTransData they fill only the interest
+  // columns, signed so that paid-out deposit interest and collected loan
+  // interest are negative. Legacy adds them to the accrued figure, prints the
+  // sum unsigned and adds it signed to the balance for CLOSING BAL.
+  const voucherInterest = await getLegacyVoucherInterestByMember(legacyFy, dateFrom || dateTo);
+  return active.map(({ member, buckets }) => {
+    const noInterest = !!legacyFy.rows.get(member.code)?.NoInterest;
+    const posted = voucherInterest.get(member.code) || {};
+    const bucket = (key, hasInterest) => {
+      const opening = toRupees(buckets[key].opening);
+      const closing = toRupees(buckets[key].closing);
+      const accrued = noInterest || accrualOff ? 0 : toRupees(buckets[key].statementInterest || 0);
+      const interest = Number((accrued + (posted[key] || 0)).toFixed(2));
+      return {
+        opening,
+        credit: Number((toRupees(buckets[key].credit) + Math.max(opening, 0)).toFixed(2)),
+        debit: Number((toRupees(buckets[key].debit) + Math.max(-opening, 0)).toFixed(2)),
+        balance: Math.abs(closing),
+        side: balanceSide(closing, key === 'loan' || key === 'loanAgainstDeposit' ? 'DR' : 'CR'),
+        ...(hasInterest ? { interest } : {})
+      };
+    };
+
+    return {
+      memberCode: member.code,
+      memberName: member.name,
+      branchCode: member.branchCode,
+      designation: member.designation || '',
+      fhName: member.fatherOrHusbandName || '',
+      share: bucket('share', false),
+      specialDeposit: bucket('specialDeposit', true),
+      compulsoryDeposit: bucket('compulsoryDeposit', true),
+      loan: bucket('loan', true),
+      loanAgainstDeposit: bucket('loanAgainstDeposit', true)
+    };
+  });
+}
+
+// See buildStatementOfMemberLedgerReport: true when that FY's lowest-AccID
+// Active member is on the no-interest list, which turns off legacy's accrual
+// for the whole Statement of Member Ledger.
+function legacyAccrualSwitchedOff(legacyFy) {
+  let first = null;
+  for (const raw of legacyFy.rows.values()) {
+    if (raw?.Status !== 'Active') continue;
+    if (!first || Number(raw.AccID) < Number(first.AccID)) first = raw;
+  }
+  return !!first?.NoInterest;
+}
+
+// Member code -> { specialDeposit, compulsoryDeposit, loan, loanAgainstDeposit }
+// interest (rupees, signed as legacy VwMbrTransData) from that FY's archived
+// TransType 20/21 vouchers. Empty outside a legacy FY.
+async function getLegacyVoucherInterestByMember(legacyFy, date) {
+  const result = new Map();
+  const startYear = fyStartYearOf(date);
+  if (!legacyFy.rows.size || startYear == null) return result;
+  const codeByAccId = new Map();
+  for (const [code, raw] of legacyFy.rows) codeByAccId.set(String(raw.AccID), code);
+  const database = await initializeDatabase();
+  const { rows } = await database.query(
+    `SELECT "voucherCategory", payload FROM legacy_historical_vouchers
+     WHERE "sourceDatabase" = $1 AND "voucherCategory" IN ('20', '21')`,
+    [legacyDbForFyStartYear(startYear)]
+  );
+  for (const { voucherCategory, payload } of rows) {
+    const raw = payload?.raw || {};
+    const code = codeByAccId.get(String(raw.ParticularAccID));
+    if (!code) continue;
+    // TransType 21, and the loan heads of 20, are always negated; deposit
+    // heads of a 20 are negated on a payment voucher only.
+    const depositSign = voucherCategory === '20' && cleanUpper(raw.VoucherType) !== 'P' ? 1 : -1;
+    const entry = result.get(code) || { specialDeposit: 0, compulsoryDeposit: 0, loan: 0, loanAgainstDeposit: 0 };
+    entry.specialDeposit += depositSign * legacyNumber(raw.SSAamt);
+    entry.compulsoryDeposit += depositSign * legacyNumber(raw.CDAmt);
+    entry.loan -= legacyNumber(raw.RLoanAmt);
+    entry.loanAgainstDeposit -= legacyNumber(raw.DLoanAmt);
+    result.set(code, entry);
+  }
+  return result;
+}
+
+// Legacy report order (MstAccountMaster.SortNo), then ledger code.
+function sortBySortOrder(rows = []) {
+  return [...rows].sort((a, b) => (toNumber(a.sortOrder, 0) - toNumber(b.sortOrder, 0)) || compareCodesNumerically(a.code, b.code));
+}
+
+// Credit-positive signed balance (legacy vwLedgerBalance convention) shown
+// the way its own side reads it: liability/income as-is, asset/expense negated,
+// so a contra balance comes out negative instead of silently flipping sides.
+function sideAmount(row, creditSide) {
+  const signed = toNumber(row.signedBalance, 0);
+  return Number((creditSide ? signed : -signed).toFixed(2));
+}
+
+function sumAmounts(rows = []) {
+  return Number(rows.reduce((sum, row) => sum + row.amount, 0).toFixed(2));
+}
+
+// Net of Income + Expenses + the Profit & Loss A/c ledger (Primary), credit-
+// positive. Zero once legacy's year-end voucher has moved the year's profit
+// into the P&L A/c and appropriated it; otherwise it's the undistributed
+// profit (CR) or loss (DR) that makes the balance sheet balance.
+function profitAndLossNet(snapshots = []) {
+  const net = snapshots
+    .filter((row) => ['INCOME', 'EXPENSE', 'PRIMARY'].includes(row.nature))
+    .reduce((sum, row) => sum + toNumber(row.signedBalance, 0), 0);
+  return Number(net.toFixed(2));
+}
+
 // A trial balance is a point-in-time snapshot: each ledger's CLOSING balance
 // shown in whichever column (debit/credit) it sits on — that's what makes the
 // two column totals equal, which is the whole point of the report. It is NOT
-// period transaction movement: most ledgers (all 101 migrated ones, currently)
-// have an opening balance but zero posted vouchers yet, and period-movement-only
-// figures would show them as zero, silently dropping real money from the report.
+// period transaction movement: most ledgers have an opening balance but few
+// posted vouchers, and period-movement-only figures would drop real money.
 // periodDebit/periodCredit are exposed alongside for callers that want the
-// movement breakdown too (e.g. a richer drill-down view), without changing what
-// debit/credit mean here.
+// movement breakdown too. nature/sortOrder/signedBalance let the print match
+// the legacy layout (Liabilities + "Adjusting Head Income" vs Assets +
+// "Adjusting Head Expenses" + "Profit & Loss A/c").
 async function buildTrialBalanceReport({ dateFrom = '', dateTo = '', uptoDate = '', user = {} } = {}) {
   const snapshots = await getLedgerSnapshots({ dateFrom, dateTo, uptoDate, branchCode: resolveBranchCode(user) });
-  return snapshots.map((row) => ({
+  return sortBySortOrder(snapshots).map((row) => ({
     ledgerCode: row.code,
     ledgerName: row.name,
+    nature: row.nature,
+    sortOrder: row.sortOrder,
     opening: row.opening,
     openingSide: row.openingSide,
     periodDebit: row.totalDr,
@@ -2415,157 +3647,417 @@ async function buildTrialBalanceReport({ dateFrom = '', dateTo = '', uptoDate = 
     debit: row.closingSide === 'DR' ? row.closing : 0,
     credit: row.closingSide === 'CR' ? row.closing : 0,
     closing: row.closing,
-    closingSide: row.closingSide
+    closingSide: row.closingSide,
+    signedBalance: row.signedBalance
   }));
 }
 
+// Legacy ReportData 'BALANCE SHEET': Liabilities and Assets ledgers by SortNo,
+// plus the Profit & Loss A/c line (see profitAndLossNet), placed on the side
+// that balances it.
 async function buildBalanceSheetReport({ uptoDate = '', user = {} } = {}) {
   const snapshots = await getLedgerSnapshots({ uptoDate, branchCode: resolveBranchCode(user) });
-  const liabilities = snapshots.filter((row) => row.nature === 'LIABILITY');
-  const assets = snapshots.filter((row) => row.nature === 'ASSET');
+  const toRow = (row, creditSide) => ({ ledgerCode: row.code, ledgerName: row.name, amount: sideAmount(row, creditSide) });
+  const liabilities = sortBySortOrder(snapshots.filter((row) => row.nature === 'LIABILITY')).map((row) => toRow(row, true));
+  const assets = sortBySortOrder(snapshots.filter((row) => row.nature === 'ASSET')).map((row) => toRow(row, false));
+  const net = profitAndLossNet(snapshots);
+  const profitLoss = { ledgerName: 'Profit & Loss A/c', amount: Math.abs(net), side: net > 0 ? 'LIABILITY' : 'ASSET' };
 
   return {
-    liabilities: liabilities.map((row) => ({ ledgerCode: row.code, ledgerName: row.name, amount: row.closing })),
-    assets: assets.map((row) => ({ ledgerCode: row.code, ledgerName: row.name, amount: row.closing })),
-    totalLiabilities: liabilities.reduce((sum, row) => sum + row.closing, 0),
-    totalAssets: assets.reduce((sum, row) => sum + row.closing, 0)
+    liabilities,
+    assets,
+    profitLoss,
+    totalLiabilities: Number((sumAmounts(liabilities) + (profitLoss.side === 'LIABILITY' ? profitLoss.amount : 0)).toFixed(2)),
+    totalAssets: Number((sumAmounts(assets) + (profitLoss.side === 'ASSET' ? profitLoss.amount : 0)).toFixed(2))
   };
 }
 
+// Legacy ReportData 'PROFIT LOSS': Income ledgers vs Expenses ledgers.
 async function buildProfitLossReport({ uptoDate = '', user = {} } = {}) {
   const snapshots = await getLedgerSnapshots({ uptoDate, branchCode: resolveBranchCode(user) });
-  const income = snapshots.filter((row) => row.nature === 'INCOME');
-  const expense = snapshots.filter((row) => row.nature === 'EXPENSE');
+  const toRow = (row, creditSide) => ({ ledgerCode: row.code, ledgerName: row.name, amount: sideAmount(row, creditSide) });
+  const income = sortBySortOrder(snapshots.filter((row) => row.nature === 'INCOME')).map((row) => toRow(row, true));
+  const expense = sortBySortOrder(snapshots.filter((row) => row.nature === 'EXPENSE')).map((row) => toRow(row, false));
 
   return {
-    income: income.map((row) => ({ ledgerCode: row.code, ledgerName: row.name, amount: row.closing })),
-    expense: expense.map((row) => ({ ledgerCode: row.code, ledgerName: row.name, amount: row.closing })),
-    totalIncome: income.reduce((sum, row) => sum + row.closing, 0),
-    totalExpense: expense.reduce((sum, row) => sum + row.closing, 0)
+    income,
+    expense,
+    totalIncome: sumAmounts(income),
+    totalExpense: sumAmounts(expense)
   };
 }
 
-// Finds the CASH ledger by semanticRole (not a hardcoded, nonexistent 'L001'
-// code) and reads real journal_lines via buildLedgerTransactionStatement, the
-// same way buildAccountStatementReport(ledgerId=...) does. Returns both the
-// classic receipt/payment/particulars fields the frontend's Cash Book page
-// reads and the richer debit/credit/balance/transactionType/accountParty
-// fields for a running-balance view — same underlying numbers, two namings.
+// Cash Book, in the legacy layout: every voucher of the day grouped by the
+// ledger it hits (the "particulars"), credits under INCOME and debits under
+// EXPENSES, each split into Cash (voucher paid through Cash-In-Hand) and
+// Transfer (anything else), plus Opening/Closing Cash-In-Hand. Reconciled to
+// the paisa against legacy printouts (e.g. 29-Jan-2025, 31-Mar-2025). Legacy
+// has no SQL for this report (it's built inside the EXE); the rules were
+// reverse-engineered from its output and VwLedgerTransaction:
+//  - particulars = VwLedgerTransaction rows for the day, minus the pay-mode
+//    (cash/bank) side and minus Cash-In-Hand itself; member/employee accounts
+//    only show through their control ledgers (Loan to Members A/c etc.).
+//  - Closing cash = opening + cash receipts - cash payments.
+// Returns { rows, openingCash, closingCash, source }.
 async function buildCashBookReport({ date = '', dateFrom = '', dateTo = '', user = {} } = {}) {
-  const branchCode = resolveBranchCode(user);
-  const cashLedger = await Ledger.findOne({ semanticRole: ACCOUNTING_ROLES.CASH }).lean();
-  if (!cashLedger) return [];
+  const from = cleanText(dateFrom || date);
+  const to = cleanText(dateTo || date || dateFrom);
+  const ledgers = await Ledger.find({}).lean();
 
-  const effectiveFrom = dateFrom || date;
-  const effectiveTo = dateTo || date;
-  const statementRows = await buildLedgerTransactionStatement(cashLedger, { dateFrom: effectiveFrom, dateTo: effectiveTo, branchCode });
+  const legacy = await buildLegacyCashBook({ from, to, ledgers });
+  if (legacy) return legacy;
+  return buildLiveCashBook({ from, to, ledgers, branchCode: resolveBranchCode(user) });
+}
 
-  const txRows = statementRows.filter((row) => row.voucherNo !== 'OPENING');
-  const voucherIds = [...new Set(txRows.map((row) => row.voucherId))];
-  const cashLedgerId = String(cashLedger.id || cashLedger._id);
+function cashBookAccumulator(ledgers = []) {
+  const ledgerByCode = new Map(ledgers.map((ledger) => [cleanUpper(ledger.code), ledger]));
+  const totals = new Map();
+  const add = (code, credit, debit, isCash) => {
+    const ledger = ledgerByCode.get(code);
+    const row = totals.get(code) || {
+      ledgerCode: code,
+      ledgerName: ledger?.name || code,
+      sortOrder: toNumber(ledger?.sortOrder, 0),
+      crCash: 0, crTransfer: 0, drCash: 0, drTransfer: 0
+    };
+    if (isCash) { row.crCash += credit; row.drCash += debit; } else { row.crTransfer += credit; row.drTransfer += debit; }
+    totals.set(code, row);
+  };
+  const rows = () => sortBySortOrder([...totals.values()].map((row) => ({ ...row, code: row.ledgerCode })))
+    .map(({ code, ...row }) => ({
+      ...row,
+      crCash: Number(row.crCash.toFixed(2)),
+      crTransfer: Number(row.crTransfer.toFixed(2)),
+      drCash: Number(row.drCash.toFixed(2)),
+      drTransfer: Number(row.drTransfer.toFixed(2))
+    }));
+  return { add, rows };
+}
 
-  const [vouchers, otherLines, ledgers] = await Promise.all([
-    voucherIds.length ? Voucher.find({ id: { $in: voucherIds } }).lean() : Promise.resolve([]),
-    voucherIds.length ? JournalLine.find({ voucherId: { $in: voucherIds } }).lean() : Promise.resolve([]),
-    Ledger.find({}).lean()
-  ]);
-  const voucherById = new Map(vouchers.map((v) => [String(v.id || v._id), v]));
-  const ledgerById = new Map(ledgers.map((l) => [String(l.id || l._id), l]));
+// Archived legacy dates (any FY database in legacy_historical_vouchers, up to
+// the cutover date): that FY's rows dated from..to, plus Cash-In-Hand before
+// and after them. Returns null when the dates aren't archived.
+async function legacyCashWindow({ from, to, ledgers }) {
+  const startYear = fyStartYearOf(to);
+  if (startYear == null) return null;
+  const { byDb, cutoverDb, cashCode } = await loadLegacyLedgerEntries(ledgers);
+  const targetDb = legacyDbForFyStartYear(startYear);
+  if (!byDb.has(targetDb) || !cashCode) return null;
+  if (targetDb === cutoverDb) {
+    const cutoverDate = cleanText(ledgers.find((l) => l?.payload?.cutoverDate)?.payload?.cutoverDate).slice(0, 10);
+    if (!cutoverDate || to > cutoverDate) return null;
+  }
+  const cashLedger = ledgers.find((ledger) => cleanUpper(ledger.code) === cashCode);
+  const fyOpening = cashLedger?.payload?.fyOpeningBal?.[targetDb.slice(-4)];
+  if (fyOpening == null) return null;
 
-  const counterpartyByVoucher = new Map();
-  for (const line of otherLines) {
-    if (String(line.ledgerId) === cashLedgerId) continue;
-    const key = String(line.voucherId);
-    if (counterpartyByVoucher.has(key)) continue;
-    const ledger = ledgerById.get(String(line.ledgerId));
-    if (ledger) counterpartyByVoucher.set(key, ledger.name);
+  // Cash-In-Hand is an asset: legacy balances are credit-positive, so the
+  // amount in hand is the negated signed balance.
+  let cashSigned = legacyNumber(fyOpening);
+  const cashMovement = (row) => row.entries
+    .filter((entry) => entry.code === cashCode)
+    .reduce((sum, entry) => sum + entry.cr + entry.dr, 0);
+
+  const all = byDb.get(targetDb);
+  for (const row of all) {
+    if (row.date && row.date < from) cashSigned += cashMovement(row);
+  }
+  const openingCash = -cashSigned;
+  const rows = all.filter((row) => row.date && row.date >= from && row.date <= to);
+  for (const row of rows) cashSigned += cashMovement(row);
+
+  return {
+    rows,
+    cashCode,
+    openingCash: Number(openingCash.toFixed(2)),
+    closingCash: Number((-cashSigned).toFixed(2))
+  };
+}
+
+async function buildLegacyCashBook({ from, to, ledgers }) {
+  const window = await legacyCashWindow({ from, to, ledgers });
+  if (!window) return null;
+
+  const book = cashBookAccumulator(ledgers);
+  for (const row of window.rows) {
+    for (const entry of row.entries) {
+      if (entry.viaPayMode || entry.code === window.cashCode) continue;
+      book.add(entry.code, entry.cr, -entry.dr, row.isCash);
+    }
   }
 
-  return statementRows.map((row) => {
-    if (row.voucherNo === 'OPENING') {
-      return {
-        voucherNo: 'OPENING', date: row.date, particulars: 'Opening Balance',
-        transactionType: '', accountParty: '',
-        receipt: 0, payment: 0, debit: 0, credit: 0,
-        balance: row.balance, balanceSide: row.balanceSide
-      };
-    }
-    const voucher = voucherById.get(row.voucherId);
-    const accountParty = counterpartyByVoucher.get(row.voucherId) || '';
-    const particulars = accountParty || voucher?.voucherCategory || voucher?.transactionType || 'Voucher';
-    return {
-      voucherNo: row.voucherNo,
-      date: row.date,
-      particulars,
-      transactionType: titleCase(voucher?.transactionType || ''),
-      accountParty,
-      receipt: row.debit,
-      payment: row.credit,
-      debit: row.debit,
-      credit: row.credit,
-      balance: row.balance,
-      balanceSide: row.balanceSide
-    };
+  return {
+    rows: book.rows(),
+    openingCash: window.openingCash,
+    closingCash: window.closingCash,
+    source: 'legacy'
+  };
+}
+
+// Live vouchers: same layout from posted journal_lines. Particulars are every
+// non-cash line of the day's vouchers (credit -> INCOME, debit -> EXPENSES);
+// a voucher counts as Cash when it has a Cash-In-Hand line.
+async function buildLiveCashBook({ from, to, ledgers, branchCode = '' }) {
+  const cashLedger = ledgers.find((ledger) => ledger.semanticRole === ACCOUNTING_ROLES.CASH);
+  if (!cashLedger) return { rows: [], openingCash: 0, closingCash: 0, source: 'live' };
+  const cashLedgerId = String(cashLedger.id || cashLedger._id);
+
+  const statementRows = await buildLedgerTransactionStatement(cashLedger, { dateFrom: from, dateTo: to, branchCode });
+  const inHand = (row) => (row ? (row.balanceSide === 'CR' ? -row.balance : row.balance) : 0);
+  const openingCash = inHand(statementRows[0]);
+  const closingCash = inHand(statementRows[statementRows.length - 1]);
+
+  const voucherQuery = {};
+  if (branchCode) voucherQuery.branchCode = branchCode;
+  if (from || to) {
+    voucherQuery.date = {};
+    if (from) voucherQuery.date.$gte = from;
+    if (to) voucherQuery.date.$lte = to;
+  }
+  const vouchers = await Voucher.find(voucherQuery).lean();
+  const voucherIds = vouchers.map((v) => String(v.id || v._id));
+  const lines = voucherIds.length ? await JournalLine.find({ voucherId: { $in: voucherIds } }).lean() : [];
+  const ledgerById = new Map(ledgers.map((l) => [String(l.id || l._id), l]));
+  const cashVoucherIds = new Set(lines.filter((line) => String(line.ledgerId) === cashLedgerId).map((line) => String(line.voucherId)));
+
+  const book = cashBookAccumulator(ledgers);
+  for (const line of lines) {
+    if (String(line.ledgerId) === cashLedgerId) continue;
+    const ledger = ledgerById.get(String(line.ledgerId));
+    if (!ledger) continue;
+    book.add(cleanUpper(ledger.code), toNumber(line.creditAmount, 0), toNumber(line.debitAmount, 0), cashVoucherIds.has(String(line.voucherId)));
+  }
+
+  return {
+    rows: book.rows(),
+    openingCash: Number(openingCash.toFixed(2)),
+    closingCash: Number(closingCash.toFixed(2)),
+    source: 'live'
+  };
+}
+
+// Legacy MstTransType names (identical in every FY database).
+const LEGACY_TRANS_TYPE_NAMES = {
+  1: 'Loan Paid To Member', 2: 'CD Paid To Member', 3: 'SSA Paid To Member',
+  4: 'Insurance Premium Paid To Member', 5: 'Recovery From Member', 6: 'Loan Receive By CCA',
+  7: 'Loan Receive To SA', 8: 'Deposit In Bank', 9: 'Cheque Issue By SA', 10: 'Amount Transfer By SA',
+  11: 'Amount Transfer To CCA', 12: 'Advance Paid To Employee', 13: 'Advance Recovery From Employee',
+  14: 'Transfer Voucher (Paid To Member)', 15: 'Transfer Voucher (Receipt From Member)',
+  16: 'Transfer Voucher (Payment)', 17: 'Transfer Voucher (Receipt)', 18: 'Payment Voucher',
+  19: 'Receipt Voucher', 20: 'Interest Paid To Member', 21: 'Interest Receive From Member',
+  22: 'Interest Receive From Employee'
+};
+
+function formatDmyDashed(isoDate = '') {
+  const [year, month, day] = cleanText(isoDate).slice(0, 10).split('-');
+  return year && month && day ? `${day}-${month}-${year}` : '';
+}
+
+// Day Book, in the legacy layout (CrDayBook.rpt): every voucher of the day,
+// receipts (R) first then payments (P), each by voucher number. A voucher's
+// full amount sits under Credit for a receipt and Debit for a payment. Its
+// heading is the transaction type + pay mode ("SSA Paid To Member By Cash"),
+// printed only when it changes from the previous voucher; its lines are the
+// cheque date/number, the account (ledger name, or "code name" for a member/
+// employee) and the narration; a recovery also lists its members. Footer:
+// Total Income + B/F Cash-In-Hand = Grand Total against Total Expenses +
+// C/F Cash-In-Hand = Grand Total.
+// Returns { vouchers: [{ voucherNo, group, heading, lines, credit, debit }], openingCash, closingCash, source }.
+async function buildDayBookReport({ date = '', dateFrom = '', dateTo = '', user = {} } = {}) {
+  const from = cleanText(dateFrom || date);
+  const to = cleanText(dateTo || date || dateFrom);
+  const ledgers = await Ledger.find({}).lean();
+
+  const legacy = await buildLegacyDayBook({ from, to, ledgers });
+  if (legacy) return legacy;
+  return buildLiveDayBook({ from, to, ledgers, branchCode: resolveBranchCode(user) });
+}
+
+// `group` (transaction type + pay mode) is kept on every voucher for the
+// Voucher Summary; `heading` repeats it only where it changes, as printed.
+function withDayBookHeadings(vouchers = []) {
+  let previous = null;
+  return vouchers.map((voucher) => {
+    const heading = voucher.group !== previous ? voucher.group : '';
+    previous = voucher.group;
+    return { ...voucher, heading };
   });
 }
 
-async function buildDayBookReport({ date = '', user = {} } = {}) {
-  const query = date ? { date } : {};
-  const branchCode = resolveBranchCode(user);
-  if (branchCode) {
-    query.branchCode = branchCode;
-  }
-  const vouchers = await Voucher.find(query).sort({ date: 1, createdAt: 1 }).lean();
-  const rows = [];
+async function buildLegacyDayBook({ from, to, ledgers }) {
+  const window = await legacyCashWindow({ from, to, ledgers });
+  if (!window) return null;
 
-  for (const voucher of vouchers) {
-    for (const line of toArray(voucher.journalLines)) {
-      rows.push({
-        voucherNo: voucher.voucherNo,
-        date: voucher.date,
-        ledgerCode: cleanUpper(line.ledgerCode),
-        particulars: line.memo || voucher.narration || voucher.voucherCategory || voucher.transactionType || 'Voucher',
-        debit: toNumber(line.dr, 0),
-        credit: toNumber(line.cr, 0)
-      });
+  const database = await initializeDatabase();
+  const partyIndex = await loadLegacyPartyIndex(database);
+  const partyOf = (accId) => partyIndex.byKindAccId.get(`ledger:${accId}`)
+    || partyIndex.byKindAccId.get(`member:${accId}`)
+    || partyIndex.byKindAccId.get(`employee:${accId}`)
+    || null;
+  const isLedger = (accId) => partyIndex.byKindAccId.has(`ledger:${accId}`);
+
+  // Recovery (TransType 5) members come from legacy_historical_recovery.
+  const recoveries = window.rows.filter((row) => row.voucher.transType === 5);
+  const membersByTrans = new Map();
+  if (recoveries.length) {
+    const result = await database.query(
+      `SELECT "sourceDatabase", "memberCode", payload->'raw'->>'TransNo' AS trans_no
+       FROM legacy_historical_recovery
+       WHERE "sourceDatabase" = $1 AND payload->'raw'->>'TransNo' = ANY($2)`,
+      [recoveries[0].voucher.sourceDatabase, recoveries.map((row) => row.voucher.transNo)]
+    );
+    const codes = [...new Set(result.rows.map((r) => r.memberCode).filter(Boolean))];
+    const members = codes.length ? await Member.find({ code: { $in: codes } }).lean() : [];
+    const nameByCode = new Map(members.map((m) => [m.code, m.name]));
+    for (const r of result.rows) {
+      const list = membersByTrans.get(r.trans_no) || [];
+      list.push(`${r.memberCode} ${nameByCode.get(r.memberCode) || ''}`.trim());
+      membersByTrans.set(r.trans_no, list);
     }
   }
 
-  return rows;
+  const sorted = [...window.rows].sort((a, b) => {
+    if (a.voucher.voucherType !== b.voucher.voucherType) return a.voucher.voucherType === 'R' ? -1 : 1;
+    return compareCodesNumerically(a.voucher.voucherNo, b.voucher.voucherNo);
+  });
+
+  const vouchers = sorted.map((row) => {
+    const v = row.voucher;
+    const typeName = LEGACY_TRANS_TYPE_NAMES[v.transType] || 'Voucher';
+    const group = `${typeName} ${row.isCash ? 'By Cash' : v.paymode}`.trim();
+    const lines = [];
+    if (!row.isCash && (v.chequeDate || v.chequeNo)) {
+      lines.push([formatDmyDashed(v.chequeDate), v.chequeNo].filter(Boolean).join('/'));
+    }
+    const party = partyOf(v.particularAccId);
+    if (party) lines.push(isLedger(v.particularAccId) ? party.label : `${party.code} ${party.label}`);
+    if (v.transType === 5) lines.push(...(membersByTrans.get(v.transNo) || []));
+    if (v.narration) lines.push(v.narration);
+    return {
+      voucherNo: v.voucherNo,
+      date: row.date,
+      group,
+      lines,
+      credit: v.voucherType === 'R' ? v.total : 0,
+      debit: v.voucherType === 'P' ? v.total : 0
+    };
+  });
+
+  return {
+    vouchers: withDayBookHeadings(vouchers),
+    openingCash: window.openingCash,
+    closingCash: window.closingCash,
+    source: 'legacy'
+  };
 }
 
-async function buildVoucherSummaryReport({ date = '', user = {} } = {}) {
-  const branchCode = resolveBranchCode(user);
-  const cashLedger = await Ledger.findOne({ semanticRole: ACCOUNTING_ROLES.CASH }).lean();
-  if (!cashLedger) return [];
+// Live vouchers in the same layout. Receipt/payment comes from the voucher's
+// transactionType; cash vs other pay mode from whether it has a Cash-In-Hand
+// journal line.
+async function buildLiveDayBook({ from, to, ledgers, branchCode = '' }) {
+  const cashLedger = ledgers.find((ledger) => ledger.semanticRole === ACCOUNTING_ROLES.CASH);
+  const cashLedgerId = cashLedger ? String(cashLedger.id || cashLedger._id) : '';
 
-  const statementRows = await buildLedgerTransactionStatement(cashLedger, { dateFrom: date, dateTo: date, branchCode });
-  const txRows = statementRows.filter((row) => row.voucherNo !== 'OPENING');
-  const voucherIds = [...new Set(txRows.map((row) => row.voucherId))];
-  const vouchers = voucherIds.length ? await Voucher.find({ id: { $in: voucherIds } }).lean() : [];
-  const voucherById = new Map(vouchers.map((v) => [String(v.id || v._id), v]));
-
-  const totals = new Map();
-  for (const row of txRows) {
-    const voucher = voucherById.get(row.voucherId);
-    const key = cleanText(voucher?.voucherCategory || voucher?.transactionType || 'Voucher');
-    const entry = totals.get(key) || { voucherCategory: key, count: 0, credit: 0, debit: 0 };
-    entry.count += 1;
-    entry.credit += toNumber(row.debit, 0);
-    entry.debit += toNumber(row.credit, 0);
-    totals.set(key, entry);
+  let openingCash = 0;
+  let closingCash = 0;
+  if (cashLedger) {
+    const statementRows = await buildLedgerTransactionStatement(cashLedger, { dateFrom: from, dateTo: to, branchCode });
+    const inHand = (row) => (row ? (row.balanceSide === 'CR' ? -row.balance : row.balance) : 0);
+    openingCash = inHand(statementRows[0]);
+    closingCash = inHand(statementRows[statementRows.length - 1]);
   }
 
-  return [...totals.values()]
-    .map((entry) => ({ ...entry, amount: entry.credit || entry.debit }))
-    .sort((a, b) => a.voucherCategory.localeCompare(b.voucherCategory));
+  const query = {};
+  if (branchCode) query.branchCode = branchCode;
+  if (from || to) {
+    query.date = {};
+    if (from) query.date.$gte = from;
+    if (to) query.date.$lte = to;
+  }
+  const vouchers = await Voucher.find(query).lean();
+  const voucherIds = vouchers.map((v) => String(v.id || v._id));
+  const cashLines = cashLedgerId && voucherIds.length
+    ? await JournalLine.find({ voucherId: { $in: voucherIds }, ledgerId: cashLedgerId }).lean()
+    : [];
+  const cashVoucherIds = new Set(cashLines.map((line) => String(line.voucherId)));
+
+  const isReceipt = (v) => cleanLower(v.transactionType) === 'receipt';
+  const sorted = [...vouchers].sort((a, b) => {
+    if (isReceipt(a) !== isReceipt(b)) return isReceipt(a) ? -1 : 1;
+    return compareCodesNumerically(a.voucherNo, b.voucherNo);
+  });
+
+  const rows = sorted.map((voucher) => {
+    const isCash = cashVoucherIds.has(String(voucher.id || voucher._id));
+    const typeName = voucher.voucherCategory || titleCase(voucher.transactionType || '') || 'Voucher';
+    const mode = isCash ? 'By Cash' : cleanText(voucher.mode);
+    const lines = [];
+    if (!isCash && (voucher.instrumentDate || voucher.instrumentNo)) {
+      lines.push([formatDmyDashed(voucher.instrumentDate), voucher.instrumentNo].filter(Boolean).join('/'));
+    }
+    const party = [voucher.partyCode, voucher.partyName].filter(Boolean).join(' ');
+    if (party) lines.push(party);
+    if (voucher.narration) lines.push(voucher.narration);
+    const amount = toNumber(voucher.amount, 0);
+    return {
+      voucherNo: voucher.voucherNo,
+      date: voucher.date,
+      group: `${typeName} ${mode}`.trim(),
+      lines,
+      credit: isReceipt(voucher) ? amount : 0,
+      debit: isReceipt(voucher) ? 0 : amount
+    };
+  });
+
+  return {
+    vouchers: withDayBookHeadings(rows),
+    openingCash: Number(openingCash.toFixed(2)),
+    closingCash: Number(closingCash.toFixed(2)),
+    source: 'live'
+  };
 }
 
-async function buildMonthlySummaryReport({ branchCode = '', month = '', user = {} } = {}) {
+// Voucher Summary, in the legacy layout (CrVchSummry.rpt): the Day Book's
+// vouchers grouped by the same heading (transaction type + pay mode), in Day
+// Book order, with the voucher count and the Credit (receipts) / Debit
+// (payments) total per group, plus the same cash footer. Like the legacy
+// report, a group is a run of consecutive vouchers — the same type appearing
+// again after a different one starts a new row rather than merging into the
+// earlier one (legacy 31-Mar-2025 lists "Transfer Voucher (Receipt) Cheque"
+// four times). Matches the legacy captures for 11-Aug-2026 and 31-Mar-2025.
+// Returns { rows: [{ voucherType, count, credit, debit }], openingCash, closingCash, source }.
+async function buildVoucherSummaryReport({ date = '', dateFrom = '', dateTo = '', user = {} } = {}) {
+  const dayBook = await buildDayBookReport({ date, dateFrom, dateTo, user });
+  const groups = [];
+  for (const voucher of dayBook.vouchers) {
+    let row = groups[groups.length - 1];
+    if (!row || voucher.heading) {
+      row = { voucherType: voucher.group, count: 0, credit: 0, debit: 0 };
+      groups.push(row);
+    }
+    row.count += 1;
+    row.credit += toNumber(voucher.credit, 0);
+    row.debit += toNumber(voucher.debit, 0);
+  }
+  return {
+    rows: groups.map((row) => ({ ...row, credit: Number(row.credit.toFixed(2)), debit: Number(row.debit.toFixed(2)) })),
+    openingCash: dayBook.openingCash,
+    closingCash: dayBook.closingCash,
+    source: dayBook.source
+  };
+}
+
+async function buildMonthlySummaryReport({ branchCode = '', month = '', dateFrom = '', dateTo = '', user = {} } = {}) {
   const query = {};
   const effectiveBranchCode = resolveBranchCode(user, branchCode);
   if (effectiveBranchCode) {
     query.branchCode = effectiveBranchCode;
+  }
+  // No month picked -> the whole FY window instead of every voucher ever.
+  if (!month && (dateFrom || dateTo)) {
+    query.date = {};
+    if (dateFrom) query.date.$gte = cleanText(dateFrom);
+    if (dateTo) query.date.$lte = cleanText(dateTo);
   }
   const vouchers = await Voucher.find(query).lean();
   const totals = new Map();
@@ -2584,27 +4076,353 @@ async function buildMonthlySummaryReport({ branchCode = '', month = '', user = {
   return [...totals.values()].sort((a, b) => a.transactionType.localeCompare(b.transactionType));
 }
 
-async function buildDemandListReport({ month = '', year = '', date = '', branchCode = '', user = {} } = {}) {
+// A demand list's month/year. Lists migrated from legacy keep the real
+// DMonth/DYear only in payload.raw (their month column reads "1"), so the
+// raw value wins when present.
+function demandPeriod(list = {}, line = {}) {
+  const raw = list?.payload?.raw || {};
+  const lineRaw = line?.payload?.raw || {};
+  const month = Number(firstDefined(lineRaw.DMonth, raw.DMonth, list.month)) || 0;
+  const year = String(firstDefined(lineRaw.DYear, raw.DYear, list.year) || '');
+  return { month, year };
+}
+
+// Recovery -> Add From Demand List: the PENDING demand lines of one branch
+// and month, with the member's name/designation, for the selection grid.
+// Only months inside the active FY are offered, so demand from a closed
+// year never enters a current recovery.
+async function buildRecoveryDemandCandidates({ branchCode = '', month = '', year = '', fyStart = '', fyEnd = '', user = {} } = {}) {
+  const effectiveBranchCode = resolveBranchCode(user, branchCode);
+  const monthNumber = Number(month) || 0;
+  const lists = (await DemandList.find(effectiveBranchCode ? { branchCode: effectiveBranchCode } : {}).lean())
+    .filter((list) => {
+      const period = demandPeriod(list);
+      if (monthNumber && period.month !== monthNumber) return false;
+      if (cleanText(year) && period.year !== cleanText(year)) return false;
+      if (fyStart && fyEnd && period.month && period.year) {
+        const first = `${period.year}-${String(period.month).padStart(2, '0')}-01`;
+        if (first < cleanText(fyStart).slice(0, 10) || first > cleanText(fyEnd).slice(0, 10)) return false;
+      }
+      return true;
+    });
+  if (!lists.length) return [];
+  const listByKey = new Map(lists.map((list) => [`${list.demandListNo}|${cleanUpper(list.branchCode)}`, list]));
+  const lines = (await DemandLine.find({ demandListNo: { $in: [...new Set(lists.map((list) => list.demandListNo))] } }).lean())
+    .filter((line) => cleanUpper(line.recoveryStatus) === DEMAND_PENDING && listByKey.has(`${line.demandListNo}|${cleanUpper(line.postedBranch)}`));
+  const codes = [...new Set(lines.map((line) => cleanUpper(line.memberCode)))];
+  const members = codes.length ? await Member.find({ code: { $in: codes } }).lean() : [];
+  const memberByCode = new Map(members.map((member) => [cleanUpper(member.code), member]));
+  const branches = await Branch.find({}).lean();
+  const branchByCode = new Map(branches.map((branch) => [cleanUpper(branch.code), branch]));
+
+  return lines.map((line) => {
+    const list = listByKey.get(`${line.demandListNo}|${cleanUpper(line.postedBranch)}`);
+    const member = memberByCode.get(cleanUpper(line.memberCode)) || {};
+    const branch = branchByCode.get(cleanUpper(line.postedBranch)) || {};
+    const period = demandPeriod(list, line);
+    return {
+      demandLineId: String(line.id || line._id),
+      demandListNo: line.demandListNo,
+      demandListDate: cleanText(list.demandListDate).slice(0, 10),
+      month: period.month,
+      year: period.year,
+      memberCode: line.memberCode,
+      memberName: member.name || line.memberName || '',
+      designation: member.designation || member?.payload?.raw?.Designation || '',
+      branchCode: line.postedBranch,
+      branchName: branch.place || branch.label || line.postedBranch,
+      compulsoryDeposit: toNumber(line.compulsoryDeposit, 0),
+      specialDeposit: toNumber(line.specialDeposit, 0),
+      regularLoan: toNumber(line.regularLoan, 0),
+      loanAgainstDeposit: toNumber(line.loanAgainstDeposit, 0),
+      insurancePremium: toNumber(line.insurancePremium, 0),
+      other: toNumber(line.other, 0),
+      totalAmount: toNumber(line.totalAmount, 0)
+    };
+  }).sort((a, b) => compareCodesNumerically(a.memberCode, b.memberCode));
+}
+
+// ---------------------------------------------------------------------------
+// Demand Entry: one demand list (FY, branch, month, year, list no) with one
+// line per member holding the demand heads — the same shape as the demand
+// migrated from legacy. Share is not a demand head. A line's total is always
+// derived from its heads (in paise); new lines are PENDING until a saved
+// recovery collects them. Recovered lines are locked here: change or delete
+// the recovery first.
+// ---------------------------------------------------------------------------
+const DEMAND_HEADS = ['compulsoryDeposit', 'specialDeposit', 'regularLoan', 'loanAgainstDeposit', 'insurancePremium', 'other'];
+
+function demandLineTotalPaise(line = {}) {
+  return DEMAND_HEADS.reduce((sum, key) => sum + toPaise(line[key] || 0), 0);
+}
+
+function demandListLinesOf(list, lines) {
+  return lines.filter((line) => line.demandListNo === list.demandListNo && cleanUpper(line.postedBranch) === cleanUpper(list.branchCode));
+}
+
+function demandEntrySummary(list, lines, branchByCode = new Map()) {
+  const period = demandPeriod(list);
+  const own = demandListLinesOf(list, lines);
+  const heads = Object.fromEntries(DEMAND_HEADS.map((key) => [key, toRupees(own.reduce((sum, line) => sum + toPaise(line[key] || 0), 0))]));
+  const recovered = own.filter((line) => cleanUpper(line.recoveryStatus) === DEMAND_RECOVERED).length;
+  const branch = branchByCode.get(cleanUpper(list.branchCode)) || {};
+  return {
+    id: String(list.id || list._id),
+    demandListNo: list.demandListNo,
+    demandListDate: cleanText(list.demandListDate).slice(0, 10),
+    branchCode: list.branchCode,
+    branchName: branch.place || branch.label || list.branchCode,
+    month: period.month,
+    year: period.year,
+    fyCode: list?.payload?.fyCode || '',
+    remarks: list.remarks || '',
+    memberCount: own.length,
+    ...heads,
+    totalAmount: toRupees(own.reduce((sum, line) => sum + demandLineTotalPaise(line), 0)),
+    pendingCount: own.length - recovered,
+    recoveredCount: recovered,
+    status: !own.length || !recovered ? DEMAND_PENDING : recovered === own.length ? DEMAND_RECOVERED : 'PARTIAL'
+  };
+}
+
+async function listDemandEntries({ branchCode = '', fyStart = '', fyEnd = '', user = {} } = {}) {
+  const effectiveBranchCode = resolveBranchCode(user, branchCode);
+  const lists = (await DemandList.find(effectiveBranchCode ? { branchCode: effectiveBranchCode } : {}).lean()).filter((list) => {
+    if (!fyStart || !fyEnd) return true;
+    const period = demandPeriod(list);
+    if (!period.month || !period.year) return true;
+    const first = `${period.year}-${String(period.month).padStart(2, '0')}-01`;
+    return first >= cleanText(fyStart).slice(0, 10) && first <= cleanText(fyEnd).slice(0, 10);
+  });
+  const listNos = [...new Set(lists.map((list) => list.demandListNo))];
+  const lines = listNos.length ? await DemandLine.find({ demandListNo: { $in: listNos } }).lean() : [];
+  const branchByCode = new Map((await Branch.find({}).lean()).map((branch) => [cleanUpper(branch.code), branch]));
+  return lists.map((list) => demandEntrySummary(list, lines, branchByCode))
+    .sort((a, b) => (`${b.year}-${String(b.month).padStart(2, '0')}`).localeCompare(`${a.year}-${String(a.month).padStart(2, '0')}`)
+      || compareCodesNumerically(a.branchCode, b.branchCode));
+}
+
+async function getDemandEntry(id, { user = {} } = {}) {
+  const list = await DemandList.findById(id).lean();
+  if (!list || !canAccessBranchRecord('demandLists', list, user)) return null;
+  const lines = demandListLinesOf(list, await DemandLine.find({ demandListNo: list.demandListNo }).lean());
+  const members = lines.length ? await Member.find({ code: { $in: lines.map((line) => line.memberCode) } }).lean() : [];
+  const memberByCode = new Map(members.map((member) => [cleanUpper(member.code), member]));
+  const branchByCode = new Map((await Branch.find({}).lean()).map((branch) => [cleanUpper(branch.code), branch]));
+  return {
+    ...demandEntrySummary(list, lines, branchByCode),
+    lines: lines.map((line) => {
+      const member = memberByCode.get(cleanUpper(line.memberCode)) || {};
+      return {
+        id: String(line.id || line._id),
+        memberCode: line.memberCode,
+        memberName: member.name || line.memberName || '',
+        designation: member.designation || member?.payload?.raw?.Designation || '',
+        ...Object.fromEntries(DEMAND_HEADS.map((key) => [key, toNumber(line[key], 0)])),
+        totalAmount: toRupees(demandLineTotalPaise(line)),
+        recoveryStatus: cleanUpper(line.recoveryStatus) || DEMAND_PENDING,
+        recoveryVoucherNo: line?.payload?.recoveryVoucherNo || ''
+      };
+    }).sort((a, b) => compareCodesNumerically(a.memberCode, b.memberCode))
+  };
+}
+
+// Load Members: the branch's members with their configured demand split
+// (member_demand_defaults) to start the grid from; every amount is editable.
+async function getDemandEntryMembers({ branchCode = '', user = {} } = {}) {
+  const effectiveBranchCode = resolveBranchCode(user, branchCode);
+  if (!effectiveBranchCode) throw recoveryHttpError('Choose a branch first.');
+  const members = (await Member.find({ branchCode: effectiveBranchCode }).lean())
+    .filter((member) => !member.dismembered && !cleanLower(member.status).startsWith('inact'));
+  const defaults = members.length ? await MemberDemandDefault.find({ memberCode: { $in: members.map((member) => member.code) } }).lean() : [];
+  const defaultByCode = new Map(defaults.map((row) => [cleanUpper(row.memberCode), row]));
+  return members.map((member) => {
+    const preset = defaultByCode.get(cleanUpper(member.code)) || {};
+    return {
+      memberCode: member.code,
+      memberName: member.name || '',
+      designation: member.designation || member?.payload?.raw?.Designation || '',
+      ...Object.fromEntries(DEMAND_HEADS.map((key) => [key, toNumber(preset[key], 0)]))
+    };
+  }).sort((a, b) => compareCodesNumerically(a.memberCode, b.memberCode));
+}
+
+function demandHeaderFrom(data = {}, { fyStart = '', fyEnd = '' } = {}) {
+  const header = {
+    demandListNo: cleanUpper(data.demandListNo),
+    demandListDate: cleanText(data.demandListDate).slice(0, 10),
+    branchCode: cleanUpper(data.branchCode),
+    month: Number(data.month) || 0,
+    year: cleanText(data.year),
+    remarks: cleanText(data.remarks),
+    fyCode: cleanText(data.fyCode)
+  };
+  if (!header.demandListNo) throw recoveryHttpError('Enter the demand list number.');
+  if (!header.branchCode) throw recoveryHttpError('Choose the branch.');
+  if (header.month < 1 || header.month > 12) throw recoveryHttpError('Choose the demand month.');
+  if (!/^\d{4}$/.test(header.year)) throw recoveryHttpError('Enter the demand year (e.g. 2026).');
+  if (fyStart && fyEnd) {
+    const first = `${header.year}-${String(header.month).padStart(2, '0')}-01`;
+    if (first < cleanText(fyStart).slice(0, 10) || first > cleanText(fyEnd).slice(0, 10)) {
+      throw recoveryHttpError('The demand month is outside the selected financial year.');
+    }
+  }
+  return header;
+}
+
+// Member lines: heads must be numbers >= 0; total is derived; a member may
+// appear once; a member with every head nil is left out.
+function demandLinesFrom(lines = []) {
+  const seen = new Set();
+  const result = [];
+  toArray(lines).forEach((line, index) => {
+    const memberCode = cleanUpper(line.memberCode);
+    if (!memberCode) throw recoveryHttpError(`Line ${index + 1}: member is required.`);
+    if (seen.has(memberCode)) throw recoveryHttpError(`Member ${memberCode} is entered twice.`);
+    seen.add(memberCode);
+    const heads = {};
+    for (const key of DEMAND_HEADS) {
+      const paise = toPaise(line[key] || 0);
+      if (!Number.isFinite(paise) || paise < 0) throw recoveryHttpError(`Member ${memberCode}: amounts must be zero or more.`);
+      heads[key] = toRupees(paise);
+    }
+    const totalPaise = demandLineTotalPaise(heads);
+    if (totalPaise > 0) result.push({ memberCode, ...heads, totalAmount: toRupees(totalPaise) });
+  });
+  return result;
+}
+
+async function saveDemandEntry(data = {}, { id = '', fyStart = '', fyEnd = '', user = {} } = {}) {
+  const header = demandHeaderFrom(data, { fyStart, fyEnd });
+  header.branchCode = resolveBranchCode(user, header.branchCode);
+  if (!(await Branch.findOne({ code: header.branchCode }).lean())) throw recoveryHttpError(`Unknown branch ${header.branchCode}.`);
+  const lines = demandLinesFrom(data.lines);
+  if (!lines.length) throw recoveryHttpError('Enter a demand amount for at least one member.');
+  const members = await Member.find({ code: { $in: lines.map((line) => line.memberCode) } }).lean();
+  const memberByCode = new Map(members.map((member) => [cleanUpper(member.code), member]));
+  const unknown = lines.filter((line) => !memberByCode.has(line.memberCode)).map((line) => line.memberCode);
+  if (unknown.length) throw recoveryHttpError(`Unknown member code(s): ${unknown.join(', ')}.`);
+
+  const current = id ? await DemandList.findById(id).lean() : null;
+  if (id && !current) return null;
+  const clash = (await DemandList.find({ demandListNo: header.demandListNo }).lean())
+    .find((list) => cleanUpper(list.branchCode) === header.branchCode && String(list.id || list._id) !== String(id || ''));
+  if (clash) throw recoveryHttpError(`Demand list ${header.demandListNo} already exists for branch ${header.branchCode}.`, 409);
+
+  const existing = current ? demandListLinesOf(current, await DemandLine.find({ demandListNo: current.demandListNo }).lean()) : [];
+  const recovered = existing.filter((line) => cleanUpper(line.recoveryStatus) === DEMAND_RECOVERED);
+  if (recovered.length) {
+    const period = demandPeriod(current);
+    if (current.demandListNo !== header.demandListNo || cleanUpper(current.branchCode) !== header.branchCode
+      || period.month !== header.month || period.year !== header.year) {
+      throw recoveryHttpError('This demand list has recovered members, so its number, branch, month and year cannot change.', 409);
+    }
+    const submitted = new Map(lines.map((line) => [line.memberCode, line]));
+    for (const line of recovered) {
+      const next = submitted.get(cleanUpper(line.memberCode));
+      if (!next || DEMAND_HEADS.some((key) => toPaise(next[key]) !== toPaise(line[key] || 0))) {
+        throw recoveryHttpError(`Member ${line.memberCode}'s demand has already been recovered${line?.payload?.recoveryVoucherNo ? ` (recovery voucher ${line.payload.recoveryVoucherNo})` : ''}. Edit or delete the linked recovery first.`, 409);
+      }
+    }
+  }
+
+  const listDoc = {
+    demandListNo: header.demandListNo,
+    demandListDate: header.demandListDate,
+    branchCode: header.branchCode,
+    month: String(header.month),
+    year: header.year,
+    status: DEMAND_PENDING,
+    remarks: header.remarks,
+    // The real month/year live in the columns for lists entered here; only
+    // migrated lists need payload.raw (see demandPeriod).
+    payload: { ...(current?.payload || {}), fyCode: header.fyCode, raw: undefined }
+  };
+  delete listDoc.payload.raw;
+
+  const listId = await withTransaction(async (tx) => {
+    let savedId = id;
+    if (current) {
+      await DemandList.findByIdAndUpdate(id, listDoc, { new: true }).tx(tx);
+    } else {
+      const created = await DemandList.create(listDoc, { tx });
+      savedId = String(created.id || created._id);
+    }
+    const existingByCode = new Map(existing.map((line) => [cleanUpper(line.memberCode), line]));
+    for (const line of lines) {
+      const before = existingByCode.get(line.memberCode);
+      if (before && cleanUpper(before.recoveryStatus) === DEMAND_RECOVERED) continue;
+      const doc = {
+        demandListNo: header.demandListNo,
+        memberCode: line.memberCode,
+        memberName: memberByCode.get(line.memberCode).name || '',
+        postedBranch: header.branchCode,
+        ...Object.fromEntries(DEMAND_HEADS.map((key) => [key, line[key]])),
+        totalAmount: line.totalAmount,
+        recoveredAmount: 0,
+        recoveryStatus: DEMAND_PENDING
+      };
+      // A pending line keeps its id, so a recovery draft that loaded it
+      // still links to the same demand line.
+      if (before) await DemandLine.findByIdAndUpdate(String(before.id || before._id), doc, { new: true }).tx(tx);
+      else await DemandLine.create(doc, { tx });
+    }
+    const kept = new Set(lines.map((line) => line.memberCode));
+    for (const line of existing) {
+      if (!kept.has(cleanUpper(line.memberCode)) && cleanUpper(line.recoveryStatus) !== DEMAND_RECOVERED) {
+        await DemandLine.findByIdAndDelete(String(line.id || line._id)).tx(tx);
+      }
+    }
+    return savedId;
+  });
+  return getDemandEntry(listId, { user });
+}
+
+async function deleteDemandEntry(id, { user = {} } = {}) {
+  const list = await DemandList.findById(id).lean();
+  if (!list || !canAccessBranchRecord('demandLists', list, user)) return false;
+  await assertDemandNotRecovered('demandLists', id, { deleting: true });
+  const lines = demandListLinesOf(list, await DemandLine.find({ demandListNo: list.demandListNo }).lean());
+  await withTransaction(async (tx) => {
+    for (const line of lines) await DemandLine.findByIdAndDelete(String(line.id || line._id)).tx(tx);
+    await DemandList.findByIdAndDelete(id).tx(tx);
+  });
+  return true;
+}
+
+async function buildDemandListReport({ month = '', year = '', date = '', fyStart = '', fyEnd = '', branchCode = '', user = {} } = {}) {
   const query = {};
   const effectiveBranchCode = resolveBranchCode(user, branchCode);
   if (effectiveBranchCode) {
     query.branchCode = effectiveBranchCode;
   }
 
+  const monthNumber = month ? Number(month) : 0;
+  // FY start year (1 April); Jan-Mar demand lists carry the following
+  // calendar year.
+  const fyStartYear = parseInt(cleanText(fyStart).slice(0, 4), 10);
   let effectiveYear = cleanText(year);
   if (!effectiveYear && date) {
     const parsedDate = new Date(cleanText(date));
     if (!isNaN(parsedDate.getTime())) effectiveYear = String(parsedDate.getFullYear());
   }
-  const monthNumber = month ? Number(month) : 0;
+  if (!effectiveYear && monthNumber && Number.isFinite(fyStartYear)) {
+    effectiveYear = String(monthNumber >= 4 ? fyStartYear : fyStartYear + 1);
+  }
 
   // Join DemandList → DemandLine for member-level detail
   let lists = await DemandList.find(query).sort({ updatedAt: -1 }).lean();
+  // demandPeriod: migrated lists keep their real month only in payload.raw.
   if (monthNumber) {
-    lists = lists.filter((l) => Number(l.month) === monthNumber);
+    lists = lists.filter((l) => demandPeriod(l).month === monthNumber);
   }
   if (effectiveYear) {
-    lists = lists.filter((l) => String(l.year) === effectiveYear);
+    lists = lists.filter((l) => demandPeriod(l).year === effectiveYear);
+  } else if (Number.isFinite(fyStartYear)) {
+    lists = lists.filter((l) => {
+      const period = demandPeriod(l);
+      return period.year === String(period.month >= 4 ? fyStartYear : fyStartYear + 1);
+    });
   }
 
   if (lists.length === 0) {
@@ -2631,7 +4449,7 @@ async function buildDemandListReport({ month = '', year = '', date = '', branchC
       memberName: line.memberName,
       designation: member.designation || '',
       branchCode: line.postedBranch || list.branchCode || '',
-      month: list.month || '',
+      month: demandPeriod(list, line).month || list.month || '',
       cd: toNumber(line.compulsoryDeposit, 0),
       ssa: toNumber(line.specialDeposit, 0),
       regularLoan: toNumber(line.regularLoan, 0),
@@ -2640,15 +4458,22 @@ async function buildDemandListReport({ month = '', year = '', date = '', branchC
       total: toNumber(line.totalAmount, 0),
       recovered: toNumber(line.recoveredAmount, 0),
       pending: Math.max(0, toNumber(line.totalAmount, 0) - toNumber(line.recoveredAmount, 0)),
-      status: line.recoveryStatus
+      status: line.recoveryStatus,
+      recoveryVoucherNo: line?.payload?.recoveryVoucherNo || ''
     };
   });
 }
 
-async function buildAllMemberListReport({ branchCode = '', user = {} } = {}) {
+async function buildAllMemberListReport({ branchCode = '', uptoDate = '', user = {} } = {}) {
   const effectiveBranchCode = resolveBranchCode(user, branchCode);
   const query = effectiveBranchCode ? { branchCode: effectiveBranchCode } : {};
-  const rows = await Member.find(query).sort({ name: 1 }).lean();
+  const cutoff = cleanText(uptoDate);
+  // Members who had not joined by the selected FY's end are left out. Only
+  // ISO-dated membershipDate values are compared; anything else stays listed.
+  const rows = (await Member.find(query).sort({ name: 1 }).lean()).filter((row) => {
+    const joined = cleanText(row.membershipDate).slice(0, 10);
+    return !cutoff || !/^\d{4}-\d{2}-\d{2}$/.test(joined) || joined <= cutoff;
+  });
   const branches = await Branch.find({}).lean();
   const branchByCode = new Map(branches.map((b) => [cleanUpper(b.code), b]));
 
@@ -2671,55 +4496,70 @@ async function buildAllMemberListReport({ branchCode = '', user = {} } = {}) {
   });
 }
 
+// Legacy ReportData 'INCOME AND EXPENSES' (printed as "Statement of Receipt
+// And Payment Account"): every non-zero Liabilities + Income ledger on the
+// receipt (INCOME) side and every non-zero Assets + Expenses ledger on the
+// payment (EXPENDITURE) side, cumulative to the as-on date and sorted by name,
+// with the Profit & Loss A/c ledger (Primary) last on the payment side —
+// which is what makes the two sides agree (FY 2024-25: 261,080,744.42 both).
 async function buildPaymentReceiptStatementReport({ dateFrom = '', dateTo = '', branchCode = '', user = {} } = {}) {
-  // Proven legacy behavior relies on cumulative balances (vwLedgerBalance).
-  // Hence we use uptoDate = dateTo for cumulative as-of snapshot.
   const effectiveBranchCode = resolveBranchCode(user, branchCode);
   const uptoDate = dateTo || dateFrom || '';
   const snapshots = await getLedgerSnapshots({ uptoDate, branchCode: effectiveBranchCode });
-  
-  const receipts = [];
-  const payments = [];
-  
-  let receiptTotal = 0;
-  let paymentTotal = 0;
+  const isPrimary = (row) => row.nature === 'PRIMARY' || cleanUpper(row.group) === 'PRIMARY';
+  const byName = (a, b) => String(a.ledgerName || '').localeCompare(String(b.ledgerName || ''), 'en', { sensitivity: 'base' });
+  const toRow = (row, creditSide) => ({
+    ledgerCode: row.code,
+    ledgerName: row.name,
+    group: row.group,
+    amount: sideAmount(row, creditSide)
+  });
+  const nonZero = (row) => Math.abs(row.amount) >= 0.005;
 
-  for (const row of snapshots) {
-    if ((row.nature === 'LIABILITY' || row.nature === 'INCOME') && row.group !== 'PRIMARY') {
-      receipts.push({
-        ledgerCode: row.code,
-        ledgerName: row.name,
-        group: row.group,
-        amount: row.closing
-      });
-      receiptTotal += row.closing;
-    } else if ((row.nature === 'ASSET' || row.nature === 'EXPENSE') && row.group !== 'PRIMARY') {
-      payments.push({
-        ledgerCode: row.code,
-        ledgerName: row.name,
-        group: row.group,
-        amount: row.closing
-      });
-      paymentTotal += row.closing;
-    }
+  const receipts = snapshots
+    .filter((row) => !isPrimary(row) && (row.nature === 'LIABILITY' || row.nature === 'INCOME'))
+    .map((row) => toRow(row, true))
+    .filter(nonZero)
+    .sort(byName);
+  const payments = snapshots
+    .filter((row) => !isPrimary(row) && (row.nature === 'ASSET' || row.nature === 'EXPENSE'))
+    .map((row) => toRow(row, false))
+    .filter(nonZero)
+    .sort(byName);
+  const profitLossLedgers = snapshots.filter(isPrimary);
+  const profitLoss = Number(profitLossLedgers.reduce((total, row) => total + sideAmount(row, false), 0).toFixed(2));
+  if (Math.abs(profitLoss) >= 0.005) {
+    payments.push({ ledgerCode: profitLossLedgers[0]?.code || '', ledgerName: 'Profit & Loss A/c', group: 'PRIMARY', amount: profitLoss });
   }
 
-  return { receipts, payments, receiptTotal: Number(receiptTotal.toFixed(2)), paymentTotal: Number(paymentTotal.toFixed(2)) };
+  return {
+    asOnDate: uptoDate,
+    receipts,
+    payments,
+    receiptTotal: sumAmounts(receipts),
+    paymentTotal: sumAmounts(payments)
+  };
 }
 
+// Legacy "LIST OF BRANCH" (ReportData 'BRANCH LIST'): branches grouped by
+// their District text exactly as typed (legacy keeps "RAIPUR ( C . G . )" and
+// "RAIPUR ( C .G . )" as separate groups), districts and branches by name.
 async function buildBranchListReport({ branchCode = '', user = {} } = {}) {
-    const effectiveBranchCode = resolveBranchCode(user, branchCode);
-    const query = effectiveBranchCode ? { code: effectiveBranchCode } : {};
-    const rows = await Branch.find(query).sort({ code: 1 }).lean();
-    return rows.map((row) => ({
-      code: row.code,
-      headOfficeCode: row.headOfficeCode || SOCIETY_SEED.code,
-      place: row.place,
-      district: row.district,
-      phone: row.phone,
-      address: row.address
-    }));
-  }
+  const effectiveBranchCode = resolveBranchCode(user, branchCode);
+  const query = effectiveBranchCode ? { code: effectiveBranchCode } : {};
+  const byText = (a, b) => String(a ?? '').localeCompare(String(b ?? ''), 'en', { sensitivity: 'base' });
+  const rows = (await Branch.find(query).lean())
+    .sort((a, b) => byText(a.district, b.district) || byText(a.place, b.place) || compareCodesNumerically(a.code, b.code));
+  return rows.map((row) => ({
+    code: row.code,
+    headOfficeCode: row.headOfficeCode || SOCIETY_SEED.code,
+    place: row.place,
+    district: row.district || '',
+    phone: cleanText(row.phone),
+    address: cleanText(row.address)
+  }));
+}
+
 async function buildDashboardQuickSummary({ user = {}, fyStart = '', fyEnd = '' } = {}) {
   const summary = await getDashboardSummary({ user, fyStart, fyEnd });
   const reports = await Promise.all([
@@ -2792,7 +4632,6 @@ function normalizeBankTransaction(data = {}) {
     branchCode: cleanUpper(data.branchCode),
     amount: toNumber(data.amount, 0),
     narration: cleanText(data.narration),
-    status: cleanText(data.status || 'Draft'),
     documents: toMixed(data.documents, {}),
     payload: toMixed(data.payload, {})
   };
@@ -2809,27 +4648,180 @@ async function getSingle(resource) {
   return record ? toResponse(record) : null;
 }
 
+// ---------------------------------------------------------------------------
+// Recovery From Member: draft lines -> recovery_lines, and Demand links.
+//
+// The entry screen keeps each member line as { member, heads: { share, cd,
+// ssa, loan, lad, ins, admfee, suspense }, source, demandLineId, ... } (also
+// the shape kept in voucher.details.recoveryLines so a saved voucher reopens
+// in the same grid). Posting and recovery_lines use the column names below,
+// so every line is converted here, totals recalculated in paise, before the
+// voucher is saved. A line from Add From Demand List carries the exact
+// demand_lines id it was loaded from; only that id is ever marked recovered.
+// ---------------------------------------------------------------------------
+const RECOVERY_KEY = 'recovery-member';
+const DEMAND_PENDING = 'PENDING';
+const DEMAND_RECOVERED = 'RECOVERED';
+
+function recoveryHttpError(message, statusCode = 400) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
+}
+
+function firstDefined(...values) {
+  return values.find((value) => value !== undefined && value !== null && value !== '');
+}
+
+function toRecoveryLine(line = {}, index = 0) {
+  const heads = line.heads || {};
+  const amount = (...values) => {
+    const paise = toPaise(firstDefined(...values) || 0);
+    if (!Number.isFinite(paise) || paise < 0) {
+      throw recoveryHttpError(`Recovery line ${index + 1}: amounts must be zero or more.`);
+    }
+    return paise;
+  };
+  const paise = {
+    share: amount(heads.share, line.share),
+    compulsoryDeposit: amount(heads.cd, heads.compulsoryDeposit, line.compulsoryDeposit),
+    specialDeposit: amount(heads.ssa, line.specialDeposit, line.ssa),
+    regularLoan: amount(heads.loan, line.regularLoan),
+    depositLoan: amount(heads.lad, line.depositLoan, line.loanAgainstDeposit),
+    premium: amount(heads.ins, heads.insurance, line.premium, line.insurancePremium),
+    admission: amount(heads.admfee, line.admission),
+    suspense: amount(heads.suspense, line.suspense)
+  };
+  const totalPaise = Object.values(paise).reduce((sum, value) => sum + value, 0);
+  const memberCode = cleanUpper(line.memberCode || line.member);
+  if (!memberCode) throw recoveryHttpError(`Recovery line ${index + 1}: member is required.`);
+  if (totalPaise <= 0) throw recoveryHttpError(`Recovery line ${index + 1} (${memberCode}): enter at least one recovered amount.`);
+  return {
+    memberCode,
+    demandLineId: cleanText(line.demandLineId) || null,
+    ...Object.fromEntries(Object.entries(paise).map(([key, value]) => [key, toRupees(value)])),
+    total: toRupees(totalPaise),
+    payload: {
+      source: cleanUpper(line.source) || (line.demandLineId ? 'DEMAND' : 'MANUAL'),
+      demandListNo: cleanText(line.demandListNo) || null,
+      importBatchId: cleanText(line.importBatchId) || null,
+      importRowId: cleanText(line.importRowId) || null
+    }
+  };
+}
+
+// Converts and validates a recovery voucher's lines: members must exist, a
+// demand line may be used once. Returns the recovery_lines rows and the
+// recalculated voucher amount; other vouchers pass through untouched.
+async function prepareRecoveryLines(payload) {
+  if (payload?.details?.key !== RECOVERY_KEY) return { lines: payload?.details?.recoveryLines || [], links: [] };
+  const draftLines = toArray(payload.details.recoveryLines);
+  if (!draftLines.length) throw recoveryHttpError('Add at least one member line before saving the recovery.');
+  const lines = draftLines.map((line, index) => toRecoveryLine(line, index));
+
+  const codes = [...new Set(lines.map((line) => line.memberCode))];
+  const known = new Set((await Member.find({ code: { $in: codes } }).lean()).map((member) => cleanUpper(member.code)));
+  const unknown = codes.filter((code) => !known.has(code));
+  if (unknown.length) throw recoveryHttpError(`Unknown member code(s): ${unknown.join(', ')}.`);
+
+  const links = lines.map((line) => line.demandLineId).filter(Boolean);
+  const duplicate = links.find((id, index) => links.indexOf(id) !== index);
+  if (duplicate) throw recoveryHttpError('The same demand line is added twice in this recovery. Remove the duplicate row.');
+
+  payload.amount = toRupees(lines.reduce((sum, line) => sum + toPaise(line.total), 0));
+  return { lines, links };
+}
+
+// Moves exactly the demand lines whose link changed, inside the voucher's
+// own transaction: removed links back to PENDING, added links to RECOVERED.
+// The RECOVERED update only succeeds on a line that is still PENDING, for the
+// same member, so a line recovered meanwhile by someone else (or edited
+// away) fails the whole save and everything rolls back.
+async function reconcileDemandLinks(tx, { voucherId, voucherNo, oldLinks = [], newLinks = [], memberByLink = new Map() }) {
+  const oldSet = new Set(oldLinks);
+  const newSet = new Set(newLinks);
+  const removed = [...oldSet].filter((id) => !newSet.has(id));
+  const added = [...newSet].filter((id) => !oldSet.has(id));
+
+  for (const id of removed) {
+    await tx.query(
+      `UPDATE demand_lines SET "recoveryStatus" = $2, "updatedAt" = NOW(),
+         payload = COALESCE(payload, '{}'::jsonb) - 'recoveryVoucherId' - 'recoveryVoucherNo'
+       WHERE id = $1 AND payload->>'recoveryVoucherId' = $3`,
+      [id, DEMAND_PENDING, voucherId]
+    );
+  }
+  for (const id of added) {
+    const result = await tx.query(
+      `UPDATE demand_lines SET "recoveryStatus" = $2, "updatedAt" = NOW(),
+         payload = COALESCE(payload, '{}'::jsonb) || jsonb_build_object('recoveryVoucherId', $3::text, 'recoveryVoucherNo', $4::text)
+       WHERE id = $1 AND "deletedAt" IS NULL AND UPPER(COALESCE("recoveryStatus", '')) = $5
+         AND UPPER(COALESCE("memberCode", '')) = $6
+       RETURNING id`,
+      [id, DEMAND_RECOVERED, voucherId, String(voucherNo || ''), DEMAND_PENDING, memberByLink.get(id) || '']
+    );
+    if (!result.rowCount) {
+      throw recoveryHttpError('A demand line in this recovery is no longer pending (already recovered, removed, or for a different member). Reload the demand list and try again.', 409);
+    }
+  }
+  return { removed, added };
+}
+
+function recoveryLineRows(lines, voucherId, voucherNo) {
+  return lines.map((line) => ({ ...line, voucherId, voucherNo }));
+}
+
+// Fields every voucher form marks required (*): the date on all of them, the
+// mode on the member forms. Without a date a voucher drops out of every
+// date-based report (Day Book, Cash Book, ledgers), so it is refused here,
+// whatever screen or API call sends it.
+const MODE_REQUIRED_KEYS = new Set(['loan-paid-member', 'deposit-paid-member', 'insurance-paid-member', 'ssa-paid-member', RECOVERY_KEY]);
+
+// `submitted` is the request as sent: normalizeVoucher fills an empty mode
+// with the catalog's description ("Cash / Transfer", "Cash / Cheque"), which
+// is not a payment mode — the form shows it as "Select mode" — so the mode is
+// checked before that fallback.
+function assertVoucherBasics(payload = {}, submitted = {}) {
+  const date = cleanText(payload.date).slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(new Date(`${date}T00:00:00Z`).getTime())) {
+    throw recoveryHttpError('Enter the voucher date.');
+  }
+  const key = payload?.details?.key;
+  if (MODE_REQUIRED_KEYS.has(key)) {
+    const mode = cleanText(submitted.mode);
+    if (!mode || mode === cleanText(getTransactionCatalogItemByKey(key)?.mode)) {
+      throw recoveryHttpError('Choose the payment mode.');
+    }
+  }
+}
+
 async function createVoucher(data = {}, meta = {}) {
   return withTransaction(async (tx) => {
     const branchCode = resolveBranchCode(meta.actorUser || {}, data.branchCode);
     const voucherNo = cleanText(data.voucherNo) || await getNextVoucherNo(branchCode);
     const payload = normalizeVoucher({ ...data, voucherNo, branchCode });
+    assertVoucherBasics(payload, data);
     if (meta.actorUserId) {
       payload.createdByUserId = meta.actorUserId;
       payload.updatedByUserId = meta.actorUserId;
     }
     
-    const journalLines = await buildJournalLinesForVoucher(payload, { ...meta, tx, recoveryLines: payload.details?.recoveryLines || [] });
+    const recovery = await prepareRecoveryLines(payload);
+    const journalLines = await buildJournalLinesForVoucher(payload, { ...meta, tx, recoveryLines: recovery.lines });
 
     const record = await Voucher.create(payload, { tx });
-    
-    if (payload.details && payload.details.recoveryLines && payload.details.recoveryLines.length > 0) {
-      const linesToInsert = payload.details.recoveryLines.map(line => ({
-        ...line,
-        voucherId: String(record._id || record.id),
-        voucherNo: record.voucherNo
-      }));
-      await RecoveryLine.insertMany(linesToInsert, { tx });
+    const recordId = String(record._id || record.id);
+
+    if (recovery.lines.length > 0) {
+      await RecoveryLine.insertMany(recoveryLineRows(recovery.lines, recordId, record.voucherNo), { tx });
+    }
+    if (recovery.links.length) {
+      await reconcileDemandLinks(tx, {
+        voucherId: recordId,
+        voucherNo: record.voucherNo,
+        newLinks: recovery.links,
+        memberByLink: new Map(recovery.lines.filter((line) => line.demandLineId).map((line) => [line.demandLineId, line.memberCode]))
+      });
     }
 
     const journalLinesToInsert = journalLines.map(line => ({
@@ -2850,25 +4842,34 @@ async function updateVoucher(id, data = {}, meta = {}) {
     const current = await Voucher.findById(id);
     if (!current) return null;
     const payload = normalizeVoucher({ ...current.toObject(), ...data });
+    assertVoucherBasics(payload, { ...current.toObject(), ...data });
     payload.branchCode = resolveBranchCode(meta.actorUser || {}, current.branchCode);
     if (meta.actorUserId) {
       payload.updatedByUserId = meta.actorUserId;
     }
     
-    const journalLines = await buildJournalLinesForVoucher(payload, { ...meta, tx, recoveryLines: payload.details?.recoveryLines || [] });
+    const recovery = await prepareRecoveryLines(payload);
+    const journalLines = await buildJournalLinesForVoucher(payload, { ...meta, tx, recoveryLines: recovery.lines });
+    // Demand lines this voucher held before the edit (its own recovery_lines).
+    const oldLinks = (await RecoveryLine.find({ voucherId: id }).lean())
+      .map((line) => cleanText(line.demandLineId)).filter(Boolean);
 
     await Voucher.findByIdAndUpdate(id, payload, { new: true }).tx(tx);
 
     if (payload.details && payload.details.recoveryLines) {
       await RecoveryLine.deleteMany({ voucherId: id }, { tx });
-      if (payload.details.recoveryLines.length > 0) {
-        const linesToInsert = payload.details.recoveryLines.map(line => ({
-          ...line,
-          voucherId: id,
-          voucherNo: payload.voucherNo || current.voucherNo
-        }));
-        await RecoveryLine.insertMany(linesToInsert, { tx });
+      if (recovery.lines.length > 0) {
+        await RecoveryLine.insertMany(recoveryLineRows(recovery.lines, id, payload.voucherNo || current.voucherNo), { tx });
       }
+    }
+    if (oldLinks.length || recovery.links.length) {
+      await reconcileDemandLinks(tx, {
+        voucherId: id,
+        voucherNo: payload.voucherNo || current.voucherNo,
+        oldLinks,
+        newLinks: recovery.links,
+        memberByLink: new Map(recovery.lines.filter((line) => line.demandLineId).map((line) => [line.demandLineId, line.memberCode]))
+      });
     }
     
     await JournalLine.deleteMany({ voucherId: id }, { tx });
@@ -2887,9 +4888,13 @@ async function updateVoucher(id, data = {}, meta = {}) {
 
 async function deleteVoucher(id) {
   return withTransaction(async (tx) => {
+    const oldLinks = (await RecoveryLine.find({ voucherId: id }).lean())
+      .map((line) => cleanText(line.demandLineId)).filter(Boolean);
     const record = await Voucher.findByIdAndDelete(id).tx(tx);
     if (!record) return false;
     await RecoveryLine.deleteMany({ voucherId: id }, { tx });
+    // Its demand lines go back to pending for the next recovery.
+    if (oldLinks.length) await reconcileDemandLinks(tx, { voucherId: id, oldLinks, newLinks: [] });
     await JournalLine.deleteMany({ voucherId: id }, { tx });
     await deleteDocumentFiles(record.documents || {});
     return true;
@@ -2902,6 +4907,18 @@ async function deleteVoucher(id) {
 async function restoreVoucher(id) {
   const voucher = await Voucher.findById(id).withDeleted().lean();
   if (!voucher || !voucher.deletedAt) return false;
+
+  // Deleting returned its demand lines to pending; take them back first, and
+  // refuse if another recovery has collected any of them since.
+  const linked = (await RecoveryLine.find({ voucherId: id }).withDeleted().lean()).filter((line) => cleanText(line.demandLineId));
+  if (linked.length) {
+    await withTransaction((tx) => reconcileDemandLinks(tx, {
+      voucherId: id,
+      voucherNo: voucher.voucherNo,
+      newLinks: linked.map((line) => cleanText(line.demandLineId)),
+      memberByLink: new Map(linked.map((line) => [cleanText(line.demandLineId), cleanUpper(line.memberCode)]))
+    }));
+  }
 
   const restored = await restoreMainRow('vouchers', id);
   if (!restored) return false;
@@ -3150,6 +5167,62 @@ async function buildEmployeeAccountStatement({ employeeId, dateFrom, dateTo, use
     statement: results 
   };
 }
+// Legacy employee rows, per its VwEmpTransData view: TransType 12 (Advance
+// Paid To Employee) debits Housing/Vehicle/Grain, 13 (Advance Recovery From
+// Employee) credits them, and 22 (Interest Receive From Employee) moves only
+// the interest heads — except Grain Advance, which the view credits like a
+// recovery. All three key ParticularAccID to the employee's own AccID.
+// Amounts are in paise, as buildEmployeeLedgerReport works in paise.
+async function getHistoricalEmployeeLedgerRows(employee) {
+  const accId = employee?.payload?.raw?.AccID != null ? String(employee.payload.raw.AccID) : '';
+  if (!accId) return [];
+
+  const database = await initializeDatabase();
+  const result = await database.query(
+    `SELECT "voucherNo", "voucherCategory", narration, payload
+     FROM legacy_historical_vouchers
+     WHERE "voucherCategory" IN ('12','13','22')
+       AND payload->'raw'->>'ParticularAccID' = $1`,
+    [accId]
+  );
+
+  const rows = [];
+  for (const v of result.rows) {
+    const raw = v.payload?.raw || {};
+    const date = raw.VoucherDate ? String(raw.VoucherDate).slice(0, 10) : null;
+    if (!date) continue;
+
+    const row = {
+      voucherNo: `LGCY-${v.voucherNo}`,
+      date,
+      housingLoan: { credit: 0, debit: 0, balance: 0 },
+      vehicleLoan: { credit: 0, debit: 0, balance: 0 },
+      grainAdvance: { credit: 0, debit: 0, balance: 0 },
+      isOpening: false,
+      isHistorical: true,
+      narration: v.narration || raw.Narration || ''
+    };
+    if (v.voucherCategory === '12') {
+      row.housingLoan.debit = toPaise(raw.HomeLoan);
+      row.vehicleLoan.debit = toPaise(raw.VehicleLoan);
+      row.grainAdvance.debit = toPaise(raw.GrainAdvance);
+    } else if (v.voucherCategory === '13') {
+      row.housingLoan.credit = toPaise(raw.HomeLoan);
+      row.vehicleLoan.credit = toPaise(raw.VehicleLoan);
+      row.grainAdvance.credit = toPaise(raw.GrainAdvance);
+    } else {
+      row.grainAdvance.credit = toPaise(raw.GrainAdvance);
+      // Printed in the Intrst column (in brackets), not in the balance.
+      row.housingLoan.interestReceived = toPaise(raw.HomeLoan);
+      row.vehicleLoan.interestReceived = toPaise(raw.VehicleLoan);
+    }
+    rows.push(row);
+  }
+
+  rows.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : compareCodesNumerically(a.voucherNo, b.voucherNo)));
+  return rows;
+}
+
 async function buildEmployeeLedgerReport({ employeeCode, dateFrom = '', dateTo = '', user = {} } = {}) {
   const employee = await Employee.findOne({ code: cleanUpper(employeeCode) }).lean();
   if (!employee) return null;
@@ -3169,250 +5242,214 @@ async function buildEmployeeLedgerReport({ employeeCode, dateFrom = '', dateTo =
     acc[key].push(line);
     return acc;
   }, {});
-  
-  const balancesObj = typeof employee.balances === 'string' ? JSON.parse(employee.balances || '{}') : (employee.balances || {});
-  
-  let housingBal = toNumber(employee.homeLoanBalance ?? balancesObj.housingLoan ?? balancesObj.house ?? 0);
-  let vehicleBal = toNumber(employee.vehicleLoanBalance ?? balancesObj.vehicleLoan ?? balancesObj.vehicle ?? 0);
-  let grainBal = toNumber(employee.grainAdvanceBalance ?? balancesObj.grainAdvance ?? balancesObj.grain ?? 0);
 
-  let allRows = [];
+  const GROUPS = ['housingLoan', 'vehicleLoan', 'grainAdvance'];
+  const emptyRow = (voucherNo, date) => ({
+    voucherNo,
+    date,
+    housingLoan: { credit: 0, debit: 0, balance: 0 },
+    vehicleLoan: { credit: 0, debit: 0, balance: 0 },
+    grainAdvance: { credit: 0, debit: 0, balance: 0 },
+    isOpening: false
+  });
 
+  // Live (post-cutover) vouchers, amounts in paise.
+  const liveRows = [];
   for (const voucher of vouchers) {
     const isPartyMatch = cleanUpper(voucher.partyCode) === cleanUpper(employee.code);
     const recoveryLines = toArray(voucher.details?.recoveryLines).concat(recoveryLinesByVoucher[voucher._id || voucher.id] || []).concat(recoveryLinesByVoucher[voucher.voucherNo] || []);
     const hasEmployeeLines = recoveryLines.some(l => cleanUpper(l.employeeCode || l.memberCode || l.member) === cleanUpper(employee.code));
+    if (!isPartyMatch && !hasEmployeeLines) continue;
 
-    if (!isPartyMatch && !hasEmployeeLines) {
-      continue;
-    }
-
-    const row = {
-      voucherNo: voucher.voucherNo,
-      date: voucher.date,
-      housingLoan: { credit: 0, debit: 0, balance: 0 },
-      vehicleLoan: { credit: 0, debit: 0, balance: 0 },
-      grainAdvance: { credit: 0, debit: 0, balance: 0 },
-      isOpening: false
-    };
-
-    const key = voucher.details?.key || '';
+    const row = emptyRow(voucher.voucherNo, voucher.date);
     const components = voucher.details?.components || {};
-    
-    if (key === 'advance-paid-emp') {
-      row.housingLoan.debit = toNumber(components.house || 0);
-      row.vehicleLoan.debit = toNumber(components.vehicle || 0);
-      row.grainAdvance.debit = toNumber(components.grain || 0);
-    } 
-    else if (key === 'advance-recovery-emp') {
-      row.housingLoan.credit = toNumber(components.house || 0);
-      row.vehicleLoan.credit = toNumber(components.vehicle || 0);
-      row.grainAdvance.credit = toNumber(components.grain || 0);
-    }
-    else {
-      if (components.house) row.housingLoan.debit = toNumber(components.house);
-      if (components.vehicle) row.vehicleLoan.debit = toNumber(components.vehicle);
-      if (components.grain) row.grainAdvance.debit = toNumber(components.grain);
-    }
-
-    housingBal += row.housingLoan.debit - row.housingLoan.credit;
-    vehicleBal += row.vehicleLoan.debit - row.vehicleLoan.credit;
-    grainBal += row.grainAdvance.debit - row.grainAdvance.credit;
-
-    row.housingLoan.balance = Math.abs(housingBal);
-    row.vehicleLoan.balance = Math.abs(vehicleBal);
-    row.grainAdvance.balance = Math.abs(grainBal);
-
-    allRows.push(row);
+    const side = voucher.details?.key === 'advance-recovery-emp' ? 'credit' : 'debit';
+    row.housingLoan[side] = toPaise(components.house);
+    row.vehicleLoan[side] = toPaise(components.vehicle);
+    row.grainAdvance[side] = toPaise(components.grain);
+    liveRows.push(row);
   }
 
-  let finalRows = [];
-  const fromDateStr = cleanText(dateFrom);
-  const previousRows = fromDateStr ? allRows.filter(r => r.date < fromDateStr) : [];
-  const visibleRows = fromDateStr ? allRows.filter(r => r.date >= fromDateStr) : allRows;
-  
-  if (previousRows.length > 0) {
-    const lastPrev = previousRows[previousRows.length - 1];
-    finalRows.push({
-      voucherNo: 'OPENING',
-      date: fromDateStr,
-      housingLoan: { credit: 0, debit: 0, balance: lastPrev.housingLoan.balance },
-      vehicleLoan: { credit: 0, debit: 0, balance: lastPrev.vehicleLoan.balance },
-      grainAdvance: { credit: 0, debit: 0, balance: lastPrev.grainAdvance.balance },
-      isOpening: true
-    });
-  } else {
-    finalRows.push({
-      voucherNo: 'OPENING',
-      date: fromDateStr || (visibleRows.length > 0 ? visibleRows[0].date : ''),
-      housingLoan: { credit: 0, debit: 0, balance: Math.abs(toPaise(employee.homeLoanBalance || 0)) },
-      vehicleLoan: { credit: 0, debit: 0, balance: Math.abs(toPaise(employee.vehicleLoanBalance || 0)) },
-      grainAdvance: { credit: 0, debit: 0, balance: Math.abs(toPaise(employee.grainAdvanceBalance || 0)) },
-      isOpening: true
-    });
+  // The employee's stored balances are the cutover snapshot: the balance
+  // after every legacy row and before any live one. Legacy rows are walked
+  // backward from it, live rows forward from it (balance = amount owed, so a
+  // debit raises it and a credit lowers it).
+  const anchor = {
+    housingLoan: Math.abs(toPaise(employee.homeLoanBalance)),
+    vehicleLoan: Math.abs(toPaise(employee.vehicleLoanBalance)),
+    grainAdvance: Math.abs(toPaise(employee.grainAdvanceBalance))
+  };
+  const historicalRows = await getHistoricalEmployeeLedgerRows(employee);
+  for (const key of GROUPS) {
+    let running = anchor[key];
+    for (let i = historicalRows.length - 1; i >= 0; i -= 1) {
+      const cell = historicalRows[i][key];
+      cell.balance = running;
+      running -= cell.debit - cell.credit;
+    }
+    running = anchor[key];
+    for (const row of liveRows) {
+      running += row[key].debit - row[key].credit;
+      row[key].balance = running;
+    }
   }
-  
-  finalRows = finalRows.concat(visibleRows);
-
-  finalRows = finalRows.map((row) => ({
-    ...row,
-    housingLoan: { credit: toRupees(row.housingLoan.credit), debit: toRupees(row.housingLoan.debit), balance: toRupees(row.housingLoan.balance) },
-    vehicleLoan: { credit: toRupees(row.vehicleLoan.credit), debit: toRupees(row.vehicleLoan.debit), balance: toRupees(row.vehicleLoan.balance) },
-    grainAdvance: { credit: toRupees(row.grainAdvance.credit), debit: toRupees(row.grainAdvance.debit), balance: toRupees(row.grainAdvance.balance) },
-  }));
-
-  const balances = finalRows.length > 0 ? finalRows[finalRows.length - 1] : {
-    housingLoan: { balance: 0 },
-    vehicleLoan: { balance: 0 },
-    grainAdvance: { balance: 0 }
+  const openingBefore = (rows, index, key) => {
+    if (index > 0) return rows[index - 1][key].balance;
+    const first = rows[0][key];
+    return first.balance - (first.debit - first.credit);
   };
 
+  const allRows = historicalRows.concat(liveRows);
+  const fromDateStr = cleanText(dateFrom);
+  const toDateStr = cleanText(dateTo);
+  const visibleRows = allRows.filter((r) => (!fromDateStr || r.date >= fromDateStr) && (!toDateStr || r.date <= toDateStr));
+  const firstVisibleIndex = visibleRows.length ? allRows.indexOf(visibleRows[0]) : -1;
+  // With nothing in the window, it opens with the last balance before it.
+  const lastBeforeIndex = firstVisibleIndex >= 0
+    ? firstVisibleIndex
+    : allRows.filter((r) => fromDateStr && r.date < fromDateStr).length;
+
+  const openingRow = emptyRow('OPENING', fromDateStr || (visibleRows[0]?.date || ''));
+  openingRow.isOpening = true;
+  for (const key of GROUPS) {
+    openingRow[key].balance = allRows.length
+      ? (lastBeforeIndex >= allRows.length ? allRows[allRows.length - 1][key].balance : openingBefore(allRows, lastBeforeIndex, key))
+      : anchor[key];
+  }
+
+  // Intrst column, as the legacy printout (CrEmpLedger.rpt) computes it: on
+  // each row that moves the loan, simple interest on the balance outstanding
+  // since the previous such row (the opening row starts it) — rate/100 *
+  // days/365, rounded to the rupee, negative (bracketed) while the balance is
+  // overpaid. An Interest Receive row shows the amount received, negated.
+  // Verified against legacy employee 5, FY 2024-25 (3010, 2256, ... (4057), (14)).
+  // Each day accrues at the staff-loan rate in force on that day.
+  const rateTimelines = await getInterestRateTimelines({
+    housingLoan: ['receive', 'houseLoanStaff'],
+    vehicleLoan: ['receive', 'vehicleLoanStaff']
+  });
+  const interestByRow = new Map(visibleRows.map((row) => [row, {}]));
+  for (const key of Object.keys(rateTimelines)) {
+    let priorBalance = openingRow[key].balance;
+    let priorDate = openingRow.date;
+    for (const row of visibleRows) {
+      const cell = row[key];
+      if (cell.interestReceived) {
+        interestByRow.get(row)[key] = -toRupees(cell.interestReceived);
+      } else if (cell.credit || cell.debit) {
+        interestByRow.get(row)[key] = priorDate
+          ? Math.round(rateHistory.accrueInterest(priorBalance / 100, priorDate, row.date, rateTimelines[key])) || 0
+          : 0;
+        priorBalance = cell.balance;
+        priorDate = row.date;
+      }
+    }
+  }
+
+  const toRupeeCells = (row) => Object.fromEntries(GROUPS.map((key) => [key, {
+    credit: toRupees(row[key].credit),
+    debit: toRupees(row[key].debit),
+    balance: toRupees(Math.abs(row[key].balance)),
+    ...(key in rateTimelines ? { interest: interestByRow.get(row)?.[key] || 0 } : {})
+  }]));
+  const finalRows = [openingRow].concat(visibleRows).map((row) => ({ ...row, ...toRupeeCells(row) }));
+
+  // Contact fields the migration left in the legacy master row only.
+  const raw = employee.payload?.raw || {};
+  const employeeResponse = {
+    ...toResponse(employee),
+    fatherName: employee.fatherName || raw.FathersName || '',
+    mobileNo: employee.mobileNo || raw.MobileNo || '',
+    designation: employee.designation || raw.Designation || ''
+  };
+  const last = finalRows[finalRows.length - 1];
+
   return {
-    employee: toResponse(employee),
+    employee: employeeResponse,
     balances: {
-      housingLoan: balances.housingLoan.balance,
-      vehicleLoan: balances.vehicleLoan.balance,
-      grainAdvance: balances.grainAdvance.balance,
+      housingLoan: last.housingLoan.balance,
+      vehicleLoan: last.vehicleLoan.balance,
+      grainAdvance: last.grainAdvance.balance,
       housingLoanInterest: toNumber(employee.homeLoanInterest, 0),
       vehicleLoanInterest: toNumber(employee.vehicleLoanInterest, 0)
     },
+    // Closing balances signed credit-positive, as legacy stores them (a loan
+    // owed is negative); `balances` above are the unsigned amounts printed.
+    signedBalances: Object.fromEntries(GROUPS.map((key) => {
+      const lastRow = visibleRows.length ? visibleRows[visibleRows.length - 1] : openingRow;
+      return [key, -toRupees(lastRow[key].balance)];
+    })),
+    signedOpening: Object.fromEntries(GROUPS.map((key) => [key, -toRupees(openingRow[key].balance)])),
     rows: finalRows
   };
 }
 
 
-async function buildDividendReport({ mode = 'branchwise-opening', uptoDate = '', branchCode = '', user = {} } = {}) {
-  const effectiveBranchCode = resolveBranchCode(user, branchCode);
-  const query = {};
-  if (effectiveBranchCode) query.branchCode = effectiveBranchCode;
-  
-  const members = await Member.find(query).lean();
-  const ratesConfig = await getGlobalRatesConfig();
-  const paidDividendRate = toNumber(ratesConfig.interestRates?.paid?.dividend, 0);
+// Legacy "Dividend Report" (ReportData @TAG 'DIVIDENT'): every member with
+// share > 0, dividend = share / 100 x the paid dividend rate. "Opening" uses
+// the share at the FY's 1 April (legacy MstAccountMaster.Share), "Closing" the
+// share at the FY's 31 March (legacy VwMemberBalance.Share) — both match the
+// legacy FY 2024-25 printouts to the rupee. Modes:
+//   memberwise-*  one row per member
+//   summary-*     the same member rows (the print groups them by branch)
+//   branchwise-*  one total per branch
+async function buildDividendReport({ mode = 'branchwise-opening', dateFrom = '', uptoDate = '', branchCode = '', rate: rateOverride = '', user = {} } = {}) {
+  const mMode = cleanLower(mode) || 'branchwise-opening';
+  const isClosing = mMode.endsWith('-closing');
+  const members = await findMembersForReport({ branchCode, user });
+  const [periods, branches, { interestRateHistory }, legacyFy] = await Promise.all([
+    computeMemberPeriodBalances({ members, dateFrom, dateTo: uptoDate, user }),
+    Branch.find({}).lean(),
+    getGlobalRatesConfig(),
+    getLegacyFyAccountRows('member', members.map((m) => m.code), dateFrom)
+  ]);
+  const branchByCode = new Map(branches.map((b) => [cleanUpper(b.code), b]));
+  // The rate declared for the year when given; otherwise the dividend rate in
+  // force at the end of the reported period, not whatever it is today.
+  const rate = cleanText(rateOverride) !== '' && Number.isFinite(Number(rateOverride))
+    ? Number(rateOverride)
+    : rateHistory.rateAsOf(interestRateHistory, 'paid', 'dividend', cleanText(uptoDate) || cleanText(dateFrom) || rateHistory.todayIso());
 
-  const voucherQuery = effectiveBranchCode ? { branchCode: effectiveBranchCode } : {};
-  if (uptoDate) voucherQuery.date = { $lte: cleanText(uptoDate) };
-  
-  const isClosing = ['memberwise-closing', 'branchwise-closing', 'summary-closing'].includes(cleanLower(mode));
-  
-  let recoveryLinesByVoucher = {};
-  let vouchers = [];
-  
-  if (isClosing) {
-    vouchers = await Voucher.find(voucherQuery).lean();
-    const voucherIds = vouchers.map(v => String(v._id || v.id));
-    const voucherNos = vouchers.map(v => v.voucherNo).filter(Boolean);
-    const allRecoveryLines = await RecoveryLine.find({ $or: [{ voucherId: { $in: voucherIds } }, { voucherNo: { $in: voucherNos } }] }).lean();
-    recoveryLinesByVoucher = allRecoveryLines.reduce((acc, line) => {
-      const key = line.voucherId || line.voucherNo;
-      if (!acc[key]) acc[key] = [];
-      acc[key].push(line);
-      return acc;
-    }, {});
-  }
-
-  const results = members.map(member => {
-    let baseShare = 0;
-    
-    // Parse Member Balances
-    let balancesObj = {};
-    if (member.balances) {
-      balancesObj = typeof member.balances === 'string' ? JSON.parse(member.balances || '{}') : member.balances;
-    }
-    
-    baseShare = toNumber(balancesObj.share, 0);
-
-    let closingShare = baseShare;
-    
-    if (isClosing) {
-      // Aggregate Share movements up to uptoDate
-      let shareDr = 0;
-      let shareCr = 0;
-      for (const voucher of vouchers) {
-        const isPartyMatch = cleanUpper(voucher.partyCode) === cleanUpper(member.code);
-        const recoveryLines = toArray(voucher.details?.recoveryLines)
-          .concat(recoveryLinesByVoucher[voucher._id || voucher.id] || [])
-          .concat(recoveryLinesByVoucher[voucher.voucherNo] || []);
-        const hasMemberLines = recoveryLines.some(l => cleanUpper(l.memberCode || l.member) === cleanUpper(member.code));
-        
-        if (!isPartyMatch && !hasMemberLines) continue;
-        
-        const key = voucher.details?.key || '';
-        const components = voucher.details?.components || {};
-        
-        // Member Paid Vouchers (Disbursements)
-        if (key === 'loan-paid-member' && isPartyMatch) {
-          shareDr += toNumber(components.share, 0);
-        }
-        
-        // Recoveries
-        for (const line of recoveryLines) {
-          if (cleanUpper(line.memberCode || line.member) === cleanUpper(member.code)) {
-            shareCr += toNumber(line.share, 0);
-          }
-        }
-      }
-      closingShare = baseShare + shareCr - shareDr; 
-      // legacy logic treats Share payments as debits (decrease) and Share recoveries as credits (increase). Wait, for Shares, recovery increases it? 
-      // Yes, "Recovery TransType 5 -> Member component values are positive. Positive component movement -> credit/increase side."
-      // "loan-paid-member TransType 1-4 -> negated -> debit/decrease side".
-    }
-
-    const shareToUse = isClosing ? closingShare : baseShare;
-    const dividendAmount = Number(((shareToUse / 100) * paidDividendRate).toFixed(2));
-    
+  const rows = periods.map(({ member, buckets }) => {
+    // No FY given -> before all history / the current snapshot.
+    const share = toRupees(isClosing ? buckets.share.closing : buckets.share.opening);
+    // Legacy prints the branch / PF no. / grade of that FY's own master row
+    // (members move branch between years); the current master otherwise.
+    const legacyRow = legacyFy.rows.get(member.code) || {};
+    const currentRow = member.payload?.raw || {};
+    const branchCode = cleanText(legacyRow.BranchCode ?? member.branchCode);
+    const branch = branchByCode.get(cleanUpper(branchCode)) || {};
     return {
       memberCode: member.code,
       memberName: member.name,
-      branch: member.branchCode,
-      openingShare: baseShare,
-      closingShare: isClosing ? closingShare : undefined,
-      share: shareToUse,
-      dividendRate: paidDividendRate,
-      dividendAmount
+      pfNo: cleanText(legacyRow.PFNo ?? (member.pfNo || currentRow.PFNo)),
+      grade: cleanText(legacyRow.Designation ?? (member.designation || currentRow.Designation)),
+      branch: branchCode,
+      branchName: branch.place || branch.label || branchCode,
+      share,
+      dividendRate: rate,
+      dividendAmount: Number(((share / 100) * rate).toFixed(2))
     };
-  });
+  }).filter((row) => row.share > 0);
 
-  const mMode = cleanLower(mode);
-  
-  if (mMode === 'memberwise-opening' || mMode === 'memberwise-closing') {
-    return results;
-  }
-  
-  if (mMode === 'branchwise-opening' || mMode === 'branchwise-closing') {
-    const branchMap = {};
-    for (const r of results) {
-      const b = r.branch || 'UNKNOWN';
-      if (!branchMap[b]) branchMap[b] = { branch: b, memberCount: 0, shareTotal: 0, dividendTotal: 0 };
-      branchMap[b].memberCount += 1;
-      branchMap[b].shareTotal += r.share;
-      branchMap[b].dividendTotal += r.dividendAmount;
+  if (!mMode.startsWith('branchwise')) return rows;
+
+  const branchMap = new Map();
+  for (const row of rows) {
+    const key = row.branch || 'UNKNOWN';
+    if (!branchMap.has(key)) {
+      branchMap.set(key, { branch: key, branchName: row.branchName, memberCount: 0, shareTotal: 0, dividendRate: rate, dividendTotal: 0 });
     }
-    return Object.values(branchMap).map(b => ({
-      ...b,
-      shareTotal: Number(b.shareTotal.toFixed(2)),
-      dividendTotal: Number(b.dividendTotal.toFixed(2))
-    }));
+    const entry = branchMap.get(key);
+    entry.memberCount += 1;
+    entry.shareTotal += row.share;
+    entry.dividendTotal += row.dividendAmount;
   }
-  
-  if (mMode === 'summary-opening' || mMode === 'summary-closing') {
-    let memberCount = 0;
-    let shareTotal = 0;
-    let dividendTotal = 0;
-    for (const r of results) {
-      memberCount += 1;
-      shareTotal += r.share;
-      dividendTotal += r.dividendAmount;
-    }
-    return {
-      memberCount,
-      shareTotal: Number(shareTotal.toFixed(2)),
-      rate: paidDividendRate,
-      dividendTotal: Number(dividendTotal.toFixed(2))
-    };
-  }
-  
-  return [];
+  return [...branchMap.values()].map((b) => ({
+    ...b,
+    shareTotal: Number(b.shareTotal.toFixed(2)),
+    dividendTotal: Number(b.dividendTotal.toFixed(2))
+  }));
 }
 
 module.exports = {
@@ -3427,6 +5464,12 @@ module.exports = {
   buildDayBookReport,
   buildDashboardQuickSummary,
   buildDemandListReport,
+  buildRecoveryDemandCandidates,
+  listDemandEntries,
+  getDemandEntry,
+  getDemandEntryMembers,
+  saveDemandEntry,
+  deleteDemandEntry,
   buildDividendReport,
   buildMonthlySummaryReport,
   buildEmployeeLedgerReport,
@@ -3448,6 +5491,7 @@ module.exports = {
   restoreVoucher,
   getDashboardSummary,
   getLedgerSnapshots,
+  getLegacyFyLedgerSnapshots,
   getLookups,
   getNextTransactionNo,
   getNextVoucherNo,

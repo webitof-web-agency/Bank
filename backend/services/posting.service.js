@@ -150,22 +150,33 @@ const POSTING_REGISTRY = {
       const dloanLedgerId = await resolveLedgerId(ACCOUNTING_ROLES.LOAN_AGAINST_DEPOSIT, tx);
       const admissionLedgerId = await resolveLedgerId(ACCOUNTING_ROLES.ADMISSION, tx);
 
+      // Recovery lines carry the recovery_lines column names (specialDeposit,
+      // depositLoan); older callers sent ssa / loanAgainstDeposit. Reading
+      // only the old names left SSA and LAD uncredited while the debit took
+      // the full line total, so any SSA/LAD recovery came out unbalanced.
+      const ssaOf = (line) => Number(line.specialDeposit ?? line.ssa ?? 0);
+      const ladOf = (line) => Number(line.depositLoan ?? line.loanAgainstDeposit ?? 0);
       for (const line of recoveryLines) {
         if (Number(line.premium) > 0) {
-          throw new PostingError('Posting blocked: PREMIUM accounting rules are BLOCKED_ACCOUNTANT_DECISION.', 'BLOCKED_ACCOUNTANT_DECISION');
+          throw new PostingError(`Member ${line.memberCode || ''}: Insurance Premium (PREMIUM) cannot be posted yet — no ledger rule has been confirmed by the accountant. Remove the premium amount to save.`, 'BLOCKED_ACCOUNTANT_DECISION');
         }
         if (Number(line.suspense) > 0) {
-          throw new PostingError('Posting blocked: SUSPENSE accounting rules are BLOCKED_ACCOUNTANT_DECISION.', 'BLOCKED_ACCOUNTANT_DECISION');
+          throw new PostingError(`Member ${line.memberCode || ''}: Suspense A/C (SUSPENSE) cannot be posted yet — no ledger rule has been confirmed by the accountant. Remove the suspense amount to save.`, 'BLOCKED_ACCOUNTANT_DECISION');
         }
 
         if (Number(line.share) > 0) crLines.push({ ledgerId: shareLedgerId, dr: 0, cr: Number(line.share), memberId: line.memberCode });
         if (Number(line.compulsoryDeposit) > 0) crLines.push({ ledgerId: cdLedgerId, dr: 0, cr: Number(line.compulsoryDeposit), memberId: line.memberCode });
-        if (Number(line.ssa) > 0) crLines.push({ ledgerId: ssaLedgerId, dr: 0, cr: Number(line.ssa), memberId: line.memberCode });
+        if (ssaOf(line) > 0) crLines.push({ ledgerId: ssaLedgerId, dr: 0, cr: ssaOf(line), memberId: line.memberCode });
         if (Number(line.regularLoan) > 0) crLines.push({ ledgerId: rloanLedgerId, dr: 0, cr: Number(line.regularLoan), memberId: line.memberCode });
-        if (Number(line.depositLoan) > 0) crLines.push({ ledgerId: dloanLedgerId, dr: 0, cr: Number(line.depositLoan), memberId: line.memberCode });
+        if (ladOf(line) > 0) crLines.push({ ledgerId: dloanLedgerId, dr: 0, cr: ladOf(line), memberId: line.memberCode });
         if (Number(line.admission) > 0) crLines.push({ ledgerId: admissionLedgerId, dr: 0, cr: Number(line.admission), memberId: line.memberCode });
         
-        totalDr += Number(line.total) || 0;
+      }
+      // The cash/bank side is what the heads above actually credit (in paise),
+      // so a line whose stated total disagrees can never unbalance the voucher.
+      totalDr = Number((crLines.reduce((sum, line) => sum + Math.round(line.cr * 100), 0) / 100).toFixed(2));
+      if (totalDr <= 0) {
+        throw new PostingError('Recovery voucher has no recovered amount.', 'FAILURE');
       }
 
       const paymentLedgerId = await getPaymentLedger(voucher, tx);

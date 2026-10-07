@@ -182,6 +182,29 @@ function parseImportFile(buffer, colMap) {
   return parsedRows;
 }
 
+// A member's PF No. is the master's pfNo, or — for members migrated from
+// legacy, whose pfNo column was never filled — legacy MstAccountMaster.PFNo
+// kept in payload.raw. Matching stays exact (trimmed string, leading zeros
+// kept); only members whose effective PF is one of `pfNos` are returned.
+function memberPfNo(member = {}) {
+  const raw = member?.payload?.raw || {};
+  const pf = member.pfNo != null && String(member.pfNo).trim() !== '' ? member.pfNo : raw.PFNo;
+  return pf == null ? '' : String(pf).trim();
+}
+
+async function findMembersByPf(pfNos = []) {
+  const wanted = new Set(pfNos.map((pf) => String(pf).trim()).filter(Boolean));
+  const membersByPf = {};
+  if (!wanted.size) return { members: [], membersByPf };
+  const members = (await Member.find({})).filter((m) => wanted.has(memberPfNo(m)));
+  for (const m of members) {
+    const pf = memberPfNo(m);
+    if (!membersByPf[pf]) membersByPf[pf] = [];
+    membersByPf[pf].push(m);
+  }
+  return { members, membersByPf };
+}
+
 function calculateAllocation(importedTotalAmount, demand) {
   // Convert everything to paise for safe integer math
   const importedTotal = toPaise(importedTotalAmount);
@@ -410,13 +433,7 @@ async function uploadAndParseBatch(fileName, buffer, colMap, uploadedBy) {
   }
 
   const pfNos = [...new Set(parsedRows.map(r => r.pfNo).filter(Boolean))];
-  const members = pfNos.length > 0 ? await Member.find({ pfNo: pfNos }) : [];
-  
-  const membersByPf = {};
-  for (const m of members) {
-    if (!membersByPf[m.pfNo]) membersByPf[m.pfNo] = [];
-    membersByPf[m.pfNo].push(m);
-  }
+  const { members, membersByPf } = await findMembersByPf(pfNos);
 
   const pfCounts = {};
   for (const row of parsedRows) {
@@ -426,7 +443,7 @@ async function uploadAndParseBatch(fileName, buffer, colMap, uploadedBy) {
   }
 
   const memberCodes = members.map(m => m.code).filter(Boolean);
-  const demands = memberCodes.length > 0 ? await MemberDemandDefault.find({ memberCode: memberCodes }) : [];
+  const demands = memberCodes.length > 0 ? await MemberDemandDefault.find({ memberCode: { $in: memberCodes } }) : [];
   const demandsByMemberCode = {};
   for (const d of demands) {
     demandsByMemberCode[d.memberCode] = d;
@@ -472,13 +489,7 @@ async function revalidateBatch(batchId) {
 
   const rows = await RecoveryImportRow.find({ batchId });
   const pfNos = [...new Set(rows.map(r => r.pfNo).filter(Boolean))];
-  const members = pfNos.length > 0 ? await Member.find({ pfNo: pfNos }) : [];
-  
-  const membersByPf = {};
-  for (const m of members) {
-    if (!membersByPf[m.pfNo]) membersByPf[m.pfNo] = [];
-    membersByPf[m.pfNo].push(m);
-  }
+  const { members, membersByPf } = await findMembersByPf(pfNos);
 
   const pfCounts = {};
   for (const row of rows) {
@@ -488,7 +499,7 @@ async function revalidateBatch(batchId) {
   }
 
   const memberCodes = members.map(m => m.code).filter(Boolean);
-  const demands = memberCodes.length > 0 ? await MemberDemandDefault.find({ memberCode: memberCodes }) : [];
+  const demands = memberCodes.length > 0 ? await MemberDemandDefault.find({ memberCode: { $in: memberCodes } }) : [];
   const demandsByMemberCode = {};
   for (const d of demands) {
     demandsByMemberCode[d.memberCode] = d;
@@ -551,7 +562,7 @@ async function postBatch(batchId, meta = {}) {
   }
 
   const membersIds = [...new Set(rows.map(r => r.memberId).filter(Boolean))];
-  const members = membersIds.length > 0 ? await Member.find({ id: membersIds }) : [];
+  const members = membersIds.length > 0 ? await Member.find({ id: { $in: membersIds } }) : [];
   const memberMap = {};
   for (const m of members) {
     memberMap[m.id] = m;
@@ -580,7 +591,8 @@ async function postBatch(batchId, meta = {}) {
       date: new Date().toISOString().slice(0, 10),
       amount: row.allocatedTotal,
       partyCode: member.code,
-      mode: 'Cash / Transfer', 
+      // Posted to the cash ledger (the recovery rule's default payment side).
+      mode: 'CASH',
       narration: `Imported Recovery (Batch ${batchId})`,
       details: {
         key: 'recovery-member',

@@ -156,29 +156,28 @@ test('Phase 3 Batch 1 Reports Engine', async (t) => {
   });
 
   await t.test('Cash Book Report', async () => {
+    // Legacy layout: the period's non-cash lines grouped by ledger (credit ->
+    // income, debit -> expenses), split Cash/Transfer, plus opening/closing cash.
     const cb = await buildCashBookReport({ dateFrom, dateTo });
-    
-    assert.strictEqual(cb.length, 3);
-    
-    const opening = cb[0];
-    assert.strictEqual(opening.voucherNo, 'OPENING');
-    assert.strictEqual(opening.balance, 8000);
-    
-    const v2Row = cb[1];
-    assert.strictEqual(v2Row.voucherNo, 'V-002');
-    assert.strictEqual(v2Row.transactionType, 'Receipt');
-    assert.strictEqual(v2Row.accountParty, 'Share Capital');
-    assert.strictEqual(v2Row.debit, 500);
-    assert.strictEqual(v2Row.credit, 0);
-    assert.strictEqual(v2Row.balance, 8500);
-    
-    const v3Row = cb[2];
-    assert.strictEqual(v3Row.voucherNo, 'V-003');
-    assert.strictEqual(v3Row.transactionType, 'Receipt');
-    assert.strictEqual(v3Row.accountParty, 'Regular Loan');
-    assert.strictEqual(v3Row.debit, 1000);
-    assert.strictEqual(v3Row.credit, 0);
-    assert.strictEqual(v3Row.balance, 9500);
+
+    assert.strictEqual(cb.source, 'live');
+    assert.strictEqual(cb.openingCash, 8000);
+    assert.strictEqual(cb.closingCash, 9500);
+    assert.strictEqual(cb.rows.length, 2);
+
+    const shareRow = cb.rows.find((r) => r.ledgerCode === 'L-SHARE');
+    assert.deepStrictEqual(
+      [shareRow.crCash, shareRow.crTransfer, shareRow.drCash, shareRow.drTransfer],
+      [500, 0, 0, 0],
+      'Share receipt through cash is cash income'
+    );
+
+    const loanRow = cb.rows.find((r) => r.ledgerCode === 'L-LOAN');
+    assert.deepStrictEqual(
+      [loanRow.crCash, loanRow.crTransfer, loanRow.drCash, loanRow.drTransfer],
+      [1000, 0, 0, 0],
+      'Loan repayment through cash is cash income'
+    );
   });
 
 });

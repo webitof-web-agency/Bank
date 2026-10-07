@@ -132,6 +132,7 @@ test('Voucher delete/restore also covers its journal_lines and recovery_lines', 
   const voucher = await createVoucher({
     voucherNo: `SD-V-${RUN_ID}`,
     date: '2026-09-08',
+    mode: 'CASH',
     amount: 1000,
     partyCode: `SD-${RUN_ID}`,
     branchCode: 'HO',

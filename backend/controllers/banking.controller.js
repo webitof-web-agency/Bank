@@ -239,6 +239,16 @@ const transactions = {
 
 };
 
+// Every report request carries the header FY switcher as fyStart/fyEnd (see
+// frontend api.js). Explicit filter dates always win; the FY is the fallback
+// window so no report silently spans every year.
+function reportRange(query = {}) {
+  return {
+    dateFrom: query.dateFrom || query.from || query.fyStart || '',
+    dateTo: query.dateTo || query.to || query.date || query.uptoDate || query.fyEnd || ''
+  };
+}
+
 const reports = {
   async dashboard(req, res, next) {
     try {
@@ -300,8 +310,10 @@ const reports = {
         ledgerId: req.query.ledgerId || req.query.ledger || '',
         memberId: req.query.memberId || req.query.memberCode || '',
         employeeId: req.query.employeeId || req.query.employeeCode || '',
-        dateFrom: req.query.dateFrom || req.query.from || req.query.fyStart || '',
-        dateTo: req.query.dateTo || req.query.to || req.query.fyEnd || req.query.date || req.query.uptoDate || ''
+        ...reportRange(req.query),
+        uptoDate: req.query.uptoDate || '',
+        search: req.query.search || '',
+        nature: req.query.nature || ''
       });
       res.json({ success: true, data });
     } catch (error) {
@@ -312,8 +324,7 @@ const reports = {
     try {
       const data = await bankingService.buildTrialBalanceReport({
         user: req.user || {},
-        dateFrom: req.query.dateFrom || req.query.from || req.query.fyStart || '',
-        dateTo: req.query.dateTo || req.query.to || req.query.fyEnd || req.query.date || req.query.uptoDate || ''
+        ...reportRange(req.query)
       });
       res.json({ success: true, data });
     } catch (error) {
@@ -344,9 +355,12 @@ const reports = {
   },
   async cashBook(req, res, next) {
     try {
+      // A single Report Date means that one day; otherwise the whole FY.
+      const date = req.query.date || '';
+      const range = reportRange(req.query);
       const data = await bankingService.buildCashBookReport({
-        dateFrom: req.query.dateFrom || req.query.from || req.query.fyStart || '',
-        dateTo: req.query.dateTo || req.query.to || req.query.fyEnd || req.query.date || '',
+        dateFrom: req.query.dateFrom || req.query.from || date || range.dateFrom,
+        dateTo: range.dateTo,
         user: req.user || {}
       });
       res.json({ success: true, data });
@@ -356,7 +370,13 @@ const reports = {
   },
   async dayBook(req, res, next) {
     try {
-      const data = await bankingService.buildDayBookReport({ date: req.query.date || req.query.fyEnd || '', user: req.user || {} });
+      const date = req.query.date || '';
+      const range = reportRange(req.query);
+      const data = await bankingService.buildDayBookReport({
+        dateFrom: date || range.dateFrom,
+        dateTo: range.dateTo,
+        user: req.user || {}
+      });
       res.json({ success: true, data });
     } catch (error) {
       next(error);
@@ -364,7 +384,13 @@ const reports = {
   },
   async voucherSummary(req, res, next) {
     try {
-      const data = await bankingService.buildVoucherSummaryReport({ date: req.query.date || req.query.fyEnd || '', user: req.user || {} });
+      const date = req.query.date || '';
+      const range = reportRange(req.query);
+      const data = await bankingService.buildVoucherSummaryReport({
+        dateFrom: date || range.dateFrom,
+        dateTo: range.dateTo,
+        user: req.user || {}
+      });
       res.json({ success: true, data });
     } catch (error) {
       next(error);
@@ -375,7 +401,60 @@ const reports = {
       const data = await bankingService.buildMonthlySummaryReport({
         user: req.user || {},
         branchCode: req.query.branchCode || '',
-        month: req.query.month || ''
+        month: req.query.month || '',
+        ...reportRange(req.query)
+      });
+      res.json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  },
+  // Demand Entry: demand list header + member component lines.
+  async demandEntryList(req, res, next) {
+    try {
+      const data = await bankingService.listDemandEntries({ branchCode: req.query.branchCode || '', fyStart: req.query.fyStart || '', fyEnd: req.query.fyEnd || '', user: req.user || {} });
+      res.json({ success: true, data });
+    } catch (error) { next(error); }
+  },
+  async demandEntryMembers(req, res, next) {
+    try {
+      const data = await bankingService.getDemandEntryMembers({ branchCode: req.query.branchCode || '', user: req.user || {} });
+      res.json({ success: true, data });
+    } catch (error) { next(error); }
+  },
+  async demandEntryGet(req, res, next) {
+    try {
+      const data = await bankingService.getDemandEntry(req.params.id, { user: req.user || {} });
+      if (!data) return res.status(404).json({ success: false, message: 'Demand list not found' });
+      res.json({ success: true, data });
+    } catch (error) { next(error); }
+  },
+  async demandEntrySave(req, res, next) {
+    try {
+      const data = await bankingService.saveDemandEntry(req.body || {}, {
+        id: req.params.id || '', fyStart: req.query.fyStart || req.body?.fyStart || '', fyEnd: req.query.fyEnd || req.body?.fyEnd || '', user: req.user || {}
+      });
+      if (!data) return res.status(404).json({ success: false, message: 'Demand list not found' });
+      res.status(req.params.id ? 200 : 201).json({ success: true, data });
+    } catch (error) { next(error); }
+  },
+  async demandEntryDelete(req, res, next) {
+    try {
+      const deleted = await bankingService.deleteDemandEntry(req.params.id, { user: req.user || {} });
+      if (!deleted) return res.status(404).json({ success: false, message: 'Demand list not found' });
+      res.json({ success: true });
+    } catch (error) { next(error); }
+  },
+  // Recovery -> Add From Demand List selector (pending lines of one month).
+  async recoveryDemandCandidates(req, res, next) {
+    try {
+      const data = await bankingService.buildRecoveryDemandCandidates({
+        branchCode: req.query.branchCode || '',
+        month: req.query.month || '',
+        year: req.query.year || '',
+        fyStart: req.query.fyStart || '',
+        fyEnd: req.query.fyEnd || '',
+        user: req.user || {}
       });
       res.json({ success: true, data });
     } catch (error) {
@@ -388,6 +467,8 @@ const reports = {
         month: req.query.month || '',
         year: req.query.year || '',
         date: req.query.date || '',
+        fyStart: req.query.fyStart || '',
+        fyEnd: req.query.fyEnd || '',
         branchCode: req.query.branchCode || '',
         user: req.user || {}
       });
@@ -400,7 +481,8 @@ const reports = {
     try {
       const data = await bankingService.buildAllMemberListReport({
         user: req.user || {},
-        branchCode: req.query.branchCode || ''
+        branchCode: req.query.branchCode || '',
+        uptoDate: reportRange(req.query).dateTo
       });
       res.json({ success: true, data });
     } catch (error) {
@@ -411,8 +493,7 @@ const reports = {
     try {
       const data = await bankingService.buildPaymentReceiptStatementReport({
         user: req.user || {},
-        dateFrom: req.query.dateFrom || req.query.from || req.query.fyStart || '',
-        dateTo: req.query.dateTo || req.query.to || req.query.fyEnd || ''
+        ...reportRange(req.query)
       });
       res.json({ success: true, data });
     } catch (error) {
@@ -435,8 +516,10 @@ const reports = {
       const data = await bankingService.buildDividendReport({
         user: req.user || {},
         mode: req.query.mode,
+        dateFrom: req.query.dateFrom || req.query.fyStart || '',
         uptoDate: req.query.uptoDate || req.query.dateTo || req.query.fyEnd || '',
-        branchCode: req.query.branchCode || ''
+        branchCode: req.query.branchCode || '',
+        rate: req.query.rate ?? ''
       });
       res.json({ success: true, data });
     } catch (error) {

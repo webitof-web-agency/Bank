@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const { buildJournalLinesForVoucher, PostingError } = require('../services/posting.service');
 const { createVoucher, updateVoucher } = require('../services/banking.service');
-const { Voucher, JournalLine, RecoveryLine, Ledger } = require('../models/banking.models');
+const { Voucher, JournalLine, RecoveryLine, Ledger, Member } = require('../models/banking.models');
 const { ACCOUNTING_ROLES } = require('../config/accountingConstants');
 const { initializeDatabase, withTransaction, getCachedRows } = require('../config/postgres');
 const crypto = require('crypto');
@@ -79,6 +79,9 @@ test('Create rollback - failure leaves no trace', async () => {
   
   const voucherData = {
     voucherNo: testVoucherNo,
+    // Every voucher needs its date; member vouchers also a mode.
+    date: '2026-10-07',
+    mode: 'Cash',
     amount: 1000,
     partyCode: 'M-001',
     details: {
@@ -117,6 +120,9 @@ test('Update rollback - failure leaves original data intact', async () => {
   // Create valid initial voucher
   const voucherData = {
     voucherNo: testVoucherNo,
+    // Every voucher needs its date; member vouchers also a mode.
+    date: '2026-10-07',
+    mode: 'Cash',
     amount: 1000,
     partyCode: 'M-001',
     details: {
@@ -154,10 +160,15 @@ test('Update rollback - failure leaves original data intact', async () => {
 
 test('Recovery rollback - atomic failure across multiple tables', async () => {
   await seedLedgers();
+  // Recovery lines must name an existing member.
+  if (!(await Member.findOne({ code: 'M-001' }))) await Member.create({ code: 'M-001', name: 'Test Member' });
   const testVoucherNo = `REC-${crypto.randomUUID()}`;
   
   const voucherData = {
     voucherNo: testVoucherNo,
+    // Every voucher needs its date; member vouchers also a mode.
+    date: '2026-10-07',
+    mode: 'Cash',
     details: {
       key: 'recovery-member',
       recoveryLines: [
