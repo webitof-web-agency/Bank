@@ -1,8 +1,9 @@
 import { PrintShell, PrintLetterhead } from './PrintShell';
-import { formatMoney, th, td, tdText, tdCenter, table } from './printStyles';
+import { formatMoney, hasAmount, th, td, tdText, tdCenter, table } from './printStyles';
 
 export function DemandListPrint({ data, filters, branches = [], headerActions }) {
-  const rows = Array.isArray(data) ? data : [];
+  const rows = (Array.isArray(data) ? data : [])
+    .filter((row) => hasAmount(row.cd, row.ssa, row.regularLoan, row.loanAgainstDeposit, row.other, row.total));
   const branchRow = branches.find((b) => b.code === filters?.branchCode);
   const branchLabel = branchRow ? `${branchRow.label || branchRow.place || ''}` : 'All Branches';
   const monthNumber = Number(filters?.month || rows[0]?.month || 0);

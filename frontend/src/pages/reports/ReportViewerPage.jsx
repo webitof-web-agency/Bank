@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Download, Printer, BarChart3, TrendingUp, Wallet, PieChart, DollarSign, Calculator } from 'lucide-react';
+import { Download, Printer, BarChart3, TrendingUp, Wallet, PieChart, DollarSign, Calculator, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../api/api';
 import { Button } from '../../components/ui/Button';
@@ -10,8 +10,8 @@ import { Select } from '../../components/ui/Select';
 import { Table } from '../../components/ui/Table';
 import { useAuth } from '../../context/AuthContext';
 import { useFY } from '../../context/FYContext';
-import { getReportConfig, getReportDefaultFilters } from './reportDefinitions';
-import { REPORT_LINK_MAP, REPORT_NAV_LINKS } from './reportLinks';
+import { getReportConfig, getReportDefaultFilters, fyCalendarYearForMonth, DIVIDEND_MODES, DIVIDEND_SORT_OPTIONS } from './reportDefinitions';
+import { REPORT_LINK_MAP, REPORT_NAV_LINKS, ACCOUNT_STATEMENT_REPORT_LINKS, ACCOUNT_STATEMENT_REPORT_KEYS } from './reportLinks';
 import { MemberLedgerPrintTemplate } from './MemberLedgerPrintTemplate';
 import { EmployeeLedgerPrint } from './print/EmployeeLedgerPrint';
 import { BalanceSheetPrint } from './print/BalanceSheetPrint';
@@ -25,22 +25,29 @@ import { AllMemberListPrint } from './print/AllMemberListPrint';
 import { PaymentReceiptStatementPrint } from './print/PaymentReceiptStatementPrint';
 import { BranchListPrint } from './print/BranchListPrint';
 import { DividendReportPrint } from './print/DividendReportPrint';
+import { StatementOfLedgersPrint } from './print/StatementOfLedgersPrint';
+import { StatementOfAccountPrint } from './print/StatementOfAccountPrint';
+import { MembersOpeningBalancePrint } from './print/MembersOpeningBalancePrint';
+import { MembersClosingBalancePrint } from './print/MembersClosingBalancePrint';
+import { StatementOfMemberLedgerPrint } from './print/StatementOfMemberLedgerPrint';
 
 const NO_FILTER_PANEL_REPORTS = new Set([
   'balance-sheet',
   'trial-balance',
   'profit-loss',
   'payment-receipt-statement',
-  'branch-list-report',
-  'account-statement-view'
+  'branch-list-report'
 ]);
 
 const PRINT_TEMPLATES = {
   'member-ledger': ({ payload, filters, lookups, headerActions }) => (
     <MemberLedgerPrintTemplate payload={payload?.raw} headerActions={headerActions} />
   ),
-  'employee-ledger': ({ payload, headerActions }) => (
-    <EmployeeLedgerPrint data={payload?.raw} headerActions={headerActions} />
+  'member-ac-status': ({ payload, filters, lookups, headerActions }) => (
+    <MemberLedgerPrintTemplate payload={payload?.raw} headerActions={headerActions} />
+  ),
+  'employee-ledger': ({ payload, filters, headerActions }) => (
+    <EmployeeLedgerPrint data={payload?.raw} filters={filters} headerActions={headerActions} />
   ),
   'balance-sheet': ({ payload, filters, headerActions }) => (
     <BalanceSheetPrint data={payload?.raw} filters={filters} headerActions={headerActions} />
@@ -73,7 +80,22 @@ const PRINT_TEMPLATES = {
     <BranchListPrint data={payload?.raw} headerActions={headerActions} />
   ),
   'dividend-report': ({ payload, filters, lookups, headerActions }) => (
-    <DividendReportPrint data={payload?.raw} filters={filters} branches={lookups?.branches || []} headerActions={headerActions} />
+    <DividendReportPrint data={payload?.raw} headerActions={headerActions} />
+  ),
+  'statement-of-ledgers': ({ payload, filters, headerActions }) => (
+    <StatementOfLedgersPrint data={payload?.raw} filters={filters} headerActions={headerActions} />
+  ),
+  'statement-of-account': ({ payload, filters, headerActions }) => (
+    <StatementOfAccountPrint data={payload?.raw} filters={filters} headerActions={headerActions} />
+  ),
+  'members-opening-balance': ({ payload, filters, headerActions }) => (
+    <MembersOpeningBalancePrint data={payload?.raw} filters={filters} headerActions={headerActions} />
+  ),
+  'members-closing-balance': ({ payload, filters, headerActions }) => (
+    <MembersClosingBalancePrint data={payload?.raw} filters={filters} headerActions={headerActions} />
+  ),
+  'statement-of-member-ledger': ({ payload, filters, headerActions }) => (
+    <StatementOfMemberLedgerPrint data={payload?.raw} filters={filters} headerActions={headerActions} />
   )
 };
 
@@ -101,6 +123,17 @@ function formatCell(cell) {
   return cell;
 }
 
+// Shown in place of every report (table and print templates alike) while it
+// loads, so a stale or empty template never flashes in the meantime.
+function ReportLoading() {
+  return (
+    <div role="status" aria-live="polite" className="flex h-64 flex-col items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white text-sm text-slate-500 shadow-sm">
+      <Loader2 size={32} className="animate-spin text-blue-600" />
+      <span>Loading report...</span>
+    </div>
+  );
+}
+
 function SummaryCard({ label, value, subLabel, index = 0 }) {
   const palette = SUMMARY_PALETTES[index % SUMMARY_PALETTES.length];
   const Icon = palette.Icon;
@@ -125,9 +158,20 @@ function ReportTableSection({ section, headerActions }) {
   const [search, setSearch] = useState('');
 
   const columns = useMemo(() => {
+    const columnAlign = section.columnAlign || {};
     return (section.headers || []).map((header, index) => ({
       key: `col_${index}`,
       label: header,
+      align: columnAlign[index],
+      // Right-aligned columns are amounts: keep them on one line, digits
+      // aligned, and flag negatives (Dr balances) in red.
+      render: columnAlign[index] === 'right'
+        ? (row) => {
+            const value = row[`col_${index}`];
+            const negative = typeof value === 'string' && value.startsWith('-');
+            return <span className={`whitespace-nowrap tabular-nums ${negative ? 'text-rose-600' : ''}`}>{value}</span>;
+          }
+        : undefined,
       sortable: true,
       sortValue: (row) => {
         const val = row[`col_${index}`];
@@ -138,7 +182,7 @@ function ReportTableSection({ section, headerActions }) {
         return val;
       }
     }));
-  }, [section.headers]);
+  }, [section.headers, section.columnAlign]);
 
   const data = useMemo(() => {
     return (section.rows || []).map((row) => {
@@ -213,13 +257,19 @@ export function ReportViewerPage() {
   const reportPermission = REPORT_LINK_MAP[reportKey]?.permission || '';
   const exportPermission = reportPermission ? reportPermission.replace(/\\.view$/, '.export') : '';
   const printPermission = reportPermission ? reportPermission.replace(/\\.view$/, '.print') : '';
+  const isAccountStatementFamily = ACCOUNT_STATEMENT_REPORT_KEYS.includes(reportKey);
   const visibleReports = useMemo(
-    () => REPORT_NAV_LINKS.filter((item) => hasPermission(item.permission)),
-    [hasPermission]
+    () => (isAccountStatementFamily ? ACCOUNT_STATEMENT_REPORT_LINKS : REPORT_NAV_LINKS).filter((item) => hasPermission(item.permission)),
+    [hasPermission, isAccountStatementFamily]
   );
   const [lookups, setLookups] = useState({});
-  const [filters, setFilters] = useState(() => getReportDefaultFilters(reportKey, {}));
-  const [generatedFilters, setGeneratedFilters] = useState(() => getReportDefaultFilters(reportKey, {}));
+  const [filters, setFilters] = useState(() => getReportDefaultFilters(reportKey, {}, {}, activeFY));
+  const [generatedFilters, setGeneratedFilters] = useState(() => getReportDefaultFilters(reportKey, {}, {}, activeFY));
+  const fyStart = activeFY?.start || '';
+  const fyEnd = activeFY?.end || '';
+  // Spread onto date inputs so the picker stays inside the selected FY.
+  const fyDateBounds = { min: fyStart || undefined, max: fyEnd || undefined };
+  const fyMonthBounds = { min: fyStart ? fyStart.slice(0, 7) : undefined, max: fyEnd ? fyEnd.slice(0, 7) : undefined };
   const [payload, setPayload] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -240,8 +290,9 @@ export function ReportViewerPage() {
     };
   }, [token]);
 
+  // Re-runs on FY switch so every date/month filter snaps to the new year.
   useEffect(() => {
-    const nextDefaults = getReportDefaultFilters(reportKey, lookups);
+    const nextDefaults = getReportDefaultFilters(reportKey, lookups, {}, activeFY);
     if (reportKey === 'member-ledger') {
       const memberCode = searchParams.get('memberCode');
       if (memberCode) nextDefaults.memberCode = memberCode;
@@ -252,8 +303,10 @@ export function ReportViewerPage() {
     }
     setFilters(nextDefaults);
     setGeneratedFilters(nextDefaults);
-  }, [lookups, reportKey, searchParams]);
+  }, [lookups, reportKey, searchParams, activeFY]);
 
+  // No activeFY dep here: an FY switch resets generatedFilters (effect above),
+  // which already triggers this reload with the new FY's dates.
   useEffect(() => {
     let mounted = true;
     if (!config) return undefined;
@@ -276,7 +329,17 @@ export function ReportViewerPage() {
     return () => {
       mounted = false;
     };
-  }, [config, generatedFilters, lookups, token, activeFY]);
+  }, [config, generatedFilters, lookups, token]);
+
+  // Built once per loaded report: a long print template (thousands of rows)
+  // must not re-render on every unrelated state change of this page, such as
+  // typing in the filter panel before pressing Show Report.
+  const printTemplate = useMemo(
+    () => (PRINT_TEMPLATES[reportKey] && payload
+      ? PRINT_TEMPLATES[reportKey]({ payload, filters: generatedFilters, lookups, headerActions: null })
+      : null),
+    [reportKey, payload, generatedFilters, lookups]
+  );
 
   if (!config) {
     return (
@@ -291,7 +354,7 @@ export function ReportViewerPage() {
   }
 
   function resetFilters() {
-    const nextDefaults = getReportDefaultFilters(reportKey, lookups);
+    const nextDefaults = getReportDefaultFilters(reportKey, lookups, {}, activeFY);
     setFilters(nextDefaults);
     setGeneratedFilters(nextDefaults);
   }
@@ -299,6 +362,72 @@ export function ReportViewerPage() {
   function renderFilters() {
     if (config.filterMode === 'none') {
       return <div className="rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3 text-sm text-slate-600">This report uses the current financial context.</div>;
+    }
+
+    if (config.filterMode === 'all-members-snapshot') {
+      return <div className="rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3 text-sm text-slate-600">Every member is included — there is no per-member filter for this report.</div>;
+    }
+
+    if (config.filterMode === 'statement-of-ledgers') {
+      return (
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <label className="text-[13px] font-semibold text-slate-700">Group</label>
+            <Select
+              value={filters.group || ''}
+              onChange={(value) => setFilters((current) => ({ ...current, group: value }))}
+              options={[
+                { label: 'All', value: '' },
+                { label: 'Asset', value: 'ASSET' },
+                { label: 'Liability', value: 'LIABILITY' },
+                { label: 'Income', value: 'INCOME' },
+                { label: 'Expense', value: 'EXPENSE' },
+                { label: 'Primary', value: 'PRIMARY' }
+              ]}
+            />
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="space-y-1.5">
+              <label className="text-[13px] font-semibold text-slate-700">From</label>
+              <Input type="date" {...fyDateBounds}value={filters.dateFrom || ''} onChange={(event) => setFilters((current) => ({ ...current, dateFrom: event.target.value }))} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[13px] font-semibold text-slate-700">To Date</label>
+              <Input type="date" {...fyDateBounds}value={filters.dateTo || ''} onChange={(event) => setFilters((current) => ({ ...current, dateTo: event.target.value }))} />
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (config.filterMode === 'statement-of-account') {
+      const ledgers = Array.isArray(lookups.ledgers) ? lookups.ledgers : [];
+      return (
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <label className="text-[13px] font-semibold text-slate-700">Account</label>
+            <Select
+              searchable
+              value={filters.ledgerCode || ''}
+              onChange={(value) => setFilters((current) => ({ ...current, ledgerCode: value }))}
+              options={[
+                { label: 'All Accounts', value: '' },
+                ...ledgers.map((ledger) => ({ label: `${ledger.code} - ${ledger.name}`, value: ledger.code }))
+              ]}
+            />
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="space-y-1.5">
+              <label className="text-[13px] font-semibold text-slate-700">From</label>
+              <Input type="date" {...fyDateBounds}value={filters.dateFrom || ''} onChange={(event) => setFilters((current) => ({ ...current, dateFrom: event.target.value }))} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[13px] font-semibold text-slate-700">To Date</label>
+              <Input type="date" {...fyDateBounds}value={filters.dateTo || ''} onChange={(event) => setFilters((current) => ({ ...current, dateTo: event.target.value }))} />
+            </div>
+          </div>
+        </div>
+      );
     }
 
     if (config.filterMode === 'member-ledger') {
@@ -320,11 +449,11 @@ export function ReportViewerPage() {
           <div className="grid gap-3 md:grid-cols-2">
             <div className="space-y-1.5">
               <label className="text-[13px] font-semibold text-slate-700">From</label>
-              <Input type="date" value={filters.dateFrom || ''} onChange={(event) => setFilters((current) => ({ ...current, dateFrom: event.target.value }))} />
+              <Input type="date" {...fyDateBounds}value={filters.dateFrom || ''} onChange={(event) => setFilters((current) => ({ ...current, dateFrom: event.target.value }))} />
             </div>
             <div className="space-y-1.5">
               <label className="text-[13px] font-semibold text-slate-700">To</label>
-              <Input type="date" value={filters.dateTo || ''} onChange={(event) => setFilters((current) => ({ ...current, dateTo: event.target.value }))} />
+              <Input type="date" {...fyDateBounds}value={filters.dateTo || ''} onChange={(event) => setFilters((current) => ({ ...current, dateTo: event.target.value }))} />
             </div>
           </div>
         </div>
@@ -350,11 +479,11 @@ export function ReportViewerPage() {
           <div className="grid gap-3 md:grid-cols-2">
             <div className="space-y-1.5">
               <label className="text-[13px] font-semibold text-slate-700">From</label>
-              <Input type="date" value={filters.dateFrom || ''} onChange={(event) => setFilters((current) => ({ ...current, dateFrom: event.target.value }))} />
+              <Input type="date" {...fyDateBounds}value={filters.dateFrom || ''} onChange={(event) => setFilters((current) => ({ ...current, dateFrom: event.target.value }))} />
             </div>
             <div className="space-y-1.5">
               <label className="text-[13px] font-semibold text-slate-700">To</label>
-              <Input type="date" value={filters.dateTo || ''} onChange={(event) => setFilters((current) => ({ ...current, dateTo: event.target.value }))} />
+              <Input type="date" {...fyDateBounds}value={filters.dateTo || ''} onChange={(event) => setFilters((current) => ({ ...current, dateTo: event.target.value }))} />
             </div>
           </div>
         </div>
@@ -378,43 +507,116 @@ export function ReportViewerPage() {
       );
     }
 
-    if (config.filterMode === 'account-statement') {
-      const ledgers = Array.isArray(lookups.ledgers) ? lookups.ledgers : [];
+    if (config.filterMode === 'dividend') {
+      const branches = Array.isArray(lookups.branches) ? lookups.branches : [];
       return (
-        <div className="space-y-4">
+        <div className="grid gap-4">
           <div className="space-y-1.5">
-            <label className="text-[13px] font-semibold text-slate-700">Select Ledger</label>
-            <Select 
-              searchable
-              value={filters.search || ''} 
-              onChange={(value) => setFilters((current) => ({ ...current, search: value }))}
+            <label className="text-[13px] font-semibold text-slate-700">Report Type</label>
+            <Select
+              value={filters.mode || 'branchwise-opening'}
+              onChange={(value) => setFilters((current) => ({ ...current, mode: value || 'branchwise-opening' }))}
+              options={DIVIDEND_MODES}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-[13px] font-semibold text-slate-700">Branch</label>
+            <Select
+              value={filters.branchCode || ''}
+              onChange={(value) => setFilters((current) => ({ ...current, branchCode: value }))}
               options={[
-                { label: 'All Ledgers', value: '' },
-                ...ledgers.map((ledger) => ({ label: `${ledger.code} - ${ledger.name}`, value: ledger.code }))
+                { label: 'All branches', value: '' },
+                ...branches.map((branch) => ({ label: `${branch.code} - ${branch.label || branch.place || ''}`, value: branch.code }))
               ]}
             />
           </div>
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="space-y-1.5">
+            <label className="text-[13px] font-semibold text-slate-700">Sort By</label>
+            <Select
+              value={filters.sortBy || 'branchName'}
+              onChange={(value) => setFilters((current) => ({ ...current, sortBy: value || 'branchName' }))}
+              options={DIVIDEND_SORT_OPTIONS}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-[13px] font-semibold text-slate-700">Dividend Rate (%)</label>
+            <Input
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="From rate master"
+              value={filters.rate ?? ''}
+              onChange={(event) => setFilters((current) => ({ ...current, rate: event.target.value }))}
+            />
+          </div>
+        </div>
+      );
+    }
+
+    if (config.filterMode === 'account-statement') {
+      const ledgers = Array.isArray(lookups.ledgers) ? lookups.ledgers : [];
+      const acType = filters.type || 'ledger';
+      return (
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <label className="text-[13px] font-semibold text-slate-700">A/c Type</label>
+            <Select
+              value={acType}
+              onChange={(value) => setFilters((current) => ({ ...current, type: value, search: '', nature: '' }))}
+              options={[
+                { label: 'Ledger', value: 'ledger' },
+                { label: 'Member', value: 'member' },
+                { label: 'Employee', value: 'employee' }
+              ]}
+            />
+          </div>
+
+          {acType === 'ledger' ? (
+            <>
+              <div className="space-y-1.5">
+                <label className="text-[13px] font-semibold text-slate-700">Select Ledger</label>
+                <Select
+                  searchable
+                  value={filters.search || ''}
+                  onChange={(value) => setFilters((current) => ({ ...current, search: value }))}
+                  options={[
+                    { label: 'All Ledgers', value: '' },
+                    ...ledgers.map((ledger) => ({ label: `${ledger.code} - ${ledger.name}`, value: ledger.code }))
+                  ]}
+                />
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="space-y-1.5">
+                  <label className="text-[13px] font-semibold text-slate-700">Nature</label>
+                  <Select
+                    value={filters.nature || ''}
+                    onChange={(value) => setFilters((current) => ({ ...current, nature: value }))}
+                    options={[
+                      { label: 'All', value: '' },
+                      { label: 'Asset', value: 'ASSET' },
+                      { label: 'Liability', value: 'LIABILITY' },
+                      { label: 'Income', value: 'INCOME' },
+                      { label: 'Expense', value: 'EXPENSE' },
+                      { label: 'Primary', value: 'PRIMARY' }
+                    ]}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[13px] font-semibold text-slate-700">Upto Date</label>
+                  <Input type="date" {...fyDateBounds}value={filters.uptoDate || ''} onChange={(event) => setFilters((current) => ({ ...current, uptoDate: event.target.value }))} />
+                </div>
+              </div>
+            </>
+          ) : (
             <div className="space-y-1.5">
-              <label className="text-[13px] font-semibold text-slate-700">Nature</label>
-              <Select 
-                value={filters.nature || ''} 
-                onChange={(value) => setFilters((current) => ({ ...current, nature: value }))}
-                options={[
-                  { label: 'All', value: '' },
-                  { label: 'Asset', value: 'ASSET' },
-                  { label: 'Liability', value: 'LIABILITY' },
-                  { label: 'Income', value: 'INCOME' },
-                  { label: 'Expense', value: 'EXPENSE' },
-                  { label: 'General', value: 'GENERAL' }
-                ]}
+              <label className="text-[13px] font-semibold text-slate-700">Search</label>
+              <Input
+                placeholder={acType === 'member' ? 'Search by member code or name' : 'Search by employee code or name'}
+                value={filters.search || ''}
+                onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))}
               />
             </div>
-            <div className="space-y-1.5">
-              <label className="text-[13px] font-semibold text-slate-700">Upto Date</label>
-              <Input type="date" value={filters.uptoDate || ''} onChange={(event) => setFilters((current) => ({ ...current, uptoDate: event.target.value }))} />
-            </div>
-          </div>
+          )}
         </div>
       );
     }
@@ -436,7 +638,7 @@ export function ReportViewerPage() {
           </div>
           <div className="space-y-1.5">
             <label className="text-[13px] font-semibold text-slate-700">Month</label>
-            <Input type="month" value={filters.month || ''} onChange={(event) => setFilters((current) => ({ ...current, month: event.target.value }))} />
+            <Input type="month" {...fyMonthBounds}value={filters.month || ''} onChange={(event) => setFilters((current) => ({ ...current, month: event.target.value }))} />
           </div>
         </div>
       );
@@ -450,10 +652,16 @@ export function ReportViewerPage() {
             <label className="text-[13px] font-semibold text-slate-700">Date</label>
             <Input
               type="date"
+              {...fyDateBounds}
               value={filters.date || ''}
               onChange={(event) => {
                 const value = event.target.value;
-                setFilters((current) => ({ ...current, date: value, year: value ? value.slice(0, 4) : current.year }));
+                setFilters((current) => ({
+                  ...current,
+                  date: value,
+                  month: value ? value.slice(5, 7) : current.month,
+                  year: value ? value.slice(0, 4) : current.year
+                }));
               }}
             />
           </div>
@@ -472,7 +680,7 @@ export function ReportViewerPage() {
             <label className="text-[13px] font-semibold text-slate-700">Month</label>
             <Select
               value={filters.month || ''}
-              onChange={(value) => setFilters((current) => ({ ...current, month: value }))}
+              onChange={(value) => setFilters((current) => ({ ...current, month: value, year: value ? fyCalendarYearForMonth(value, activeFY) : current.year }))}
               options={MONTH_NAME_OPTIONS}
             />
           </div>
@@ -484,7 +692,7 @@ export function ReportViewerPage() {
       return (
         <div className="space-y-1.5">
           <label className="text-[13px] font-semibold text-slate-700">Month</label>
-          <Input type="month" value={filters.month || ''} onChange={(event) => setFilters((current) => ({ ...current, month: event.target.value }))} />
+          <Input type="month" {...fyMonthBounds}value={filters.month || ''} onChange={(event) => setFilters((current) => ({ ...current, month: event.target.value }))} />
         </div>
       );
     }
@@ -504,17 +712,17 @@ export function ReportViewerPage() {
           <div className="grid gap-3 md:grid-cols-2">
             <div className="space-y-1.5">
               <label className="text-[13px] font-semibold text-slate-700">From</label>
-              <Input type="date" value={filters.dateFrom || ''} onChange={(event) => setFilters((current) => ({ ...current, dateFrom: event.target.value }))} />
+              <Input type="date" {...fyDateBounds}value={filters.dateFrom || ''} onChange={(event) => setFilters((current) => ({ ...current, dateFrom: event.target.value }))} />
             </div>
             <div className="space-y-1.5">
               <label className="text-[13px] font-semibold text-slate-700">To</label>
-              <Input type="date" value={filters.dateTo || ''} onChange={(event) => setFilters((current) => ({ ...current, dateTo: event.target.value }))} />
+              <Input type="date" {...fyDateBounds}value={filters.dateTo || ''} onChange={(event) => setFilters((current) => ({ ...current, dateTo: event.target.value }))} />
             </div>
           </div>
         ) : (
           <div className="space-y-1.5">
             <label className="text-[13px] font-semibold text-slate-700">Report Date</label>
-            <Input type="date" value={filters.date || ''} onChange={(event) => setFilters((current) => ({ ...current, date: event.target.value }))} />
+            <Input type="date" {...fyDateBounds}value={filters.date || ''} onChange={(event) => setFilters((current) => ({ ...current, date: event.target.value }))} />
           </div>
         )}
       </div>
@@ -534,7 +742,7 @@ export function ReportViewerPage() {
   const showFilterPanel = !NO_FILTER_PANEL_REPORTS.has(reportKey);
 
   const filterPanel = (
-    <Card className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm print:hidden lg:sticky lg:top-6">
+    <Card className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm print:hidden lg:sticky lg:top-24 lg:z-10">
       <div className="mb-4 space-y-1.5">
         <label className="text-[13px] font-semibold text-slate-700">Report</label>
         <Select
@@ -572,15 +780,17 @@ export function ReportViewerPage() {
   return (
     <div className="space-y-6">
       <div className="print:hidden">
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{config.label}</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{isAccountStatementFamily ? 'Report' : config.label}</h1>
       </div>
 
       <div className={`grid grid-cols-1 items-start gap-4 ${showFilterPanel ? 'lg:grid-cols-[minmax(0,1fr)_minmax(0,4fr)]' : ''}`}>
         {showFilterPanel ? filterPanel : null}
 
         <div className="report-canvas-wrap w-full min-w-0">
-          {usesPrintTemplate ? (
-            PRINT_TEMPLATES[reportKey]({ payload, filters: generatedFilters, lookups, headerActions: null })
+          {loading ? (
+            <ReportLoading />
+          ) : usesPrintTemplate ? (
+            printTemplate || PRINT_TEMPLATES[reportKey]({ payload, filters: generatedFilters, lookups, headerActions: null })
           ) : (
             <div className="report-canvas">
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -590,9 +800,7 @@ export function ReportViewerPage() {
               </div>
 
               <div className="mt-5 space-y-5">
-                {loading ? (
-                  <div className="flex h-40 items-center justify-center text-sm text-slate-500">Loading report...</div>
-                ) : payload?.sections?.length ? (
+                {payload?.sections?.length ? (
                   payload.sections.map((section) => <ReportTableSection key={section.title} section={section} />)
                 ) : (
                   <Card className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">

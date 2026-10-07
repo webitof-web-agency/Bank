@@ -1,5 +1,5 @@
 import { PrintShell, PrintLetterhead } from './PrintShell';
-import { formatMoney, table, th, td, tdText } from './printStyles';
+import { formatMoney, hasAmount, table, th, td, tdText } from './printStyles';
 
 export function TwoColumnBalancePrint({
   title,
@@ -15,12 +15,17 @@ export function TwoColumnBalancePrint({
   extraFooterLine,
   footerExtra,
   showSignatures = false,
+  format = formatMoney,
   headerActions
 }) {
-  const rowCount = Math.max(leftRows.length, rightRows.length, 1);
+  // 0.00 rows are hidden; a row can opt out with keepZero (e.g. the Balance
+  // Sheet's Profit & Loss A/c line, which legacy always prints).
+  const visibleLeft = leftRows.filter((row) => row?.keepZero || hasAmount(row?.amount));
+  const visibleRight = rightRows.filter((row) => row?.keepZero || hasAmount(row?.amount));
+  const rowCount = Math.max(visibleLeft.length, visibleRight.length, 1);
   const rows = Array.from({ length: rowCount }, (_, i) => ({
-    left: leftRows[i] || null,
-    right: rightRows[i] || null
+    left: visibleLeft[i] || null,
+    right: visibleRight[i] || null
   }));
 
   return (
@@ -40,19 +45,19 @@ export function TwoColumnBalancePrint({
         <tbody>
           {rows.map((row, i) => (
             <tr key={i}>
-              <td className={tdText}>{row.left?.label || ''}</td>
-              <td className={td}>{row.left ? formatMoney(row.left.amount) : ''}</td>
-              <td className={tdText}>{row.right?.label || ''}</td>
-              <td className={td}>{row.right ? formatMoney(row.right.amount) : ''}</td>
+              <td className={`${tdText} ${row.left?.bold ? 'font-bold' : ''}`}>{row.left?.label || ''}</td>
+              <td className={`${td} ${row.left?.bold ? 'font-bold' : ''}`}>{row.left ? format(row.left.amount) : ''}</td>
+              <td className={`${tdText} ${row.right?.bold ? 'font-bold' : ''}`}>{row.right?.label || ''}</td>
+              <td className={`${td} ${row.right?.bold ? 'font-bold' : ''}`}>{row.right ? format(row.right.amount) : ''}</td>
             </tr>
           ))}
         </tbody>
         <tfoot>
           <tr className="font-bold">
             <td className={tdText}>{leftTotalLabel}</td>
-            <td className={td}>{formatMoney(leftTotal)}</td>
+            <td className={td}>{format(leftTotal)}</td>
             <td className={tdText}>{rightTotalLabel}</td>
-            <td className={td}>{formatMoney(rightTotal)}</td>
+            <td className={td}>{format(rightTotal)}</td>
           </tr>
         </tfoot>
       </table>

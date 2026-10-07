@@ -3,10 +3,23 @@ export function formatMoney(value) {
   return new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(num);
 }
 
+// Legacy's own grouping (7,396,149.00 rather than 73,96,149.00), for the
+// reports whose printouts are matched to legacy exports.
+export function formatMoneyLegacy(value) {
+  const num = Number(value || 0);
+  return new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(num);
+}
+
 export function formatMoneyOrDash(value) {
   const num = Number(value || 0);
   if (!num) return '-';
   return formatMoney(num);
+}
+
+// True when any value would print as something other than 0.00 — used to
+// drop all-zero rows from report templates.
+export function hasAmount(...values) {
+  return values.some((value) => Math.abs(Number(value || 0)) >= 0.005);
 }
 
 export function formatDMY(dateString) {
