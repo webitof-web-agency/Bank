@@ -40,7 +40,9 @@ const Employee = createSqlModel('employees', {
 const DemandList = createSqlModel('demand_lists', {
   schema: TABLE_SCHEMAS.demand_lists,
   modelName: 'DemandList',
-  uniqueFields: ['demandListNo']
+  // Same as the table's unique index: legacy reuses one list number for every
+  // branch of a month, so the number alone is not unique.
+  uniqueFields: [['demandListNo', 'branchCode']]
 });
 
 const DemandLine = createSqlModel('demand_lines', {

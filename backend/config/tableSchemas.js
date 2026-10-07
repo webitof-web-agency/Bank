@@ -513,6 +513,41 @@ const TABLE_SCHEMAS = {
     payload: T.json
   }, [['sourceDatabase', 'sourceTable', 'sourceKey']]),
 
+  // Read-only archive: each legacy FY database's member opening balances
+  // (MstAccountMaster, one row per member per FY). Legacy credits the year's
+  // computed interest straight into the next FY's opening with no voucher, so
+  // these openings are the only record of it. Loaded by
+  // tools/legacy-migration/src/load-member-openings.js. Balances are signed
+  // credit-positive, as legacy stores them (a loan owed is negative).
+  legacy_historical_member_openings: schema({
+    sourceDatabase: T.string(120),
+    sourceTable: T.string(120),
+    sourceKey: T.string(120),
+    memberCode: T.string(80),
+    fyStart: T.string(10),
+    share: T.money,
+    compulsoryDeposit: T.money,
+    specialDeposit: T.money,
+    loan: T.money,
+    loanAgainstDeposit: T.money,
+    payload: T.json
+  }, [['sourceDatabase', 'sourceTable', 'sourceKey']]),
+
+  // Same idea for employees (MstAccountMaster AccountGroup 'Employees'), with
+  // that FY's legacy-computed loan interest (EmpCBlnc) in the payload. Loaded
+  // by the same script.
+  legacy_historical_employee_openings: schema({
+    sourceDatabase: T.string(120),
+    sourceTable: T.string(120),
+    sourceKey: T.string(120),
+    employeeCode: T.string(80),
+    fyStart: T.string(10),
+    housingLoan: T.money,
+    vehicleLoan: T.money,
+    grainAdvance: T.money,
+    payload: T.json
+  }, [['sourceDatabase', 'sourceTable', 'sourceKey']]),
+
   // Read-only archive of legacy DB-trigger audit trails (see "51. Deleted
   // transaction/audit flow" in the legacy flow doc). Never read by any live
   // calculation — purely historical record, same pattern as the two tables above.
