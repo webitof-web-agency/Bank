@@ -23,6 +23,7 @@ router.get('/health', (_req, res) => {
 });
 const filesController = require('../controllers/files.controller');
 const settingsController = require('../controllers/settings.controller');
+const smsController = require('../controllers/sms.controller');
 
 router.use('/auth', authRoutes);
 // helmet()'s default Cross-Origin-Resource-Policy: same-origin blocks the
@@ -32,6 +33,7 @@ router.use('/auth', authRoutes);
 router.get('/files/:id/view', helmet.crossOriginResourcePolicy({ policy: 'cross-origin' }), requireFileViewAccess, filesController.viewFile);
 router.get('/settings/public', settingsController.getPublicController);
 router.get('/notifications/stream', notificationsController.streamController);
+router.post('/sms/flowit/webhook', smsController.flowitWebhookController);
 
 router.use(requireAuth);
 router.use('/banking', bankingRoutes);
@@ -43,5 +45,6 @@ router.use('/settings/storage', require('./storageSettings.routes'));
 router.use('/settings', settingsRoutes);
 router.use('/files', filesRoutes);
 router.use('/recovery-import', require('./recoveryImport.routes'));
+router.use('/sms', require('./sms.routes'));
 
 module.exports = router;

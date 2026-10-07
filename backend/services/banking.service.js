@@ -54,6 +54,8 @@ const { buildFileViewUrl } = require('../utils/file-url');
 const { withTransaction, restoreMainRow, initializeDatabase } = require('../config/postgres');
 const { buildJournalLinesForVoucher } = require('./posting.service');
 const rateHistory = require('../utils/rateHistory');
+const smsService = require('./sms/sms.service');
+const { applyBranchScope, canAccessBranchRecord, getScopedBranchCode, isBranchScopedResource, resolveBranchCode } = require('../utils/branchScope');
 // The 'employees' resource here is a second, historically-unused entry point
 // (no frontend caller) alongside the real one at /users — delegating to
 // auth.service.js keeps employees<->users linking logic (creating/syncing the
@@ -91,64 +93,6 @@ function toBool(value, fallback = false) {
     return fallback;
   }
   return Boolean(value);
-}
-
-const BRANCH_SCOPED_RESOURCES = new Set([
-  'branches',
-  'employees',
-  'members',
-  'demandLists',
-  'noInterestMembers',
-  'vouchers',
-  'bankTransactions'
-]);
-
-function getScopedBranchCode(user = {}) {
-  if (!user || user.isSuperAdmin) {
-    return '';
-  }
-  return cleanUpper(user.branchCode);
-}
-
-function resolveBranchCode(user = {}, branchCode = '') {
-  const scopedBranchCode = getScopedBranchCode(user);
-  if (scopedBranchCode) {
-    return scopedBranchCode;
-  }
-  return cleanUpper(branchCode);
-}
-
-function isBranchScopedResource(resource) {
-  return BRANCH_SCOPED_RESOURCES.has(resource);
-}
-
-function applyBranchScope(query = {}, resource = '', user = {}) {
-  const branchCode = resolveBranchCode(user);
-  if (!branchCode) {
-    return query;
-  }
-  if (resource === 'branches') {
-    query.code = branchCode;
-    return query;
-  }
-  if (isBranchScopedResource(resource)) {
-    query.branchCode = branchCode;
-  }
-  return query;
-}
-
-function canAccessBranchRecord(resource, record = {}, user = {}) {
-  const branchCode = resolveBranchCode(user);
-  if (!branchCode) {
-    return true;
-  }
-  if (resource === 'branches') {
-    return cleanUpper(record.code || '') === branchCode;
-  }
-  if (!isBranchScopedResource(resource)) {
-    return true;
-  }
-  return cleanUpper(record.branchCode || '') === branchCode;
 }
 
 function toArray(value) {
@@ -4795,12 +4739,29 @@ function assertVoucherBasics(payload = {}, submitted = {}) {
   }
 }
 
+// A branch-scoped user may only post vouchers for members of their own
+// branch. Recovery From Member is exempt: its lines legitimately cover
+// members of several branches, and it has no single party member.
+async function assertPartyMemberAccess(payload = {}, user = {}) {
+  if (cleanLower(payload.partyType) !== 'member' || payload?.details?.key === RECOVERY_KEY) return;
+  const memberCode = cleanUpper(payload.partyCode);
+  if (!memberCode) return;
+  const member = await Member.findOne({ code: memberCode }).withDeleted().lean();
+  if (member && !canAccessBranchRecord('members', member, user || {})) {
+    throw recoveryHttpError('You do not have access to this member.', 403);
+  }
+}
+
+// The SMS rows are queued inside the voucher's transaction (so they roll
+// back with it) and sent only after it commits; an SMS failure never fails
+// the save. `sms` on the response says what happened, when one was asked for.
 async function createVoucher(data = {}, meta = {}) {
-  return withTransaction(async (tx) => {
+  const { response, smsQueued } = await withTransaction(async (tx) => {
     const branchCode = resolveBranchCode(meta.actorUser || {}, data.branchCode);
     const voucherNo = cleanText(data.voucherNo) || await getNextVoucherNo(branchCode);
     const payload = normalizeVoucher({ ...data, voucherNo, branchCode });
     assertVoucherBasics(payload, data);
+    await assertPartyMemberAccess(payload, meta.actorUser);
     if (meta.actorUserId) {
       payload.createdByUserId = meta.actorUserId;
       payload.updatedByUserId = meta.actorUserId;
@@ -4811,6 +4772,7 @@ async function createVoucher(data = {}, meta = {}) {
 
     const record = await Voucher.create(payload, { tx });
     const recordId = String(record._id || record.id);
+    const smsQueued = await smsService.queueForVoucher(tx, { ...payload, id: recordId, voucherNo: record.voucherNo }, meta);
 
     if (recovery.lines.length > 0) {
       await RecoveryLine.insertMany(recoveryLineRows(recovery.lines, recordId, record.voucherNo), { tx });
@@ -4833,17 +4795,29 @@ async function createVoucher(data = {}, meta = {}) {
 
     const response = sanitizeVoucherResponse(record);
     await notifySafely(buildVoucherNotificationPayload('created', response, meta));
-    return response;
+    return { response, smsQueued };
   });
+  return withSmsResult(response, smsQueued);
 }
 
+async function withSmsResult(response, smsQueued = []) {
+  if (!smsQueued.length) return response;
+  const sms = smsService.summarizeForResponse(await smsService.dispatch(smsQueued));
+  return sms ? { ...response, sms } : response;
+}
+
+// An edit never re-sends an SMS that was already asked for: only ticking
+// "Send SMS" on a voucher that did not have it queues one, and the
+// idempotency key (voucher + event + member) stops any second row.
 async function updateVoucher(id, data = {}, meta = {}) {
-  return withTransaction(async (tx) => {
+  const result = await withTransaction(async (tx) => {
     const current = await Voucher.findById(id);
-    if (!current) return null;
+    // Another branch's voucher is "not found", as on the read path.
+    if (!current || !canAccessBranchRecord('vouchers', current.toObject(), meta.actorUser || {})) return null;
     const payload = normalizeVoucher({ ...current.toObject(), ...data });
     assertVoucherBasics(payload, { ...current.toObject(), ...data });
     payload.branchCode = resolveBranchCode(meta.actorUser || {}, current.branchCode);
+    await assertPartyMemberAccess(payload, meta.actorUser);
     if (meta.actorUserId) {
       payload.updatedByUserId = meta.actorUserId;
     }
@@ -4880,10 +4854,17 @@ async function updateVoucher(id, data = {}, meta = {}) {
     }));
     await JournalLine.insertMany(journalLinesToInsert, { tx });
 
+    const smsNewlyRequested = payload?.details?.sms === true && current.toObject()?.details?.sms !== true;
+    const smsQueued = smsNewlyRequested
+      ? await smsService.queueForVoucher(tx, { ...payload, id, voucherNo: payload.voucherNo || current.voucherNo }, meta)
+      : [];
+
     const response = sanitizeVoucherResponse({ ...current.toObject(), ...payload });
     await notifySafely(buildVoucherNotificationPayload('updated', response, meta));
-    return response;
+    return { response, smsQueued };
   });
+  if (!result) return null;
+  return withSmsResult(result.response, result.smsQueued);
 }
 
 async function deleteVoucher(id) {

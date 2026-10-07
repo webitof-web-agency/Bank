@@ -3,6 +3,7 @@ const JobState = require('../models/jobState.model');
 const { createNotification } = require('./notification.service');
 const { buildMonthlySummaryReport } = require('./banking.service');
 const { getSettings } = require('./settings.service');
+const smsService = require('./sms/sms.service');
 
 let automationTimer = null;
 let automationRunning = false;
@@ -196,9 +197,21 @@ async function runAutomationCycle() {
     const results = [];
     results.push(await runDemandReminder());
     results.push(await runMonthlySummary());
+    results.push(await retryPendingSms());
     return { results };
   } finally {
     automationRunning = false;
+  }
+}
+
+// SMS rows left PENDING (process stopped mid-send, Flowit unreachable).
+async function retryPendingSms() {
+  try {
+    const results = await smsService.dispatchPending();
+    return { job: 'sms-retry', count: results.length };
+  } catch (error) {
+    console.error('[automation] SMS retry failed:', error.message);
+    return { job: 'sms-retry', error: error.message };
   }
 }
 

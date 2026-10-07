@@ -100,6 +100,44 @@ const TABLE_SCHEMAS = {
     payload: T.json
   }, ['key']),
 
+  // One row per SMS event (MEMBER_SSA_PAID, ...): the DLT-approved template
+  // registered with Flowit. The approved text itself lives at Flowit / DLT;
+  // previewText is only a read-only copy for the settings screen.
+  sms_templates: schema({
+    eventCode: T.string(80),
+    entityType: T.string(40),
+    dltMessageId: T.string(120),
+    senderId: T.string(20),
+    variableKeys: T.json,
+    previewText: T.text,
+    isEnabled: T.boolean,
+    deletedAt: T.date
+  }, ['eventCode']),
+
+  // SMS outbox and log. Never holds the full mobile number, the message
+  // body or any provider credential. Written with plain SQL by
+  // services/sms/sms.service.js (see the note there), not through a model.
+  sms_messages: schema({
+    idempotencyKey: T.string(191),
+    eventCode: T.string(80),
+    entityType: T.string(40),
+    entityCode: T.string(80),
+    voucherId: T.string(40),
+    voucherNo: T.string(120),
+    maskedMobile: T.string(20),
+    mobileHash: T.string(64),
+    provider: T.string(40),
+    providerRequestId: T.string(120),
+    status: T.string(20),
+    skipReason: T.string(60),
+    errorCode: T.string(40),
+    errorMessage: T.string(255),
+    attempts: T.number,
+    lastAttemptAt: T.date,
+    deliveredAt: T.date,
+    createdByUserId: T.string(40)
+  }, ['idempotencyKey']),
+
   file_folders: schema({
     name: T.string(191),
     parentFolderId: T.string(40),

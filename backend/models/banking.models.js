@@ -129,6 +129,12 @@ const AuditLog = createSqlModel('audit_log', {
   uniqueFields: []
 });
 
+const SmsTemplate = createSqlModel('sms_templates', {
+  schema: TABLE_SCHEMAS.sms_templates,
+  modelName: 'SmsTemplate',
+  uniqueFields: ['eventCode']
+});
+
 module.exports = {
   BankAccount,
   JournalLine,
@@ -150,7 +156,8 @@ module.exports = {
   RecoveryImportRow,
   FinancialYear,
   AuditLog,
-  BankTransaction
+  BankTransaction,
+  SmsTemplate
 };
 
 

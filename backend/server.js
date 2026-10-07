@@ -14,9 +14,11 @@ const { apiRateLimit } = require('./middlewares/rateLimit');
 const { ensureDatabase } = require('./config/initDb');
 const { closeDatabase } = require('./config/postgres');
 const { buildCorsOptions, validateSecurityConfig } = require('./config/security');
+const { validateSmsConfig } = require('./config/sms');
 const { startAutomationScheduler, stopAutomationScheduler } = require('./services/automation.service');
 
 validateSecurityConfig();
+validateSmsConfig();
 
 const app = express();
 const PORT = Number(process.env.PORT || 5000);

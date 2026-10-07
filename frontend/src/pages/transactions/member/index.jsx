@@ -23,7 +23,8 @@ import {
   getSectionItems,
   getTransactionLedgerLabel,
   getTransactionPartyLabel,
-  getTransactionVoucherTitle
+  getTransactionVoucherTitle,
+  describeSmsResult
 } from './transactionUtils';
 import { toneClassName } from './transactionUtils';
 import { getMemberTransactionTypeByKey } from './memberConfig';
@@ -195,6 +196,7 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '
         : await api.banking.createTransactionVoucher(token, payload);
 
       let nextRecord = response.data || response;
+      const smsFeedback = describeSmsResult(nextRecord?.sms, activeRecord ? 'Transaction updated' : 'Transaction created');
       nextRecord = await persistVoucherDocuments(nextRecord, draft);
       setRows((current) => {
         const next = activeRecord
@@ -202,7 +204,8 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '
           : [nextRecord, ...current];
         return next;
       });
-      toast.success(activeRecord ? 'Transaction updated' : 'Transaction created');
+      if (smsFeedback) toast[smsFeedback.tone](smsFeedback.message);
+      else toast.success(activeRecord ? 'Transaction updated' : 'Transaction created');
       closeEditor();
     } catch (error) {
       toast.error(error.message || 'Unable to save transaction');

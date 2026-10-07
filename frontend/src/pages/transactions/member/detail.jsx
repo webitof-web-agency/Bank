@@ -22,7 +22,8 @@ import {
   getTransactionLedgerLabel,
   getTransactionPartyLabel,
   getVoucherSectionItem,
-  getTransactionVoucherTitle
+  getTransactionVoucherTitle,
+  describeSmsResult
 } from './transactionUtils';
 import { toneClassName } from './transactionUtils';
 
@@ -198,6 +199,7 @@ export function MemberTransactionDetailPage({
       const payload = buildTransactionVoucherPayload(draft);
       const response = await api.banking.updateTransactionVoucher(token, record.id, payload);
       let nextRecord = response.data || response;
+      const smsFeedback = describeSmsResult(nextRecord?.sms, 'Transaction updated');
       const uploadedDocuments = await uploadDocumentMap(token, draft.documents || {}, {
         moduleName: 'transactions',
         entityId: nextRecord.id
@@ -210,7 +212,8 @@ export function MemberTransactionDetailPage({
         await Promise.allSettled(removedDocumentIds.map((fileId) => api.files.remove(token, fileId)));
       }
       setRecord(nextRecord);
-      toast.success('Transaction updated');
+      if (smsFeedback) toast[smsFeedback.tone](smsFeedback.message);
+      else toast.success('Transaction updated');
       closeEditor();
     } catch (error) {
       toast.error(error.message || 'Unable to save transaction');

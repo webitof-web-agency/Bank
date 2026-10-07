@@ -118,7 +118,12 @@ function buildAddColumnSql(tableName, columnNames = []) {
 const CREATE_TABLE_SQL = TABLES.map((tableName) => buildCreateTableSql(tableName));
 const CREATE_INDEX_SQL = [
   `CREATE INDEX IF NOT EXISTS ${quoteIdentifier('idx_user_roles_userId')} ON ${quoteIdentifier('user_roles')} (${quoteIdentifier('userId')})`,
-  `CREATE INDEX IF NOT EXISTS ${quoteIdentifier('idx_user_roles_roleId')} ON ${quoteIdentifier('user_roles')} (${quoteIdentifier('roleId')})`
+  `CREATE INDEX IF NOT EXISTS ${quoteIdentifier('idx_user_roles_roleId')} ON ${quoteIdentifier('user_roles')} (${quoteIdentifier('roleId')})`,
+  // Delivery reports find their SMS by the provider's request id; the retry
+  // job scans PENDING rows.
+  `CREATE INDEX IF NOT EXISTS ${quoteIdentifier('idx_sms_messages_providerRequestId')} ON ${quoteIdentifier('sms_messages')} (${quoteIdentifier('providerRequestId')})`,
+  `CREATE INDEX IF NOT EXISTS ${quoteIdentifier('idx_sms_messages_status')} ON ${quoteIdentifier('sms_messages')} (${quoteIdentifier('status')}, ${quoteIdentifier('lastAttemptAt')})`,
+  `CREATE INDEX IF NOT EXISTS ${quoteIdentifier('idx_sms_messages_voucherId')} ON ${quoteIdentifier('sms_messages')} (${quoteIdentifier('voucherId')})`
 ];
 
 module.exports = {

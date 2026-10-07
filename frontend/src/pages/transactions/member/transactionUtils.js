@@ -321,3 +321,26 @@ export function toCurrency(value) {
 
 
 
+// What the save toast says about the SMS the backend tried to send (the
+// response's `sms`, present only when "Send SMS" was ticked). Provider
+// errors are never shown here; the SMS log has them.
+const SMS_SKIP_MESSAGES = {
+  NO_MOBILE: 'SMS skipped because the member has no valid mobile number.',
+  INVALID_MOBILE: 'SMS skipped because the member has no valid mobile number.',
+  PLACEHOLDER_MOBILE: 'SMS skipped because the member has no valid mobile number.',
+  MEMBER_DISMEMBERED: 'SMS skipped because the member is dismembered.',
+  MEMBER_DELETED: 'SMS skipped because the member record is deleted.',
+  MEMBER_NOT_FOUND: 'SMS skipped because the member was not found.',
+  SMS_DISABLED: 'SMS skipped because SMS sending is turned off.',
+  PROVIDER_NOT_CONFIGURED: 'SMS skipped because SMS is not set up yet.',
+  TEMPLATE_NOT_CONFIGURED: 'SMS skipped because the SMS template is not set up yet.',
+  TEMPLATE_DISABLED: 'SMS skipped because this SMS template is turned off.'
+};
+
+export function describeSmsResult(sms, savedLabel = 'Voucher saved') {
+  if (!sms || !sms.status) return null;
+  if (sms.status === 'SENT' || sms.status === 'DELIVERED') return { tone: 'success', message: `${savedLabel}. SMS sent.` };
+  if (sms.status === 'PENDING') return { tone: 'success', message: `${savedLabel}. SMS queued, it will be retried shortly.` };
+  if (sms.status === 'SKIPPED') return { tone: 'warning', message: `${savedLabel}. ${SMS_SKIP_MESSAGES[sms.reason] || 'SMS skipped.'}` };
+  return { tone: 'warning', message: `${savedLabel}, but SMS could not be sent.` };
+}
