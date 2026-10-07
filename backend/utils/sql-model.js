@@ -755,7 +755,8 @@ function createSqlModel(tableName, options = {}) {
     }
     const row = dataToRow(doc);
     assertUnique(doc);
-    await persistMainRow(tableName, row, options.tx);
+    // Without an id the row is new: no audit "before" lookup needed.
+    await persistMainRow(tableName, row, options.tx, { isNew: !(data && (data.id || data._id)) });
     const saved = rowToData({ ...row });
     await syncUserRolesIfNeeded({ ...doc, id: saved.id, _id: saved._id });
     if (afterSave) {
@@ -868,9 +869,13 @@ function createSqlModel(tableName, options = {}) {
   }
 
   async function deleteMany(filter = {}, options = {}) {
+    await initializeDatabase();
     const rows = findAllRows().filter((item) => matchesFilter(item, filter));
+    // The rows are already found: delete them directly. Going through
+    // deleteById re-read (and copied) the whole table once per row, which
+    // made deleting a voucher's few hundred lines take seconds.
     for (const row of rows) {
-      await deleteById(row.id, options);
+      await deleteMainRow(tableName, String(row.id), options.tx);
     }
     return { deletedCount: rows.length };
   }

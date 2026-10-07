@@ -378,31 +378,131 @@ async function syncTableSchema(database, tableName) {
     await database.query(
       `UPDATE ${quoteIdentifier(tableName)}
        SET ${quoteIdentifier('details')} = COALESCE(${quoteIdentifier('details')}, '{}'::jsonb)
-         - 'settlementAccount' - 'fixedSettlement' - 'fromAccount' - 'toAccount' - 'fixedFrom' - 'fixedTo'
+         - 'fixedSettlement' - 'fromAccount' - 'toAccount' - 'fixedFrom' - 'fixedTo'
        WHERE LOWER(COALESCE(${quoteIdentifier('details')}->>'key', '')) = ANY($1::text[])
-         AND (${quoteIdentifier('details')} ?| ARRAY['settlementAccount', 'fixedSettlement', 'fromAccount', 'toAccount', 'fixedFrom', 'fixedTo'])`,
+         AND (${quoteIdentifier('details')} ?| ARRAY['fixedSettlement', 'fromAccount', 'toAccount', 'fixedFrom', 'fixedTo'])`,
       [BANK_VOUCHER_KEYS]
     );
   }
 }
 
-async function loadCache(database) {
-  tableCache.clear();
-
-  for (const tableName of TABLES) {
-    if (tableName === 'user_roles') {
-      const result = await database.query(
-        'SELECT "userId", "roleId", "createdAt" FROM user_roles ORDER BY "userId" ASC, "roleId" ASC'
-      );
-      setUserRoleRows(result.rows.map(normalizeJoinRow).filter(Boolean));
-      continue;
-    }
-
+async function readTableRows(database, tableName) {
+  if (tableName === 'user_roles') {
     const result = await database.query(
-      `SELECT * FROM ${quoteIdentifier(tableName)} ORDER BY ${quoteIdentifier('createdAt')} ASC, ${quoteIdentifier('id')} ASC`
+      'SELECT "userId", "roleId", "createdAt" FROM user_roles ORDER BY "userId" ASC, "roleId" ASC'
     );
-    setCachedRows(tableName, result.rows.map(normalizeMainRow).filter(Boolean));
+    return result.rows.map(normalizeJoinRow).filter(Boolean);
   }
+  const result = await database.query(
+    `SELECT * FROM ${quoteIdentifier(tableName)} ORDER BY ${quoteIdentifier('createdAt')} ASC, ${quoteIdentifier('id')} ASC`
+  );
+  return result.rows.map(normalizeMainRow).filter(Boolean);
+}
+
+// Cache refreshes run one at a time, in commit order, each reading the
+// database when its turn comes — so a refresh can never put back data older
+// than what an earlier one already applied.
+let refreshQueue = Promise.resolve();
+function queueRefresh(task) {
+  const run = refreshQueue.then(task, task);
+  refreshQueue = run.catch(() => {});
+  return run;
+}
+
+// Reloads `tables` (default: every table) in full. All of them are read
+// first and only then swapped in, in one synchronous step: clearing the cache
+// up front and refilling it table by table (seconds on the full data) left
+// other requests meanwhile looking at empty tables — users and roles
+// included, so they failed with "Missing permission" or saw empty lists.
+async function loadCache(database, tables = TABLES) {
+  return queueRefresh(async () => {
+    const loaded = [];
+    for (const tableName of tables) {
+      loaded.push([tableName, await readTableRows(database, tableName)]);
+    }
+    for (const [tableName, rows] of loaded) {
+      if (tableName === 'user_roles') setUserRoleRows(rows);
+      else setCachedRows(tableName, rows);
+    }
+  });
+}
+
+// After a transaction: re-read only the rows it touched. Every write here
+// stamps "updatedAt" (persistMainRow, soft delete / restore, the demand-link
+// updates), so the rows updated since the transaction began are its own
+// changes — plus, harmlessly, anything else committed meanwhile, which is
+// current data too. A table it hard-DELETEd from, user_roles (no updatedAt)
+// or a write whose table couldn't be told is reloaded in full instead.
+async function refreshAfterTransaction(database, written, since) {
+  const cached = new Set(TABLES);
+  if (written.unknown) return loadCache(database);
+  const full = [...written.tables].filter((table) => cached.has(table) && (written.deletes.has(table) || table === 'user_roles'));
+  const partial = [...written.tables].filter((table) => cached.has(table) && !full.includes(table));
+  return queueRefresh(async () => {
+    const loaded = [];
+    for (const tableName of full) loaded.push(['full', tableName, await readTableRows(database, tableName)]);
+    for (const tableName of partial) {
+      const result = await database.query(
+        `SELECT * FROM ${quoteIdentifier(tableName)} WHERE ${quoteIdentifier('updatedAt')} >= $1 ORDER BY ${quoteIdentifier('createdAt')} ASC, ${quoteIdentifier('id')} ASC`,
+        [since]
+      );
+      loaded.push(['rows', tableName, result.rows.map(normalizeMainRow).filter(Boolean)]);
+    }
+    for (const [kind, tableName, rows] of loaded) {
+      if (kind === 'full') {
+        if (tableName === 'user_roles') setUserRoleRows(rows);
+        else setCachedRows(tableName, rows);
+        continue;
+      }
+      const current = tableCache.get(tableName) || [];
+      const indexById = new Map(current.map((row, index) => [String(row.id), index]));
+      for (const row of rows) {
+        const index = indexById.get(String(row.id));
+        if (index === undefined) {
+          indexById.set(String(row.id), current.length);
+          current.push(row);
+        } else {
+          current[index] = row;
+        }
+      }
+      tableCache.set(tableName, current);
+    }
+  });
+}
+
+// The table a statement writes, and whether it deletes rows outright:
+// INSERT INTO / UPDATE / DELETE FROM "table". `undefined` for reads and
+// transaction control; null when it writes but the table can't be told.
+const WRITE_STATEMENT = /^\s*(INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(?:ONLY\s+)?(?:"?public"?\.)?"?([A-Za-z_][A-Za-z0-9_]*)"?/i;
+const READ_OR_CONTROL = /^\s*(?:SELECT|WITH\s+\w+\s+AS\s*\(\s*SELECT|BEGIN|COMMIT|ROLLBACK|SAVEPOINT|RELEASE|SET|SHOW)\b/i;
+
+function writtenTable(text) {
+  const sql = typeof text === 'string' ? text : String(text?.text || '');
+  const match = sql.match(WRITE_STATEMENT);
+  if (match) return { table: match[2], deletes: /^DELETE/i.test(match[1]) };
+  return READ_OR_CONTROL.test(sql) ? undefined : null;
+}
+
+// The client handed to a transaction's callback: the real client, with
+// query() noting which tables the transaction writes.
+function recordingClient(client, written) {
+  return new Proxy(client, {
+    get(target, prop) {
+      if (prop === 'query') {
+        return (text, ...rest) => {
+          const write = writtenTable(text);
+          if (write === null) written.unknown = true;
+          else if (write) {
+            written.tables.add(write.table);
+            if (write.deletes) written.deletes.add(write.table);
+          }
+          return target.query(text, ...rest);
+        };
+      }
+      const value = target[prop];
+      return typeof value === 'function' ? value.bind(target) : value;
+    }
+  });
 }
 
 async function createPool() {
@@ -526,7 +626,9 @@ async function writeAuditLog(database, { tableName, recordId, action, changes },
   return auditRow;
 }
 
-async function persistMainRow(tableName, row, tx = null) {
+// `isNew`: the caller knows the row does not exist yet (created without an
+// id), so the audit entry needs no "before" row and the lookup is skipped.
+async function persistMainRow(tableName, row, tx = null, { isNew = false } = {}) {
   const database = tx || await initializeDatabase();
   const payload = clone(row) || {};
   const columns = Object.keys(payload).filter((key) => payload[key] !== undefined);
@@ -541,7 +643,7 @@ async function persistMainRow(tableName, row, tx = null) {
 
   const auditEnabled = isSoftDeleteEnabled(tableName) && tableName !== 'audit_log';
   let previous = null;
-  if (auditEnabled) {
+  if (auditEnabled && !isNew) {
     const existing = await database.query(
       `SELECT * FROM ${quoteIdentifier(tableName)} WHERE ${quoteIdentifier('id')} = $1`,
       [payload.id]
@@ -715,11 +817,17 @@ async function withTransaction(callback) {
   const client = await database.connect();
   let result;
   try {
+    // Rows written in this transaction carry an "updatedAt" from now on; the
+    // margin covers clock skew between this process and the database.
+    const since = new Date(Date.now() - 5000).toISOString();
     await client.query('BEGIN');
-    result = await callback(client);
+    const written = { tables: new Set(), deletes: new Set(), unknown: false };
+    result = await callback(recordingClient(client, written));
     await client.query('COMMIT');
-    // Reload cache to reflect changes made inside the transaction
-    await loadCache(database);
+    // Writes inside a transaction bypass the cache: refresh just the rows it
+    // wrote instead of re-reading every table (several seconds on the full
+    // data, the large legacy archives included).
+    await refreshAfterTransaction(database, written, since);
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
