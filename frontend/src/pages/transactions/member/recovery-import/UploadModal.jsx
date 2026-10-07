@@ -153,8 +153,10 @@ export default function UploadModal({ isOpen, onClose, onUploadSuccess, token })
       title="Import Recovery Excel / CSV"
       footer={
         <div className="flex justify-end gap-2 w-full">
-          <Button variant="outline" onClick={resetAndClose} disabled={loading}>Cancel</Button>
-          <Button onClick={handleUpload} disabled={!canUpload || loading}>
+          {/* type="button": this dialog also opens inside the Recovery entry
+              form, where an untyped button would submit (save) the recovery. */}
+          <Button type="button" variant="outline" onClick={resetAndClose} disabled={loading}>Cancel</Button>
+          <Button type="button" onClick={handleUpload} disabled={!canUpload || loading}>
             {loading ? 'Importing…' : 'Import'}
           </Button>
         </div>

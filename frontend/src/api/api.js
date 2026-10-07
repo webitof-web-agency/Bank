@@ -218,6 +218,17 @@ export const api = {
     dashboard: (token) => request('/banking/dashboard', { token, skipCache: true }),
     getTransactionCatalog: (token) => request('/banking/transactions/catalog', { token, skipCache: true }),
     getLookups: (token) => request('/banking/lookups', { token, skipCache: true }),
+    // Demand Entry: demand list header + member component lines.
+    demandEntry: {
+      list: (token, query = {}) => request(`/banking/demand-entry${buildQuery(query)}`, { token, skipCache: true }),
+      get: (token, id) => request(`/banking/demand-entry/${id}`, { token, skipCache: true }),
+      members: (token, branchCode) => request(`/banking/demand-entry/members${buildQuery({ branchCode })}`, { token, skipCache: true }),
+      create: (token, payload, query = {}) => request(`/banking/demand-entry${buildQuery(query)}`, { method: 'POST', token, body: payload }),
+      update: (token, id, payload, query = {}) => request(`/banking/demand-entry/${id}${buildQuery(query)}`, { method: 'PUT', token, body: payload }),
+      remove: (token, id) => request(`/banking/demand-entry/${id}`, { method: 'DELETE', token })
+    },
+    // Recovery -> Add From Demand List: pending demand lines of one branch/month.
+    recoveryDemandCandidates: (token, query = {}) => request(`/banking/transactions/recovery/demand-candidates${buildQuery(query)}`, { token, skipCache: true }),
     listTransactionVouchers: (token, query = {}) => request(`/banking/transactions/vouchers${buildQuery(query)}`, { token, skipCache: true }),
     getNextVoucherNo: (token, branchCode = '') => request(`/banking/transactions/vouchers/next?branchCode=${encodeURIComponent(branchCode)}`, { token, skipCache: true }),
     getTransactionVoucher: (token, id) => request(`/banking/transactions/vouchers/${id}`, { token, skipCache: true }),

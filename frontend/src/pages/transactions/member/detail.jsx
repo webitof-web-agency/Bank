@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Edit2, FileText, Layers3, RotateCcw, Sparkles, ShieldCheck, Trash2 } from 'lucide-react';
+import { ArrowLeft, Edit2, FileText, Layers3, Sparkles, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../api/api';
 import { Button } from '../../../components/ui/Button';
@@ -32,20 +32,6 @@ export function DetailRow({ label, value }) {
       <div className="text-[13px] font-medium text-slate-500">{label}</div>
       <div className="text-[14px] font-medium text-slate-900">{value || 'ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â'}</div>
     </div>
-  );
-}
-
-export function StatusBadge({ status = '' }) {
-  const value = String(status || '').toLowerCase();
-  const className =
-    value === 'posted' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' :
-    value === 'reversed' ? 'border-rose-200 bg-rose-50 text-rose-700' :
-    value === 'draft' ? 'border-amber-200 bg-amber-50 text-amber-700' :
-    'border-slate-200 bg-slate-50 text-slate-700';
-  return (
-    <span className={`inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-medium ${className}`}>
-      {status || 'Draft'}
-    </span>
   );
 }
 
@@ -154,7 +140,6 @@ export function MemberTransactionDetailPage({
   const [editorOpen, setEditorOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState(null);
-  const [reverseOpen, setReverseOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
   const [removedDocumentIds, setRemovedDocumentIds] = useState([]);
@@ -162,7 +147,6 @@ export function MemberTransactionDetailPage({
   const section = useMemo(() => catalog.find((item) => item.key === sectionKey) || null, [catalog, sectionKey]);
   const sectionItems = useMemo(() => getSectionItems(catalog, sectionKey), [catalog, sectionKey]);
   const canWrite = hasPermission('transactions.write');
-  const canReverse = hasPermission('transactions.reverse');
 
   useEffect(() => {
     let mounted = true;
@@ -235,19 +219,6 @@ export function MemberTransactionDetailPage({
     }
   }
 
-  async function confirmReverse() {
-    if (!record) return;
-    try {
-      const response = await api.banking.reverseTransactionVoucher(token, record.id);
-      setRecord(response.data || response);
-      toast.success('Transaction reversed');
-    } catch (error) {
-      toast.error(error.message || 'Unable to reverse transaction');
-    } finally {
-      setReverseOpen(false);
-    }
-  }
-
   async function confirmDelete() {
     if (!record) return;
     try {
@@ -270,15 +241,14 @@ export function MemberTransactionDetailPage({
       ['Transaction Type', record.transactionType],
       ['Party Type', record.partyType],
       ['Party', getTransactionPartyLabel(record.partyCode, lookups, record.partyType)],
-      ['Settlement', getTransactionLedgerLabel(record.details?.settlementAccount || record.details?.ledgerTarget || record.details?.depositIn || record.details?.fromAccount || '', lookups)],
+      ['Settlement', getTransactionLedgerLabel(record.details?.ledgerTarget || record.details?.depositIn || record.details?.fromAccount || '', lookups)],
       ['Branch', record.branchCode],
       ['FY Code', record.fyCode],
       ['Amount', formatTransactionAmount(record.amount ?? 0)],
-      ['Status', record.status],
       ['Mode', record.mode],
       ['Reference No', record.referenceNo],
-      ['Instrument No', record.instrumentNo],
-      ['Instrument Date', record.instrumentDate],
+      ['Cheque No', record.instrumentNo],
+      ['Cheque Date', record.instrumentDate],
       ['Approved By', record.approvedBy],
       ['Created By', record.createdBy],
       ['Narration', record.narration]
@@ -341,7 +311,7 @@ export function MemberTransactionDetailPage({
   const memberBranch = memberRecord?.branchName || memberRecord?.branch || memberRecord?.branchCode || record.branchCode || '-';
   const memberDesignation = memberRecord?.designation || "-";
   const settlementLabel = getTransactionLedgerLabel(
-    record.details?.settlementAccount || record.details?.ledgerTarget || record.details?.depositIn || record.details?.fromAccount || "",
+    record.details?.ledgerTarget || record.details?.depositIn || record.details?.fromAccount || "",
     lookups
   );
   const mainAmount = formatTransactionAmount(record.amount ?? 0);
@@ -412,8 +382,6 @@ export function MemberTransactionDetailPage({
     { label: 'Docs', value: String(documentCount) }
   ] : isInsurance ? [
     { label: 'Amount', value: mainAmount },
-    { label: 'Policy No', value: details.policyNo || '—' },
-    { label: 'Claim Ref', value: details.claimRef || '—' },
     { label: 'Docs', value: String(documentCount) }
   ] : isSsa ? [
     { label: 'Amount', value: mainAmount },
@@ -460,12 +428,6 @@ export function MemberTransactionDetailPage({
                 <Button type="button" variant="outline" onClick={() => window.print()} className="gap-2 border-slate-200 shadow-sm rounded-[var(--radius-input,0.75rem)] hover:bg-slate-50 text-slate-700 font-semibold text-sm h-10 px-4">
                   Print
                 </Button>
-                {canReverse && String(record.status || '').toLowerCase() === 'posted' ? (
-                  <Button type="button" variant="outline" onClick={() => setReverseOpen(true)} className="gap-2 border-slate-200 shadow-sm rounded-[var(--radius-input,0.75rem)] hover:bg-slate-50 text-slate-700 font-semibold text-sm h-10 px-4">
-                    <RotateCcw size={16} />
-                    Reverse
-                  </Button>
-                ) : null}
                 {canWrite ? (
                   <Button type="button" variant="outline" onClick={openEditor} className="gap-2 border-slate-200 shadow-sm rounded-[var(--radius-input,0.75rem)] hover:bg-slate-50 text-slate-700 font-semibold text-sm h-10 px-4 bg-slate-50">
                     <Edit2 size={16} />Edit
@@ -541,10 +503,8 @@ export function MemberTransactionDetailPage({
                 <DetailRow label="Transaction Type" value={record.transactionType} />
                 <DetailRow label="Party Type" value={record.partyType} />
                 <DetailRow label="Member Name" value={partyLabel} />
-                <DetailRow label="Settlement A/c" value={settlementLabel} />
                 <DetailRow label="Branch" value={record.branchCode} />
                 <DetailRow label="FY Code" value={record.fyCode} />
-                <DetailRow label="Status" value={<StatusBadge status={record.status} />} />
               </>
             ) : isDeposit ? (
               <>
@@ -553,10 +513,8 @@ export function MemberTransactionDetailPage({
                 <DetailRow label="Transaction Type" value={record.transactionType} />
                 <DetailRow label="Party Type" value={record.partyType} />
                 <DetailRow label="Member Name" value={partyLabel} />
-                <DetailRow label="Settlement A/c" value={settlementLabel} />
                 <DetailRow label="Branch" value={record.branchCode} />
                 <DetailRow label="FY Code" value={record.fyCode} />
-                <DetailRow label="Status" value={<StatusBadge status={record.status} />} />
               </>
             ) : isInsurance ? (
               <>
@@ -565,10 +523,8 @@ export function MemberTransactionDetailPage({
                 <DetailRow label="Transaction Type" value={record.transactionType} />
                 <DetailRow label="Party Type" value={record.partyType} />
                 <DetailRow label="Member Name" value={partyLabel} />
-                <DetailRow label="Settlement A/c" value={settlementLabel} />
                 <DetailRow label="Branch" value={record.branchCode} />
                 <DetailRow label="FY Code" value={record.fyCode} />
-                <DetailRow label="Status" value={<StatusBadge status={record.status} />} />
               </>
             ) : (
               <>
@@ -578,10 +534,8 @@ export function MemberTransactionDetailPage({
                 <DetailRow label="Transaction Type" value={record.transactionType} />
                 <DetailRow label="Party Type" value={record.partyType} />
                 <DetailRow label="Member Name" value={partyLabel} />
-                <DetailRow label="Settlement A/c" value={settlementLabel} />
                 <DetailRow label="Branch" value={record.branchCode} />
                 <DetailRow label="FY Code" value={record.fyCode} />
-                <DetailRow label="Status" value={<StatusBadge status={record.status} />} />
               </>
             )}
           </div>
@@ -603,17 +557,15 @@ export function MemberTransactionDetailPage({
                 <DetailRow label="Fixed Settlement" value={fixedSettlementLabel} />
                 <DetailRow label="Send SMS" value={smsLabel} />
                 <DetailRow label="Narration" value={record.narration || details.narration || '-'} />
-                <DetailRow label="Status" value={<StatusBadge status={record.status} />} />
               </>
             ) : isRecovery ? (
               <>
                 <DetailRow label="Amount" value={mainAmount} />
                 <DetailRow label="Mode" value={formatTransactionModeLabel(record.mode)} />
-                <DetailRow label="Instrument No" value={instrumentNoLabel} />
-                <DetailRow label="Instrument Date" value={instrumentDateLabel} />
+                <DetailRow label="Cheque No" value={instrumentNoLabel} />
+                <DetailRow label="Cheque Date" value={instrumentDateLabel} />
                 <DetailRow label="Settlement Account" value={details.settlementAccount || '-'} />
                 <DetailRow label="Narration" value={record.narration || details.narration || '-'} />
-                <DetailRow label="Status" value={<StatusBadge status={record.status} />} />
               </>
             ) : isLoan ? (
               <>
@@ -622,8 +574,8 @@ export function MemberTransactionDetailPage({
                 <DetailRow label="LAD Amount" value={formatTransactionAmount(details.components?.lad || 0)} />
                 <DetailRow label="Total Amount" value={mainAmount} />
                 <DetailRow label="Mode" value={formatTransactionModeLabel(record.mode)} />
-                <DetailRow label="Instrument No" value={instrumentNoLabel} />
-                <DetailRow label="Instrument Date" value={instrumentDateLabel} />
+                <DetailRow label="Cheque No" value={instrumentNoLabel} />
+                <DetailRow label="Cheque Date" value={instrumentDateLabel} />
                 <DetailRow label="Narration" value={record.narration || details.narration || '-'} />
               </>
             ) : isDeposit ? (
@@ -631,19 +583,17 @@ export function MemberTransactionDetailPage({
                 <DetailRow label="Settlement Account" value={details.settlementAccount || '-'} />
                 <DetailRow label="Deposit Amount" value={mainAmount} />
                 <DetailRow label="Mode" value={formatTransactionModeLabel(record.mode)} />
-                <DetailRow label="Instrument No" value={instrumentNoLabel} />
-                <DetailRow label="Instrument Date" value={instrumentDateLabel} />
+                <DetailRow label="Cheque No" value={instrumentNoLabel} />
+                <DetailRow label="Cheque Date" value={instrumentDateLabel} />
                 <DetailRow label="Narration" value={record.narration || details.narration || '-'} />
               </>
             ) : isInsurance ? (
               <>
                 <DetailRow label="Settlement Account" value={details.settlementAccount || '-'} />
                 <DetailRow label="Premium Amount" value={mainAmount} />
-                <DetailRow label="Policy No" value={details.policyNo || '-'} />
-                <DetailRow label="Claim Ref" value={details.claimRef || '-'} />
                 <DetailRow label="Mode" value={formatTransactionModeLabel(record.mode)} />
-                <DetailRow label="Instrument No" value={instrumentNoLabel} />
-                <DetailRow label="Instrument Date" value={instrumentDateLabel} />
+                <DetailRow label="Cheque No" value={instrumentNoLabel} />
+                <DetailRow label="Cheque Date" value={instrumentDateLabel} />
                 <DetailRow label="Narration" value={record.narration || details.narration || '-'} />
               </>
             ) : (
@@ -651,8 +601,8 @@ export function MemberTransactionDetailPage({
                 <DetailRow label="Amount" value={mainAmount} />
                 <DetailRow label="Mode" value={formatTransactionModeLabel(record.mode)} />
                 <DetailRow label="Reference No" value={record.referenceNo} />
-                <DetailRow label="Instrument No" value={record.instrumentNo} />
-                <DetailRow label="Instrument Date" value={record.instrumentDate} />
+                <DetailRow label="Cheque No" value={record.instrumentNo} />
+                <DetailRow label="Cheque Date" value={record.instrumentDate} />
                 <DetailRow label="Approved By" value={record.approvedBy} />
                 <DetailRow label="Created By" value={record.createdBy} />
                 <DetailRow label="Narration" value={record.narration} />
@@ -683,14 +633,13 @@ export function MemberTransactionDetailPage({
                 <DetailRow label="Lines" value={String(recoveryTableRows.length || 0)} />
                 <DetailRow label="Mode" value={formatTransactionModeLabel(record.mode)} />
                 <DetailRow label="Instrument" value={instrumentNoLabel} />
-                <DetailRow label="Instrument Date" value={instrumentDateLabel} />
-                <DetailRow label="Settlement" value={details.settlementAccount || '-'} />
+                <DetailRow label="Cheque Date" value={instrumentDateLabel} />
               </div>
             </Card>
 
             <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
               <SimpleTable
-                headers={['Member', 'Share', 'Cmp. Dep.', 'SSA', 'Loan', 'LAD', 'Ins.', 'Other', 'Total']}
+                headers={['Member', 'Demand', 'Share', 'Cmp. Dep.', 'SSA', 'Loan', 'LAD', 'Ins.', 'Other', 'Total']}
                 rows={recoveryTableRows.map((line, index) => {
                   const heads = line?.heads || {};
                   const share = Number(heads.share || 0);
@@ -699,12 +648,14 @@ export function MemberTransactionDetailPage({
                   const loan = Number(heads.loan || 0);
                   const lad = Number(heads.lad || 0);
                   const ins = Number(heads.ins || heads.insurance || 0);
-                  const other = Number(heads.other || 0);
-                  const total = share + cd + ssa + loan + lad + ins + other;
+                  // Admission fee and suspense (older vouchers kept one "other").
+                  const other = Number(heads.other || 0) + Number(heads.admfee || 0) + Number(heads.suspense || 0);
+                  const total = Math.round((share + cd + ssa + loan + lad + ins + other) * 100) / 100;
                   return {
-                    key: `${line.member || line.memberCode || index}`,
+                    key: `${line.member || line.memberCode || index}-${index}`,
                     cells: [
-                      line.member || line.memberCode || '-',
+                      `${line.member || line.memberCode || '-'}${line.memberName ? ` ${line.memberName}` : ''}`,
+                      line.demandListNo ? `#${line.demandListNo}` : (line.source === 'EXCEL' ? 'Excel' : '-'),
                       formatTransactionAmount(share),
                       formatTransactionAmount(cd),
                       formatTransactionAmount(ssa),
@@ -791,7 +742,6 @@ export function MemberTransactionDetailPage({
             <div className="divide-y divide-slate-100 px-6">
               <DetailRow label="Journal Lines" value={journalLines.length} />
               <DetailRow label="Main Amount" value={mainAmount} />
-              <DetailRow label="Posted Status" value={<StatusBadge status={record.status} />} />
                 <DetailRow label="Reversal Of" value={record.reversalOf || '-'} />
             </div>
           </Card>
@@ -848,7 +798,6 @@ export function MemberTransactionDetailPage({
             <div className="divide-y divide-slate-100 px-6">
               <DetailRow label="Voucher No" value={record.voucherNo} />
               <DetailRow label="Category" value={record.voucherCategory} />
-              <DetailRow label="Status" value={<StatusBadge status={record.status} />} />
                 <DetailRow label="Created By" value={record.createdBy || '-'} />
                 <DetailRow label="Approved By" value={record.approvedBy || '-'} />
               <DetailRow label="Party Type" value={record.partyType} />
@@ -911,16 +860,6 @@ export function MemberTransactionDetailPage({
       </Modal>
 
       <ConfirmDialog
-        open={reverseOpen}
-        title="Reverse transaction"
-        description={`Reverse ${record.voucherNo || 'this transaction'}?`}
-        confirmLabel="Reverse"
-        tone="outline"
-        onConfirm={confirmReverse}
-        onClose={() => setReverseOpen(false)}
-      />
-
-      <ConfirmDialog
         open={deleteOpen}
         title="Delete transaction"
         description={`Delete ${record.voucherNo || 'this transaction'}?`}
@@ -935,16 +874,4 @@ export function MemberTransactionDetailPage({
 }
 
 export default MemberTransactionDetailPage;
-
-
-
-
-
-
-
-
-
-
-
-
 

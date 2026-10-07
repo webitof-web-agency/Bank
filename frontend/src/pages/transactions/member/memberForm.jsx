@@ -1,9 +1,17 @@
 import { useMemo, useRef, useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '../../../context/AuthContext';
 import { api } from '../../../api/api';
 import { Input, Textarea } from '../../../components/ui/Input';
 import { Select as CustomSelect } from '../../../components/ui/Select';
 import { getMemberDocumentDefinitions } from './memberDocumentUtils';
+import { Modal } from '../../../components/ui/Modal';
+import { useFY } from '../../../context/FYContext';
+import UploadModal from './recovery-import/UploadModal';
+import {
+  RECOVERY_HEADS, addDemandLines, addImportRows, draftTotals, emptyHeads, lineTotal, manualLine,
+  normalizeDraftLines, removeLine, updateLineHeads
+} from './recoveryDraft';
 
 function deepClone(value) {
   return JSON.parse(JSON.stringify(value ?? {}));
@@ -131,174 +139,377 @@ function LookupSelect({ label, value, onChange, groups = [], placeholder = 'Sele
   );
 }
 
-const RECOVERY_HEADS = [
-  ['share', 'Share'],
-  ['cd', 'Cmp. Dep.'],
-  ['ssa', 'SSA'],
-  ['loan', 'Loan'],
-  ['lad', 'LAD'],
-  ['ins', 'Ins.'],
-  ['other', 'Other']
-];
+const MONTH_OPTIONS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+  .map((label, index) => ({ label, value: String(index + 1) }));
 
-function getRowHeads(row = {}) {
-  const heads = row?.heads || {};
-  return {
-    share: heads.share ?? '',
-    cd: heads.cd ?? heads.compulsoryDeposit ?? '',
-    ssa: heads.ssa ?? '',
-    loan: heads.loan ?? '',
-    lad: heads.lad ?? '',
-    ins: heads.ins ?? heads.insurance ?? '',
-    other: heads.other ?? (Number(heads.suspense || 0) + Number(heads.admfee || 0) || '')
-  };
+const SOURCE_LABELS = { DEMAND: 'Demand', EXCEL: 'Excel', MANUAL: 'Manual' };
+
+function formatHead(value) {
+  const number = Number(value || 0);
+  return number ? number.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '-';
 }
 
-function getRecoveryRowTotal(row = {}) {
-  const heads = getRowHeads(row);
-  return RECOVERY_HEADS.reduce((sum, [key]) => sum + Number(heads[key] || 0), 0);
-}
+// Add Record / Edit: one member line. Editing keeps the line's demand or
+// Excel provenance; only the amounts change, and only in the draft.
+function RecoveryMemberDialog({ state, onClose, onSave, memberGroups = [], lookups = {} }) {
+  const [member, setMember] = useState(state?.member || '');
+  const [heads, setHeads] = useState({ ...emptyHeads(), ...(state?.heads || {}) });
+  const editing = state?.index != null;
+  const memberRecord = getMemberRecord(lookups, member);
+  const total = lineTotal({ heads });
+  if (!state) return null;
 
-function normalizeRecoveryRows(rows = []) {
-  return (Array.isArray(rows) ? rows : []).map((row) => ({
-    ...(row || {}),
-    heads: getRowHeads(row)
-  }));
-}
-
-function RecoveryLinesEditor({ rows = [], onChange, memberGroups = [], demandRows = [] }) {
-  const safeRows = Array.isArray(rows) ? rows : [];
-  const [draftLine, setDraftLine] = useState({
-    member: '',
-    heads: { suspense: '', admfee: '', share: '', cd: '', ssa: '', loan: '', lad: '', ins: '' }
-  });
-
-  function updateDraftHead(key, value) {
-    setDraftLine((curr) => ({ ...curr, heads: { ...curr.heads, [key]: value } }));
-  }
-
-  function addRow() {
-    if (!draftLine.member) {
-      alert("Please select a member");
+  function submit() {
+    if (!member) {
+      alert('Select a member.');
       return;
     }
-    onChange([...safeRows, { member: draftLine.member, heads: { ...draftLine.heads } }]);
-    setDraftLine({ member: '', heads: { suspense: '', admfee: '', share: '', cd: '', ssa: '', loan: '', lad: '', ins: '' } });
-  }
-
-  function addFromDemandList() {
-    const demand = Array.isArray(demandRows) ? demandRows.find((item) => String(item?.memberCode || '').trim()) || demandRows[0] : null;
-    if (demand) {
-      onChange([...safeRows, {
-        member: demand.memberCode || '',
-        heads: { other: demand.pending ?? '' }
-      }]);
+    if (total <= 0) {
+      alert('Enter at least one recovered amount.');
+      return;
     }
-  }
-
-  function removeRow(index) {
-    onChange(safeRows.filter((_, rowIndex) => rowIndex !== index));
+    onSave({ member, memberRecord, heads });
   }
 
   return (
-    <div className="space-y-3">
+    <Modal
+      open
+      title={editing ? `Edit Recovery — ${member}` : 'Add Recovery Record'}
+      onClose={onClose}
+      width="min(820px, 96vw)"
+      footer={(
+        <div className="flex w-full items-center justify-between gap-3">
+          <span className="text-sm font-semibold text-slate-700">Member total: {formatHead(total)}</span>
+          <div className="flex gap-2">
+            <button type="button" onClick={onClose} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Cancel</button>
+            <button type="button" onClick={submit} className="rounded-lg bg-[var(--primary,#2563eb)] px-4 py-2 text-sm font-medium text-white">{editing ? 'Update' : 'Add'}</button>
+          </div>
+        </div>
+      )}
+    >
       <div className="space-y-3">
-        <SectionTitle>Add Recovery Line</SectionTitle>
         <div className="grid gap-3 md:grid-cols-4">
-          <div className="space-y-1.5 md:col-span-2">
-            <LookupSelect
-              label="Member Code *"
-              value={draftLine.member}
-              onChange={(val) => setDraftLine((curr) => ({ ...curr, member: val }))}
-              placeholder="Search member..."
-              groups={memberGroups}
+          <div className="md:col-span-1">
+            <LookupSelect label="Member Code" required value={member} onChange={setMember} placeholder="Search member..." groups={memberGroups} disabled={editing} />
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel>Member Name</FieldLabel>
+            <Input value={memberRecord?.name || state.memberName || ''} readOnly placeholder="—" />
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel>Branch</FieldLabel>
+            <Input value={getBranchLabel(lookups, memberRecord?.branchCode) || state.branchName || ''} readOnly placeholder="—" />
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel>Designation</FieldLabel>
+            <Input value={getDesignationLabel(memberRecord) || state.designation || ''} readOnly placeholder="—" />
+          </div>
+        </div>
+        {state.reviewNote ? <p className="rounded-lg bg-amber-50 px-3 py-2 text-[13px] text-amber-800">{state.reviewNote}</p> : null}
+        <div className="grid gap-3 md:grid-cols-4">
+          {RECOVERY_FIELDS.map(([key, label]) => (
+            <div key={key} className="space-y-1.5">
+              <FieldLabel>{label}</FieldLabel>
+              <Input type="number" min="0" step="0.01" value={heads[key]} onChange={(e) => setHeads((curr) => ({ ...curr, [key]: e.target.value }))} placeholder="0" />
+            </div>
+          ))}
+        </div>
+        <p className="text-[12px] text-slate-500">Insurance Premium and Suspense have no confirmed posting rule yet: a recovery with either amount will not save.</p>
+      </div>
+    </Modal>
+  );
+}
+
+const RECOVERY_FIELDS = [
+  ['share', 'Share'],
+  ['cd', 'Compulsory Deposit'],
+  ['ssa', 'Special Saving A/C'],
+  ['loan', 'Regular Loan'],
+  ['lad', 'Loan Against Deposit'],
+  ['ins', 'Insurance Premium'],
+  ['admfee', 'Admission Fee'],
+  ['suspense', 'Suspense A/C']
+];
+
+// Add From Demand List: Branch + Month + Year -> that month's pending demand
+// lines; ticked lines are copied into the draft. Demand stays pending until
+// the recovery is saved.
+function DemandPickerDialog({ open, onClose, onAdd, lookups = {}, voucherDate = '', existingIds = [] }) {
+  const { token } = useAuth();
+  const { activeFY } = useFY();
+  const date = String(voucherDate || '').slice(0, 10);
+  const [branchCode, setBranchCode] = useState('');
+  const [month, setMonth] = useState(date ? String(Number(date.slice(5, 7))) : '');
+  const [year, setYear] = useState(date ? date.slice(0, 4) : '');
+  const [rows, setRows] = useState([]);
+  const [selected, setSelected] = useState(() => new Set());
+  const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const branches = Array.isArray(lookups.branches) ? lookups.branches : [];
+  const already = new Set(existingIds);
+  if (!open) return null;
+
+  async function loadDemand() {
+    if (!month || !year) {
+      alert('Choose the demand month and year.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const response = await api.banking.recoveryDemandCandidates(token, {
+        branchCode, month, year, fyStart: activeFY?.start || '', fyEnd: activeFY?.end || ''
+      });
+      const next = Array.isArray(response.data) ? response.data : [];
+      setRows(next);
+      setSelected(new Set(next.filter((row) => !already.has(row.demandLineId)).map((row) => row.demandLineId)));
+      setLoaded(true);
+    } catch (error) {
+      alert(error.message || 'Unable to load demand');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function toggle(id) {
+    setSelected((curr) => {
+      const next = new Set(curr);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  const selectable = rows.filter((row) => !already.has(row.demandLineId));
+  const allSelected = selectable.length > 0 && selectable.every((row) => selected.has(row.demandLineId));
+
+  return (
+    <Modal
+      open
+      title="Add From Demand List"
+      subtitle="Pending demand of one branch and month. Copied lines can be corrected before Save."
+      onClose={onClose}
+      width="min(1200px, 97vw)"
+      footer={(
+        <div className="flex w-full items-center justify-between gap-3">
+          <span className="text-sm text-slate-600">{selected.size} selected</span>
+          <div className="flex gap-2">
+            <button type="button" onClick={onClose} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Cancel</button>
+            <button type="button" disabled={!selected.size} onClick={() => onAdd(rows.filter((row) => selected.has(row.demandLineId)))} className="rounded-lg bg-[var(--primary,#2563eb)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Add Selected to Recovery</button>
+          </div>
+        </div>
+      )}
+    >
+      <div className="space-y-3">
+        <div className="grid gap-3 md:grid-cols-[2fr_1fr_1fr_auto] md:items-end">
+          <div className="space-y-1.5">
+            <FieldLabel>Branch</FieldLabel>
+            <CustomSelect
+              value={branchCode}
+              onChange={setBranchCode}
+              options={[{ label: 'All branches', value: '' }, ...branches.map((branch) => ({ label: `${branch.code} - ${branch.place || branch.label || ''}`, value: branch.code }))]}
+              searchable
             />
           </div>
           <div className="space-y-1.5">
-            <FieldLabel>Suspense A/C</FieldLabel>
-            <Input type="number" min="0" step="0.01" value={draftLine.heads.suspense} onChange={(e) => updateDraftHead('suspense', e.target.value)} placeholder="0" />
+            <FieldLabel required>Month</FieldLabel>
+            <CustomSelect value={month} onChange={setMonth} options={MONTH_OPTIONS} placeholder="Month" searchable={false} />
           </div>
           <div className="space-y-1.5">
-            <FieldLabel>Admission Fee</FieldLabel>
-            <Input type="number" min="0" step="0.01" value={draftLine.heads.admfee} onChange={(e) => updateDraftHead('admfee', e.target.value)} placeholder="0" />
+            <FieldLabel required>Year</FieldLabel>
+            <Input type="number" value={year} onChange={(e) => setYear(e.target.value)} placeholder="2026" />
           </div>
-          <div className="space-y-1.5">
-            <FieldLabel>Share</FieldLabel>
-            <Input type="number" min="0" step="0.01" value={draftLine.heads.share} onChange={(e) => updateDraftHead('share', e.target.value)} placeholder="0" />
-          </div>
-          <div className="space-y-1.5">
-            <FieldLabel>Compulsory Deposit</FieldLabel>
-            <Input type="number" min="0" step="0.01" value={draftLine.heads.cd} onChange={(e) => updateDraftHead('cd', e.target.value)} placeholder="0" />
-          </div>
-          <div className="space-y-1.5">
-            <FieldLabel>Special Saving A/C</FieldLabel>
-            <Input type="number" min="0" step="0.01" value={draftLine.heads.ssa} onChange={(e) => updateDraftHead('ssa', e.target.value)} placeholder="0" />
-          </div>
-          <div className="space-y-1.5">
-            <FieldLabel>Regular Loan</FieldLabel>
-            <Input type="number" min="0" step="0.01" value={draftLine.heads.loan} onChange={(e) => updateDraftHead('loan', e.target.value)} placeholder="0" />
-          </div>
-          <div className="space-y-1.5">
-            <FieldLabel>Loan Against Deposit</FieldLabel>
-            <Input type="number" min="0" step="0.01" value={draftLine.heads.lad} onChange={(e) => updateDraftHead('lad', e.target.value)} placeholder="0" />
-          </div>
-          <div className="space-y-1.5">
-            <FieldLabel>Insurance Premium</FieldLabel>
-            <Input type="number" min="0" step="0.01" value={draftLine.heads.ins} onChange={(e) => updateDraftHead('ins', e.target.value)} placeholder="0" />
-          </div>
-        </div>
-        <div className="flex justify-end gap-2 pt-2">
-          <button type="button" onClick={addFromDemandList} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-            Add From Demand List
-          </button>
-          <button type="button" onClick={addRow} className="rounded-lg bg-[var(--primary,#2563eb)] px-4 py-2 text-sm font-medium text-white hover:bg-[color-mix(in_srgb,var(--primary)_85%,black)]">
-            + Add Line
+          <button type="button" onClick={loadDemand} disabled={loading} className="h-10 rounded-lg bg-[var(--primary,#2563eb)] px-4 text-sm font-medium text-white disabled:opacity-50">
+            {loading ? 'Loading...' : 'Load Demand'}
           </button>
         </div>
-      </div>
 
-      <div className="space-y-2">
-        <SectionTitle>Recovery Lines</SectionTitle>
-        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-          <table className="min-w-full text-left text-[13px]">
-            <thead className="bg-slate-50 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+        <div className="overflow-x-auto rounded-xl border border-slate-200">
+          <table className="min-w-full text-left text-[12px]">
+            <thead className="bg-slate-50 text-[11px] font-semibold uppercase tracking-[0.06em] text-slate-500">
               <tr>
-                <th className="px-3 py-3">Member</th>
-                {RECOVERY_HEADS.map(([_, label]) => <th key={label} className="px-3 py-3">{label}</th>)}
-                <th className="px-3 py-3">Total</th>
-                <th className="px-3 py-3"></th>
+                <th className="px-2 py-2"><input type="checkbox" checked={allSelected} onChange={() => setSelected(allSelected ? new Set() : new Set(selectable.map((row) => row.demandLineId)))} aria-label="Select all" /></th>
+                <th className="px-2 py-2">Demand No / Date</th>
+                <th className="px-2 py-2">Month</th>
+                <th className="px-2 py-2">Member</th>
+                <th className="px-2 py-2">Branch</th>
+                <th className="px-2 py-2">Designation</th>
+                <th className="px-2 py-2 text-right">Cmp. Dep.</th>
+                <th className="px-2 py-2 text-right">SSA</th>
+                <th className="px-2 py-2 text-right">Reg. Loan</th>
+                <th className="px-2 py-2 text-right">LAD</th>
+                <th className="px-2 py-2 text-right">Premium / Other</th>
+                <th className="px-2 py-2 text-right">Total</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 bg-white">
-              {safeRows.length ? safeRows.map((row, index) => {
-                const heads = getRowHeads(row);
+            <tbody className="divide-y divide-slate-100">
+              {rows.map((row) => {
+                const inDraft = already.has(row.demandLineId);
                 return (
-                  <tr key={`recovery-row-${index}`}>
-                    <td className="px-3 py-3 align-top font-medium text-slate-700">{row.member}</td>
-                    {RECOVERY_HEADS.map(([key]) => (
-                      <td key={`${index}-${key}`} className="px-3 py-3 align-top text-slate-600">
-                        {heads[key] || '-'}
-                      </td>
-                    ))}
-                    <td className="px-3 py-3 align-top font-semibold text-slate-700">{getRecoveryRowTotal(row) || 0}</td>
-                    <td className="px-3 py-3 align-top text-right">
-                      <button type="button" onClick={() => removeRow(index)} className="text-rose-500 hover:text-rose-700 font-medium">
-                        Remove
-                      </button>
-                    </td>
+                  <tr key={row.demandLineId} className={inDraft ? 'bg-slate-50 text-slate-400' : ''}>
+                    <td className="px-2 py-1.5"><input type="checkbox" disabled={inDraft} checked={selected.has(row.demandLineId)} onChange={() => toggle(row.demandLineId)} aria-label={`Select ${row.memberCode}`} /></td>
+                    <td className="px-2 py-1.5">{row.demandListNo}<div className="text-[11px] text-slate-500">{row.demandListDate}</div></td>
+                    <td className="px-2 py-1.5">{String(row.month).padStart(2, '0')}/{row.year}</td>
+                    <td className="px-2 py-1.5"><span className="font-medium">{row.memberCode}</span> {row.memberName}{inDraft ? <span className="ml-1 text-[11px]">(in recovery)</span> : null}</td>
+                    <td className="px-2 py-1.5">{row.branchName}</td>
+                    <td className="px-2 py-1.5">{row.designation}</td>
+                    <td className="px-2 py-1.5 text-right">{formatHead(row.compulsoryDeposit)}</td>
+                    <td className="px-2 py-1.5 text-right">{formatHead(row.specialDeposit)}</td>
+                    <td className="px-2 py-1.5 text-right">{formatHead(row.regularLoan)}</td>
+                    <td className="px-2 py-1.5 text-right">{formatHead(row.loanAgainstDeposit)}</td>
+                    <td className="px-2 py-1.5 text-right">{formatHead(Number(row.insurancePremium || 0) + Number(row.other || 0))}</td>
+                    <td className="px-2 py-1.5 text-right font-semibold">{formatHead(row.totalAmount)}</td>
                   </tr>
                 );
-              }) : (
-                <tr>
-                  <td colSpan={RECOVERY_HEADS.length + 3} className="px-3 py-6 text-center text-slate-500">
-                    No lines added yet
-                  </td>
-                </tr>
-              )}
+              })}
+              {!rows.length ? (
+                <tr><td colSpan={12} className="px-3 py-6 text-center text-slate-500">{loaded ? 'No pending demand for this branch and month.' : 'Choose a branch, month and year, then Load Demand.'}</td></tr>
+              ) : null}
             </tbody>
           </table>
         </div>
       </div>
+    </Modal>
+  );
+}
+
+// The Recovery draft grid. Rows come from Demand List, Excel or Add Record;
+// each can be edited or removed before Save. Nothing here saves anything.
+function RecoveryLinesEditor({ rows = [], onChange, memberGroups = [], lookups = {}, voucherDate = '' }) {
+  const { token } = useAuth();
+  const safeRows = Array.isArray(rows) ? rows : [];
+  const [memberDialog, setMemberDialog] = useState(null);
+  const [demandOpen, setDemandOpen] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [notice, setNotice] = useState('');
+  const totals = draftTotals(safeRows);
+  const members = Array.isArray(lookups.members) ? lookups.members : [];
+  const toReview = safeRows.filter((row) => row.needsReview).length;
+
+  function saveMemberLine({ member, memberRecord, heads }) {
+    if (memberDialog.index != null) {
+      onChange(updateLineHeads(safeRows, memberDialog.index, heads));
+    } else {
+      onChange([...safeRows, manualLine({
+        ...(memberRecord || { code: member }),
+        branchName: getBranchLabel(lookups, memberRecord?.branchCode),
+        designation: getDesignationLabel(memberRecord)
+      }, heads)]);
+    }
+    setMemberDialog(null);
+  }
+
+  function addDemand(candidates) {
+    const result = addDemandLines(safeRows, candidates);
+    onChange(result.lines);
+    setNotice(`${result.added} demand line(s) added${result.skipped ? `, ${result.skipped} already in this recovery` : ''}. Demand stays pending until you Save.`);
+    setDemandOpen(false);
+  }
+
+  async function addFromExcel(batch) {
+    setUploadOpen(false);
+    try {
+      const response = await api.recoveryImport.getBatchRows(token, batch.id);
+      const importRows = Array.isArray(response.data?.rows) ? response.data.rows : [];
+      const result = addImportRows(safeRows, importRows, members, batch.id);
+      onChange(result.lines);
+      const rejected = result.rejected.length
+        ? ` ${result.rejected.length} row(s) not added: ${result.rejected.slice(0, 5).map((row) => `row ${row.row} PF ${row.pfNo} (${row.reason})`).join('; ')}${result.rejected.length > 5 ? '…' : ''}`
+        : '';
+      setNotice(`${result.added} Excel row(s) added, ${result.flagged} to review.${rejected}`);
+    } catch (error) {
+      alert(error.message || 'Unable to read the imported rows');
+    }
+  }
+
+  const toolbarButton = 'rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50';
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <SectionTitle subtitle="Load members, correct any wrong amounts, check the totals, then Save.">Member Recovery</SectionTitle>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => setDemandOpen(true)} className={toolbarButton}>Add From Demand List</button>
+          <button type="button" onClick={() => setUploadOpen(true)} className={toolbarButton}>Import Excel</button>
+          <button type="button" onClick={() => setMemberDialog({ index: null, heads: emptyHeads() })} className="rounded-lg bg-[var(--primary,#2563eb)] px-4 py-2 text-sm font-medium text-white">+ Add Record</button>
+        </div>
+      </div>
+      {notice ? <p className="rounded-lg bg-slate-50 px-3 py-2 text-[13px] text-slate-700">{notice}</p> : null}
+      {toReview ? <p className="rounded-lg bg-amber-50 px-3 py-2 text-[13px] text-amber-800">{toReview} row(s) need review — open Edit, correct the amounts and Update.</p> : null}
+
+      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+        <table className="min-w-full text-left text-[12px]">
+          <thead className="bg-slate-50 text-[11px] font-semibold uppercase tracking-[0.06em] text-slate-500">
+            <tr>
+              <th className="px-2 py-2">Member</th>
+              <th className="px-2 py-2">Branch</th>
+              <th className="px-2 py-2">Designation</th>
+              {RECOVERY_HEADS.map(([key, label]) => <th key={key} className="px-2 py-2 text-right">{label}</th>)}
+              <th className="px-2 py-2 text-right">Total</th>
+              <th className="px-2 py-2">Source</th>
+              <th className="px-2 py-2"></th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {safeRows.map((row, index) => {
+              const record = getMemberRecord(lookups, row.member);
+              return (
+                <tr key={`${row.demandLineId || row.importRowId || 'line'}-${index}`} className={row.needsReview ? 'bg-amber-50/60' : ''}>
+                  <td className="px-2 py-1.5"><span className="font-medium text-slate-800">{row.member}</span> <span className="text-slate-600">{row.memberName || record?.name || ''}</span></td>
+                  <td className="px-2 py-1.5 text-slate-600">{row.branchName || getBranchLabel(lookups, record?.branchCode)}</td>
+                  <td className="px-2 py-1.5 text-slate-600">{row.designation || getDesignationLabel(record)}</td>
+                  {RECOVERY_HEADS.map(([key]) => <td key={key} className="px-2 py-1.5 text-right text-slate-700">{formatHead(row.heads?.[key])}</td>)}
+                  <td className="px-2 py-1.5 text-right font-semibold text-slate-800">{formatHead(lineTotal(row))}</td>
+                  <td className="px-2 py-1.5 text-slate-600" title={row.reviewNote || ''}>
+                    {SOURCE_LABELS[row.source] || 'Manual'}{row.demandListNo ? ` #${row.demandListNo}` : ''}{row.needsReview ? ' ⚠' : ''}
+                  </td>
+                  <td className="whitespace-nowrap px-2 py-1.5 text-right">
+                    <button type="button" onClick={() => setMemberDialog({ index, ...row })} className="mr-3 font-medium text-[var(--primary,#2563eb)] hover:underline">Edit</button>
+                    <button type="button" onClick={() => onChange(removeLine(safeRows, index))} className="font-medium text-rose-600 hover:text-rose-700">Remove</button>
+                  </td>
+                </tr>
+              );
+            })}
+            {!safeRows.length ? (
+              <tr><td colSpan={RECOVERY_HEADS.length + 6} className="px-3 py-6 text-center text-slate-500">No members yet — use Add From Demand List, Import Excel or Add Record.</td></tr>
+            ) : null}
+          </tbody>
+          {safeRows.length ? (
+            <tfoot className="bg-slate-50 font-semibold text-slate-800">
+              <tr>
+                <td className="px-2 py-2" colSpan={3}>Total ({safeRows.length} members)</td>
+                {RECOVERY_HEADS.map(([key]) => <td key={key} className="px-2 py-2 text-right">{formatHead(totals.heads[key])}</td>)}
+                <td className="px-2 py-2 text-right">{formatHead(totals.total)}</td>
+                <td colSpan={2}></td>
+              </tr>
+            </tfoot>
+          ) : null}
+        </table>
+      </div>
+
+      {/* The dialogs render outside the voucher <form> (portal): inside it,
+          their buttons or Enter in an amount would submit — i.e. save — the
+          whole recovery while a row is still being edited. */}
+      {memberDialog ? createPortal(
+        // data-modal-portal: clicks here are not "outside" the voucher dialog.
+        <div data-modal-portal="true"><RecoveryMemberDialog
+          key={memberDialog.index ?? 'new'}
+          state={memberDialog}
+          onClose={() => setMemberDialog(null)}
+          onSave={saveMemberLine}
+          memberGroups={memberGroups}
+          lookups={lookups}
+        /></div>,
+        document.body
+      ) : null}
+      {createPortal(<div data-modal-portal="true"><DemandPickerDialog
+        key={demandOpen ? 'open' : 'closed'}
+        open={demandOpen}
+        onClose={() => setDemandOpen(false)}
+        onAdd={addDemand}
+        lookups={lookups}
+        voucherDate={voucherDate}
+        existingIds={safeRows.map((row) => row.demandLineId).filter(Boolean)}
+      /></div>, document.body)}
+      {createPortal(<div data-modal-portal="true"><UploadModal isOpen={uploadOpen} onClose={() => setUploadOpen(false)} onUploadSuccess={addFromExcel} token={token} /></div>, document.body)}
     </div>
   );
 }
@@ -389,16 +600,15 @@ export function MemberTransactionForm({ section, lookups = {}, value, setValue, 
   const paymentOptions = useMemo(() => getPaymentOptions(activeKey), [activeKey]);
   const documentDefs = useMemo(() => getMemberDocumentDefinitions(activeKey), [activeKey]);
   const memberRecord = getMemberRecord(lookups, draft.partyCode);
-  const demandRows = Array.isArray(lookups.demands) ? lookups.demands : [];
   const isLoan = activeKey === 'loan-paid-member';
   const isDeposit = activeKey === 'deposit-paid-member';
   const isInsurance = activeKey === 'insurance-paid-member';
   const isSsa = activeKey === 'ssa-paid-member';
   const isRecovery = activeKey === 'recovery-member';
-  const recoveryRows = normalizeRecoveryRows(Array.isArray(draft.details?.recoveryLines) ? draft.details.recoveryLines : []);
+  const recoveryRows = normalizeDraftLines(draft.details?.recoveryLines);
   const loanAmount = Number(draft.details?.components?.loanAmt || 0);
   const ladAmount = Number(draft.details?.components?.lad || 0);
-  const recoveryTotal = recoveryRows.reduce((sum, row) => sum + getRecoveryRowTotal(row), 0);
+  const recoveryTotal = draftTotals(recoveryRows).total;
   const amountValue = isLoan ? loanAmount + ladAmount : isRecovery ? recoveryTotal : Number(draft.amount || 0);
 
   function updateDetails(path, nextValue) {
@@ -411,7 +621,7 @@ export function MemberTransactionForm({ section, lookups = {}, value, setValue, 
 
   function updateRecoveryRows(nextRows) {
     setDetailsValue(setValue, 'recoveryLines', nextRows);
-    const nextTotal = nextRows.reduce((sum, row) => sum + getRecoveryRowTotal(row), 0);
+    const nextTotal = draftTotals(nextRows).total;
     setRootValue(setValue, 'amount', nextTotal > 0 ? nextTotal : '');
   }
 
@@ -626,14 +836,6 @@ export function MemberTransactionForm({ section, lookups = {}, value, setValue, 
             <Input type="number" min="0" step="0.01" value={draft.amount ?? ''} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" />
           </div>
           <div className="space-y-1.5">
-            <FieldLabel>Policy No.</FieldLabel>
-            <Input value={draft.details?.policyNo || ''} onChange={(event) => updateDetails('policyNo', event.target.value)} placeholder="Insurance policy number" />
-          </div>
-          <div className="space-y-1.5">
-            <FieldLabel>Claim Ref.</FieldLabel>
-            <Input value={draft.details?.claimRef || ''} onChange={(event) => updateDetails('claimRef', event.target.value)} placeholder="Claim or reference number" />
-          </div>
-          <div className="space-y-1.5">
             <FieldLabel required>Payment</FieldLabel>
             <CustomSelect value={draft.mode || ''} onChange={(next) => setRootValue(setValue, 'mode', next)} options={paymentOptions} placeholder="Select mode" searchable={false} />
           </div>
@@ -723,13 +925,13 @@ export function MemberTransactionForm({ section, lookups = {}, value, setValue, 
               <Input value={draft.instrumentNo || ''} onChange={(event) => setRootValue(setValue, 'instrumentNo', event.target.value)} placeholder="DD / cheque number" />
             </div>
             <div className="space-y-1.5">
-              <FieldLabel>Instrument Date</FieldLabel>
+              <FieldLabel>Cheque Date</FieldLabel>
               <Input type="date" value={draft.instrumentDate || ''} onChange={(event) => setRootValue(setValue, 'instrumentDate', event.target.value)} />
             </div>
           </div>
         </div>
 
-        <RecoveryLinesEditor rows={recoveryRows} onChange={updateRecoveryRows} memberGroups={memberGroups} demandRows={demandRows} />
+        <RecoveryLinesEditor rows={recoveryRows} onChange={updateRecoveryRows} memberGroups={memberGroups} lookups={lookups} voucherDate={draft.date} />
 
         <div className="space-y-3">
           <SectionTitle>Total and Narration</SectionTitle>
@@ -738,10 +940,13 @@ export function MemberTransactionForm({ section, lookups = {}, value, setValue, 
               <FieldLabel>Total Recovery Amount</FieldLabel>
               <Input value={amountValue || ''} readOnly />
             </div>
-            <label className="flex items-center gap-2 text-sm text-slate-700 md:col-span-3">
-            <input type="checkbox" checked={!!draft.details?.sms} onChange={(event) => updateDetails('sms', event.target.checked)} />
-              Send SMS to member
-            </label>
+            {/* SMS is not configured (no provider yet): the button is shown
+                disabled and does nothing. Save never depends on it. */}
+            <div className="flex items-end gap-3 md:col-span-2">
+              <button type="button" disabled title="SMS is not configured" className="h-10 cursor-not-allowed rounded-lg border border-slate-200 px-4 text-sm font-medium text-slate-400">
+                Send SMS — not configured
+              </button>
+            </div>
             <div className="space-y-1.5 md:col-span-3">
             <FieldLabel>Narration</FieldLabel>
               <Textarea rows={3} value={draft.narration || ''} onChange={(event) => setRootValue(setValue, 'narration', event.target.value)} placeholder="Recovery remarks" />
