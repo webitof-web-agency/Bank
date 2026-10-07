@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CircleDollarSign, Percent, RotateCcw, Save, ShieldCheck, SlidersHorizontal, Sparkles } from 'lucide-react';
+import { CircleDollarSign, History, Percent, RotateCcw, Save, ShieldCheck, SlidersHorizontal, Sparkles, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../api/api';
 import { useAuth } from '../../../context/AuthContext';
@@ -77,6 +77,53 @@ function setNestedValue(source, path, value) {
   return next;
 }
 
+function todayIso() {
+  const now = new Date();
+  return new Date(now.getTime() - now.getTimezoneOffset() * 60 * 1000).toISOString().slice(0, 10);
+}
+
+function formatDate(iso) {
+  if (!iso) return 'Beginning';
+  const [year, month, day] = iso.split('-');
+  return `${day}-${month}-${year}`;
+}
+
+// Only the interest heads the user actually edited, so a dated change does not
+// also stamp today's values for every other head onto that date.
+function changedInterestRates(draftRates = {}, initialRates = {}) {
+  const changes = {};
+  for (const group of ['paid', 'receive']) {
+    for (const [key, value] of Object.entries(draftRates[group] || {})) {
+      if (Number(value) !== Number(initialRates?.[group]?.[key])) {
+        changes[group] = { ...(changes[group] || {}), [key]: Number(value) };
+      }
+    }
+  }
+  return Object.keys(changes).length ? changes : null;
+}
+
+const RATE_HEAD_LABELS = {
+  paid: { compulsoryDeposit: 'Compulsory Deposit', specialSaving: 'Special Saving', cashCredit: 'Cash Credit', dividend: 'Dividend' },
+  receive: { loan: 'Loan', loanAgainstDeposit: 'Loan Against Deposit', houseLoanStaff: 'House Loan (Staff)', vehicleLoanStaff: 'Vehicle Loan (Staff)' }
+};
+
+// What each period changed relative to the one before it.
+function describePeriodChanges(period, previous) {
+  const parts = [];
+  for (const [group, labels] of Object.entries(RATE_HEAD_LABELS)) {
+    for (const [key, label] of Object.entries(labels)) {
+      const value = Number(period.rates?.[group]?.[key] ?? 0);
+      const before = previous ? Number(previous.rates?.[group]?.[key] ?? 0) : null;
+      if (before === null) {
+        parts.push(`${label} ${value}%`);
+      } else if (before !== value) {
+        parts.push(`${label} ${before}% → ${value}%`);
+      }
+    }
+  }
+  return parts;
+}
+
 function formatMoney(value) {
   const amount = Number(value || 0);
   return amount.toLocaleString('en-IN');
@@ -118,6 +165,9 @@ export function RatesPage() {
   const [draft, setDraft] = useState(() => clone(DEFAULT_RATES_CONFIG));
   const [initial, setInitial] = useState(() => clone(DEFAULT_RATES_CONFIG));
   const [activeTab, setActiveTab] = useState('interest');
+  const [effectiveFrom, setEffectiveFrom] = useState(todayIso);
+  const [correctOpening, setCorrectOpening] = useState(false);
+  const [rateNote, setRateNote] = useState('');
 
   const canManage = hasPermission('rates.write');
 
@@ -156,24 +206,61 @@ export function RatesPage() {
     setDraft((current) => setNestedValue(current, path, value));
   }
 
-  async function saveConfig(nextConfig = draft) {
-    if (!canManage) return;
+  const interestChanges = useMemo(
+    () => changedInterestRates(draft.interestRates, initial.interestRates),
+    [draft.interestRates, initial.interestRates]
+  );
+  const today = todayIso();
+  const rateHistory = draft.interestRateHistory || [];
+
+  async function sendUpdate(body, successMessage) {
     setSaving(true);
     try {
-      const response = await api.banking.updateMaster('/masters/rates', token, nextConfig);
-      const next = normalizeRatesConfig(response?.data || response || nextConfig);
+      const response = await api.banking.updateMaster('/masters/rates', token, body);
+      const next = normalizeRatesConfig(response?.data || response || {});
       setDraft(next);
       setInitial(clone(next));
-      toast.success('Rates configuration saved');
+      toast.success(successMessage);
+      return true;
     } catch (error) {
       toast.error(error.message || 'Unable to save rates configuration');
+      return false;
     } finally {
       setSaving(false);
     }
   }
 
+  async function saveConfig(nextConfig = draft) {
+    if (!canManage) return;
+    const { interestRates: _rates, interestRateHistory: _history, ...rest } = nextConfig;
+    const changes = changedInterestRates(nextConfig.interestRates, initial.interestRates);
+    if (changes && !correctOpening && !effectiveFrom) {
+      toast.error('Choose the date the new rates take effect from');
+      return;
+    }
+    const body = changes
+      ? { ...rest, interestRates: changes, effectiveFrom: correctOpening ? '' : effectiveFrom, rateNote }
+      : rest;
+    const saved = await sendUpdate(body, changes ? 'Rates saved with effective date' : 'Rates configuration saved');
+    if (saved) {
+      setRateNote('');
+      setCorrectOpening(false);
+    }
+  }
+
+  async function removePeriod(period) {
+    if (!canManage || saving) return;
+    const confirmed = window.confirm(
+      `Remove the rate change effective ${formatDate(period.effectiveFrom)}? Reports will use the previous rates for those dates again.`
+    );
+    if (!confirmed) return;
+    await sendUpdate({ removeRatePeriod: period.effectiveFrom }, 'Rate period removed');
+  }
+
   function handleReset() {
     setDraft(clone(initial));
+    setRateNote('');
+    setCorrectOpening(false);
   }
 
   async function handleApplyAllMembers() {
@@ -301,6 +388,93 @@ export function RatesPage() {
                         disabled={!canManage || saving}
                       />
                     ))}
+                  </div>
+
+                  {canManage && (
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-5">
+                      <p className="text-[13px] font-semibold text-slate-800">When do these rates take effect?</p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Interest for days before this date keeps using the earlier rates. Only the heads you change are affected.
+                      </p>
+                      <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                        <label className="space-y-1.5">
+                          <span className="text-sm font-medium text-slate-800">Effective from</span>
+                          <Input
+                            type="date"
+                            value={effectiveFrom}
+                            onChange={(event) => setEffectiveFrom(event.target.value)}
+                            disabled={saving || correctOpening}
+                            className="bg-white"
+                          />
+                        </label>
+                        <label className="space-y-1.5">
+                          <span className="text-sm font-medium text-slate-800">Note (optional)</span>
+                          <Input
+                            type="text"
+                            value={rateNote}
+                            onChange={(event) => setRateNote(event.target.value)}
+                            disabled={saving}
+                            placeholder="e.g. Board resolution 12/2026"
+                            className="bg-white"
+                          />
+                        </label>
+                      </div>
+                      <label className="mt-4 flex items-start gap-3 text-sm text-slate-700">
+                        <input
+                          type="checkbox"
+                          className="mt-1 h-4 w-4 rounded border-slate-300 text-[var(--accent)] focus:ring-[var(--accent)]"
+                          checked={correctOpening}
+                          onChange={(event) => setCorrectOpening(event.target.checked)}
+                          disabled={saving}
+                        />
+                        <span>Correct the opening rates instead (applies from the very beginning, before any dated change)</span>
+                      </label>
+                      {interestChanges && !correctOpening && effectiveFrom && effectiveFrom < today && (
+                        <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800 ring-1 ring-inset ring-amber-200">
+                          This is back-dated: interest in reports from {formatDate(effectiveFrom)} onward will be recalculated with the new rates.
+                        </p>
+                      )}
+                      {interestChanges && correctOpening && (
+                        <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800 ring-1 ring-inset ring-amber-200">
+                          Interest in reports for every period up to the first dated change will be recalculated.
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  <SectionHeader>
+                    <span className="inline-flex items-center gap-2"><History size={14} /> Rate history</span>
+                  </SectionHeader>
+                  <div className="divide-y divide-slate-100">
+                    {[...rateHistory].reverse().map((period) => {
+                      const index = rateHistory.indexOf(period);
+                      const changes = describePeriodChanges(period, rateHistory[index - 1]);
+                      const upcoming = period.effectiveFrom && period.effectiveFrom > today;
+                      return (
+                        <div key={period.effectiveFrom || 'opening'} className="flex items-start justify-between gap-4 py-3">
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-slate-900">
+                              {period.effectiveFrom ? `From ${formatDate(period.effectiveFrom)}` : 'Opening rates'}
+                              {upcoming && <span className="ml-2 rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">Upcoming</span>}
+                            </p>
+                            <p className="mt-0.5 text-sm text-slate-600">{changes.length ? changes.join(', ') : 'No change'}</p>
+                            {period.note && <p className="mt-0.5 text-xs text-slate-500">{period.note}</p>}
+                          </div>
+                          {canManage && period.effectiveFrom && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="shrink-0 gap-1.5 text-rose-600 hover:bg-rose-50"
+                              disabled={saving}
+                              onClick={() => removePeriod(period)}
+                            >
+                              <Trash2 size={14} />
+                              Remove
+                            </Button>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               </Card>
