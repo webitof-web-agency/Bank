@@ -281,6 +281,26 @@ export const api = {
     // Temporary Flowit connectivity test: sends no data, everything is backend config.
     testSend: (token) => request('/sms/test-send', { method: 'POST', token, body: {} })
   },
+  // Google Drive: connection, database backups. Tokens never reach the browser.
+  googleDrive: {
+    status: (token) => request('/google-drive/status', { token, skipCache: true }),
+    connect: (token) => request('/google-drive/connect', { method: 'POST', token, body: {} }),
+    disconnect: (token) => request('/google-drive/disconnect', { method: 'POST', token, body: {} }),
+    listBackups: (token) => request('/google-drive/backups', { token, skipCache: true }),
+    startBackup: (token) => request('/google-drive/backups', { method: 'POST', token, body: {} }),
+    // The file itself (not JSON): fetched with the session token, saved by the page.
+    downloadBackup: async (token, fileId) => {
+      const response = await fetch(`${API_BASE_URL}/google-drive/backups/${encodeURIComponent(fileId)}/download`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      if (!response.ok) {
+        let message = `Download failed (${response.status})`;
+        try { message = (await response.json()).message || message; } catch { /* not JSON */ }
+        throw new Error(message);
+      }
+      return response.blob();
+    }
+  },
   files: {
     list: (token, query = {}) => request(`/files${buildQuery(query)}`, { token, skipCache: true }),
     get: (token, id) => request(`/files/${id}`, { token }),

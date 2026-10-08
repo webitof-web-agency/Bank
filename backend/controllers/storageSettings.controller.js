@@ -1,6 +1,16 @@
 const Settings = require('../models/settings.model');
 const StorageService = require('../services/storage/storage.service');
 const encryption = require('../utils/encryption');
+const driveConnection = require('../services/googleDrive/driveConnection.service');
+
+async function driveStorageSummary() {
+  const drive = await driveConnection.getStatus();
+  return {
+    connected: drive.connected && !drive.needsReconnect,
+    accountEmail: drive.accountEmail,
+    uploadsFolderLink: drive.uploadsFolder.link
+  };
+}
 
 async function getSettings(req, res, next) {
   try {
@@ -25,7 +35,10 @@ async function getSettings(req, res, next) {
         authMode: config.s3?.authMode || 'default',
         accessKeyId: config.s3?.accessKeyId || '',
         secretConfigured: !!config.s3?.encryptedSecret
-      }
+      },
+      // Google Drive has no settings here: it uses the account connected on
+      // Settings -> Google Drive.
+      gdrive: await driveStorageSummary()
     };
 
     res.json({ success: true, data: safeConfig });
@@ -37,6 +50,12 @@ async function getSettings(req, res, next) {
 async function updateSettings(req, res, next) {
   try {
     const { configurationSource, activeProvider, local, gcs, s3 } = req.body;
+    if (configurationSource === 'site_settings' && activeProvider === 'gdrive') {
+      const drive = await driveConnection.getStatus();
+      if (!drive.connected || drive.needsReconnect) {
+        return res.status(400).json({ success: false, message: 'Connect Google Drive (Settings -> Google Drive) before choosing it for uploads.' });
+      }
+    }
     
     const settingsDoc = await Settings.findOne({ key: 'storage_settings' }).lean();
     const currentConfig = settingsDoc?.payload || {};

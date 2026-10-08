@@ -320,7 +320,7 @@ async function saveUploads(files = [], { folderId = null, moduleName = 'general'
     storageKeySegments.push(storedName);
     const storageKey = storageKeySegments.join('/');
 
-    const locator = await StorageService.upload(file.buffer, storageKey);
+    const locator = await StorageService.upload(file.buffer, storageKey, { mimeType: file.mimetype });
 
     const doc = await FileAsset.create({
       folderId: folderId || null,

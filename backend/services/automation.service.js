@@ -4,6 +4,7 @@ const { createNotification } = require('./notification.service');
 const { buildMonthlySummaryReport } = require('./banking.service');
 const { getSettings } = require('./settings.service');
 const smsService = require('./sms/sms.service');
+const driveBackups = require('./googleDrive/backup.service');
 
 let automationTimer = null;
 let automationRunning = false;
@@ -198,9 +199,22 @@ async function runAutomationCycle() {
     results.push(await runDemandReminder());
     results.push(await runMonthlySummary());
     results.push(await retryPendingSms());
+    results.push(await runDriveBackup());
     return { results };
   } finally {
     automationRunning = false;
+  }
+}
+
+// Daily database backup to Google Drive (once per India date, at/after the
+// configured hour; skipped when Drive is not connected).
+async function runDriveBackup() {
+  try {
+    const result = await driveBackups.runScheduledBackupIfDue();
+    return { job: 'gdrive-backup', ...result };
+  } catch (error) {
+    console.error('[automation] Google Drive backup failed:', error.message);
+    return { job: 'gdrive-backup', error: error.message };
   }
 }
 

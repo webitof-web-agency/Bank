@@ -837,8 +837,15 @@ async function withTransaction(callback) {
   return result;
 }
 
+// Where pg_dump connects for a backup: the same server and database as the app.
+function getDumpConnection() {
+  const { host, port, user, password, database } = getConnectionConfig();
+  return { host, port, user, password, database };
+}
+
 module.exports = {
   closeDatabase,
+  getDumpConnection,
   deleteMainRow,
   getCachedRows,
   getUserRoles,

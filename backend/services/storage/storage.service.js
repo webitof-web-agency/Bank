@@ -1,6 +1,7 @@
 const LocalStorageProvider = require('./providers/local.provider');
 const GoogleCloudStorageProvider = require('./providers/gcs.provider');
 const S3StorageProvider = require('./providers/s3.provider');
+const GoogleDriveStorageProvider = require('./providers/gdrive.provider');
 const Settings = require('../../models/settings.model');
 
 class StorageService {
@@ -31,6 +32,9 @@ class StorageService {
             authMode: 'default'
           }
         };
+      } else if (envProvider === 'gdrive') {
+        // The connected Google Drive (Settings -> Google Drive).
+        return { provider: 'gdrive', config: {} };
       } else if (envProvider === 'gcs') {
         return {
           provider: 'gcs',
@@ -67,6 +71,8 @@ class StorageService {
         return new GoogleCloudStorageProvider(config);
       case 's3':
         return new S3StorageProvider(config);
+      case 'gdrive':
+        return new GoogleDriveStorageProvider(config);
       case 'local':
       default:
         return new LocalStorageProvider(config);
@@ -78,9 +84,10 @@ class StorageService {
     await this._getProviderInstance();
   }
 
-  async upload(buffer, storageKey) {
+  // options.mimeType: used by providers that keep it (Google Drive).
+  async upload(buffer, storageKey, options = {}) {
     const provider = await this._getProviderInstance();
-    return provider.upload(buffer, storageKey);
+    return provider.upload(buffer, storageKey, options);
   }
 
   async _getHistoricalProviderWithAuth(locator) {
@@ -88,6 +95,11 @@ class StorageService {
       return new LocalStorageProvider({
         uploadDir: process.env.LOCAL_UPLOAD_DIR
       });
+    }
+    // Google Drive files are reached through the connected account, whatever
+    // the current settings.
+    if (locator.storageProvider === 'gdrive') {
+      return new GoogleDriveStorageProvider({});
     }
 
     const settingsDoc = await Settings.findOne({ key: 'storage_settings' }).lean();

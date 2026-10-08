@@ -34,6 +34,8 @@ router.get('/files/:id/view', helmet.crossOriginResourcePolicy({ policy: 'cross-
 router.get('/settings/public', settingsController.getPublicController);
 router.get('/notifications/stream', notificationsController.streamController);
 router.post('/sms/flowit/webhook', smsController.flowitWebhookController);
+// Google sends the browser here after "Connect Google Drive" (no app login).
+router.get('/google-drive/oauth/callback', require('../controllers/googleDrive.controller').oauthCallbackController);
 
 router.use(requireAuth);
 router.use('/banking', bankingRoutes);
@@ -46,5 +48,6 @@ router.use('/settings', settingsRoutes);
 router.use('/files', filesRoutes);
 router.use('/recovery-import', require('./recoveryImport.routes'));
 router.use('/sms', require('./sms.routes'));
+router.use('/google-drive', require('./googleDrive.routes'));
 
 module.exports = router;

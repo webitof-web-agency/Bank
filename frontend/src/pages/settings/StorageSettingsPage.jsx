@@ -17,7 +17,8 @@ export function StorageSettingsPage() {
     activeProvider: 'local',
     local: { uploadDir: './uploads', prefix: 'images' },
     gcs: { projectId: '', bucket: '', prefix: 'images', authMode: 'ADC', serviceAccountJson: '', credentialsConfigured: false },
-    s3: { region: '', bucket: '', prefix: 'images', authMode: 'default', accessKeyId: '', secretAccessKey: '', sessionToken: '', secretConfigured: false }
+    s3: { region: '', bucket: '', prefix: 'images', authMode: 'default', accessKeyId: '', secretAccessKey: '', sessionToken: '', secretConfigured: false },
+    gdrive: { connected: false, accountEmail: '', uploadsFolderLink: '' }
   });
 
   useEffect(() => {
@@ -129,6 +130,7 @@ export function StorageSettingsPage() {
               <option value="local">Local Storage</option>
               <option value="gcs">Google Cloud Storage</option>
               <option value="s3">Amazon S3</option>
+              <option value="gdrive">Google Drive</option>
             </select>
             <p className="text-xs text-slate-500 mt-1">
               The provider to use for new uploads. Changing this does not break existing files.
@@ -227,6 +229,23 @@ export function StorageSettingsPage() {
                   />
                   <p className="text-xs text-slate-500 mt-1">This will be encrypted before saving.</p>
                 </div>
+              )}
+            </Card>
+          )}
+
+          {config.activeProvider === 'gdrive' && (
+            <Card className="p-6 mb-6">
+              <h3 className="text-lg font-semibold mb-2">Google Drive</h3>
+              {config.gdrive?.connected ? (
+                <p className="text-sm text-slate-600">
+                  New images and files will be stored in the &quot;Uploads&quot; folder of <strong>{config.gdrive.accountEmail}</strong>.
+                  {config.gdrive.uploadsFolderLink ? <> <a className="text-violet-700 underline" href={config.gdrive.uploadsFolderLink} target="_blank" rel="noreferrer">Open folder</a>.</> : null}
+                  {' '}Files uploaded earlier stay where they are and keep working.
+                </p>
+              ) : (
+                <p className="text-sm text-amber-700">
+                  Google Drive is not connected. Connect it first under <a className="underline" href="/app/settings/google-drive">Settings → Google Drive</a>.
+                </p>
               )}
             </Card>
           )}

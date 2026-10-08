@@ -1,4 +1,4 @@
-import { Bell, Building2, CalendarClock, Archive, KeyRound, ShieldCheck, Mail, MessageSquare } from 'lucide-react';
+import { Bell, Building2, CalendarClock, Archive, KeyRound, ShieldCheck, Mail, MessageSquare, HardDrive } from 'lucide-react';
 
 export const SETTINGS_LINKS = [
   {
@@ -45,6 +45,15 @@ export const SETTINGS_LINKS = [
     description: 'Database backup and restore utilities.',
     group: 'Administration',
     tone: 'amber'
+  },
+  {
+    label: 'Google Drive',
+    path: '/app/settings/google-drive',
+    icon: HardDrive,
+    permission: 'settings.read',
+    description: 'Connect Google Drive for daily database backups (latest 7 kept) and file uploads.',
+    group: 'Administration',
+    tone: 'emerald'
   },
   {
     label: 'Financial Year Closing',
