@@ -44,14 +44,14 @@ function jsonResponse(status, body) {
   };
 }
 
-const message = { senderId: 'BANKRP', messageId: '111111', variables: ['RAM KUMAR', '1,500.00', '42', '07-10-2026'], numbers: ['9876543210'], udf1: 'row-id', udf2: 'MEMBER_SSA_PAID' };
+const message = { senderId: 'BANKRP', messageId: '111111', variables: ['RAM KUMAR', '1,500.00', '42', '07-10-2026'], numbers: ['9871234560'], udf1: 'row-id', udf2: 'MEMBER_SSA_PAID' };
 
 test('mobile: +91, 91-prefixed, 0-prefixed and plain 10-digit numbers normalise to 10 digits', () => {
-  assert.deepEqual(sms.normalizeMobile('+919876543210'), { mobile: '9876543210', reason: '' });
-  assert.deepEqual(sms.normalizeMobile('919876543210'), { mobile: '9876543210', reason: '' });
-  assert.deepEqual(sms.normalizeMobile('09876543210'), { mobile: '9876543210', reason: '' });
-  assert.deepEqual(sms.normalizeMobile('9876543210'), { mobile: '9876543210', reason: '' });
-  assert.deepEqual(sms.normalizeMobile('+91 98765-43210'), { mobile: '9876543210', reason: '' });
+  assert.deepEqual(sms.normalizeMobile('+919871234560'), { mobile: '9871234560', reason: '' });
+  assert.deepEqual(sms.normalizeMobile('919871234560'), { mobile: '9871234560', reason: '' });
+  assert.deepEqual(sms.normalizeMobile('09871234560'), { mobile: '9871234560', reason: '' });
+  assert.deepEqual(sms.normalizeMobile('9871234560'), { mobile: '9871234560', reason: '' });
+  assert.deepEqual(sms.normalizeMobile('+91 98712-34560'), { mobile: '9871234560', reason: '' });
 });
 
 test('mobile: empty, invalid and placeholder numbers are refused with a reason', () => {
@@ -64,24 +64,33 @@ test('mobile: empty, invalid and placeholder numbers are refused with a reason',
   assert.equal(sms.normalizeMobile('+1 202 555 0143').reason, 'INVALID_MOBILE');
   assert.equal(sms.normalizeMobile('9999999999').reason, 'PLACEHOLDER_MOBILE');
   assert.equal(sms.normalizeMobile('+919898989898').reason, 'PLACEHOLDER_MOBILE');
+  // Keyboard runs, up or down, wrapping 9 -> 0.
+  for (const run of ['9876543210', '+919876543210', '6789012345', '8901234567', '7654321098']) {
+    assert.equal(sms.normalizeMobile(run).reason, 'PLACEHOLDER_MOBILE', run);
+  }
+  for (const real of ['9871234560', '9876543211', '7012345678']) {
+    assert.equal(sms.normalizeMobile(real).reason, '', real);
+  }
 });
 
 test('masking keeps only the first and last two digits; the hash is keyed and stable', () => {
-  assert.equal(sms.maskMobile('9876543210'), '98XXXXXX10');
+  assert.equal(sms.maskMobile('9871234560'), '98XXXXXX60');
   assert.equal(sms.maskMobile(''), '');
-  const hash = sms.hashMobile('9876543210');
+  const hash = sms.hashMobile('9871234560');
   assert.match(hash, /^[0-9a-f]{64}$/);
-  assert.equal(sms.hashMobile('9876543210'), hash);
+  assert.equal(sms.hashMobile('9871234560'), hash);
   assert.notEqual(sms.hashMobile('9876543211'), hash);
-  assert.notEqual(hash, require('crypto').createHash('sha256').update('9876543210').digest('hex'));
+  assert.notEqual(hash, require('crypto').createHash('sha256').update('9871234560').digest('hex'));
 });
 
-test('template variables: template order, formatted, capped, and an unknown key refused', () => {
-  const values = sms.buildVariables(['memberName', 'amount', 'voucherNo', 'date'], {
-    voucher: { amount: 150000.5, voucherNo: '42', date: '2026-10-07' },
-    member: { name: 'A VERY LONG MEMBER NAME THAT GOES PAST THIRTY CHARS', code: 'M1' }
-  });
-  assert.deepEqual(values, ['A VERY LONG MEMBER NAME THAT G', '1,50,000.50', '42', '07-10-2026']);
+test('template variables: template order, formatted, never cut; an over-limit value or unknown key refused', () => {
+  const longName = 'A VERY LONG MEMBER NAME THAT GOES PAST THIRTY CHARS';
+  const input = { voucher: { amount: 150000.5, voucherNo: '42', date: '2026-10-07' }, member: { name: longName, code: 'M1' } };
+  const values = sms.buildVariables(['memberName', 'amount', 'voucherNo', 'date'], input);
+  assert.deepEqual(values, [longName, '1,50,000.50', '42', '07-10-2026'], 'no limit by default: sent whole');
+  assert.deepEqual(sms.buildVariables(['amount', 'date'], input, { maxLength: 30 }), ['1,50,000.50', '07-10-2026']);
+  assert.throws(() => sms.buildVariables(['memberName'], input, { maxLength: 30 }), (error) => error.code === 'VARIABLE_TOO_LONG'
+    && /memberName" is 51 characters; the limit is 30/.test(error.message) && !error.message.includes('VERY LONG'));
   assert.throws(() => sms.buildVariables(['balance'], { voucher: {}, member: {} }), /not available/);
   assert.equal(flowit.joinVariables(['A|B', 'line\nbreak', 3]), 'A/B|line break|3');
 });
@@ -103,7 +112,7 @@ test('Flowit success: the documented request is sent and request_id returned', a
     assert.ok(call.options.signal, 'request carries an abort signal for the timeout');
     assert.deepEqual(JSON.parse(call.options.body), {
       sender_id: 'BANKRP', message: '111111', variables_values: 'RAM KUMAR|1,500.00|42|07-10-2026',
-      route: 'dlt', numbers: '9876543210', udf1: 'row-id', udf2: 'MEMBER_SSA_PAID'
+      route: 'dlt', numbers: '9871234560', udf1: 'row-id', udf2: 'MEMBER_SSA_PAID'
     });
   });
 });
@@ -124,9 +133,19 @@ test('Flowit errors map to their documented codes: 400 / 401 / 416 / 995', async
       assert.match(result.message, text);
       assert.equal(result.retryable, false, `${code} is not retried`);
     }
-    // No documented code in the body: the HTTP status, and a 5xx may pass.
-    const http500 = await flowit.send(message, { fetchImpl: async () => jsonResponse(500, null) });
-    assert.deepEqual([http500.errorCode, http500.retryable], ['HTTP_500', true]);
+    // No documented code in the body: the HTTP status. A 5xx is not retried
+    // either: a gateway 502/504 does not prove the SMS was not sent.
+    for (const status of [500, 502, 503, 504]) {
+      const http5xx = await flowit.send(message, { fetchImpl: async () => jsonResponse(status, null) });
+      assert.deepEqual([http5xx.errorCode, http5xx.retryable], [`HTTP_${status}`, false]);
+    }
+    // Malformed bodies never throw; an oversized code is cut to the column size.
+    const notJson = await flowit.send(message, { fetchImpl: async () => ({ ok: true, status: 200, json: async () => { throw new SyntaxError('bad'); } }) });
+    assert.deepEqual([notJson.success, notJson.errorCode], [false, 'HTTP_200']);
+    const noRequestId = await flowit.send(message, { fetchImpl: async () => jsonResponse(200, { return: true }) });
+    assert.deepEqual([noRequestId.success, noRequestId.retryable], [false, false]);
+    const longCode = await flowit.send(message, { fetchImpl: async () => jsonResponse(400, { status_code: 'X'.repeat(300) }) });
+    assert.equal(longCode.errorCode.length, 40);
     const plain400 = await flowit.send(message, { fetchImpl: async () => jsonResponse(400, { message: 'Bad request' }) });
     assert.deepEqual([plain400.errorCode, plain400.message, plain400.retryable], ['HTTP_400', 'Bad request', false]);
   });
@@ -145,15 +164,24 @@ test('Flowit timeout aborts the request and is not retried (it may have been sen
   });
 });
 
-test('Flowit unreachable is retryable; missing key, sender or message id never calls Flowit', async () => {
+test('only could-not-connect errors are retryable; missing key, sender or message id never calls Flowit', async () => {
   await withEnv({ FLOWIT_API_KEY: API_KEY }, async () => {
     const refused = await flowit.send(message, { fetchImpl: async () => { throw Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNREFUSED' } }); } });
     assert.deepEqual([refused.errorCode, refused.retryable], ['NETWORK', true]);
+    for (const code of ['ENOTFOUND', 'EAI_AGAIN', 'EHOSTUNREACH', 'UND_ERR_CONNECT_TIMEOUT']) {
+      const result = await flowit.send(message, { fetchImpl: async () => { throw Object.assign(new TypeError('fetch failed'), { cause: { code } }); } });
+      assert.deepEqual([result.errorCode, result.retryable], ['NETWORK', true], code);
+    }
+    // Dropped after connecting: Flowit may have the request, so not retried.
+    for (const code of ['ECONNRESET', 'UND_ERR_SOCKET', undefined]) {
+      const result = await flowit.send(message, { fetchImpl: async () => { throw Object.assign(new TypeError('fetch failed'), { cause: { code } }); } });
+      assert.deepEqual([result.errorCode, result.retryable], ['CONNECTION_LOST', false], String(code));
+    }
     let called = false;
     const fetchImpl = async () => { called = true; return jsonResponse(200, { return: true, request_id: 'x' }); };
     assert.equal((await flowit.send({ ...message, senderId: '' }, { fetchImpl })).errorCode, 'CONFIG');
     assert.equal((await flowit.send({ ...message, messageId: '' }, { fetchImpl })).errorCode, 'CONFIG');
-    assert.equal((await flowit.send({ ...message, numbers: ['+919876543210'] }, { fetchImpl })).errorCode, 'INVALID_NUMBER');
+    assert.equal((await flowit.send({ ...message, numbers: ['+919871234560'] }, { fetchImpl })).errorCode, 'INVALID_NUMBER');
     assert.equal(called, false);
   });
   await withEnv({ FLOWIT_API_KEY: undefined }, async () => {
@@ -170,6 +198,6 @@ test('the API key and the full number never appear in results or logs', async ()
     ]);
     const text = JSON.stringify(result) + output;
     assert.equal(text.includes(API_KEY), false, 'API key leaked');
-    assert.equal(text.includes('9876543210'), false, 'full number leaked');
+    assert.equal(text.includes('9871234560'), false, 'full number leaked');
   });
 });

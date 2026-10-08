@@ -316,10 +316,10 @@ function getPartyGroupsForSelection(partyType, lookups) {
   return getLookupGroups(lookups, partyType);
 }
 
+// Cash goes into one of the society's two bank accounts.
 const BANK_DEPOSIT_IN_OPTIONS = [
-  { value: 'L002', label: 'Cash-Credit A/c' },
-  { value: 'L013', label: 'Saving A/c' },
-  { value: 'CORPORATE', label: 'Corporate Bank' }
+  { value: 'L002', label: 'Cash Credit A/c' },
+  { value: 'L013', label: 'Saving A/c' }
 ];
 
 const BANK_DEPOSIT_BY_OPTIONS = [

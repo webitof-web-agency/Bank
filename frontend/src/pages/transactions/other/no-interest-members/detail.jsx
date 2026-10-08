@@ -89,8 +89,8 @@ export function NoInterestMemberDetailPage({ basePath = '/app/master/no-interest
   }
 
   const memberLookup = useMemo(() => new Map(members.map((member) => [String(member.code || '').toUpperCase(), member])), [members]);
-  const branchCode = record?.branchCode || record?.payload?.branchCode || member?.branchCode || '�';
-  const designation = record?.designation || record?.payload?.designation || member?.designation || '�';
+  const branchCode = record?.branchCode || record?.payload?.branchCode || member?.branchCode || '—';
+  const designation = record?.designation || record?.payload?.designation || member?.designation || '—';
   const statusBadge = String(record?.status || 'Active').toLowerCase() === 'active'
     ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
     : 'border-rose-200 bg-rose-50 text-rose-700';

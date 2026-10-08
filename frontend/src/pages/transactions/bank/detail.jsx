@@ -392,7 +392,7 @@ export function BankTransactionDetailPage({ sectionKey }) {
               <DetailRow label="Transaction Type" value={record.transactionType} />
               <DetailRow label="Party Type" value={record.partyType} />
               <DetailRow label="Party" value={partyLabel} />
-              <DetailRow label="Reference / Instrument" value={referenceLabel} />
+              <DetailRow label="Cheque / Ref No" value={referenceLabel} />
               <DetailRow label="Bank A/c" value={settlementLabel} />
               <DetailRow label="Branch" value={record.branchCode} />
               <DetailRow label="FY Code" value={record.fyCode} />
@@ -419,21 +419,14 @@ export function BankTransactionDetailPage({ sectionKey }) {
         <div className="grid gap-6 xl:grid-cols-2">
           <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="divide-y divide-slate-100 px-6">
-              <DetailRow label="Settlement Account" value={details.settlementAccount} />
               <DetailRow label="Ledger Target" value={details.ledgerTarget} />
               <DetailRow label="Receipt By" value={details.receiptBy} />
               <DetailRow label="Deposit By" value={details.depositBy} />
               <DetailRow label="Deposit In" value={details.depositIn} />
-              <DetailRow label="From Account" value={details.fromAccount} />
-              <DetailRow label="To Account" value={details.toAccount} />
-              <DetailRow label="Account Head" value={details.accountHead} />
               <DetailRow label="Component Loan Amt" value={details.components?.loanAmt} />
               <DetailRow label="Component LAD" value={details.components?.lad} />
               {isBankSection ? (
                 <>
-                  <DetailRow label="Fixed Settlement" value={details.fixedSettlement} />
-                  <DetailRow label="Fixed From" value={details.fixedFrom} />
-                  <DetailRow label="Fixed To" value={details.fixedTo} />
                   <DetailRow label="Self Use" value={details.selfUse ? 'Yes' : 'No'} />
                   <DetailRow label="Transfer Type" value={details.transferType} />
                   <DetailRow label="Receipt To" value={details.receiptTo} />

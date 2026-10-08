@@ -47,7 +47,7 @@ export function MemberFormPage() {
         } else {
           const rows = memberRes.data || [];
           setMembers(rows);
-          setDraft(createEmptyMemberDraft(rows));
+          setDraft(createEmptyMemberDraft());
           setAvatarPreview('');
         }
         setRemovedDocumentIds([]);

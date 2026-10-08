@@ -47,6 +47,9 @@ const ERROR_CODES = {
   998: 'Use DLT route for sending Bulk SMS'
 };
 
+// Connection errors raised before any request bytes could reach Flowit.
+const NOT_SENT_ERRORS = new Set(['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'ENETUNREACH', 'EHOSTUNREACH', 'UND_ERR_CONNECT_TIMEOUT']);
+
 function safeText(value, max = 200) {
   const text = Array.isArray(value) ? value.join(' ') : String(value ?? '');
   return text.replace(/[\r\n\t]+/g, ' ').trim().slice(0, max);
@@ -93,9 +96,14 @@ async function send({ senderId, messageId, variables = [], numbers = [], udf1, u
     });
   } catch (error) {
     // A timeout is ambiguous (Flowit may have accepted the SMS), so it is
-    // never retried automatically; a refused connection never reached it.
+    // never retried automatically. Only errors raised before a connection
+    // existed (refused, DNS, unreachable) prove Flowit never got the request;
+    // a connection dropped mid-request (reset, socket closed) is as
+    // ambiguous as a timeout.
     if (error?.name === 'AbortError') return failure({ errorCode: 'TIMEOUT', message: `No response from Flowit within ${config.timeoutMs} ms` });
-    return failure({ errorCode: 'NETWORK', message: `Could not reach Flowit (${safeText(error?.cause?.code || error?.code || 'network error', 40)})`, retryable: true });
+    const cause = safeText(error?.cause?.code || error?.code || 'network error', 40);
+    if (NOT_SENT_ERRORS.has(cause)) return failure({ errorCode: 'NETWORK', message: `Could not reach Flowit (${cause})`, retryable: true });
+    return failure({ errorCode: 'CONNECTION_LOST', message: `Connection to Flowit failed during the request (${cause})` });
   } finally {
     clearTimeout(timer);
   }
@@ -115,12 +123,12 @@ async function send({ senderId, messageId, variables = [], numbers = [], udf1, u
   // is known (an HTTP 500 is a server error, not code 500 "blacklisted").
   const bodyCode = data?.status_code ?? data?.code ?? data?.error_code ?? null;
   const known = bodyCode !== null ? ERROR_CODES[Number(bodyCode)] : undefined;
+  // Never retried: a documented error will not pass, and an HTTP 5xx (502 or
+  // 504 from a gateway included) does not prove the SMS was not sent.
   return failure({
-    errorCode: bodyCode !== null ? bodyCode : `HTTP_${response.status}`,
+    errorCode: bodyCode !== null ? safeText(bodyCode, 40) : `HTTP_${response.status}`,
     message: known || safeText(data?.message) || `Flowit returned HTTP ${response.status}`,
-    httpStatus: response.status,
-    // Server-side trouble may pass; a request Flowit rejected will not.
-    retryable: bodyCode === null && response.status >= 500
+    httpStatus: response.status
   });
 }
 

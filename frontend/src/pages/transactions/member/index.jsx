@@ -24,6 +24,7 @@ import {
   getTransactionLedgerLabel,
   getTransactionPartyLabel,
   getTransactionVoucherTitle,
+  describeDocumentUploadFailure,
   describeSmsResult
 } from './transactionUtils';
 import { toneClassName } from './transactionUtils';
@@ -190,25 +191,36 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '
     event.preventDefault();
     setSaving(true);
     try {
-      const payload = buildTransactionVoucherPayload(draft);
-      const response = activeRecord
-        ? await api.banking.updateTransactionVoucher(token, activeRecord.id, payload)
-        : await api.banking.createTransactionVoucher(token, payload);
+      const savedLabel = activeRecord ? 'Transaction updated' : 'Transaction created';
+      let nextRecord;
+      try {
+        const payload = buildTransactionVoucherPayload(draft);
+        const response = activeRecord
+          ? await api.banking.updateTransactionVoucher(token, activeRecord.id, payload)
+          : await api.banking.createTransactionVoucher(token, payload);
+        nextRecord = response.data || response;
+      } catch (error) {
+        toast.error(error.message || 'Unable to save transaction');
+        return;
+      }
 
-      let nextRecord = response.data || response;
-      const smsFeedback = describeSmsResult(nextRecord?.sms, activeRecord ? 'Transaction updated' : 'Transaction created');
-      nextRecord = await persistVoucherDocuments(nextRecord, draft);
-      setRows((current) => {
-        const next = activeRecord
-          ? current.map((item) => (item.id === nextRecord.id ? nextRecord : item))
-          : [nextRecord, ...current];
-        return next;
-      });
+      // The voucher (and any SMS) is saved from here on: a failed document
+      // upload must not look like a failed save, or Save would be pressed
+      // again and create a second voucher and a second SMS.
+      const smsFeedback = describeSmsResult(nextRecord?.sms, savedLabel);
+      let documentError = null;
+      try {
+        nextRecord = await persistVoucherDocuments(nextRecord, draft);
+      } catch (error) {
+        documentError = error;
+      }
+      setRows((current) => (activeRecord
+        ? current.map((item) => (item.id === nextRecord.id ? nextRecord : item))
+        : [nextRecord, ...current]));
       if (smsFeedback) toast[smsFeedback.tone](smsFeedback.message);
-      else toast.success(activeRecord ? 'Transaction updated' : 'Transaction created');
+      else toast.success(savedLabel);
+      if (documentError) toast.warning(describeDocumentUploadFailure(nextRecord, documentError));
       closeEditor();
-    } catch (error) {
-      toast.error(error.message || 'Unable to save transaction');
     } finally {
       setSaving(false);
     }

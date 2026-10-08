@@ -790,10 +790,6 @@ export function MemberTransactionForm({ section, lookups = {}, value, setValue, 
             <Input type="number" min="0" step="0.01" value={draft.amount ?? ''} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" />
           </div>
           <div className="space-y-1.5">
-            <FieldLabel>Account Head</FieldLabel>
-            <Input value={draft.details?.accountHead || ''} onChange={(event) => updateDetails('accountHead', event.target.value)} placeholder="Deposit account head" />
-          </div>
-          <div className="space-y-1.5">
             <FieldLabel required>Paymode</FieldLabel>
             <CustomSelect value={draft.mode || ''} onChange={(next) => setRootValue(setValue, 'mode', next)} options={paymentOptions} placeholder="Select mode" searchable={false} />
           </div>

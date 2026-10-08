@@ -553,7 +553,7 @@ export function DashboardPage() {
       </div>
 
       <div className="mt-6 text-center text-[11px] text-slate-400">
-        Â© 2026 The Raipur Co-operative Employees Thrift Society Ltd. All rights reserved.
+        © 2026 The Raipur Co-operative Employees Thrift Society Ltd. All rights reserved.
       </div>
     </div>
   );

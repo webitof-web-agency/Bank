@@ -23,7 +23,9 @@ import {
   getTransactionPartyLabel,
   getVoucherSectionItem,
   getTransactionVoucherTitle,
-  describeSmsResult
+  describeDocumentUploadFailure,
+  describeSmsResult,
+  formatTransactionDisplayValue
 } from './transactionUtils';
 import { toneClassName } from './transactionUtils';
 
@@ -31,7 +33,7 @@ export function DetailRow({ label, value }) {
   return (
     <div className="grid grid-cols-[180px_1fr] gap-4 border-b border-slate-100 py-4 last:border-b-0">
       <div className="text-[13px] font-medium text-slate-500">{label}</div>
-      <div className="text-[14px] font-medium text-slate-900">{value || 'ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â'}</div>
+      <div className="text-[14px] font-medium text-slate-900">{formatTransactionDisplayValue(value)}</div>
     </div>
   );
 }
@@ -196,27 +198,39 @@ export function MemberTransactionDetailPage({
 
     setSaving(true);
     try {
-      const payload = buildTransactionVoucherPayload(draft);
-      const response = await api.banking.updateTransactionVoucher(token, record.id, payload);
-      let nextRecord = response.data || response;
-      const smsFeedback = describeSmsResult(nextRecord?.sms, 'Transaction updated');
-      const uploadedDocuments = await uploadDocumentMap(token, draft.documents || {}, {
-        moduleName: 'transactions',
-        entityId: nextRecord.id
-      });
-      if (Object.keys(uploadedDocuments).length || removedDocumentIds.length) {
-        const updateResponse = await api.banking.updateTransactionVoucher(token, nextRecord.id, { documents: uploadedDocuments });
-        nextRecord = updateResponse.data || nextRecord;
+      let nextRecord;
+      try {
+        const payload = buildTransactionVoucherPayload(draft);
+        const response = await api.banking.updateTransactionVoucher(token, record.id, payload);
+        nextRecord = response.data || response;
+      } catch (error) {
+        toast.error(error.message || 'Unable to save transaction');
+        return;
       }
-      if (removedDocumentIds.length > 0) {
-        await Promise.allSettled(removedDocumentIds.map((fileId) => api.files.remove(token, fileId)));
+
+      // Saved from here on: a document failure is reported, not a failed save.
+      const smsFeedback = describeSmsResult(nextRecord?.sms, 'Transaction updated');
+      let documentError = null;
+      try {
+        const uploadedDocuments = await uploadDocumentMap(token, draft.documents || {}, {
+          moduleName: 'transactions',
+          entityId: nextRecord.id
+        });
+        if (Object.keys(uploadedDocuments).length || removedDocumentIds.length) {
+          const updateResponse = await api.banking.updateTransactionVoucher(token, nextRecord.id, { documents: uploadedDocuments });
+          nextRecord = updateResponse.data || nextRecord;
+        }
+        if (removedDocumentIds.length > 0) {
+          await Promise.allSettled(removedDocumentIds.map((fileId) => api.files.remove(token, fileId)));
+        }
+      } catch (error) {
+        documentError = error;
       }
       setRecord(nextRecord);
       if (smsFeedback) toast[smsFeedback.tone](smsFeedback.message);
       else toast.success('Transaction updated');
+      if (documentError) toast.warning(describeDocumentUploadFailure(nextRecord, documentError));
       closeEditor();
-    } catch (error) {
-      toast.error(error.message || 'Unable to save transaction');
     } finally {
       setSaving(false);
     }
@@ -685,7 +699,6 @@ export function MemberTransactionDetailPage({
                 <DetailRow label="Deposit In" value={details.depositIn} />
                 <DetailRow label="From Account" value={details.fromAccount} />
                 <DetailRow label="To Account" value={details.toAccount} />
-                <DetailRow label="Account Head" value={details.accountHead} />
                 <DetailRow label="Component Loan Amt" value={details.components?.loanAmt} />
                 <DetailRow label="Component LAD" value={details.components?.lad} />
               </div>
@@ -699,10 +712,10 @@ export function MemberTransactionDetailPage({
                     rows={recoveryLines.map((line, index) => ({
                       key: `${line.memberCode || line.member || index}`,
                       cells: [
-                        line.memberCode || line.member || 'ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â',
-                        line.head || 'ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â',
+                        formatTransactionDisplayValue(line.memberCode || line.member),
+                        formatTransactionDisplayValue(line.head),
                         formatTransactionAmount(line.amount ?? line.total ?? 0),
-                        line.memo || 'ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â'
+                        formatTransactionDisplayValue(line.memo)
                       ]
                     }))}
                     emptyMessage="No recovery lines found."
@@ -717,9 +730,9 @@ export function MemberTransactionDetailPage({
                     rows={allocations.map((line, index) => ({
                       key: `${line.memberCode || line.member || index}`,
                       cells: [
-                        line.memberCode || line.member || 'ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â',
-                        line.head || 'ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â',
-                        line.side || 'ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â',
+                        formatTransactionDisplayValue(line.memberCode || line.member),
+                        formatTransactionDisplayValue(line.head),
+                        formatTransactionDisplayValue(line.side),
                         formatTransactionAmount(line.amount ?? 0)
                       ]
                     }))}

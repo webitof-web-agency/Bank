@@ -85,10 +85,14 @@ function toNumber(value, fallback = 0) {
   return Number.isFinite(number) ? number : fallback;
 }
 
-export function createEmptyMemberDraft(rows = []) {
+// Member code and membership no. are assigned by the backend sequence on
+// create. Guessing "highest visible + 1" here collided with deleted members
+// (hidden from the list but still holding their code), so a new member
+// could not be saved (409).
+export function createEmptyMemberDraft() {
   return {
-    code: buildNextMemberCode(rows),
-    membershipNo: buildNextMembershipNo(rows),
+    code: '',
+    membershipNo: '',
     name: '',
     fatherOrHusbandName: '',
     branchCode: '',

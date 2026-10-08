@@ -248,7 +248,7 @@ export function BankTransactionsPage({ sectionKey, detailPathBase }) {
     },
     {
       key: 'party',
-      label: 'Reference / Instrument',
+      label: 'Cheque / Ref No',
       sortable: true,
       sortValue: (row) => row.referenceNo || row.instrumentNo || '',
       render: (row) => <span className="text-slate-700">{row.referenceNo || row.instrumentNo || '-'}</span>

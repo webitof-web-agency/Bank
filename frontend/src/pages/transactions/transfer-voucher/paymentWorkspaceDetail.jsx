@@ -345,14 +345,11 @@ export function TransferVoucherPaymentWorkspaceDetailPage({ sectionKey, itemKey,
         </div>
       </div>
 
-      <Modal open={editorOpen} onClose={closeEditor} title="Edit Transfer Voucher Payment" width="min(1100px, 96vw)" footer={<div className="flex w-full justify-end gap-3">
+      <Modal open={editorOpen} onClose={closeEditor} title="Edit Transfer Voucher Payment" width="min(860px, 96vw)" footer={<div className="flex w-full justify-end gap-3">
           <Button type="button" variant="outline" onClick={closeEditor} disabled={saving}>Cancel</Button>
           <Button type="submit" form="transaction-voucher-form" className="bg-[var(--primary,#1661F6)] text-white hover:opacity-90" disabled={saving}> {saving ? 'Saving...' : 'Save'} </Button>
         </div>}>
-        <div className="max-h-[80vh] overflow-y-auto pr-1">
-          <TransferVoucherPaymentForm section={section} itemKey={itemKey} lookups={lookups} value={draft} setValue={setDraft} onSubmit={saveVoucher} onDocumentRemove={handleDocumentRemove} />
-        </div>
-        
+        <TransferVoucherPaymentForm section={section} itemKey={itemKey} lookups={lookups} value={draft} setValue={setDraft} onSubmit={saveVoucher} onDocumentRemove={handleDocumentRemove} />
       </Modal>
       <ConfirmDialog open={deleteOpen} title="Delete Transfer Voucher Payment" description="This payment voucher will be removed permanently." confirmLabel="Delete" onConfirm={confirmDelete} onCancel={() => setDeleteOpen(false)} />
     </div>

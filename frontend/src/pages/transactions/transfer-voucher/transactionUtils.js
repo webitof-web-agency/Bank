@@ -325,14 +325,21 @@ export function filterTransactionRows(rows = [], sectionItems = [], sectionKey =
   const normalizedSectionLabel = normalizedSectionKey.replace(/-/g, ' ');
   const itemKeys = new Set((Array.isArray(sectionItems) ? sectionItems : []).map((item) => cleanText(item.key).toLowerCase()));
 
+  const items = Array.isArray(sectionItems) ? sectionItems : [];
+
+  // With items given (one page: Payment, Paid To Member, Recover From
+  // Member), only those items' rows. Matching by the "transfer-voucher"
+  // prefix or category text would also pull in the sibling pages' rows.
   return (Array.isArray(rows) ? rows : []).filter((row) => {
     const rowKey = cleanText(row?.details?.key || row?.transactionKey || row?.sectionKey || '').toLowerCase();
     const rowCategory = cleanText(row.voucherCategory).toLowerCase();
 
-    if (rowKey && itemKeys.has(rowKey)) return true;
+    if (items.length) {
+      if (rowKey) return itemKeys.has(rowKey);
+      return items.some((item) => rowCategory === cleanText(item.label).toLowerCase());
+    }
     if (normalizedSectionKey && (rowKey === normalizedSectionKey || rowKey.startsWith(`${normalizedSectionKey}-`))) return true;
-    if (normalizedSectionLabel && rowCategory.includes(normalizedSectionLabel)) return true;
-    return (Array.isArray(sectionItems) ? sectionItems : []).some((item) => rowCategory === cleanText(item.label).toLowerCase());
+    return Boolean(normalizedSectionLabel) && rowCategory.includes(normalizedSectionLabel);
   });
 }
 

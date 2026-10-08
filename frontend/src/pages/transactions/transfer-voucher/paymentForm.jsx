@@ -4,6 +4,7 @@ import { Card } from '../../../components/ui/Card';
 import { Input, Textarea } from '../../../components/ui/Input';
 import { Select as CustomSelect } from '../../../components/ui/Select';
 import { DocumentSection } from '../../../components/master/DocumentSection';
+import { buildPaidFromOptions } from './paymentAccountOptions';
 import { getTransferVoucherDocumentDefinitions } from './transferVoucherDocumentUtils';
 import { getTransactionLedgerLabel, toneClassName } from './transactionUtils';
 
@@ -92,10 +93,8 @@ export function TransferVoucherPaymentForm({ section, itemKey, lookups = {}, val
   const activeKey = itemKey || value?.details?.key || items[0]?.key || '';
   const activeItem = items.find((item) => item.key === activeKey) || items[0] || null;
   const ledgerGroups = useMemo(() => buildGroups(lookups.ledgers, 'Ledgers'), [lookups]);
-  const accountGroups = useMemo(() => [
-    ...buildGroups(lookups.bankAccounts, 'Bank Accounts'),
-    ...buildGroups(lookups.ledgers, 'Ledgers')
-  ], [lookups]);
+  // Exactly Cash-in-hand, Bank Saving and Cash Credit.
+  const paidFromGroups = useMemo(() => [{ label: '', items: buildPaidFromOptions(lookups.ledgers) }], [lookups]);
   const documentDefs = getTransferVoucherDocumentDefinitions(activeKey);
   const payToLabel = getTransactionLedgerLabel(value?.partyCode || '', lookups);
   const paidFromLabel = readLedgerDetails(lookups, value?.details?.settlementAccount || '');
@@ -175,10 +174,10 @@ export function TransferVoucherPaymentForm({ section, itemKey, lookups = {}, val
             <LookupSelect
               label="Paid From"
               required
-              value={''}
+              value={value?.details?.settlementAccount || ''}
               onChange={(next) => updateDetails('settlementAccount', String(next || '').toUpperCase())}
               placeholder="Select cash/bank account"
-              groups={accountGroups}
+              groups={paidFromGroups}
               helper={`Source account: ${paidFromLabel}`}
             />
           </div>

@@ -109,7 +109,6 @@ export function createEmptyTransactionDraft(sectionKey = '', sectionItems = [], 
       depositIn: '',
       fromAccount: '',
       toAccount: '',
-      accountHead: '',
       payMode: '',
       sms: false,
       components: {
@@ -157,7 +156,6 @@ export function createTransactionDraftFromRecord(record = {}, sectionItems = [],
       depositIn: details.depositIn || '',
       fromAccount: details.fromAccount || '',
       toAccount: details.toAccount || '',
-      accountHead: details.accountHead || '',
       payMode: details.payMode || record.payMode || record.mode || '',
       sms: Boolean(details.sms),
       components: {
@@ -184,6 +182,13 @@ function buildDetailArray(value, fallback = []) {
   return Array.isArray(parsed) ? parsed : fallback;
 }
 
+// Blank values in the detail views show as an em dash.
+export function formatTransactionDisplayValue(value) {
+  if (value === null || value === undefined) return '—';
+  const text = String(value).trim();
+  return text ? text : '—';
+}
+
 export function buildTransactionVoucherPayload(draft = {}) {
   const baseDetails = clone(draft.details || {});
   const advancedDetails = safeJsonParse(draft.detailsJson, {});
@@ -204,6 +209,10 @@ export function buildTransactionVoucherPayload(draft = {}) {
   details.allocations = buildDetailArray(details.allocations || baseDetails.allocationsJson || details.allocationsJson, []);
   delete details.recoveryLinesJson;
   delete details.allocationsJson;
+  // Retired fields: Account Head was never used for posting, and the
+  // Posted/Draft voucher status workflow was removed.
+  delete details.accountHead;
+  delete details.status;
 
   return {
     voucherNo: cleanUpper(draft.voucherNo) || undefined,
@@ -336,6 +345,14 @@ const SMS_SKIP_MESSAGES = {
   TEMPLATE_NOT_CONFIGURED: 'SMS skipped because the SMS template is not set up yet.',
   TEMPLATE_DISABLED: 'SMS skipped because this SMS template is turned off.'
 };
+
+// The voucher saved but its attachments did not: said separately, so the
+// save is never reported as failed (and never submitted twice).
+export function describeDocumentUploadFailure(record = {}, error = null) {
+  const voucher = record?.voucherNo ? `Voucher ${record.voucherNo}` : 'The voucher';
+  const reason = error?.message ? ` (${error.message})` : '';
+  return `${voucher} was saved, but its documents could not be uploaded${reason}. Open the voucher and attach them again.`;
+}
 
 export function describeSmsResult(sms, savedLabel = 'Voucher saved') {
   if (!sms || !sms.status) return null;

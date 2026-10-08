@@ -48,6 +48,8 @@ export function TransferVoucherTransactionWorkspacePage({ sectionKey, itemKey, d
     return itemKey ? items.filter((entry) => entry.key === itemKey) : items;
   }, [catalog, sectionKey, itemKey]);
   const activeItem = sectionItems[0] || null;
+  // Paid To Member / Recover From Member: actions use the page's full name.
+  const transactionLabel = activeItem?.label || 'Transfer Voucher';
   const canWrite = hasPermission('transactions.write');
 
   useEffect(() => {
@@ -294,32 +296,29 @@ export function TransferVoucherTransactionWorkspacePage({ sectionKey, itemKey, d
       </Card>
 
       <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <Table loading={loading} columns={columns} rows={visibleRows} emptyMessage="No transfer voucher entries found." />
+        <Table loading={loading} columns={columns} data={visibleRows} emptyMessage="No transfer voucher entries found." />
       </Card>
 
-      <Modal open={editorOpen} onClose={closeEditor} title={activeRecord ? 'Edit Transfer Voucher' : 'Create Transfer Voucher'} width="min(1100px, 96vw)" footer={<div className="flex w-full justify-end gap-3">
+      <Modal open={editorOpen} onClose={closeEditor} title={`${activeRecord ? 'Edit' : 'Create'} ${transactionLabel}`} width="min(860px, 96vw)" footer={<div className="flex w-full justify-end gap-3">
           <Button type="button" variant="outline" onClick={closeEditor} disabled={saving}>Cancel</Button>
           <Button type="submit" form="transaction-voucher-form" className="bg-[var(--primary,#1661F6)] text-white hover:opacity-90" disabled={saving || !activeItem}>
             {saving ? 'Saving...' : activeRecord ? 'Update' : 'Save'}
           </Button>
         </div>}>
-        <div className="max-h-[80vh] overflow-y-auto pr-1">
-          <TransferVoucherTransactionForm
-            section={section}
-            itemKey={itemKey}
-            lookups={lookups}
-            value={draft}
-            setValue={setDraft}
-            onSubmit={saveVoucher}
-            onDocumentRemove={handleDocumentRemove}
-          />
-        </div>
-        
+        <TransferVoucherTransactionForm
+          section={section}
+          itemKey={itemKey}
+          lookups={lookups}
+          value={draft}
+          setValue={setDraft}
+          onSubmit={saveVoucher}
+          onDocumentRemove={handleDocumentRemove}
+        />
       </Modal>
 
       <ConfirmDialog
         open={Boolean(deleteTarget)}
-        title="Delete Transfer Voucher"
+        title={`Delete ${transactionLabel}`}
         description="This transfer voucher will be removed permanently."
         confirmLabel="Delete"
         onConfirm={confirmDelete}

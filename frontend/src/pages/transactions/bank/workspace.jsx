@@ -236,7 +236,7 @@ export function BankTransactionWorkspacePage({ sectionKey, itemKey = '', detailP
       ...baseColumns,
       { key: 'type', label: 'Type', sortable: true, sortValue: (row) => getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems), render: (row) => <span className="text-slate-700">{getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems)}</span> },
       { key: 'party', label: 'Party', sortable: true, sortValue: (row) => getTransactionPartyLabel(row.partyCode, lookups, row.partyType), render: (row) => <span className="text-slate-700">{getTransactionPartyLabel(row.partyCode, lookups, row.partyType)}</span> },
-      { key: 'instrument', label: 'Instrument / Ref', sortable: true, render: (row) => <span className="text-slate-700">{row.instrumentNo || row.referenceNo || '-'}</span> },
+      { key: 'instrument', label: 'Cheque / Ref', sortable: true, render: (row) => <span className="text-slate-700">{row.instrumentNo || row.referenceNo || '-'}</span> },
       { key: 'amount', label: 'Amount', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionAmount(row.amount ?? 0)}</span> },
       makeActionsColumn()
     ],
@@ -277,8 +277,6 @@ export function BankTransactionWorkspacePage({ sectionKey, itemKey = '', detailP
       ...baseColumns,
       { key: 'type', label: 'Type', sortable: true, sortValue: (row) => getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems), render: (row) => <span className="text-slate-700">{getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems)}</span> },
       { key: 'transferType', label: 'Transfer Type', sortable: true, render: (row) => <span className="text-slate-700">{row.details?.transferType || '-'}</span> },
-      { key: 'from', label: 'From Account', sortable: true, sortValue: (row) => getTransactionLedgerLabel(row.details?.fixedFrom || row.details?.fromAccount || '', lookups), render: (row) => <span className="text-slate-700">{getTransactionLedgerLabel(row.details?.fixedFrom || row.details?.fromAccount || '', lookups)}</span> },
-      { key: 'to', label: 'To Account', sortable: true, sortValue: (row) => getTransactionLedgerLabel(row.details?.fixedTo || row.details?.toAccount || '', lookups), render: (row) => <span className="text-slate-700">{getTransactionLedgerLabel(row.details?.fixedTo || row.details?.toAccount || '', lookups)}</span> },
       { key: 'instrument', label: 'Ref / Cheque', sortable: true, render: (row) => <span className="text-slate-700">{row.instrumentNo || row.referenceNo || '-'}</span> },
       { key: 'amount', label: 'Amount', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionAmount(row.amount ?? 0)}</span> },
       makeActionsColumn()
@@ -287,8 +285,6 @@ export function BankTransactionWorkspacePage({ sectionKey, itemKey = '', detailP
       ...baseColumns,
       { key: 'type', label: 'Type', sortable: true, sortValue: (row) => getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems), render: (row) => <span className="text-slate-700">{getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems)}</span> },
       { key: 'transferType', label: 'Transfer Type', sortable: true, render: (row) => <span className="text-slate-700">{row.details?.transferType || '-'}</span> },
-      { key: 'from', label: 'From Account', sortable: true, sortValue: (row) => getTransactionLedgerLabel(row.details?.fixedFrom || row.details?.fromAccount || '', lookups), render: (row) => <span className="text-slate-700">{getTransactionLedgerLabel(row.details?.fixedFrom || row.details?.fromAccount || '', lookups)}</span> },
-      { key: 'to', label: 'To Account', sortable: true, sortValue: (row) => getTransactionLedgerLabel(row.details?.fixedTo || row.details?.toAccount || '', lookups), render: (row) => <span className="text-slate-700">{getTransactionLedgerLabel(row.details?.fixedTo || row.details?.toAccount || '', lookups)}</span> },
       { key: 'instrument', label: 'Ref / Cheque', sortable: true, render: (row) => <span className="text-slate-700">{row.instrumentNo || row.referenceNo || '-'}</span> },
       { key: 'amount', label: 'Amount', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionAmount(row.amount ?? 0)}</span> },
       makeActionsColumn()
@@ -298,7 +294,7 @@ export function BankTransactionWorkspacePage({ sectionKey, itemKey = '', detailP
   const columns = bankColumnsByKey[itemKey] || [
     ...baseColumns,
     { key: 'type', label: 'Type', sortable: true, sortValue: (row) => getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems), render: (row) => <span className="text-slate-700">{getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems)}</span> },
-    { key: 'reference', label: 'Reference / Instrument', sortable: true, sortValue: (row) => row.referenceNo || row.instrumentNo || '', render: (row) => <span className="text-slate-700">{row.referenceNo || row.instrumentNo || '-'}</span> },
+    { key: 'reference', label: 'Cheque / Ref No', sortable: true, sortValue: (row) => row.referenceNo || row.instrumentNo || '', render: (row) => <span className="text-slate-700">{row.referenceNo || row.instrumentNo || '-'}</span> },
     { key: 'bank', label: 'Bank A/c', sortable: true, sortValue: (row) => getTransactionLedgerLabel(row.details?.ledgerTarget || row.details?.depositIn || row.details?.fromAccount || '', lookups), render: (row) => <span className="text-slate-700">{getTransactionLedgerLabel(row.details?.ledgerTarget || row.details?.depositIn || row.details?.fromAccount || '', lookups)}</span> },
     { key: 'amount', label: 'Amount', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionAmount(row.amount ?? 0)}</span> },
     makeActionsColumn()

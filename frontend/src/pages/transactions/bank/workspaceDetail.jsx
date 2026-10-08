@@ -262,7 +262,7 @@ export function BankTransactionWorkspaceDetailPage({ sectionKey, itemKey = '', d
                 <DetailRow label="Transaction Type" value={record.transactionType} />
                 <DetailRow label="Party Type" value={record.partyType} />
                 <DetailRow label="Party" value={partyLabel} />
-                <DetailRow label="Reference / Instrument" value={record.referenceNo || record.instrumentNo || '-'} />
+                <DetailRow label="Cheque / Ref No" value={record.referenceNo || record.instrumentNo || '-'} />
                 <DetailRow label="Bank A/c" value={settlementLabel} />
                 <DetailRow label="Branch" value={record.branchCode} />
                 <DetailRow label="FY Code" value={record.fyCode} />

@@ -45,6 +45,7 @@ function setSmsEnv(overrides = {}) {
     FLOWIT_WEBHOOK_SECRET: WEBHOOK_SECRET,
     FLOWIT_WEBHOOK_HEADER: 'x-webhook-secret',
     FLOWIT_TIMEOUT_MS: '2000',
+    SMS_MAX_VARIABLE_LENGTH: '',
     ...overrides
   });
 }
@@ -107,7 +108,7 @@ test('setup: ledgers, members, no SSA template yet', async () => {
     else await Ledger.create({ code: `TEST-${role}`, name: role, semanticRole });
   }
   const members = [
-    [1, '+919876543210'], // valid
+    [1, '+919871234560'], // valid
     [2, ''], // no mobile
     [3, '+911212121212'], // the legacy placeholder: invalid
     [4, '+919999999999'], // placeholder
@@ -166,7 +167,7 @@ test('SMS checked + valid number: PENDING row committed with the voucher, then F
   assert.equal(call.url, 'https://sms.flowitof.com/dev/bulkV2');
   assert.equal(call.headers.Authorization, API_KEY);
   assert.deepEqual(call.body, {
-    sender_id: 'BANKRP', message: '111111', route: 'dlt', numbers: '9876543210',
+    sender_id: 'BANKRP', message: '111111', route: 'dlt', numbers: '9871234560',
     variables_values: `Member 1|2,500.50|${saved.voucherNo}|07-10-2026`,
     udf1: call.body.udf1, udf2: 'MEMBER_SSA_PAID'
   });
@@ -174,13 +175,13 @@ test('SMS checked + valid number: PENDING row committed with the voucher, then F
   const [row] = await smsRows(saved.id);
   assert.equal(row.status, 'SENT');
   assert.equal(row.idempotencyKey, `${saved.id}:MEMBER_SSA_PAID:${code(1)}`);
-  assert.equal(row.maskedMobile, '98XXXXXX10');
-  assert.equal(row.mobileHash, sms.hashMobile('9876543210'));
+  assert.equal(row.maskedMobile, '98XXXXXX60');
+  assert.equal(row.mobileHash, sms.hashMobile('9871234560'));
   assert.ok(row.providerRequestId.startsWith(`req-${RUN}`));
   assert.equal(row.entityCode, code(1));
   // Nothing stored that it must not hold: number, body, key.
   const stored = JSON.stringify(row);
-  for (const secret of ['9876543210', API_KEY, 'Member 1|']) assert.equal(stored.includes(secret), false, `${secret} stored`);
+  for (const secret of ['9871234560', API_KEY, 'Member 1|']) assert.equal(stored.includes(secret), false, `${secret} stored`);
 });
 
 test('a phone number sent by the frontend is ignored: the number comes from members.mobileNo', async () => {
@@ -345,9 +346,10 @@ test('security: a branch-scoped user selecting another branch\'s member gets 403
   await assert.rejects(banking.updateVoucher(own.id, ssaVoucher(code(90)), meta), (error) => error.statusCode === 403);
   assert.equal((await Voucher.findById(own.id).lean()).partyCode, code(1));
 
-  // Another branch's user cannot edit this branch's voucher at all ("not found").
+  // Another branch's user cannot edit this branch's voucher at all (403).
   const otherUser = { id: null, branchCode: OTHER_BRANCH, isSuperAdmin: false };
-  assert.equal(await banking.updateVoucher(own.id, { narration: 'x' }, { actorUser: otherUser }), null);
+  await assert.rejects(banking.updateVoucher(own.id, { narration: 'x' }, { actorUser: otherUser }), (error) => error.statusCode === 403);
+  assert.notEqual((await Voucher.findById(own.id).lean()).narration, 'x');
 
   // A super admin may post for any branch's member.
   const admin = await banking.createVoucher(ssaVoucher(code(90), { details: { sms: false } }), { actorUser: { isSuperAdmin: true } });
@@ -372,23 +374,23 @@ test('webhook: wrong or missing secret rejected; delivered and failed reports up
     delivery_timestamp: 1791360000, failure_reason: extra.failure_reason || '', webhook_type: 'status_update', ...extra
   });
 
-  assert.equal((await postWebhook(report(rowA, '9876543210', 'Delivered'))).status, 401);
-  assert.equal((await postWebhook(report(rowA, '9876543210', 'Delivered'), { 'x-webhook-secret': 'wrong' })).status, 401);
+  assert.equal((await postWebhook(report(rowA, '9871234560', 'Delivered'))).status, 401);
+  assert.equal((await postWebhook(report(rowA, '9871234560', 'Delivered'), { 'x-webhook-secret': 'wrong' })).status, 401);
   assert.equal((await smsRows(a.id))[0].status, 'SENT');
 
   // Same row id but a different number or request id: ignored.
   const mismatch = await postWebhook([
     report(rowA, '9000000001', 'Failed'),
-    { ...report(rowA, '9876543210', 'Failed'), request_id: 'someone-else' }
+    { ...report(rowA, '9871234560', 'Failed'), request_id: 'someone-else' }
   ], { 'x-webhook-secret': WEBHOOK_SECRET });
   assert.deepEqual(mismatch.body.data, { updated: 0, ignored: 0, unmatched: 0, mismatch: 2 });
   assert.equal((await smsRows(a.id))[0].status, 'SENT');
 
   const ok = await postWebhook([
-    report(rowA, '9876543210', 'Delivered'),
+    report(rowA, '9871234560', 'Delivered'),
     // Found by request_id alone (no udf1).
     { ...report(rowB, '9845678901', 'Failed', { failure_reason: 'Number switched off' }), udf1: '' },
-    { request_id: 'unknown', mobile: '9876543210', status: 'Delivered' }
+    { request_id: 'unknown', mobile: '9871234560', status: 'Delivered' }
   ], { 'x-webhook-secret': WEBHOOK_SECRET });
   assert.equal(ok.status, 200);
   assert.deepEqual(ok.body.data, { updated: 2, ignored: 0, unmatched: 1, mismatch: 0 });
@@ -399,11 +401,11 @@ test('webhook: wrong or missing secret rejected; delivered and failed reports up
   assert.deepEqual([failedB.status, failedB.errorCode, failedB.errorMessage], ['FAILED', 'DLR_FAILED', 'Number switched off']);
 
   // A final status is not overwritten by a late interim one.
-  await postWebhook(report(rowA, '9876543210', 'Sent'), { 'x-webhook-secret': WEBHOOK_SECRET });
+  await postWebhook(report(rowA, '9871234560', 'Sent'), { 'x-webhook-secret': WEBHOOK_SECRET });
   assert.equal((await smsRows(a.id))[0].status, 'DELIVERED');
 
   setSmsEnv({ FLOWIT_WEBHOOK_SECRET: '' });
-  assert.equal((await postWebhook(report(rowA, '9876543210', 'Delivered'), { 'x-webhook-secret': '' })).status, 503);
+  assert.equal((await postWebhook(report(rowA, '9871234560', 'Delivered'), { 'x-webhook-secret': '' })).status, 503);
 });
 
 test('no full number or API key in anything logged while sending', async () => {
@@ -420,7 +422,103 @@ test('no full number or API key in anything logged while sending', async () => {
     Object.assign(console, original);
   }
   const output = lines.join('\n');
-  assert.ok(output.includes('98XXXXXX10'), 'logs use the masked number');
-  assert.equal(output.includes('9876543210'), false);
+  assert.ok(output.includes('98XXXXXX60'), 'logs use the masked number');
+  assert.equal(output.includes('9871234560'), false);
   assert.equal(output.includes(API_KEY), false);
+});
+
+// ---------------------------------------------------------------------------
+// Audit: retries never risk a second SMS; webhook ordering.
+
+test('HTTP 5xx from Flowit: SMS FAILED, never re-sent by the retry job', async () => {
+  await saveTemplate();
+  flowitReply = async () => ({ status: 502, body: null });
+  const saved = await banking.createVoucher(ssaVoucher(code(7)), meta);
+  assert.deepEqual(saved.sms, { status: 'FAILED' });
+  const [row] = await smsRows(saved.id);
+  assert.deepEqual([row.status, row.errorCode], ['FAILED', 'HTTP_502']);
+  await db.query('UPDATE "sms_messages" SET "lastAttemptAt" = NOW() - INTERVAL \'10 minutes\' WHERE "id" = $1', [row.id]);
+  flowitCalls.length = 0;
+  await sms.dispatchPending();
+  assert.equal(flowitCalls.filter((call) => call.body.udf1 === row.id).length, 0);
+});
+
+test('connection dropped mid-request: FAILED (CONNECTION_LOST), never re-sent', async () => {
+  await saveTemplate();
+  flowitReply = async () => { throw Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNRESET' } }); };
+  const saved = await banking.createVoucher(ssaVoucher(code(7)), meta);
+  const [row] = await smsRows(saved.id);
+  assert.deepEqual([row.status, row.errorCode], ['FAILED', 'CONNECTION_LOST']);
+});
+
+test('a send interrupted by a crash (claimed, never finished) is marked INTERRUPTED, not re-sent', async () => {
+  await saveTemplate();
+  // Unreachable first, so the row is PENDING; then simulate a process that
+  // claimed it again and died while talking to Flowit.
+  flowitReply = async () => { throw Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNREFUSED' } }); };
+  const saved = await banking.createVoucher(ssaVoucher(code(9)), meta);
+  const [row] = await smsRows(saved.id);
+  await db.query(`UPDATE "sms_messages" SET "attempts" = 2, "errorCode" = NULL, "errorMessage" = NULL, "lastAttemptAt" = NOW() - INTERVAL '10 minutes' WHERE "id" = $1`, [row.id]);
+  flowitReply = async () => ({ status: 200, body: { return: true, request_id: 'must-not-happen', message: ['ok'] } });
+  flowitCalls.length = 0;
+  await sms.dispatchPending();
+  assert.equal(flowitCalls.filter((call) => call.body.udf1 === row.id).length, 0, 'not re-sent');
+  const [after] = await smsRows(saved.id);
+  assert.deepEqual([after.status, after.errorCode], ['FAILED', 'INTERRUPTED']);
+});
+
+test('live dispatch and retry job racing for the same row: Flowit is called once', async () => {
+  await saveTemplate();
+  flowitReply = async () => { throw Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNREFUSED' } }); };
+  const saved = await banking.createVoucher(ssaVoucher(code(9)), meta);
+  const [row] = await smsRows(saved.id);
+  await db.query('UPDATE "sms_messages" SET "lastAttemptAt" = NOW() - INTERVAL \'10 minutes\' WHERE "id" = $1', [row.id]);
+  flowitReply = async () => {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    return { status: 200, body: { return: true, request_id: `req-${RUN}-race`, message: ['ok'] } };
+  };
+  flowitCalls.length = 0;
+  await Promise.all([sms.dispatchOne(row.id), sms.dispatchOne(row.id), sms.dispatchPending(), sms.dispatchPending()]);
+  assert.equal(flowitCalls.filter((call) => call.body.udf1 === row.id).length, 1);
+  const [after] = await smsRows(saved.id);
+  assert.deepEqual([after.status, after.attempts], ['SENT', 2]);
+});
+
+test('a request id too long for the column: SENT without it, delivery still matched by row id', async () => {
+  await saveTemplate();
+  const longId = 'R'.repeat(200);
+  flowitReply = async () => ({ status: 200, body: { return: true, request_id: longId, message: ['ok'] } });
+  const saved = await banking.createVoucher(ssaVoucher(code(1)), meta);
+  assert.deepEqual(saved.sms, { status: 'SENT' });
+  const [row] = await smsRows(saved.id);
+  assert.deepEqual([row.status, row.providerRequestId], ['SENT', null]);
+  const response = await postWebhook({ request_id: longId, mobile: '9871234560', status: 'Delivered', udf1: row.id }, { 'x-webhook-secret': WEBHOOK_SECRET });
+  assert.deepEqual(response.body.data, { updated: 1, ignored: 0, unmatched: 0, mismatch: 0 });
+  assert.equal((await smsRows(saved.id))[0].status, 'DELIVERED');
+});
+
+test('webhook: repeated or out-of-order reports never downgrade DELIVERED', async () => {
+  await saveTemplate();
+  const saved = await banking.createVoucher(ssaVoucher(code(1)), meta);
+  const [row] = await smsRows(saved.id);
+  const report = (status) => ({ request_id: row.providerRequestId, mobile: '9871234560', status, udf1: row.id });
+  const headers = { 'x-webhook-secret': WEBHOOK_SECRET };
+  assert.equal((await postWebhook(report('Delivered'), headers)).body.data.updated, 1);
+  assert.equal((await postWebhook(report('Delivered'), headers)).body.data.ignored, 1, 'duplicate delivery report');
+  assert.equal((await postWebhook(report('Failed'), headers)).body.data.ignored, 1, 'late failure');
+  assert.equal((await postWebhook(report('Sent'), headers)).body.data.ignored, 1, 'late interim');
+  const [after] = await smsRows(saved.id);
+  assert.equal(after.status, 'DELIVERED');
+  assert.equal(flowitCalls.length, 1);
+});
+
+test('a value longer than SMS_MAX_VARIABLE_LENGTH: SMS FAILED (VARIABLE_TOO_LONG), never cut, Flowit not called', async () => {
+  await saveTemplate();
+  setSmsEnv({ SMS_MAX_VARIABLE_LENGTH: '5' }); // "Member 1" is 8 characters
+  const saved = await banking.createVoucher(ssaVoucher(code(1)), meta);
+  assert.deepEqual(saved.sms, { status: 'FAILED' });
+  const [row] = await smsRows(saved.id);
+  assert.deepEqual([row.status, row.errorCode], ['FAILED', 'VARIABLE_TOO_LONG']);
+  assert.match(row.errorMessage, /memberName" is 8 characters; the limit is 5/);
+  assert.equal(flowitCalls.length, 0);
 });

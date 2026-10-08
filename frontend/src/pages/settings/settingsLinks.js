@@ -1,4 +1,4 @@
-import { Bell, Building2, CalendarClock, Archive, KeyRound, ShieldCheck, Mail } from 'lucide-react';
+import { Bell, Building2, CalendarClock, Archive, KeyRound, ShieldCheck, Mail, MessageSquare } from 'lucide-react';
 
 export const SETTINGS_LINKS = [
   {
@@ -53,6 +53,15 @@ export const SETTINGS_LINKS = [
     permission: 'settings.read',
     description: 'Year-end close metadata and controls.',
     group: 'Administration',
+    tone: 'blue'
+  },
+  {
+    label: 'SMS',
+    path: '/app/settings/sms',
+    icon: MessageSquare,
+    permission: 'settings.read',
+    description: 'Flowit SMS configuration status, DLT templates, and the SMS log.',
+    group: 'Communication',
     tone: 'blue'
   },
   {

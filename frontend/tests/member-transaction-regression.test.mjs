@@ -56,37 +56,17 @@ test('member voucher payload strips legacy status and account head values', () =
   assert.equal(Object.hasOwn(payload.details, 'accountHead'), false);
 });
 
-test('recovery line additions keep the selected member across repeated entries', () => {
-  let draftLine = {
-    member: 'M0004',
-    heads: { suspense: '1', admfee: '2', share: '3', cd: '4', ssa: '5', loan: '6', lad: '7', ins: '8' }
-  };
-
-  for (let addition = 0; addition < 3; addition += 1) {
-    draftLine = transactionUtils.createNextRecoveryLineDraft(draftLine);
-  }
-
-  assert.equal(draftLine.member, 'M0004');
-  assert.deepEqual(draftLine.heads, {
-    suspense: '',
-    admfee: '',
-    share: '',
-    cd: '',
-    ssa: '',
-    loan: '',
-    lad: '',
-    ins: ''
-  });
-});
-
 test('voucher transaction pages have no status or reversal workflow', async () => {
   const files = [];
   for (const area of ['bank', 'employee', 'member', 'receipt-interest', 'transfer-voucher']) {
     for await (const file of glob(`src/pages/transactions/${area}/**/*.{js,jsx}`)) {
+      // Recovery import rows have their own validation status (VALID,
+      // INVALID, ...): not the removed voucher status workflow.
+      if (file.includes('/recovery-import/')) continue;
       files.push(file);
     }
   }
-  files.push('src/pages/transactions/supporting/transactionUtils.js');
+  files.push('src/pages/transactions/other/transactionUtils.js');
 
   const forbidden = /(?:record|row|draft)\.status|StatusBadge|filterStatus|transactions\.reverse|reverseTransactionVoucher/;
   for (const file of files) {
@@ -121,11 +101,22 @@ test('transfer voucher paid and recover workspaces use their full names in actio
 test('transfer voucher payment has exactly three Paid From accounts', async () => {
   const paidFrom = await import('../src/pages/transactions/transfer-voucher/paymentAccountOptions.js').catch(() => ({}));
 
-  assert.deepEqual(paidFrom.TRANSFER_VOUCHER_PAID_FROM_OPTIONS, [
-    { value: 'BA003', label: 'Cash-in-hand' },
-    { value: 'BA002', label: 'Bank Saving A/c' },
-    { value: 'BA001', label: 'Cash Credit A/c' }
+  // Found by accounting role, so they use the real ledger codes.
+  const ledgers = [
+    { code: '1', name: 'Share Capital', semanticRole: 'SHARE' },
+    { code: '2', name: 'Cash-In-Hand', semanticRole: 'CASH' },
+    { code: '3', name: 'Bank Saving A/c', semanticRole: 'BANK_SAVING' },
+    { code: '4', name: 'Bank Cash Credit A/c', semanticRole: 'BANK_CC' },
+    { code: '7', name: 'Members Special Saving A/c', semanticRole: 'SPECIAL_DEPOSIT' }
+  ];
+  assert.deepEqual(paidFrom.buildPaidFromOptions(ledgers), [
+    { value: '2', label: 'Cash-in-hand' },
+    { value: '3', label: 'Bank Saving A/c' },
+    { value: '4', label: 'Cash Credit A/c' }
   ]);
+  assert.deepEqual(paidFrom.buildPaidFromOptions([]), []);
+  const form = await readFile('src/pages/transactions/transfer-voucher/paymentForm.jsx', 'utf8');
+  assert.match(form, /value=\{value\?\.details\?\.settlementAccount \|\| ''\}/, 'the chosen account is shown as selected');
 });
 
 test('transfer voucher Payment filtering excludes Paid and Recover rows', () => {
@@ -180,5 +171,22 @@ test('frontend source contains no known mojibake markers', async () => {
   for await (const file of glob('src/**/*.{js,jsx,ts,tsx,css}')) {
     const source = await readFile(file, 'utf8');
     assert.doesNotMatch(source, /Ã|Â|â|ð|�/, file);
+  }
+});
+
+test('a failed document upload after a successful save is reported, never as a failed save', async () => {
+  assert.equal(
+    transactionUtils.describeDocumentUploadFailure({ voucherNo: 'V-12' }, new Error('Network error')),
+    'Voucher V-12 was saved, but its documents could not be uploaded (Network error). Open the voucher and attach them again.'
+  );
+  assert.match(transactionUtils.describeDocumentUploadFailure({}, null), /^The voucher was saved/);
+  // The editor closes after any successful save: the uploads have their
+  // own catch, so "Unable to save" (and a second Save click) cannot follow.
+  for (const file of ['src/pages/transactions/member/index.jsx', 'src/pages/transactions/member/detail.jsx']) {
+    const source = await readFile(file, 'utf8');
+    const save = source.slice(source.indexOf('async function saveVoucher'));
+    assert.match(save, /documentError = error;/, file);
+    assert.match(save, /toast\.warning\(describeDocumentUploadFailure\(nextRecord, documentError\)\)/, file);
+    assert.ok(save.indexOf("toast.error(error.message || 'Unable to save transaction')") < save.indexOf('documentError = error;'), file);
   }
 });

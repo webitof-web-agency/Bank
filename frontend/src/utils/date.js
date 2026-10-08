@@ -44,6 +44,8 @@ export function formatDateOnly(value, fallback = '-') {
 }
 
 export function isDateOnlyColumn(column = {}) {
+  // A column that renders a date and time itself opts out.
+  if (column.dateOnly === false) return false;
   const key = String(column.key || '');
   const label = String(column.label || '');
 

@@ -272,6 +272,15 @@ export const api = {
       test: (token, payload) => request('/settings/storage/test', { method: 'POST', token, body: payload })
     }
   },
+  // SMS settings: configuration status (never secrets), templates, log.
+  sms: {
+    configStatus: (token) => request('/sms/config/status', { token, skipCache: true }),
+    templates: (token) => request('/sms/templates', { token, skipCache: true }),
+    saveTemplate: (token, eventCode, payload) => request(`/sms/templates/${encodeURIComponent(eventCode)}`, { method: 'PUT', token, body: payload }),
+    messages: (token, query = {}) => request(`/sms/messages${buildQuery(query)}`, { token, skipCache: true }),
+    // Temporary Flowit connectivity test: sends no data, everything is backend config.
+    testSend: (token) => request('/sms/test-send', { method: 'POST', token, body: {} })
+  },
   files: {
     list: (token, query = {}) => request(`/files${buildQuery(query)}`, { token, skipCache: true }),
     get: (token, id) => request(`/files/${id}`, { token }),

@@ -216,7 +216,10 @@ const transactions = {
       if (req.params.id.startsWith('legacy:')) {
         return res.status(400).json({ success: false, message: 'This is a read-only historical record and cannot be deleted.' });
       }
-      const ok = await bankingService.deleteVoucher(req.params.id);
+      const ok = await bankingService.deleteVoucher(req.params.id, {
+        actorUserId: req.user?.id || null,
+        actorUser: req.user || null
+      });
       if (!ok) {
         return res.status(404).json({ success: false, message: 'Voucher not found' });
       }
@@ -227,7 +230,10 @@ const transactions = {
   },
   async restoreVoucher(req, res, next) {
     try {
-      const ok = await bankingService.restoreVoucher(req.params.id);
+      const ok = await bankingService.restoreVoucher(req.params.id, {
+        actorUserId: req.user?.id || null,
+        actorUser: req.user || null
+      });
       if (!ok) {
         return res.status(404).json({ success: false, message: 'Deleted voucher not found' });
       }

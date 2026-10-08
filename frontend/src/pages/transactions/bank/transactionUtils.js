@@ -208,6 +208,14 @@ export function buildTransactionVoucherPayload(draft = {}) {
   details.allocations = buildDetailArray(details.allocations || baseDetails.allocationsJson || details.allocationsJson, []);
   delete details.recoveryLinesJson;
   delete details.allocationsJson;
+  // Bank vouchers post by their type, never from these: the backend strips
+  // them too, so they are not sent at all.
+  delete details.settlementAccount;
+  delete details.fixedSettlement;
+  delete details.fromAccount;
+  delete details.toAccount;
+  delete details.fixedFrom;
+  delete details.fixedTo;
 
   return {
     voucherNo: cleanUpper(draft.voucherNo) || undefined,

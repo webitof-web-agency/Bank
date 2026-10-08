@@ -4812,8 +4812,9 @@ async function withSmsResult(response, smsQueued = []) {
 async function updateVoucher(id, data = {}, meta = {}) {
   const result = await withTransaction(async (tx) => {
     const current = await Voucher.findById(id);
-    // Another branch's voucher is "not found", as on the read path.
-    if (!current || !canAccessBranchRecord('vouchers', current.toObject(), meta.actorUser || {})) return null;
+    if (!current) return null;
+    // Another branch's voucher: 403, as for create, delete and restore.
+    assertVoucherBranchAccess(current.toObject(), meta.actorUser);
     const payload = normalizeVoucher({ ...current.toObject(), ...data });
     assertVoucherBasics(payload, { ...current.toObject(), ...data });
     payload.branchCode = resolveBranchCode(meta.actorUser || {}, current.branchCode);
@@ -4867,7 +4868,22 @@ async function updateVoucher(id, data = {}, meta = {}) {
   return withSmsResult(result.response, result.smsQueued);
 }
 
-async function deleteVoucher(id) {
+// Another branch's voucher: 403. Branch-scoped users may only edit, delete
+// or restore their own branch's vouchers (Recovery included: its voucher
+// belongs to the branch that posted it, whichever members its lines cover).
+// Reading one stays "not found" (404), so its existence is not revealed.
+function assertVoucherBranchAccess(voucher, user = {}) {
+  if (!canAccessBranchRecord('vouchers', voucher, user || {})) {
+    const error = new Error('You do not have access to this voucher.');
+    error.statusCode = 403;
+    throw error;
+  }
+}
+
+async function deleteVoucher(id, meta = {}) {
+  const existing = await Voucher.findById(id).lean();
+  if (!existing) return false;
+  assertVoucherBranchAccess(existing, meta.actorUser);
   return withTransaction(async (tx) => {
     const oldLinks = (await RecoveryLine.find({ voucherId: id }).lean())
       .map((line) => cleanText(line.demandLineId)).filter(Boolean);
@@ -4885,9 +4901,10 @@ async function deleteVoucher(id) {
 // Mirrors deleteVoucher's reach: restoring a voucher must also restore the
 // recovery_lines/journal_lines it soft-deleted alongside it, or the voucher
 // would come back with no journal entries / recovery breakdown.
-async function restoreVoucher(id) {
+async function restoreVoucher(id, meta = {}) {
   const voucher = await Voucher.findById(id).withDeleted().lean();
   if (!voucher || !voucher.deletedAt) return false;
+  assertVoucherBranchAccess(voucher, meta.actorUser);
 
   // Deleting returned its demand lines to pending; take them back first, and
   // refuse if another recovery has collected any of them since.

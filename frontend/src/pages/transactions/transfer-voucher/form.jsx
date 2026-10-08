@@ -322,32 +322,23 @@ export function TransferVoucherTransactionForm({ section, itemKey, lookups = {},
           Allocation
         </div>
 
-        <div className="hidden gap-3 border-b border-slate-200 pb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 md:grid md:grid-cols-[1.2fr_1fr_120px]">
-          <div>Head</div>
-          <div>Amount</div>
-          <div>Side</div>
-        </div>
-
-        <div className="mt-3 space-y-3">
+        {/* One compact row per head: label, then amount and DR/CR side. */}
+        <div data-transfer-voucher-section="allocation" className="divide-y divide-slate-100 rounded-xl border border-slate-200">
           {allocationRows.map((row) => (
-            <div key={row.head} className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50/60 p-4 md:grid-cols-[1.2fr_1fr_120px] md:items-end">
-              <div className="space-y-1.5">
-                <FieldLabel>{row.label}</FieldLabel>
-              </div>
-              <div className="space-y-1.5">
-                <FieldLabel>Amount</FieldLabel>
+            <div key={row.head} className="grid items-center gap-x-3 gap-y-1.5 px-3 py-2 md:grid-cols-[minmax(0,1fr)_minmax(0,180px)_112px]">
+              <div className="text-[13px] font-medium text-slate-700">{row.label}</div>
+              <div className="grid grid-cols-[minmax(0,1fr)_112px] gap-2 md:contents">
                 <Input
                   type="number"
                   min="0"
                   step="0.01"
+                  aria-label={`Amount for ${row.label}`}
                   value={row.amount ?? ''}
                   onChange={(event) => updateAllocation(row.head, 'amount', event.target.value)}
                   placeholder="0.00"
                 />
-              </div>
-              <div className="space-y-1.5">
-                <FieldLabel>Side</FieldLabel>
                 <CustomSelect
+                  ariaLabel={`Side for ${row.label}`}
                   value={row.side || defaultSide}
                   onChange={(next) => updateAllocation(row.head, 'side', next)}
                   options={[

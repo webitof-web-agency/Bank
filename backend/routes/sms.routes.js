@@ -6,8 +6,11 @@ const { requirePermission } = require('../middlewares/auth');
 // mounted separately in routes/index.js, before requireAuth.
 const router = express.Router();
 
-router.get('/templates', requirePermission('settings.read'), controller.listTemplatesController);
+router.get('/config/status', requirePermission('settings.read'), controller.configStatusController);
+router.get('/templates',requirePermission('settings.read'), controller.listTemplatesController);
 router.put('/templates/:eventCode', requirePermission('settings.write'), controller.saveTemplateController);
 router.get('/messages', requirePermission('settings.read'), controller.listMessagesController);
+// Temporary Flowit connectivity test: administrators only, no input.
+router.post('/test-send', requirePermission('settings.write'), controller.testSendController);
 
 module.exports = router;
