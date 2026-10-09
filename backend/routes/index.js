@@ -50,5 +50,6 @@ router.use('/recovery-import', require('./recoveryImport.routes'));
 router.use('/sms', require('./sms.routes'));
 router.use('/google-drive', require('./googleDrive.routes'));
 router.use('/backup', require('./backup.routes'));
+router.use('/fy-closing', require('./fyClosing.routes'));
 
 module.exports = router;

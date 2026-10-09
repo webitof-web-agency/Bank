@@ -84,6 +84,7 @@ export const TRANSACTION_SECTIONS = [
     description: 'Other transactions and special pages.',
     tone: 'slate',
     children: [
+      { label: 'Journal Voucher', path: '/app/transactions/other/journal-voucher', icon: FileText, permission: 'transactions.receipt-interest.view' },
       { label: 'Payment Voucher', path: '/app/transactions/other/payment-voucher', icon: Banknote, permission: 'transactions.receipt-interest.view' },
       { label: 'Receipt Voucher', path: '/app/transactions/other/receipt-voucher', icon: ReceiptText, permission: 'transactions.receipt-interest.view' },
       { label: 'No Interest Members', path: '/app/transactions/other/no-interest-members', icon: Users, permission: 'no-interest-members.read' },

@@ -148,6 +148,9 @@ export function InterestVoucherForm({ section, lookups = {}, value, setValue, on
                 { value: 'Transfer', label: 'Transfer' }
               ]}
             />
+            {isEmployee ? (
+              <p className="text-[12px] text-slate-500">Transfer: the year&apos;s interest charged to the staff loan (post on 31 March, as the old software did). Cash: interest paid in cash.</p>
+            ) : null}
           </div>
 
           <div className="space-y-1.5">

@@ -29,6 +29,23 @@ async function getPaymentLedger(voucher, tx) {
   return voucher?.details?.paymentLedgerId || await resolveLedgerId(ACCOUNTING_ROLES.CASH, tx);
 }
 
+// Interest Receive From Employee: the interest field, or the amount when it
+// is the only figure entered; vehicle when the A/C says so, else housing.
+function employeeInterestReceived(voucher = {}) {
+  const interest = Number(voucher?.details?.interestAmount) || 0;
+  return Number((interest > 0 ? interest : Number(voucher.amount) || 0).toFixed(2));
+}
+
+// Charged to the staff loan (mode Transfer, no payment ledger), not paid in cash.
+function isEmployeeInterestCharged(voucher = {}) {
+  if (voucher?.details?.paymentLedgerId) return false;
+  return !/cash/i.test(String(voucher.mode || voucher?.details?.payMode || ''));
+}
+
+function isVehicleLoanInterest(voucher = {}) {
+  return /vehicle/i.test(String(voucher?.details?.accountType || ''));
+}
+
 const POSTING_REGISTRY = {
   'loan-paid-member': {
     status: 'PROVEN',
@@ -187,6 +204,64 @@ const POSTING_REGISTRY = {
       ];
     }
   },
+  // Balanced multi-line voucher: any ledgers, debits must equal credits.
+  // details.journalLines: [{ ledgerCode | ledgerId, debit, credit,
+  // memberCode?, employeeCode? }]. Used for year-end entries (interest
+  // totals, depreciation, profit appropriation) and the year-end close.
+  'journal-voucher': {
+    status: 'PROVEN',
+    build: async (voucher, { tx }) => {
+      const input = Array.isArray(voucher?.details?.journalLines) ? voucher.details.journalLines : [];
+      const lines = [];
+      for (const [index, line] of input.entries()) {
+        const debit = Number(line.debit) || 0;
+        const credit = Number(line.credit) || 0;
+        if (!debit && !credit) continue;
+        const code = String(line.ledgerCode || '').trim().toUpperCase();
+        let ledger = null;
+        if (line.ledgerId) ledger = (await Ledger.find({ _id: String(line.ledgerId) }).tx(tx).exec())[0] || null;
+        if (!ledger && code) ledger = (await Ledger.find({ code }).tx(tx).exec())[0] || null;
+        if (!ledger) throw new PostingError(`Journal line ${index + 1}: ledger ${code || line.ledgerId || '(none)'} was not found.`, 'FAILURE');
+        lines.push({
+          ledgerId: ledger.id || ledger._id,
+          dr: debit,
+          cr: credit,
+          memberId: line.memberCode ? String(line.memberCode).trim().toUpperCase() : undefined,
+          employeeId: line.employeeCode ? String(line.employeeCode).trim().toUpperCase() : undefined
+        });
+      }
+      if (lines.length < 2) throw new PostingError('A journal voucher needs at least two lines with an amount.', 'FAILURE');
+      return lines;
+    }
+  },
+  // Interest Receive From Employee (legacy TransType 22). Legacy posts it once
+  // a year, on 31 March, per employee:
+  //   - by transfer (no cash): the year's interest charged to the staff loan —
+  //     legacy paired it with an Advance Paid of the same amount — so the
+  //     staff loan ledger Dr (the loan grows), interest income Cr;
+  //   - in cash: interest paid in, cash (or the chosen payment ledger) Dr,
+  //     interest income Cr, the loan untouched.
+  // The year-end close then carries only what legacy's own calculation
+  // differs from this charge by.
+  'interest-recv-employee': {
+    status: 'PROVEN',
+    build: async (voucher, { tx }) => {
+      const amount = employeeInterestReceived(voucher);
+      if (!(amount > 0)) throw new PostingError('Enter the interest amount.', 'FAILURE');
+      const vehicle = isVehicleLoanInterest(voucher);
+      const pattern = vehicle ? /intre?s?t\s*rec\w*.*vehicle\s*loan.*staff/i : /intre?s?t\s*rec\w*.*house\s*loan.*staff/i;
+      const incomeLedger = (await Ledger.find({}).tx(tx).exec()).find((ledger) => pattern.test(String(ledger.name || '')));
+      if (!incomeLedger) throw new PostingError(`No "Intrest Received (${vehicle ? 'Vehicle' : 'House'} Loan to Staff)" ledger was found.`, 'FAILURE');
+      const employeeId = String(voucher.partyCode || '').trim().toUpperCase() || undefined;
+      const debitLedgerId = isEmployeeInterestCharged(voucher)
+        ? await resolveLedgerId(vehicle ? ACCOUNTING_ROLES.EMPLOYEE_VEHICLE_LOAN : ACCOUNTING_ROLES.EMPLOYEE_HOUSING_LOAN, tx)
+        : await getPaymentLedger(voucher, tx);
+      return [
+        { ledgerId: debitLedgerId, dr: amount, cr: 0, employeeId },
+        { ledgerId: incomeLedger.id || incomeLedger._id, dr: 0, cr: amount, employeeId }
+      ];
+    }
+  },
   'bank-deposit': { status: 'BLOCKED_LEGACY_UNKNOWN' },
   'interest-paid-member': { status: 'BLOCKED_LEGACY_UNKNOWN' },
   'transfer-voucher-paid': { status: 'BLOCKED_LEGACY_UNKNOWN' },
@@ -251,6 +326,9 @@ async function buildJournalLinesForVoucher(voucher, meta = {}) {
 }
 
 module.exports = {
+  employeeInterestReceived,
+  isEmployeeInterestCharged,
+  isVehicleLoanInterest,
   buildJournalLinesForVoucher,
   PostingError
 };

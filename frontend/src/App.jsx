@@ -63,6 +63,7 @@ import { ReceiptVoucherWorkspaceDetailPage } from './pages/transactions/receipt-
 import { InterestVoucherWorkspacePage } from './pages/transactions/receipt-interest/interestWorkspace';
 import { InterestVoucherWorkspaceDetailPage } from './pages/transactions/receipt-interest/interestWorkspaceDetail';
 import { OtherTransactionsPage } from './pages/transactions/other';
+import { JournalVoucherPage } from './pages/transactions/other/journal-voucher';
 import { DemandEntryPage } from './pages/transactions/other/demand-entry/index';
 import { DemandEntryDetailPage } from './pages/transactions/other/demand-entry/detail';
 import { NoInterestMembersPage } from './pages/transactions/other/no-interest-members';
@@ -286,6 +287,7 @@ function AppRoutes() {
         <Route path="transactions/interest/interest-receive-employee/:id" element={<PermissionRoute permission="transactions.receipt-interest.view"><InterestVoucherWorkspaceDetailPage sectionKey="interest" itemKey="interest-recv-employee" detailPathBase="/app/transactions/interest/interest-receive-employee" /></PermissionRoute>} />
         <Route path="transactions/interest/:type/:id" element={<PermissionRoute permission="transactions.receipt-interest.view"><InterestVoucherWorkspaceDetailPage sectionKey="interest" /></PermissionRoute>} />
 
+        <Route path="transactions/other/journal-voucher" element={<PermissionRoute permission="transactions.receipt-interest.view"><JournalVoucherPage /></PermissionRoute>} />
         <Route path="transactions/other/payment-voucher" element={<PermissionRoute permission="transactions.receipt-interest.view"><OtherTransactionsPage sectionKey="other" itemKey="payment-voucher" detailPathBase="/app/transactions/other/payment-voucher" /></PermissionRoute>} />
         <Route path="transactions/other/receipt-voucher" element={<PermissionRoute permission="transactions.receipt-interest.view"><OtherTransactionsPage sectionKey="other" itemKey="receipt-voucher" detailPathBase="/app/transactions/other/receipt-voucher" /></PermissionRoute>} />
         <Route path="transactions/other/no-interest-members" element={<PermissionRoute permission="no-interest-members.read"><NoInterestMembersPage sectionKey="other" detailPathBase="/app/transactions/other/no-interest-members" /></PermissionRoute>} />

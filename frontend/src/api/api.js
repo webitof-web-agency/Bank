@@ -302,6 +302,13 @@ export const api = {
       return response.blob();
     }
   },
+  // Year-end close (Settings -> Financial Year Closing).
+  fyClosing: {
+    list: (token) => request('/fy-closing', { token, skipCache: true }),
+    preview: (token, fy) => request(`/fy-closing/${encodeURIComponent(fy)}/preview`, { token, skipCache: true }),
+    close: (token, fy, payload) => request(`/fy-closing/${encodeURIComponent(fy)}/close`, { method: 'POST', token, body: payload }),
+    reopen: (token, fy, reason) => request(`/fy-closing/${encodeURIComponent(fy)}/reopen`, { method: 'POST', token, body: { reason } })
+  },
   // Manual backup: a fresh database dump downloaded to this computer.
   backup: {
     downloadLocal: async (token) => {

@@ -9,9 +9,12 @@ export function ConfirmDialog({
   cancelLabel = 'Cancel',
   tone = 'destructive',
   onConfirm,
-  onClose,
+  onClose: onCloseProp,
+  // Several pages pass onCancel; without this their Cancel did nothing.
+  onCancel,
   busy = false
 }) {
+  const onClose = onCloseProp || onCancel;
   return (
     <Modal
       open={open}
