@@ -39,7 +39,10 @@ function runPgDump({ file, conn, pgDumpPath }) {
   return new Promise((resolve, reject) => {
     const args = ['--format=custom', '--compress=6', '--no-owner', '--no-privileges',
       `--host=${conn.host}`, `--port=${conn.port}`, `--username=${conn.user}`, `--dbname=${conn.database}`, `--file=${file}`];
-    const child = spawn(pgDumpPath, args, { env: { ...process.env, PGPASSWORD: conn.password || '' }, windowsHide: true });
+    // SSL as the app connects (a hosted server reached through DATABASE_URL).
+    const env = { ...process.env, PGPASSWORD: conn.password || '', ...(conn.ssl ? { PGSSLMODE: 'require' } : {}) };
+    delete env.DATABASE_URL;
+    const child = spawn(pgDumpPath, args, { env, windowsHide: true });
     let stderr = '';
     child.stderr.on('data', (chunk) => { stderr = (stderr + chunk.toString()).slice(-2000); });
     child.on('error', (error) => reject(new Error(error.code === 'ENOENT'

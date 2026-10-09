@@ -1,4 +1,7 @@
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8001/api';
+// The backend: VITE_API_URL when set at build time, otherwise the live server
+// for a production build and the local backend in development.
+const PRODUCTION_API_URL = 'https://jskbf.webitof.com/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? PRODUCTION_API_URL : 'http://localhost:8001/api');
 const CACHE_PREFIX = 'bank-api-cache:v2';
 const CACHE_TTL_MS = 15 * 60 * 1000;
 const memoryCache = new Map();

@@ -46,3 +46,4 @@ Thumbs.db
 !/frontend/
 !/backend/
 !/.gitignore
+backend/ledgers_backup_before_group_update_2026-09-28.csv

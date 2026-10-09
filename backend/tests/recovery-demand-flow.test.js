@@ -4,6 +4,12 @@
 // feed it. Codes are unique per run so leftovers in the test database from
 // earlier runs never collide — and kept under 10 characters: the model layer
 // compares longer strings as dates when they parse as one.
+//
+// Own database (bank_test_recovery_flow): on the shared bank_app another
+// test file running alongside could delete a role ledger (SHARE, ...) after
+// this one had set them up.
+process.env.PG_DATABASE = process.env.RECOVERY_FLOW_TEST_DATABASE || 'bank_test_recovery_flow';
+
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const xlsx = require('xlsx');

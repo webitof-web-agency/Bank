@@ -28,16 +28,54 @@ function clone(value) {
   return value == null ? value : JSON.parse(JSON.stringify(value));
 }
 
+// A single connection link, e.g. from a hosting provider:
+//   DATABASE_URL=postgresql://user:password@host:5432/dbname?sslmode=require
+// (POSTGRES_URL / PG_URL are read too.) Returns null when none is set.
+function getDatabaseUrl() {
+  const raw = String(process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.PG_URL || '').trim();
+  if (!raw) return null;
+  let url;
+  try {
+    url = new URL(raw);
+  } catch (_error) {
+    throw new Error('DATABASE_URL is not a valid connection link (expected postgresql://user:password@host:5432/dbname).');
+  }
+  if (!/^postgres(ql)?:$/.test(url.protocol)) {
+    throw new Error('DATABASE_URL must start with postgresql:// or postgres://.');
+  }
+  const sslMode = String(url.searchParams.get('sslmode') || '').toLowerCase();
+  return {
+    host: url.hostname,
+    port: Number(url.port || 5432),
+    user: decodeURIComponent(url.username || ''),
+    password: decodeURIComponent(url.password || ''),
+    database: decodeURIComponent(url.pathname.replace(/^\//, '')),
+    sslMode,
+    // require / prefer encrypt without checking the certificate (as libpq
+    // does); verify-ca / verify-full also check it.
+    ssl: ['require', 'prefer', 'verify-ca', 'verify-full'].includes(sslMode)
+      ? { rejectUnauthorized: sslMode === 'verify-ca' || sslMode === 'verify-full' }
+      : null
+  };
+}
+
 function shouldUseEmbedded() {
+  // A connection link always means an external server.
+  if (getDatabaseUrl()) return false;
   return String(process.env.PG_EMBEDDED || 'true').trim().toLowerCase() !== 'false';
 }
 
+// PG_DATABASE, when set, wins over the link's database (the tests use it to
+// run on their own databases on the same server).
 function getDatabaseName() {
-  return process.env.PG_DATABASE || 'bank_app';
+  return process.env.PG_DATABASE || getDatabaseUrl()?.database || 'bank_app';
 }
 
 function getConnectionConfig(overrides = {}) {
-  const base = embeddedConnection
+  const link = embeddedConnection ? null : getDatabaseUrl();
+  const base = link
+    ? { host: link.host, port: link.port, user: link.user, password: link.password }
+    : embeddedConnection
     ? {
         host: embeddedConnection.host,
         port: embeddedConnection.port,
@@ -57,9 +95,11 @@ function getConnectionConfig(overrides = {}) {
     max: Number(process.env.PG_POOL_SIZE || 10),
     idleTimeoutMillis: Number(process.env.PG_IDLE_TIMEOUT_MS || 30000),
     connectionTimeoutMillis: Number(process.env.PG_CONNECTION_TIMEOUT_MS || 10000),
-    ...(process.env.PG_SSL || '').toLowerCase() === 'true'
-      ? { ssl: { rejectUnauthorized: false } }
-      : {},
+    ...(link?.ssl
+      ? { ssl: link.ssl }
+      : (process.env.PG_SSL || '').toLowerCase() === 'true'
+        ? { ssl: { rejectUnauthorized: false } }
+        : {}),
     ...overrides
   };
 }
@@ -516,6 +556,18 @@ async function createPool() {
 
 async function ensureDatabaseExists() {
   const databaseName = getDatabaseName();
+  // Hosted servers often allow no connection to the "postgres" database and
+  // no CREATE DATABASE: only go there when the database really is missing.
+  const probe = new Client(getConnectionConfig());
+  try {
+    await probe.connect();
+    return;
+  } catch (error) {
+    if (error.code !== '3D000') throw error; // anything but "database does not exist"
+  } finally {
+    await probe.end().catch(() => {});
+  }
+
   const client = new Client(getConnectionConfig({ database: 'postgres' }));
   await client.connect();
 
@@ -839,12 +891,13 @@ async function withTransaction(callback) {
 
 // Where pg_dump connects for a backup: the same server and database as the app.
 function getDumpConnection() {
-  const { host, port, user, password, database } = getConnectionConfig();
-  return { host, port, user, password, database };
+  const { host, port, user, password, database, ssl } = getConnectionConfig();
+  return { host, port, user, password, database, ssl: Boolean(ssl) };
 }
 
 module.exports = {
   closeDatabase,
+  getDatabaseUrl,
   getDumpConnection,
   deleteMainRow,
   getCachedRows,
