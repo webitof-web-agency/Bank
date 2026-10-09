@@ -292,7 +292,7 @@ test('isolated from the banking events: no template, no voucher trigger, cannot 
   assert.equal(Object.hasOwn(sms.SMS_EVENTS, 'FLOWIT_TEST_OTP'), false);
   assert.equal(Object.values(sms.EVENT_BY_VOUCHER_KEY).includes('FLOWIT_TEST_OTP'), false);
   const templates = await call('GET', '/sms/templates', { user: 'reader' });
-  assert.deepEqual(templates.body.data.map((t) => t.eventCode), ['MEMBER_SSA_PAID']);
+  assert.deepEqual(templates.body.data.map((t) => t.eventCode), ['MEMBER_LOAN_PAID', 'MEMBER_CD_PAID', 'MEMBER_INSURANCE_PAID', 'MEMBER_SSA_PAID']);
   assert.equal((await call('PUT', '/sms/templates/FLOWIT_TEST_OTP', { body: { dltMessageId: '1', isEnabled: true } })).status, 400);
   // Queueing a voucher never produces a test row.
   assert.deepEqual(await sms.queueForVoucher(null, { id: 'v', partyCode: 'X', details: { key: 'flowit-test', sms: true } }), []);

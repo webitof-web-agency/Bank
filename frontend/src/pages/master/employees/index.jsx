@@ -41,7 +41,7 @@ function UserForm(props) {
 
 export function EmployeesPage() {
   const navigate = useNavigate();
-  const { token, hasPermission } = useAuth();
+  const { token, pageAccess } = useAuth();
   const [rows, setRows] = useState([]);
   const [roles, setRoles] = useState([]);
   const [branches, setBranches] = useState([]);
@@ -63,7 +63,7 @@ export function EmployeesPage() {
   const [passwordSaving, setPasswordSaving] = useState(false);
   const branchLookup = useMemo(() => getBranchMap(branches), [branches]);
 
-  const canManage = hasPermission('employees.write', 'users.manage');
+  const { canCreate, canEdit, canDelete } = pageAccess('master', 'employees', 'admin.users');
 
   useEffect(() => {
     return () => {
@@ -331,33 +331,35 @@ export function EmployeesPage() {
           >
             <Eye size={16} />
           </button>
-          {canManage ? (
-            <>
-              <button
-                type="button"
-                onClick={() => openPasswordReset(row)}
-                className="rounded-full p-2 text-slate-400 hover:bg-amber-50 hover:text-amber-600"
-                title="Reset password"
-              >
-                <Key size={16} />
-              </button>
-              <button
-                type="button"
-                onClick={() => openEdit(row)}
-                className="rounded-full p-2 text-slate-400 hover:bg-blue-50 hover:text-blue-600"
-                title="Edit"
-              >
-                <Edit2 size={16} />
-              </button>
-              <button
-                type="button"
-                onClick={() => setDeleteTarget(row)}
-                className="rounded-full p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
-                title="Delete"
-              >
-                <Trash2 size={16} />
-              </button>
-            </>
+          {canEdit ? (
+            <button
+              type="button"
+              onClick={() => openPasswordReset(row)}
+              className="rounded-full p-2 text-slate-400 hover:bg-amber-50 hover:text-amber-600"
+              title="Reset password"
+            >
+              <Key size={16} />
+            </button>
+          ) : null}
+          {canEdit ? (
+            <button
+              type="button"
+              onClick={() => openEdit(row)}
+              className="rounded-full p-2 text-slate-400 hover:bg-blue-50 hover:text-blue-600"
+              title="Edit"
+            >
+              <Edit2 size={16} />
+            </button>
+          ) : null}
+          {canDelete ? (
+            <button
+              type="button"
+              onClick={() => setDeleteTarget(row)}
+              className="rounded-full p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+              title="Delete"
+            >
+              <Trash2 size={16} />
+            </button>
           ) : null}
         </div>
       )
@@ -370,7 +372,7 @@ export function EmployeesPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Manage Employees</h1>
         </div>
-        {canManage ? (
+        {canCreate ? (
           <Button onClick={openCreate} className="gap-2">
             <Plus size={16} />
             Add Employee

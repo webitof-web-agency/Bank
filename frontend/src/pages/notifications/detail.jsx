@@ -76,8 +76,8 @@ function NotificationIcon({ item, size = 20 }) {
 export function NotificationDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { token, hasPermission } = useAuth();
-  const canManage = hasPermission('notifications.write');
+  const { token, pageAccess } = useAuth();
+  const { canDelete } = pageAccess('workspace', 'notifications');
   const [notification, setNotification] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -266,7 +266,7 @@ export function NotificationDetailPage() {
             icon: CheckCheck,
             onClick: handleMarkRead
           }] : []),
-          ...(canManage ? [{
+          ...(canDelete ? [{
             label: 'Delete',
             variant: 'destructive',
             icon: Trash2,

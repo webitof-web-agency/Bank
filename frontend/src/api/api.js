@@ -232,6 +232,8 @@ export const api = {
     listTransactionVouchers: (token, query = {}) => request(`/banking/transactions/vouchers${buildQuery(query)}`, { token, skipCache: true }),
     getNextVoucherNo: (token, branchCode = '') => request(`/banking/transactions/vouchers/next?branchCode=${encodeURIComponent(branchCode)}`, { token, skipCache: true }),
     getTransactionVoucher: (token, id) => request(`/banking/transactions/vouchers/${id}`, { token, skipCache: true }),
+    // The voucher's SMS as it stands now: { status, reason? } or null.
+    getTransactionVoucherSms: (token, id) => request(`/banking/transactions/vouchers/${id}/sms`, { token, skipCache: true }),
     createTransactionVoucher: (token, payload) => request('/banking/transactions/vouchers', { method: 'POST', token, body: payload }),
     updateTransactionVoucher: (token, id, payload) => request(`/banking/transactions/vouchers/${id}`, { method: 'PUT', token, body: payload }),
     deleteTransactionVoucher: (token, id) => request(`/banking/transactions/vouchers/${id}`, { method: 'DELETE', token }),
@@ -287,7 +289,6 @@ export const api = {
     connect: (token) => request('/google-drive/connect', { method: 'POST', token, body: {} }),
     disconnect: (token) => request('/google-drive/disconnect', { method: 'POST', token, body: {} }),
     listBackups: (token) => request('/google-drive/backups', { token, skipCache: true }),
-    startBackup: (token) => request('/google-drive/backups', { method: 'POST', token, body: {} }),
     // The file itself (not JSON): fetched with the session token, saved by the page.
     downloadBackup: async (token, fileId) => {
       const response = await fetch(`${API_BASE_URL}/google-drive/backups/${encodeURIComponent(fileId)}/download`, {
@@ -299,6 +300,22 @@ export const api = {
         throw new Error(message);
       }
       return response.blob();
+    }
+  },
+  // Manual backup: a fresh database dump downloaded to this computer.
+  backup: {
+    downloadLocal: async (token) => {
+      const response = await fetch(`${API_BASE_URL}/backup/download`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      if (!response.ok) {
+        let message = `Backup failed (${response.status})`;
+        try { message = (await response.json()).message || message; } catch { /* not JSON */ }
+        throw new Error(message);
+      }
+      const disposition = response.headers.get('content-disposition') || '';
+      const name = disposition.match(/filename="([^"]+)"/)?.[1] || 'bank-backup.dump';
+      return { blob: await response.blob(), name };
     }
   },
   files: {

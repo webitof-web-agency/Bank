@@ -11,6 +11,8 @@ import { Table } from '../../components/ui/Table';
 import { useAuth } from '../../context/AuthContext';
 import { useFY } from '../../context/FYContext';
 import { getReportConfig, getReportDefaultFilters, fyCalendarYearForMonth, DIVIDEND_MODES, DIVIDEND_SORT_OPTIONS } from './reportDefinitions';
+import { ReportActionsContext } from './print/PrintShell';
+import { AccessDeniedPage } from '../system/AccessDeniedPage';
 import { REPORT_LINK_MAP, REPORT_NAV_LINKS, ACCOUNT_STATEMENT_REPORT_LINKS, ACCOUNT_STATEMENT_REPORT_KEYS } from './reportLinks';
 import { MemberLedgerPrintTemplate } from './MemberLedgerPrintTemplate';
 import { EmployeeLedgerPrint } from './print/EmployeeLedgerPrint';
@@ -255,8 +257,8 @@ export function ReportViewerPage() {
   const { activeFY } = useFY();
   const config = useMemo(() => getReportConfig(reportKey), [reportKey]);
   const reportPermission = REPORT_LINK_MAP[reportKey]?.permission || '';
-  const exportPermission = reportPermission ? reportPermission.replace(/\\.view$/, '.export') : '';
-  const printPermission = reportPermission ? reportPermission.replace(/\\.view$/, '.print') : '';
+  const exportPermission = reportPermission ? reportPermission.replace(/\.view$/, '.export') : '';
+  const printPermission = reportPermission ? reportPermission.replace(/\.view$/, '.print') : '';
   const isAccountStatementFamily = ACCOUNT_STATEMENT_REPORT_KEYS.includes(reportKey);
   const visibleReports = useMemo(
     () => (isAccountStatementFamily ? ACCOUNT_STATEMENT_REPORT_LINKS : REPORT_NAV_LINKS).filter((item) => hasPermission(item.permission)),
@@ -777,6 +779,11 @@ export function ReportViewerPage() {
     </Card>
   );
 
+  // The route only needs some report; each report needs its own View.
+  if (reportPermission && !hasPermission(reportPermission)) {
+    return <AccessDeniedPage requiredPermission={reportPermission} />;
+  }
+
   return (
     <div className="space-y-6">
       <div className="print:hidden">
@@ -790,7 +797,9 @@ export function ReportViewerPage() {
           {loading ? (
             <ReportLoading />
           ) : usesPrintTemplate ? (
-            printTemplate || PRINT_TEMPLATES[reportKey]({ payload, filters: generatedFilters, lookups, headerActions: null })
+            <ReportActionsContext.Provider value={{ canPrint: hasPermission(printPermission), canExport: hasPermission(exportPermission) }}>
+              {printTemplate || PRINT_TEMPLATES[reportKey]({ payload, filters: generatedFilters, lookups, headerActions: null })}
+            </ReportActionsContext.Provider>
           ) : (
             <div className="report-canvas">
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

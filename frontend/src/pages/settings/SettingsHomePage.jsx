@@ -6,13 +6,10 @@ import { SETTINGS_LINKS } from './settingsLinks';
 
 export function SettingsHomePage() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { hasPermission } = useAuth();
 
-  const visibleLinks = SETTINGS_LINKS.filter((link) => {
-    if (!link.permission || user?.isSuperAdmin) return true;
-    const required = Array.isArray(link.permission) ? link.permission : [link.permission];
-    return required.some((permission) => user?.permissions?.includes(permission));
-  });
+  // hasPermission understands both role page codes and the short aliases.
+  const visibleLinks = SETTINGS_LINKS.filter((link) => !link.permission || hasPermission(link.permission));
 
   const groupedLinks = visibleLinks.reduce((acc, link) => {
     const group = link.group || 'Other';

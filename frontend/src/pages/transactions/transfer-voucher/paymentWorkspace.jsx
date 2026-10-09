@@ -29,7 +29,7 @@ import {
 
 export function TransferVoucherPaymentWorkspacePage({ sectionKey, itemKey, detailPathBase }) {
   const navigate = useNavigate();
-  const { token, hasPermission } = useAuth();
+  const { token, pageAccess } = useAuth();
   const { activeFY } = useFY();
   const [catalog, setCatalog] = useState([]);
   const [rows, setRows] = useState([]);
@@ -49,7 +49,7 @@ export function TransferVoucherPaymentWorkspacePage({ sectionKey, itemKey, detai
     return itemKey ? items.filter((entry) => entry.key === itemKey) : items;
   }, [catalog, sectionKey, itemKey]);
   const activeItem = sectionItems[0] || null;
-  const canWrite = hasPermission('transactions.write');
+  const { canCreate, canEdit, canDelete } = pageAccess('transactions', 'transfer-voucher');
 
   useEffect(() => {
     let mounted = true;
@@ -249,15 +249,15 @@ export function TransferVoucherPaymentWorkspacePage({ sectionKey, itemKey, detai
           <button type="button" onClick={() => navigate(`${detailPathBase}/${row.id}`)} className="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-900" title="View">
             <Eye size={16} />
           </button>
-          {canWrite && !row.isHistorical ? (
-            <>
-              <button type="button" onClick={() => openEdit(row)} className="rounded-full p-2 text-slate-400 hover:bg-blue-50 hover:text-blue-600" title="Edit">
-                <Edit2 size={16} />
-              </button>
-              <button type="button" onClick={() => setDeleteTarget(row)} className="rounded-full p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600" title="Delete">
-                <Trash2 size={16} />
-              </button>
-            </>
+          {canEdit && !row.isHistorical ? (
+            <button type="button" onClick={() => openEdit(row)} className="rounded-full p-2 text-slate-400 hover:bg-blue-50 hover:text-blue-600" title="Edit">
+              <Edit2 size={16} />
+            </button>
+          ) : null}
+          {canDelete && !row.isHistorical ? (
+            <button type="button" onClick={() => setDeleteTarget(row)} className="rounded-full p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600" title="Delete">
+              <Trash2 size={16} />
+            </button>
           ) : null}
         </div>
       )
@@ -272,7 +272,7 @@ export function TransferVoucherPaymentWorkspacePage({ sectionKey, itemKey, detai
           <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">{activeItem?.label || section?.label || sectionKey} Transactions</h1>
         </div>
         <div className="flex gap-2">
-          <Button type="button" className="gap-2 bg-[var(--primary,#1661F6)] text-white hover:opacity-90" onClick={openCreate} disabled={!activeItem || !canWrite}>
+          <Button type="button" className="gap-2 bg-[var(--primary,#1661F6)] text-white hover:opacity-90" onClick={openCreate} disabled={!activeItem || !canCreate}>
             <Plus size={16} />
             New Entry
           </Button>

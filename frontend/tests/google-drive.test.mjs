@@ -83,17 +83,18 @@ test('backups: schedule, keep count, last result, list with size and download', 
   assert.match(plain, /Last backup succeeded/);
   assert.match(plain, /09 Oct 2026.*IST \(scheduled\), 5\.0 MB, 1 older removed/);
   assert.match(plain, /bank-backup-postgres-2026-10-09_02-00-00-IST\.dump/);
-  assert.match(plain, /Back up now/);
+  // Manual backups are downloaded on Backup & Restore, not sent to Drive.
+  assert.equal(/Back up now/.test(plain), false);
+  assert.match(plain, /Backup (&|&amp;) Restore/);
   assert.match(plain, /Download/);
 });
 
-test('backups: running and failed states; not connected disables Back up now', () => {
+test('backups: running and failed states; not connected shows no list', () => {
   assert.match(text(render(sections.DriveBackupsCard, { backup: { ...BACKUP, running: true }, connected: true, canWrite: true })), /Backing up…/);
   const failed = text(render(sections.DriveBackupsCard, { backup: { ...BACKUP, last: { status: 'FAILED', trigger: 'manual', startedAt: '2026-10-08T05:00:00Z', error: 'pg_dump was not found ("pg_dump").' } }, connected: true, canWrite: true }));
   assert.match(failed, /Last backup failed/);
   assert.match(failed, /pg_dump was not found/);
   const html = render(sections.DriveBackupsCard, { backup: BACKUP, connected: false, canWrite: true });
-  assert.match(html, /<button[^>]*disabled=""[^>]*>.*Back up now/);
   assert.match(text(html), /Connect Google Drive to see backups/);
 });
 

@@ -45,6 +45,14 @@ async function writeState(patch) {
   return next;
 }
 
+// Uploaded files stored in the connected Drive (storage provider "gdrive").
+// They are reachable only through this account's token, so while any exist
+// the account may be neither disconnected nor swapped for another.
+async function hasFilesOnDrive() {
+  const FileAsset = require('../../models/fileAsset.model');
+  return Boolean(await FileAsset.findOne({ storageProvider: 'gdrive' }).lean());
+}
+
 function folderLink(id) {
   return id ? `https://drive.google.com/drive/folders/${id}` : '';
 }
@@ -136,6 +144,10 @@ async function completeConnection({ code, state, error } = {}) {
   const account = await client.getAccount();
   // A different account cannot see the old folders: start fresh.
   const sameAccount = previous.accountEmail && previous.accountEmail === account.email;
+  if (previous.accountEmail && !sameAccount && await hasFilesOnDrive()) {
+    await revokeToken(tokens.refreshToken, { fetchImpl });
+    throw httpError(`Uploaded files are stored in the Google Drive of ${previous.accountEmail}. Connect with that account; another account cannot open them.`, 409, 'GDRIVE_FILES_ON_OTHER_ACCOUNT');
+  }
   const state0 = await writeState({
     encryptedRefreshToken,
     needsReconnect: false,
@@ -153,6 +165,9 @@ async function completeConnection({ code, state, error } = {}) {
 async function disconnect({ activeStorageProvider = '' } = {}) {
   if (activeStorageProvider === 'gdrive') {
     throw httpError('Google Drive is the active upload storage. Switch Storage Providers to another provider first.', 409, 'GDRIVE_IN_USE');
+  }
+  if (await hasFilesOnDrive()) {
+    throw httpError('Uploaded files are still stored in Google Drive and would stop opening. Google Drive cannot be disconnected while they exist.', 409, 'GDRIVE_HAS_FILES');
   }
   const state = await readState();
   if (state.encryptedRefreshToken) {

@@ -202,6 +202,13 @@ export function AuthProvider({ children }) {
         return profile;
       },
       hasPermission,
+      // One page's actions (Settings -> Roles), e.g. pageAccess('master', 'members').
+      // `...also` adds other pages that grant the same action (any one is enough).
+      pageAccess: (section, page, ...also) => {
+        const pages = [`${section}.${page}`, ...also];
+        const can = (action) => hasPermission(pages.map((code) => `${code}.${action}`));
+        return { canView: can('view'), canCreate: can('create'), canEdit: can('edit'), canDelete: can('delete') };
+      },
       canManageUsers: () => hasPermission('users.manage'),
       canManageEmployees: () => hasPermission('employees.write', 'users.manage'),
       canManageRoles: () => hasPermission('roles.manage'),

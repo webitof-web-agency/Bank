@@ -25,14 +25,14 @@ import {
   getTransactionPartyLabel,
   getTransactionVoucherTitle,
   describeDocumentUploadFailure,
-  describeSmsResult
 } from './transactionUtils';
 import { toneClassName } from './transactionUtils';
+import { followSmsResult } from './smsToast';
 import { getMemberTransactionTypeByKey } from './memberConfig';
 
 export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '' }) {
   const navigate = useNavigate();
-  const { token, hasPermission } = useAuth();
+  const { token, pageAccess } = useAuth();
   const { activeFY } = useFY();
   const [catalog, setCatalog] = useState([]);
   const [rows, setRows] = useState([]);
@@ -74,7 +74,7 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '
       return matchesSearch && matchesPartyType && matchesFrom && matchesTo;
     });
   }, [rows, activeSectionItems, currentItemKey, search, filterPartyType, filterDateFrom, filterDateTo]);
-  const canWrite = hasPermission('transactions.write');
+  const { canCreate, canEdit, canDelete } = pageAccess('transactions', 'member');
 
   useEffect(() => {
     let mounted = true;
@@ -207,7 +207,8 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '
       // The voucher (and any SMS) is saved from here on: a failed document
       // upload must not look like a failed save, or Save would be pressed
       // again and create a second voucher and a second SMS.
-      const smsFeedback = describeSmsResult(nextRecord?.sms, savedLabel);
+      const savedSms = nextRecord?.sms;
+      const savedId = nextRecord?.id;
       let documentError = null;
       try {
         nextRecord = await persistVoucherDocuments(nextRecord, draft);
@@ -217,8 +218,8 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '
       setRows((current) => (activeRecord
         ? current.map((item) => (item.id === nextRecord.id ? nextRecord : item))
         : [nextRecord, ...current]));
-      if (smsFeedback) toast[smsFeedback.tone](smsFeedback.message);
-      else toast.success(savedLabel);
+      toast.success(savedLabel);
+      followSmsResult(token, savedId, savedSms);
       if (documentError) toast.warning(describeDocumentUploadFailure(nextRecord, documentError));
       closeEditor();
     } finally {
@@ -262,15 +263,15 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '
           <button type="button" onClick={() => navigate(`${detailPathBase}/${row.id}`)} className="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-900" title="View">
             <Eye size={16} />
           </button>
-          {canWrite && !row.isHistorical ? (
-            <>
-              <button type="button" onClick={() => openEdit(row)} className="rounded-full p-2 text-slate-400 hover:bg-blue-50 hover:text-blue-600" title="Edit">
-                <Edit2 size={16} />
-              </button>
-              <button type="button" onClick={() => setDeleteTarget(row)} className="rounded-full p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600" title="Delete">
-                <Trash2 size={16} />
-              </button>
-            </>
+          {canEdit && !row.isHistorical ? (
+            <button type="button" onClick={() => openEdit(row)} className="rounded-full p-2 text-slate-400 hover:bg-blue-50 hover:text-blue-600" title="Edit">
+              <Edit2 size={16} />
+            </button>
+          ) : null}
+          {canDelete && !row.isHistorical ? (
+            <button type="button" onClick={() => setDeleteTarget(row)} className="rounded-full p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600" title="Delete">
+              <Trash2 size={16} />
+            </button>
           ) : null}
         </div>
       )
@@ -341,7 +342,7 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '
       { key: 'amount', label: 'Amount', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionAmount(row.amount ?? 0)}</span> },
       actionsColumn
     ];
-  }, [activeSectionItems, canWrite, currentItemKey, detailPathBase, lookups, navigate]);
+  }, [activeSectionItems, canCreate, canEdit, canDelete, currentItemKey, detailPathBase, lookups, navigate]);
 
   return (
     <div className="space-y-6">
@@ -356,14 +357,14 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '
             Export CSV
           </Button>
           
-          {canWrite && currentItemKey === 'recovery-member' && (
+          {canCreate && currentItemKey === 'recovery-member' && (
             <Button type="button" variant="outline" className="gap-2 border-emerald-500 text-emerald-600 hover:bg-emerald-50" onClick={() => navigate('/app/transactions/member/recovery-import')}>
               <Sparkles size={16} />
               Import
             </Button>
           )}
 
-          {!canWrite ? null : activeItem ? (
+          {!canCreate ? null : activeItem ? (
             <Button type="button" className="gap-2 bg-[var(--primary,#1661F6)] text-white hover:opacity-90" onClick={() => openCreate(activeItem.key)}>
               <Plus size={16} />
               Create {activeItem.label}
@@ -544,7 +545,7 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '
             return (
               <div className="flex w-full justify-end gap-3">
                 <Button variant="outline" type="button" onClick={closeEditor}>Cancel</Button>
-                <Button type="submit" form="transaction-voucher-form" disabled={saving || !canWrite} className="bg-[#1661F6] text-white hover:bg-blue-700">
+                <Button type="submit" form="transaction-voucher-form" disabled={saving || !(activeRecord ? canEdit : canCreate)} className="bg-[#1661F6] text-white hover:bg-blue-700">
                   {saveLabel}
                 </Button>
               </div>

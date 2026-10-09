@@ -43,6 +43,9 @@ export function describeLastBackup(last) {
   if (last.status === 'RUNNING') return { tone: 'info', label: 'Backing up…', detail: `Started ${formatIstDateTime(last.startedAt)}` };
   if (last.status === 'SUCCESS') {
     const removed = last.removed ? `, ${last.removed} older removed` : '';
+    if (last.retentionError) {
+      return { tone: 'warning', label: 'Last backup succeeded', detail: `${when} (${how}), ${formatBytes(last.size)}. Old backups could not be removed: ${last.retentionError}` };
+    }
     return { tone: 'success', label: 'Last backup succeeded', detail: `${when} (${how}), ${formatBytes(last.size)}${removed}` };
   }
   return { tone: 'error', label: 'Last backup failed', detail: `${when} (${how}): ${last.error || 'unknown error'}` };

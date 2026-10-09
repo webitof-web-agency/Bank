@@ -1,4 +1,5 @@
-// Informational SMS for banking events (Phase 1: SSA Paid To Member only).
+// Informational SMS for banking events: Loan, Compulsory Deposit, Insurance
+// and SSA paid to a member (one SMS to the voucher's member each).
 //
 // Flow (transactional outbox):
 //   1. inside the voucher's own transaction, queueForVoucher() writes one
@@ -44,15 +45,20 @@ const SKIP = Object.freeze({
 // Events and the variables a template may use, in the order the DLT text
 // expects them unless the template row says otherwise. Adding a page later
 // means adding its event here and its voucher key below.
+const MEMBER_PAYMENT_VARIABLES = ['memberName', 'amount', 'voucherNo', 'date'];
+
 const SMS_EVENTS = Object.freeze({
-  MEMBER_SSA_PAID: {
-    entityType: 'MEMBER',
-    label: 'SSA Paid To Member',
-    variableKeys: ['memberName', 'amount', 'voucherNo', 'date']
-  }
+  MEMBER_LOAN_PAID: { entityType: 'MEMBER', label: 'Loan Paid to Member', variableKeys: MEMBER_PAYMENT_VARIABLES },
+  MEMBER_CD_PAID: { entityType: 'MEMBER', label: 'Compulsory Deposit Paid to Member', variableKeys: MEMBER_PAYMENT_VARIABLES },
+  MEMBER_INSURANCE_PAID: { entityType: 'MEMBER', label: 'Insurance Premium Paid to Member', variableKeys: MEMBER_PAYMENT_VARIABLES },
+  MEMBER_SSA_PAID: { entityType: 'MEMBER', label: 'SSA Paid To Member', variableKeys: MEMBER_PAYMENT_VARIABLES }
 });
 
+// Each page's own event, so each has its own DLT template (Settings -> SMS).
 const EVENT_BY_VOUCHER_KEY = Object.freeze({
+  'loan-paid-member': 'MEMBER_LOAN_PAID',
+  'deposit-paid-member': 'MEMBER_CD_PAID',
+  'insurance-paid-member': 'MEMBER_INSURANCE_PAID',
   'ssa-paid-member': 'MEMBER_SSA_PAID'
 });
 
@@ -408,8 +414,8 @@ async function dispatch(queued = [], options = {}) {
   return results;
 }
 
-// The SMS part of a voucher save response: one recipient per voucher in
-// Phase 1, so the single result itself.
+// The SMS part of a voucher save response: one recipient per voucher, so
+// the single result itself.
 function summarizeForResponse(results = []) {
   if (!results.length) return null;
   if (results.length === 1) {
@@ -417,6 +423,17 @@ function summarizeForResponse(results = []) {
     return reason ? { status, reason } : { status };
   }
   return { status: 'MULTIPLE', results: results.map(({ status, reason }) => (reason ? { status, reason } : { status })) };
+}
+
+// The voucher's SMS as it stands now (the save page polls this after a
+// save): same shape as the save response's `sms`, null when none was asked.
+async function getVoucherSmsStatus(voucherId) {
+  const db = await initializeDatabase();
+  const result = await db.query(
+    'SELECT "id", "status", "skipReason" FROM "sms_messages" WHERE "voucherId" = $1 ORDER BY "createdAt" ASC',
+    [cleanText(voucherId)]
+  );
+  return summarizeForResponse(result.rows.map(publicResult));
 }
 
 // Retry job. Sends PENDING rows that Flowit cannot have received: never
@@ -785,6 +802,7 @@ module.exports = {
   summarizeForResponse,
   TEST_EVENT,
   getTestSendStatus,
+  getVoucherSmsStatus,
   sendTestOtp,
   verifyWebhookSecret
 };

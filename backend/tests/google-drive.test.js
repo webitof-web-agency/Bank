@@ -1,5 +1,6 @@
 // Google Drive: connect (OAuth), database backups (newest 7 kept, daily at
-// 2 AM IST, manual), and the gdrive upload storage provider.
+// 2 AM IST), the manual backup downloaded to the user's computer, and the
+// gdrive upload storage provider.
 //
 // Google is a fake answering on the stubbed fetch: no real Google call, no
 // real account. Uses its own database (bank_test_google_drive).
@@ -12,6 +13,7 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 const Settings = require('../models/settings.model');
 const JobState = require('../models/jobState.model');
+const FileAsset = require('../models/fileAsset.model');
 const { initializeDatabase, closeDatabase } = require('../config/postgres');
 const connection = require('../services/googleDrive/driveConnection.service');
 const backups = require('../services/googleDrive/backup.service');
@@ -176,6 +178,7 @@ async function resetState() {
   }
   const job = await JobState.findOne({ key: 'gdrive-db-backup' }).lean();
   if (job) await JobState.findByIdAndDelete(job.id);
+  for (const file of await FileAsset.find({ storageProvider: 'gdrive' }).lean()) await FileAsset.findByIdAndDelete(file.id);
 }
 
 test.before(async () => {
@@ -188,6 +191,7 @@ test.before(async () => {
   app.get('/api/google-drive/oauth/callback', googleDriveController.oauthCallbackController);
   app.use((req, _res, next) => { req.user = USERS[req.get('x-test-user')] || null; next(); });
   app.use('/api/google-drive', require('../routes/googleDrive.routes'));
+  app.use('/api/backup', require('../routes/backup.routes'));
   app.use(require('../middlewares/errorHandler'));
   server = http.createServer(app);
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -220,11 +224,13 @@ test('not configured: status lists what is missing; connect refused', async () =
   assert.equal((await call('POST', '/google-drive/connect')).status, 400);
 });
 
-test('permissions: reading needs settings.read; connect, back up and download need settings.write', async () => {
+test('permissions: reading needs settings.read; connect and downloads need settings.write', async () => {
   assert.equal((await call('GET', '/google-drive/status', { user: 'nobody' })).status, 401);
   assert.equal((await call('POST', '/google-drive/connect', { user: 'reader' })).status, 403);
   assert.equal((await call('POST', '/google-drive/disconnect', { user: 'reader' })).status, 403);
-  assert.equal((await call('POST', '/google-drive/backups', { user: 'reader' })).status, 403);
+  assert.equal((await call('GET', '/backup/download', { user: 'reader' })).status, 403);
+  // Manual backups no longer go to Drive.
+  assert.equal((await call('POST', '/google-drive/backups')).status, 404);
   assert.equal((await call('GET', '/google-drive/backups/x/download', { user: 'reader' })).status, 403);
   assert.equal((await call('GET', '/google-drive/backups', { user: 'reader' })).status, 200);
 });
@@ -307,6 +313,29 @@ test('disconnect: refused while Drive is the upload storage; otherwise revokes a
   assert.equal((await Settings.findOne({ key: 'google_drive' }).lean()).payload.encryptedRefreshToken, '');
 });
 
+test('files on Drive: no disconnect and no switch to another account while they exist', async () => {
+  await connect();
+  const file = await FileAsset.create({ originalName: 'photo.jpg', storedName: 'photo.jpg', storageProvider: 'gdrive', storageKey: 'f-stored' });
+
+  const refused = await call('POST', '/google-drive/disconnect');
+  assert.equal(refused.status, 409);
+  assert.match(refused.body.message, /still stored in Google Drive/);
+
+  // Signing in with a different Gmail account is refused; the old one stays.
+  google.email = 'someone.else@gmail.com';
+  const switched = await connect();
+  assert.equal(new URL(switched.location).searchParams.get('gdrive'), 'error');
+  assert.match(new URL(switched.location).searchParams.get('message'), /society\.backup@gmail\.com/);
+  assert.equal((await connection.getStatus()).accountEmail, 'society.backup@gmail.com');
+
+  // The same account may reconnect.
+  google.email = 'society.backup@gmail.com';
+  assert.equal(new URL((await connect()).location).searchParams.get('gdrive'), 'connected');
+
+  await FileAsset.findByIdAndDelete(file.id || file._id);
+  assert.equal((await call('POST', '/google-drive/disconnect')).status, 200);
+});
+
 // ---------------------------------------------------------------------------
 // Backups
 
@@ -353,8 +382,7 @@ test('pg_dump failure: FAILED with the reason, nothing uploaded, password never 
   }
 });
 
-test('not connected: "Back up now" is refused; listing is empty', async () => {
-  assert.equal((await call('POST', '/google-drive/backups')).status, 409);
+test('not connected: listing is empty', async () => {
   assert.deepEqual((await call('GET', '/google-drive/backups', { user: 'reader' })).body.data, []);
 });
 
@@ -374,12 +402,28 @@ test('one backup at a time: a second concurrent run reports ALREADY_RUNNING', as
   }
 });
 
-test('"Back up now" starts in the background; the page then sees the result', async () => {
-  await connect();
-  const response = await call('POST', '/google-drive/backups');
-  assert.equal(response.status, 202);
-  for (let i = 0; i < 50 && (await backups.getBackupStatus()).running; i += 1) await new Promise((r) => setTimeout(r, 20));
-  assert.equal((await backups.getBackupStatus()).last.status, 'SUCCESS');
+test('manual backup: downloaded to the computer, nothing sent to Drive, temp file removed', async () => {
+  const fs = require('fs');
+  const os = require('os');
+  const tmpBefore = fs.readdirSync(os.tmpdir()).filter((name) => name.startsWith('bank-backup-')).length;
+  // Works without Google Drive connected.
+  const response = await realFetch(`${baseUrl}/backup/download`, { headers: { 'x-test-user': 'writer' } });
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('content-disposition'), /attachment; filename="bank-backup-.*\.dump"/);
+  assert.match(await response.text(), /^PGDMP fake dump/);
+  assert.equal(google.calls.length, 0);
+  await new Promise((r) => setTimeout(r, 50));
+  assert.equal(fs.readdirSync(os.tmpdir()).filter((name) => name.startsWith('bank-backup-')).length, tmpBefore);
+});
+
+test('manual backup: a pg_dump failure is an error, not a file', async () => {
+  backups.setDumpRunnerForTests(async () => { throw new Error('pg_dump failed (exit 1): connection refused'); });
+  try {
+    const response = await call('GET', '/backup/download');
+    assert.equal(response.status, 500);
+  } finally {
+    backups.setDumpRunnerForTests(fakeDump);
+  }
 });
 
 test('schedule: once per India date, at or after 2 AM IST', async () => {

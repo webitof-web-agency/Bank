@@ -24,7 +24,8 @@ const code = (n) => `${RUN}M${n}`;
 const API_KEY = 'integration-flowit-key-91c2';
 const WEBHOOK_SECRET = 'integration-webhook-secret-5d1e';
 const branchUser = { id: null, branchCode: BRANCH, isSuperAdmin: false };
-const meta = { actorUserId: null, actorUser: branchUser };
+// waitForSms: these tests check the send itself, so the save waits for it.
+const meta = { actorUserId: null, actorUser: branchUser, waitForSms: true };
 
 const realFetch = globalThis.fetch;
 const flowitCalls = [];
@@ -521,4 +522,64 @@ test('a value longer than SMS_MAX_VARIABLE_LENGTH: SMS FAILED (VARIABLE_TOO_LONG
   assert.deepEqual([row.status, row.errorCode], ['FAILED', 'VARIABLE_TOO_LONG']);
   assert.match(row.errorMessage, /memberName" is 8 characters; the limit is 5/);
   assert.equal(flowitCalls.length, 0);
+});
+
+test('Loan, CD and Insurance paid to member: each sends with its own DLT template', async () => {
+  const cases = [
+    ['loan-paid-member', 'MEMBER_LOAN_PAID', '222221'],
+    ['deposit-paid-member', 'MEMBER_CD_PAID', '222222'],
+    ['insurance-paid-member', 'MEMBER_INSURANCE_PAID', '222223']
+  ];
+  for (const [key, eventCode, dltMessageId] of cases) {
+    const existing = await SmsTemplate.findOne({ eventCode }).lean();
+    if (existing) await SmsTemplate.findByIdAndDelete(existing.id);
+    const voucher = await Voucher.create({ voucherNo: `${RUN}-${key}`, date: '2026-10-08', amount: 3200, partyType: 'member', partyCode: code(1), branchCode: BRANCH, details: { key, sms: true } });
+    const saved = { ...voucher.toObject?.() || voucher, id: String(voucher._id || voucher.id) };
+
+    // No template for this event yet: skipped, not sent with another page's template.
+    const skipped = await sms.queueForVoucher(db, saved, meta);
+    assert.deepEqual(skipped.map((row) => [row.status, row.reason]), [['SKIPPED', 'TEMPLATE_NOT_CONFIGURED']]);
+    assert.equal((await smsRows(saved.id))[0].eventCode, eventCode);
+    await db.query('DELETE FROM "sms_messages" WHERE "voucherId" = $1', [saved.id]);
+
+    await sms.saveTemplate(eventCode, { dltMessageId, isEnabled: true });
+    flowitCalls.length = 0;
+    const result = await sms.dispatch(await sms.queueForVoucher(db, saved, meta));
+    assert.deepEqual(result.map((row) => row.status), ['SENT'], key);
+    assert.equal(flowitCalls.length, 1);
+    assert.equal(flowitCalls[0].body.message, dltMessageId);
+    assert.equal(flowitCalls[0].body.udf2, eventCode);
+    assert.equal(flowitCalls[0].body.variables_values, `Member 1|3,200.00|${RUN}-${key}|08-10-2026`);
+  }
+});
+
+test('settings: every member payment event is listed for template set-up', async () => {
+  const codes = (await sms.listTemplates()).map((row) => row.eventCode);
+  for (const eventCode of ['MEMBER_LOAN_PAID', 'MEMBER_CD_PAID', 'MEMBER_INSURANCE_PAID', 'MEMBER_SSA_PAID']) assert.ok(codes.includes(eventCode), eventCode);
+});
+
+test('save does not wait for Flowit: PENDING at once, then the status endpoint reports SENT', async () => {
+  await saveTemplate();
+  let release;
+  onFlowitCall = () => new Promise((resolve) => { release = resolve; });
+  const started = Date.now();
+  const saved = await banking.createVoucher(ssaVoucher(code(1), { amount: 777 }), { ...meta, waitForSms: false });
+  assert.deepEqual(saved.sms, { status: 'PENDING' });
+  assert.ok(Date.now() - started < 1500, 'the save returned before Flowit answered');
+
+  for (let i = 0; i < 50 && !release; i += 1) await new Promise((r) => setTimeout(r, 20));
+  assert.ok(release, 'Flowit was called in the background');
+  assert.deepEqual(await sms.getVoucherSmsStatus(saved.id), { status: 'PENDING' });
+  release();
+  let status;
+  for (let i = 0; i < 50; i += 1) {
+    status = await sms.getVoucherSmsStatus(saved.id);
+    if (status.status !== 'PENDING') break;
+    await new Promise((r) => setTimeout(r, 20));
+  }
+  assert.deepEqual(status, { status: 'SENT' });
+
+  // Through the API, with the voucher page's permission.
+  const viaApi = await realFetch(`${baseUrl}/banking/transactions/vouchers/${saved.id}/sms`);
+  assert.equal(viaApi.status, 401); // the real API requires sign-in
 });

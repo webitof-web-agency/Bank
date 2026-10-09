@@ -38,7 +38,7 @@ function DetailRow({ label, value }) {
 export function EmployeeDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { token, hasPermission } = useAuth();
+  const { token, pageAccess } = useAuth();
   const [user, setUser] = useState(null);
   const [roles, setRoles] = useState([]);
   const [branches, setBranches] = useState([]);
@@ -55,7 +55,7 @@ export function EmployeeDetailPage() {
   const branchLookup = useMemo(() => getBranchMap(branches), [branches]);
   const statusLabel = getEmployeeStatus(user);
   const primaryRole = (user?.roles || [])[0];
-  const canManage = hasPermission('employees.write', 'users.manage');
+  const { canEdit } = pageAccess('master', 'employees', 'admin.users');
 
   useEffect(() => {
     return () => {
@@ -98,7 +98,7 @@ export function EmployeeDetailPage() {
   }
 
   async function handleDeleteDocument(key, document) {
-    if (!canManage || !document?.fileId || !user) return;
+    if (!canEdit || !document?.fileId || !user) return;
     const label = document.originalName || key;
     if (!window.confirm(`Delete ${label}?`)) return;
 

@@ -26,7 +26,7 @@ import {
 
 export function InterestVoucherWorkspacePage({ sectionKey, itemKey, detailPathBase }) {
   const navigate = useNavigate();
-  const { token, hasPermission } = useAuth();
+  const { token, pageAccess } = useAuth();
   const { activeFY } = useFY();
   const [catalog, setCatalog] = useState([]);
   const [rows, setRows] = useState([]);
@@ -48,7 +48,7 @@ export function InterestVoucherWorkspacePage({ sectionKey, itemKey, detailPathBa
     return itemKey ? items.filter((entry) => entry.key === itemKey) : items;
   }, [catalog, sectionKey, itemKey]);
   const activeItem = sectionItems[0] || null;
-  const canWrite = hasPermission('transactions.write');
+  const { canCreate, canEdit, canDelete } = pageAccess('transactions', 'receipt-interest');
 
   useEffect(() => {
     let mounted = true;
@@ -223,15 +223,15 @@ export function InterestVoucherWorkspacePage({ sectionKey, itemKey, detailPathBa
           <button type="button" onClick={() => navigate(`${detailPathBase}/${row.id}`)} className="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-900" title="View">
             <Eye size={16} />
           </button>
-          {canWrite && !row.isHistorical ? (
-            <>
-              <button type="button" onClick={() => openEdit(row)} className="rounded-full p-2 text-slate-400 hover:bg-blue-50 hover:text-blue-600" title="Edit">
-                <Edit2 size={16} />
-              </button>
-              <button type="button" onClick={() => setDeleteTarget(row)} className="rounded-full p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600" title="Delete">
-                <Trash2 size={16} />
-              </button>
-            </>
+          {canEdit && !row.isHistorical ? (
+            <button type="button" onClick={() => openEdit(row)} className="rounded-full p-2 text-slate-400 hover:bg-blue-50 hover:text-blue-600" title="Edit">
+              <Edit2 size={16} />
+            </button>
+          ) : null}
+          {canDelete && !row.isHistorical ? (
+            <button type="button" onClick={() => setDeleteTarget(row)} className="rounded-full p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600" title="Delete">
+              <Trash2 size={16} />
+            </button>
           ) : null}
         </div>
       )
@@ -356,7 +356,7 @@ export function InterestVoucherWorkspacePage({ sectionKey, itemKey, detailPathBa
         footer={
           <div className="flex w-full justify-end gap-3">
             <Button variant="outline" type="button" onClick={closeEditor}>Cancel</Button>
-            <Button type="submit" form="transaction-voucher-form" disabled={saving || !canWrite} className="bg-[var(--primary,#1661F6)] text-white hover:opacity-90">
+            <Button type="submit" form="transaction-voucher-form" disabled={saving || !(activeRecord ? canEdit : canCreate)} className="bg-[var(--primary,#1661F6)] text-white hover:opacity-90">
               {saving ? 'Saving...' : activeRecord ? 'Save Changes' : 'Create Interest'}
             </Button>
           </div>

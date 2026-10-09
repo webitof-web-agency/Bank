@@ -40,7 +40,7 @@ function isMemberActive(member) {
 
 export function MembersPage() {
   const navigate = useNavigate();
-  const { token, hasPermission } = useAuth();
+  const { token, hasPermission, pageAccess } = useAuth();
   const [rows, setRows] = useState([]);
   const [branches, setBranches] = useState([]);
   const [search, setSearch] = useState('');
@@ -54,7 +54,7 @@ export function MembersPage() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const branchLookup = useMemo(() => getBranchMap(branches), [branches]);
 
-  const canManage = hasPermission('members.write');
+  const { canCreate, canEdit, canDelete } = pageAccess('master', 'members');
   const canViewLedger = hasPermission(REPORT_LINK_MAP['member-ledger']?.permission || 'reports.read');
 
   useEffect(() => {
@@ -247,25 +247,25 @@ export function MembersPage() {
               <BookOpen size={16} />
             </button>
           ) : null}
-          {canManage ? (
-            <>
-              <button
-                type="button"
-                onClick={() => openEdit(row)}
-                className="rounded-full p-2 text-slate-400 hover:bg-blue-50 hover:text-blue-600"
-                title="Edit"
-              >
-                <Edit2 size={16} />
-              </button>
-              <button
-                type="button"
-                onClick={() => setDeleteTarget(row)}
-                className="rounded-full p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
-                title="Delete"
-              >
-                <Trash2 size={16} />
-              </button>
-            </>
+          {canEdit ? (
+            <button
+              type="button"
+              onClick={() => openEdit(row)}
+              className="rounded-full p-2 text-slate-400 hover:bg-blue-50 hover:text-blue-600"
+              title="Edit"
+            >
+              <Edit2 size={16} />
+            </button>
+          ) : null}
+          {canDelete ? (
+            <button
+              type="button"
+              onClick={() => setDeleteTarget(row)}
+              className="rounded-full p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+              title="Delete"
+            >
+              <Trash2 size={16} />
+            </button>
           ) : null}
         </div>
       )
@@ -278,7 +278,7 @@ export function MembersPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Manage Members</h1>
         </div>
-        {canManage ? (
+        {canCreate ? (
           <Button onClick={openCreate} className="gap-2">
             <Plus size={16} />
             Add Member

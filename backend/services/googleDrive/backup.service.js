@@ -3,7 +3,8 @@
 // pg_dump (custom format, compressed) of the app's database -> the "DB
 // Backups" folder in the connected Drive -> keep the newest N (default 7),
 // delete older ones. Runs daily at GDRIVE_BACKUP_HOUR_IST (default 2 AM India
-// time) from the automation cycle, or on demand ("Back up now").
+// time) from the automation cycle. A manual backup is not sent to Drive: it
+// is downloaded to the administrator's computer (createLocalDump).
 //
 // Only one backup runs at a time, across processes too (Postgres advisory
 // lock). Only files this service names bank-backup-*.dump are ever deleted.
@@ -149,10 +150,20 @@ async function performBackup({ trigger, userId }) {
     const buffer = await fs.promises.readFile(file);
     if (!buffer.length) throw new Error('pg_dump produced an empty file.');
     const uploaded = await client.uploadFile({ name, parentId: folderId, mimeType: 'application/octet-stream', buffer });
-    const removed = await applyRetention(client, folderId, config.backupKeep);
+    // The backup is safe in Drive at this point: a failed clean-up of old
+    // ones is reported, not turned into a failed backup.
+    let removed = [];
+    let retentionError = '';
+    try {
+      removed = await applyRetention(client, folderId, config.backupKeep);
+    } catch (error) {
+      retentionError = safeText(error.message);
+      console.error(`[backup] old backups could not be removed: ${retentionError}`);
+    }
     const last = {
       status: 'SUCCESS', trigger, startedAt: startedAt.toISOString(), finishedAt: new Date().toISOString(), userId: userId || null,
-      fileId: uploaded.id, fileName: name, size: buffer.length, removed: removed.length
+      fileId: uploaded.id, fileName: name, size: buffer.length, removed: removed.length,
+      ...(retentionError ? { retentionError } : {})
     };
     await writeStatus({ state: 'IDLE', last, lastSuccess: last });
     return last;
@@ -185,18 +196,25 @@ async function runBackup({ trigger = 'manual', userId = null } = {}) {
   }
 }
 
-// "Back up now": starts in the background and returns at once; the page
-// polls the status.
-async function startManualBackup({ userId = null } = {}) {
-  const status = await connection.getStatus();
-  if (!status.connected) {
-    const error = new Error('Connect Google Drive first.');
-    error.statusCode = 409;
+// Manual backup (Settings -> Backup & Restore -> Download Backup): a pg_dump
+// in a temporary folder, streamed to the browser by the caller, which must
+// call cleanup() once the download ends. Nothing goes to Google Drive.
+async function createLocalDump() {
+  const config = getGoogleDriveConfig();
+  const conn = getDumpConnection();
+  const name = backupName(conn.database);
+  const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'bank-backup-'));
+  const cleanup = () => fs.promises.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+  const file = path.join(tmpDir, name);
+  try {
+    await dumpRunner({ file, conn, pgDumpPath: config.pgDumpPath });
+    const { size } = await fs.promises.stat(file);
+    if (!size) throw new Error('pg_dump produced an empty file.');
+    return { file, name, size, cleanup };
+  } catch (error) {
+    await cleanup();
     throw error;
   }
-  if (running) return { started: false, reason: 'A backup is already running.' };
-  void runBackup({ trigger: 'manual', userId });
-  return { started: true };
 }
 
 // Called by the automation cycle (every 15 minutes): one backup per India
@@ -247,5 +265,5 @@ module.exports = {
   runBackup,
   runScheduledBackupIfDue,
   setDumpRunnerForTests,
-  startManualBackup
+  createLocalDump
 };

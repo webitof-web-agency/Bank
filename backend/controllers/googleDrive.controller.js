@@ -60,13 +60,23 @@ async function listBackupsController(_req, res, next) {
   }
 }
 
-async function startBackupController(req, res, next) {
+// Manual backup: a fresh pg_dump downloaded straight to the user's computer
+// (not uploaded to Drive). The temporary file is removed once sent.
+async function downloadLocalBackupController(_req, res, next) {
+  let dump;
   try {
-    const result = await backups.startManualBackup({ userId: req.user?.id || null });
-    res.status(result.started ? 202 : 409).json({ success: result.started, message: result.started ? 'Backup started' : result.reason, data: result });
+    dump = await backups.createLocalDump();
   } catch (error) {
-    next(error);
+    console.error(`[backup] local backup failed: ${error.message}`);
+    return next(error);
   }
+  res.setHeader('Content-Type', 'application/octet-stream');
+  res.setHeader('Content-Disposition', `attachment; filename="${dump.name.replace(/"/g, '')}"`);
+  res.setHeader('Content-Length', String(dump.size));
+  const stream = require('fs').createReadStream(dump.file);
+  res.on('close', dump.cleanup);
+  stream.on('error', (error) => (res.headersSent ? res.destroy(error) : next(error)));
+  return stream.pipe(res);
 }
 
 async function downloadBackupController(req, res, next) {
@@ -75,7 +85,7 @@ async function downloadBackupController(req, res, next) {
     res.setHeader('Content-Type', 'application/octet-stream');
     res.setHeader('Content-Disposition', `attachment; filename="${name.replace(/"/g, '')}"`);
     if (size) res.setHeader('Content-Length', String(size));
-    stream.on('error', (error) => next(error));
+    stream.on('error', (error) => (res.headersSent ? res.destroy(error) : next(error)));
     stream.pipe(res);
   } catch (error) {
     next(error);
@@ -86,8 +96,8 @@ module.exports = {
   connectController,
   disconnectController,
   downloadBackupController,
+  downloadLocalBackupController,
   listBackupsController,
   oauthCallbackController,
-  startBackupController,
   statusController
 };

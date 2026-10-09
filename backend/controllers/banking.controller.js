@@ -1,4 +1,19 @@
 const bankingService = require('../services/banking.service');
+const { hasPermission } = require('../middlewares/auth');
+
+// Vouchers share one route, so the page permission (Member / Bank / Employee
+// / Transfer Voucher / Receipt-Interest) is checked here from the voucher's
+// type. A voucher without a known type falls back to "any transaction page".
+function canVoucher(user, voucher, action) {
+  const page = bankingService.getVoucherPermissionPage(voucher);
+  if (page) return hasPermission(user, `transactions.${page}.${action}`);
+  return hasPermission(user, action === 'view' ? 'transactions.read' : 'transactions.write');
+}
+
+function voucherForbidden(res, action) {
+  const verb = { view: 'view', create: 'create', edit: 'edit', delete: 'delete' }[action] || action;
+  return res.status(403).json({ success: false, message: `You do not have permission to ${verb} this type of voucher.` });
+}
 
 function buildCrudControllers(resource, { allowDelete = true } = {}) {
   return {
@@ -164,7 +179,8 @@ const transactions = {
         dateFrom: req.query.dateFrom || req.query.fyStart || '',
         dateTo: req.query.dateTo || req.query.fyEnd || ''
       });
-      res.json({ success: true, data: rows });
+      // Only the voucher types whose page this user may view.
+      res.json({ success: true, data: rows.filter((row) => canVoucher(req.user || {}, row, 'view')) });
     } catch (error) {
       next(error);
     }
@@ -175,7 +191,8 @@ const transactions = {
       const record = id.startsWith('legacy:')
         ? await bankingService.getHistoricalVoucherById(id.slice('legacy:'.length), req.user || {})
         : await bankingService.getResource('vouchers', id, req.user || {});
-      if (!record) {
+      // Another page's voucher is "not found", like another branch's.
+      if (!record || !canVoucher(req.user || {}, record, 'view')) {
         return res.status(404).json({ success: false, message: 'Voucher not found' });
       }
       res.json({ success: true, data: record });
@@ -185,6 +202,11 @@ const transactions = {
   },
   async createVoucher(req, res, next) {
     try {
+      const body = req.body || {};
+      if (!bankingService.getVoucherPermissionPage(body)) {
+        return res.status(400).json({ success: false, message: 'Unknown voucher type.' });
+      }
+      if (!canVoucher(req.user || {}, body, 'create')) return voucherForbidden(res, 'create');
       const record = await bankingService.createVoucher(req.body || {}, {
         actorUserId: req.user?.id || null,
           actorUser: req.user || null
@@ -198,6 +220,12 @@ const transactions = {
     try {
       if (req.params.id.startsWith('legacy:')) {
         return res.status(400).json({ success: false, message: 'This is a read-only historical record and cannot be edited.' });
+      }
+      const current = await bankingService.findVoucherForAccess(req.params.id);
+      if (current) {
+        // Both the voucher's type and, if the edit changes it, the new one.
+        const edited = { ...current, ...(req.body || {}), details: { ...(current.details || {}), ...((req.body || {}).details || {}) } };
+        if (!canVoucher(req.user || {}, current, 'edit') || !canVoucher(req.user || {}, edited, 'edit')) return voucherForbidden(res, 'edit');
       }
       const record = await bankingService.updateVoucher(req.params.id, req.body || {}, {
         actorUserId: req.user?.id || null,
@@ -216,6 +244,8 @@ const transactions = {
       if (req.params.id.startsWith('legacy:')) {
         return res.status(400).json({ success: false, message: 'This is a read-only historical record and cannot be deleted.' });
       }
+      const current = await bankingService.findVoucherForAccess(req.params.id);
+      if (current && !canVoucher(req.user || {}, current, 'delete')) return voucherForbidden(res, 'delete');
       const ok = await bankingService.deleteVoucher(req.params.id, {
         actorUserId: req.user?.id || null,
         actorUser: req.user || null
@@ -228,8 +258,24 @@ const transactions = {
       next(error);
     }
   },
+  // The SMS sent for a voucher (followed by the page after a save).
+  async getVoucherSms(req, res, next) {
+    try {
+      const voucher = await bankingService.findVoucherForAccess(req.params.id);
+      if (!voucher || !canVoucher(req.user || {}, voucher, 'view')) {
+        return res.status(404).json({ success: false, message: 'Voucher not found' });
+      }
+      const smsService = require('../services/sms/sms.service');
+      res.json({ success: true, data: await smsService.getVoucherSmsStatus(req.params.id) });
+    } catch (error) {
+      next(error);
+    }
+  },
   async restoreVoucher(req, res, next) {
     try {
+      // Restoring undoes a delete: the same permission.
+      const current = await bankingService.findVoucherForAccess(req.params.id);
+      if (current && !canVoucher(req.user || {}, current, 'delete')) return voucherForbidden(res, 'delete');
       const ok = await bankingService.restoreVoucher(req.params.id, {
         actorUserId: req.user?.id || null,
         actorUser: req.user || null

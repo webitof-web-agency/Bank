@@ -6,7 +6,8 @@ import { useAuth } from '../../context/AuthContext';
 import { api } from '../../api/api';
 
 export function StorageSettingsPage() {
-  const { token } = useAuth();
+  const { token, hasPermission } = useAuth();
+  const canWrite = hasPermission('settings.write');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -329,7 +330,7 @@ export function StorageSettingsPage() {
               <Button 
                 variant="outline" 
                 onClick={handleTest} 
-                disabled={testing}
+                disabled={testing || !canWrite}
                 className="gap-2"
               >
                 <RefreshCw size={16} className={testing ? "animate-spin" : ""} />
@@ -344,7 +345,7 @@ export function StorageSettingsPage() {
 
             <Button 
               onClick={handleSave} 
-              disabled={saving}
+              disabled={saving || !canWrite}
               className="bg-violet-600 text-white hover:bg-violet-700 gap-2 px-6"
             >
               <Save size={16} />

@@ -354,10 +354,12 @@ export function describeDocumentUploadFailure(record = {}, error = null) {
   return `${voucher} was saved, but its documents could not be uploaded${reason}. Open the voucher and attach them again.`;
 }
 
-export function describeSmsResult(sms, savedLabel = 'Voucher saved') {
+// The SMS toast, separate from the save toast. PENDING = still being sent
+// (or waiting for a retry when Flowit could not be reached).
+export function describeSmsResult(sms) {
   if (!sms || !sms.status) return null;
-  if (sms.status === 'SENT' || sms.status === 'DELIVERED') return { tone: 'success', message: `${savedLabel}. SMS sent.` };
-  if (sms.status === 'PENDING') return { tone: 'success', message: `${savedLabel}. SMS queued, it will be retried shortly.` };
-  if (sms.status === 'SKIPPED') return { tone: 'warning', message: `${savedLabel}. ${SMS_SKIP_MESSAGES[sms.reason] || 'SMS skipped.'}` };
-  return { tone: 'warning', message: `${savedLabel}, but SMS could not be sent.` };
+  if (sms.status === 'SENT' || sms.status === 'DELIVERED') return { tone: 'success', message: 'SMS sent to the member.' };
+  if (sms.status === 'PENDING') return { tone: 'loading', message: 'Sending SMS...' };
+  if (sms.status === 'SKIPPED') return { tone: 'warning', message: SMS_SKIP_MESSAGES[sms.reason] || 'SMS skipped.' };
+  return { tone: 'warning', message: 'SMS could not be sent. See Settings -> SMS log.' };
 }

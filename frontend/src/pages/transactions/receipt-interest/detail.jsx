@@ -103,7 +103,7 @@ function toTitleCase(value = '') {
 export function ReceiptInterestTransactionDetailPage({ sectionKey }) {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { token, hasPermission } = useAuth();
+  const { token, pageAccess } = useAuth();
   const [catalog, setCatalog] = useState([]);
   const [lookups, setLookups] = useState({});
   const [record, setRecord] = useState(null);
@@ -117,7 +117,7 @@ export function ReceiptInterestTransactionDetailPage({ sectionKey }) {
 
   const section = useMemo(() => catalog.find((item) => item.key === sectionKey) || null, [catalog, sectionKey]);
   const sectionItems = useMemo(() => getSectionItems(catalog, sectionKey), [catalog, sectionKey]);
-  const canWrite = hasPermission('transactions.write');
+  const { canEdit } = pageAccess('transactions', 'receipt-interest');
 
   useEffect(() => {
     let mounted = true;
@@ -236,7 +236,7 @@ export function ReceiptInterestTransactionDetailPage({ sectionKey }) {
   }
 
   async function handleDeleteAttachment(key, document) {
-    if (!canWrite || !document?.fileId || !record) return;
+    if (!canEdit || !document?.fileId || !record) return;
     try {
       await api.files.remove(token, document.fileId);
       const nextDocuments = { ...(record.documents || {}) };
@@ -333,7 +333,7 @@ export function ReceiptInterestTransactionDetailPage({ sectionKey }) {
                   Print
                 </Button>
 
-                {canWrite ? (
+                {canEdit ? (
                   <Button type="button" variant="outline" onClick={openEditor} className="gap-2 border-slate-200 shadow-sm rounded-[var(--radius-input,0.75rem)] hover:bg-slate-50 text-slate-700 font-semibold text-sm h-10 px-4 bg-slate-50">
                     <Edit2 size={16} />
                     Edit Transaction
@@ -580,7 +580,7 @@ export function ReceiptInterestTransactionDetailPage({ sectionKey }) {
         footer={
           <div className="flex w-full justify-end gap-3">
             <Button variant="outline" type="button" onClick={closeEditor}>Cancel</Button>
-            <Button type="submit" form="transaction-voucher-form" disabled={saving || !canWrite} className="bg-[#1661F6] text-white hover:bg-blue-700">
+            <Button type="submit" form="transaction-voucher-form" disabled={saving || !canEdit} className="bg-[#1661F6] text-white hover:bg-blue-700">
               {saving ? 'Saving...' : 'Save Changes'}
             </Button>
           </div>

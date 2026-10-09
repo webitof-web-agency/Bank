@@ -55,7 +55,7 @@ function SectionCard({ title, children }) {
 export function MemberDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { token, hasPermission } = useAuth();
+  const { token, hasPermission, pageAccess } = useAuth();
   const [member, setMember] = useState(null);
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -65,7 +65,7 @@ export function MemberDetailPage() {
   const [removedDocumentIds, setRemovedDocumentIds] = useState([]);
   const [activeTab, setActiveTab] = useState('identity');
 
-  const canManage = hasPermission('members.write');
+  const { canEdit } = pageAccess('master', 'members');
   const canViewLedger = hasPermission(REPORT_LINK_MAP['member-ledger']?.permission || 'reports.read');
   const branchLookup = useMemo(() => getBranchMap(branches), [branches]);
   const statusLabel = getMemberStatus(member);
@@ -108,7 +108,7 @@ export function MemberDetailPage() {
   }
 
   async function handleDeleteDocument(key, document) {
-    if (!canManage || !document?.fileId || !member) return;
+    if (!canEdit || !document?.fileId || !member) return;
     const label = document.originalName || key;
     if (!window.confirm(`Delete ${label}?`)) return;
 
@@ -172,14 +172,16 @@ export function MemberDetailPage() {
                 className="h-28 w-28 border-[3px] border-white ring-1 ring-slate-200 text-3xl shadow-md"
                 fallbackSize={40}
               />
-              <button
-                type="button"
-                onClick={openEditor}
-                className="absolute bottom-0 right-0 inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-lg transition hover:bg-slate-50"
-                title="Edit member"
-              >
-                <Edit2 size={15} />
-              </button>
+              {canEdit ? (
+                <button
+                  type="button"
+                  onClick={openEditor}
+                  className="absolute bottom-0 right-0 inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-lg transition hover:bg-slate-50"
+                  title="Edit member"
+                >
+                  <Edit2 size={15} />
+                </button>
+              ) : null}
             </div>
 
             <div className="flex-1">

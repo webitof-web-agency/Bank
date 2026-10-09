@@ -18,7 +18,7 @@ function isActive(record) {
 
 export function NoInterestMembersPage({ basePath = '/app/master/no-interest-members' } = {}) {
   const navigate = useNavigate();
-  const { token, hasPermission } = useAuth();
+  const { token, pageAccess } = useAuth();
   const [rows, setRows] = useState([]);
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -30,7 +30,7 @@ export function NoInterestMembersPage({ basePath = '/app/master/no-interest-memb
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
 
-  const canManage = hasPermission('no-interest-members.write');
+  const { canCreate, canEdit, canDelete } = pageAccess('master', 'no-interest-members');
 
   useEffect(() => {
     let mounted = true;
@@ -161,15 +161,15 @@ export function NoInterestMembersPage({ basePath = '/app/master/no-interest-memb
           <button type="button" onClick={() => navigate(`/app/master/no-interest-members/${row.id}`)} className="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-900" title="View">
             <Eye size={16} />
           </button>
-          {canManage ? (
-            <>
-              <button type="button" onClick={() => openEdit(row)} className="rounded-full p-2 text-slate-400 hover:bg-blue-50 hover:text-blue-600" title="Edit">
-                <Edit2 size={16} />
-              </button>
-              <button type="button" onClick={() => setDeleteTarget(row)} className="rounded-full p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600" title="Delete">
-                <Trash2 size={16} />
-              </button>
-            </>
+          {canEdit ? (
+            <button type="button" onClick={() => openEdit(row)} className="rounded-full p-2 text-slate-400 hover:bg-blue-50 hover:text-blue-600" title="Edit">
+              <Edit2 size={16} />
+            </button>
+          ) : null}
+          {canDelete ? (
+            <button type="button" onClick={() => setDeleteTarget(row)} className="rounded-full p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600" title="Delete">
+              <Trash2 size={16} />
+            </button>
           ) : null}
         </div>
       )
@@ -182,7 +182,7 @@ export function NoInterestMembersPage({ basePath = '/app/master/no-interest-memb
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">No Interest Members</h1>
         </div>
-        {canManage ? (
+        {canCreate ? (
           <Button onClick={openCreate} className="gap-2">
             <Plus size={16} />
             Add Record

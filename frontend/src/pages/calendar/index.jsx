@@ -387,8 +387,8 @@ function EventColorPicker({ value, onChange }) {
 }
 
 export function CalendarPage() {
-  const { token, user, hasPermission } = useAuth();
-  const canManage = hasPermission('calendar.write');
+  const { token, user, hasPermission, pageAccess } = useAuth();
+  const { canCreate, canEdit, canDelete } = pageAccess('workspace', 'calendar');
   const attachmentInputRef = useRef(null);
   const draftEventIdRef = useRef(createEventId());
   const originalAttachmentIdsRef = useRef([]);
@@ -397,6 +397,8 @@ export function CalendarPage() {
   const [selectedDate, setSelectedDate] = useState(() => formatDateKey(new Date()));
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  // The open event form: a new event needs Create, an existing one Edit.
+  const canSave = editingId ? canEdit : canCreate;
   const [uploadingAttachments, setUploadingAttachments] = useState(false);
   const [form, setForm] = useState(() => createEmptyForm(formatDateKey(new Date())));
   const [roleOptions, setRoleOptions] = useState([]);
@@ -609,7 +611,7 @@ export function CalendarPage() {
   async function handleSave(event) {
     event.preventDefault();
 
-    if (!canManage) {
+    if (!(editingId ? canEdit : canCreate)) {
       toast.error('You do not have permission to manage calendar events');
       return;
     }
@@ -729,7 +731,7 @@ export function CalendarPage() {
   }
 
   async function handleDelete(eventId) {
-    if (!canManage) {
+    if (!canDelete) {
       toast.error('You do not have permission to manage calendar events');
       return;
     }
@@ -776,7 +778,7 @@ export function CalendarPage() {
             icon: CalendarDays,
             onClick: handleToday
           },
-          ...(canManage ? [{
+          ...(canCreate ? [{
             label: 'Add Event',
             variant: 'primary',
             icon: Plus,
@@ -880,7 +882,7 @@ export function CalendarPage() {
                 </span>
                 <h3 className="text-lg font-bold text-slate-900">{getDayLabel(selectedDate)}</h3>
               </div>
-              {canManage ? (
+              {canCreate ? (
                 <Button type="button" variant="outline" size="sm" onClick={() => openNewEvent(selectedDate)}>
                   <Plus size={15} />
                   Add
@@ -1007,7 +1009,7 @@ export function CalendarPage() {
         footer={(
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              {canManage && editingId ? (
+              {canDelete && editingId ? (
                 <Button type="button" variant="destructive" onClick={() => void handleDelete(editingId)}>
                   <Trash2 size={16} />
                   Delete
@@ -1020,9 +1022,9 @@ export function CalendarPage() {
                   void closeModal();
                 }}
               >
-                {canManage ? 'Cancel' : 'Close'}
+                {canSave ? 'Cancel' : 'Close'}
               </Button>
-              {canManage ? (
+              {canSave ? (
                 <Button type="submit" form="calendar-event-form">
                   <PencilLine size={16} />
                   {editingId ? 'Update event' : 'Save event'}
@@ -1120,7 +1122,7 @@ export function CalendarPage() {
                   ) : (
                     <p className="text-sm text-slate-500">Marked complete with no conclusion note.</p>
                   )}
-                  {canManage ? (
+                  {canEdit ? (
                     <Button type="button" variant="outline" size="sm" onClick={() => handleReopenEvent(editingId)}>
                       Reopen event
                     </Button>
@@ -1135,7 +1137,7 @@ export function CalendarPage() {
                     placeholder="What happened, outcome, follow-ups..."
                     rows={3}
                   />
-                  {canManage ? (
+                  {canEdit ? (
                     <Button type="button" variant="outline" size="sm" onClick={() => void handleMarkComplete(editingId, form.conclusion)}>
                       Mark complete
                     </Button>
@@ -1273,7 +1275,7 @@ export function CalendarPage() {
             </div>
 
             <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 p-4">
-              {canManage ? (
+              {canSave ? (
                 <div className="flex flex-wrap items-center gap-3">
                   <Button
                     type="button"
@@ -1327,7 +1329,7 @@ export function CalendarPage() {
                             <ExternalLink size={14} />
                             Open
                           </Button>
-                          {canManage ? (
+                          {canSave ? (
                             <Button
                               type="button"
                               variant="ghost"

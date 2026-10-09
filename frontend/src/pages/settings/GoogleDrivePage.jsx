@@ -10,7 +10,8 @@ import { DriveBackupsCard, DriveConnectionCard } from './googleDrive/GoogleDrive
 import { backupFileName, readConnectResult } from './googleDrive/googleDriveUtils';
 
 // Settings -> Google Drive: connect a Google account (Gmail sign-in), daily
-// database backups to Drive with the newest 7 kept, and on-demand backups.
+// database backups to Drive with the newest 7 kept. A manual backup is a
+// download to this computer (Settings -> Backup & Restore).
 export function GoogleDrivePage() {
   const { token, hasPermission } = useAuth();
   const canWrite = hasPermission('settings.write');
@@ -20,7 +21,6 @@ export function GoogleDrivePage() {
   const [backups, setBackups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [starting, setStarting] = useState(false);
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
   const pollRef = useRef(null);
 
@@ -85,19 +85,6 @@ export function GoogleDrivePage() {
     }
   }
 
-  async function handleBackupNow() {
-    setStarting(true);
-    try {
-      await api.googleDrive.startBackup(token);
-      toast.success('Backup started. It usually takes under a minute.');
-      await load();
-    } catch (error) {
-      toast.error(error.message || 'Unable to start the backup');
-    } finally {
-      setStarting(false);
-    }
-  }
-
   async function handleDownload(row) {
     try {
       const blob = await api.googleDrive.downloadBackup(token, row.id);
@@ -139,8 +126,6 @@ export function GoogleDrivePage() {
             backups={backups}
             connected={Boolean(drive?.connected && !drive?.needsReconnect)}
             canWrite={canWrite}
-            starting={starting}
-            onBackupNow={handleBackupNow}
             onDownload={handleDownload}
             onRefresh={load}
           />

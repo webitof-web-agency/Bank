@@ -1,4 +1,4 @@
-import { CheckCircle2, CircleAlert, CloudUpload, Download, ExternalLink, FolderOpen, Link2, Link2Off, RefreshCw, XCircle } from 'lucide-react';
+import { CheckCircle2, CircleAlert, Download, ExternalLink, FolderOpen, Link2, Link2Off, RefreshCw, XCircle } from 'lucide-react';
 import { Card } from '../../../components/ui/Card';
 import { Button } from '../../../components/ui/Button';
 import { Table } from '../../../components/ui/Table';
@@ -92,7 +92,7 @@ export function DriveConnectionCard({ drive, canWrite = false, busy = false, use
   );
 }
 
-export function DriveBackupsCard({ backup, backups = [], connected = false, canWrite = false, starting = false, onBackupNow, onDownload, onRefresh }) {
+export function DriveBackupsCard({ backup, backups = [], connected = false, canWrite = false, onDownload, onRefresh }) {
   const last = describeLastBackup(backup?.last);
   const running = Boolean(backup?.running);
   const columns = [
@@ -111,16 +111,11 @@ export function DriveBackupsCard({ backup, backups = [], connected = false, canW
         <div>
           <h2 className="text-lg font-semibold text-slate-900">Database backups</h2>
           <p className="mt-1 text-sm text-slate-500">
-            {backup?.schedule?.label || 'Daily'} · the newest {backup?.keep || 7} are kept in Drive, older ones are deleted automatically.
+            {backup?.schedule?.label || 'Daily'} · the newest {backup?.keep || 7} are kept in Drive, older ones are deleted automatically. For a backup on this computer use Backup &amp; Restore.
           </p>
         </div>
         <div className="flex gap-2">
           <Button type="button" variant="outline" onClick={onRefresh}><RefreshCw size={16} className={running ? 'animate-spin' : ''} /> Refresh</Button>
-          {canWrite ? (
-            <Button type="button" onClick={onBackupNow} disabled={!connected || running || starting}>
-              <CloudUpload size={16} /> {running ? 'Backing up…' : 'Back up now'}
-            </Button>
-          ) : null}
         </div>
       </div>
       <div className="mt-4 space-y-4">

@@ -18,7 +18,7 @@ function isActiveBranch(branch) {
 
 export function BranchesPage() {
   const navigate = useNavigate();
-  const { token, hasPermission } = useAuth();
+  const { token, pageAccess } = useAuth();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -28,7 +28,7 @@ export function BranchesPage() {
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
 
-  const canManage = hasPermission('branches.write');
+  const { canCreate, canEdit, canDelete } = pageAccess('master', 'branches');
 
   useEffect(() => {
     let mounted = true;
@@ -142,15 +142,15 @@ export function BranchesPage() {
           <button type="button" onClick={() => navigate(`/app/master/branches/${row.id}`)} className="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-900" title="View">
             <Eye size={16} />
           </button>
-          {canManage ? (
-            <>
-              <button type="button" onClick={() => openEdit(row)} className="rounded-full p-2 text-slate-400 hover:bg-blue-50 hover:text-blue-600" title="Edit">
-                <Edit2 size={16} />
-              </button>
-              <button type="button" onClick={() => setDeleteTarget(row)} className="rounded-full p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600" title="Delete">
-                <Trash2 size={16} />
-              </button>
-            </>
+          {canEdit ? (
+            <button type="button" onClick={() => openEdit(row)} className="rounded-full p-2 text-slate-400 hover:bg-blue-50 hover:text-blue-600" title="Edit">
+              <Edit2 size={16} />
+            </button>
+          ) : null}
+          {canDelete ? (
+            <button type="button" onClick={() => setDeleteTarget(row)} className="rounded-full p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600" title="Delete">
+              <Trash2 size={16} />
+            </button>
           ) : null}
         </div>
       )
@@ -163,7 +163,7 @@ export function BranchesPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Manage Branches</h1>
         </div>
-        {canManage ? (
+        {canCreate ? (
           <Button onClick={openCreate} className="gap-2">
             <Plus size={16} />
             Add Branch

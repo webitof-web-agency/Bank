@@ -162,7 +162,7 @@ test('templates: list carries no secrets; the event code comes from the URL only
   assert.equal(list.status, 200);
   assert.equal(list.text.includes(API_KEY), false);
   assert.equal(list.text.includes(WEBHOOK_SECRET), false);
-  const [ssa] = list.body.data;
+  const ssa = list.body.data.find((row) => row.eventCode === 'MEMBER_SSA_PAID');
   assert.equal(ssa.eventCode, 'MEMBER_SSA_PAID');
   assert.equal(ssa.label, 'SSA Paid To Member');
   assert.deepEqual(ssa.availableVariables, ['memberName', 'amount', 'voucherNo', 'date']);

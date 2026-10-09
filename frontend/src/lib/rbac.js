@@ -44,6 +44,7 @@ const PAGE_ORDER = [
   'supporting',
   'account-statement-view',
   'member-ledger',
+  'employee-ledger',
   'balance-sheet',
   'trial-balance',
   'cash-book',
@@ -91,6 +92,7 @@ const PAGE_LABELS = {
   employees: 'Employees',
   files: 'Files',
   'member-ledger': 'Member Ledger',
+  'employee-ledger': 'Employee Ledger',
   member: 'Member',
   members: 'Members',
   notifications: 'Notifications',
@@ -248,7 +250,7 @@ const REQUEST_PERMISSION_ALIASES = {
   'users.manage': ['admin.users.view', 'admin.users.create', 'admin.users.edit', 'admin.users.delete'],
   'roles.manage': ['admin.roles.view', 'admin.roles.create', 'admin.roles.edit', 'admin.roles.delete'],
   'settings.read': ['admin.settings.view'],
-  'settings.write': ['admin.settings.edit']
+  'settings.write': ['admin.settings.create', 'admin.settings.edit', 'admin.settings.delete']
 };
 
 function normalizePermissionKey(value = '') {

@@ -17,7 +17,7 @@ import { DemandStatusPill, formatAmount } from './index';
 export function DemandEntryDetailPage({ basePath = '/app/transactions/other/demand-entry' }) {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { token, hasPermission } = useAuth();
+  const { token, pageAccess } = useAuth();
   const { activeFY } = useFY();
   const [entry, setEntry] = useState(null);
   const [branches, setBranches] = useState([]);
@@ -25,7 +25,7 @@ export function DemandEntryDetailPage({ basePath = '/app/transactions/other/dema
   const [draft, setDraft] = useState(null);
   const [saving, setSaving] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const canManage = hasPermission('demands.write');
+  const { canEdit, canDelete } = pageAccess('master', 'demands', 'transactions.supporting');
 
   useEffect(() => {
     let mounted = true;
@@ -84,11 +84,11 @@ export function DemandEntryDetailPage({ basePath = '/app/transactions/other/dema
         </div>
         <div className="flex items-center gap-2">
           <DemandStatusPill status={entry.status} />
-          {canManage ? (
-            <>
-              <Button type="button" variant="outline" className="gap-2" onClick={() => setDraft(draftFromEntry(entry))}><Edit2 size={15} /> Edit</Button>
-              <Button type="button" variant="outline" className="gap-2" disabled={entry.recoveredCount > 0} title={entry.recoveredCount > 0 ? 'Has recovered members: delete the recovery first' : ''} onClick={() => setConfirmOpen(true)}><Trash2 size={15} /> Delete</Button>
-            </>
+          {canEdit ? (
+                <Button type="button" variant="outline" className="gap-2" onClick={() => setDraft(draftFromEntry(entry))}><Edit2 size={15} /> Edit</Button>
+          ) : null}
+          {canDelete ? (
+                <Button type="button" variant="outline" className="gap-2" disabled={entry.recoveredCount > 0} title={entry.recoveredCount > 0 ? 'Has recovered members: delete the recovery first' : ''} onClick={() => setConfirmOpen(true)}><Trash2 size={15} /> Delete</Button>
           ) : null}
         </div>
       </div>

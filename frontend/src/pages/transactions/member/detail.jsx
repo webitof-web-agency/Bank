@@ -24,10 +24,10 @@ import {
   getVoucherSectionItem,
   getTransactionVoucherTitle,
   describeDocumentUploadFailure,
-  describeSmsResult,
   formatTransactionDisplayValue
 } from './transactionUtils';
 import { toneClassName } from './transactionUtils';
+import { followSmsResult } from './smsToast';
 
 export function DetailRow({ label, value }) {
   return (
@@ -135,7 +135,7 @@ export function MemberTransactionDetailPage({
 }) {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { token, hasPermission } = useAuth();
+  const { token, pageAccess } = useAuth();
   const [catalog, setCatalog] = useState([]);
   const [lookups, setLookups] = useState({});
   const [record, setRecord] = useState(null);
@@ -149,7 +149,7 @@ export function MemberTransactionDetailPage({
 
   const section = useMemo(() => catalog.find((item) => item.key === sectionKey) || null, [catalog, sectionKey]);
   const sectionItems = useMemo(() => getSectionItems(catalog, sectionKey), [catalog, sectionKey]);
-  const canWrite = hasPermission('transactions.write');
+  const { canEdit } = pageAccess('transactions', 'member');
 
   useEffect(() => {
     let mounted = true;
@@ -209,7 +209,8 @@ export function MemberTransactionDetailPage({
       }
 
       // Saved from here on: a document failure is reported, not a failed save.
-      const smsFeedback = describeSmsResult(nextRecord?.sms, 'Transaction updated');
+      const savedSms = nextRecord?.sms;
+      const savedId = nextRecord?.id;
       let documentError = null;
       try {
         const uploadedDocuments = await uploadDocumentMap(token, draft.documents || {}, {
@@ -227,8 +228,8 @@ export function MemberTransactionDetailPage({
         documentError = error;
       }
       setRecord(nextRecord);
-      if (smsFeedback) toast[smsFeedback.tone](smsFeedback.message);
-      else toast.success('Transaction updated');
+      toast.success('Transaction updated');
+      followSmsResult(token, savedId, savedSms);
       if (documentError) toast.warning(describeDocumentUploadFailure(nextRecord, documentError));
       closeEditor();
     } finally {
@@ -282,7 +283,7 @@ export function MemberTransactionDetailPage({
   }
 
   async function handleDeleteAttachment(key, document) {
-    if (!canWrite || !document?.fileId || !record) return;
+    if (!canEdit || !document?.fileId || !record) return;
     try {
       await api.files.remove(token, document.fileId);
       const nextDocuments = { ...(record.documents || {}) };
@@ -445,7 +446,7 @@ export function MemberTransactionDetailPage({
                 <Button type="button" variant="outline" onClick={() => window.print()} className="gap-2 border-slate-200 shadow-sm rounded-[var(--radius-input,0.75rem)] hover:bg-slate-50 text-slate-700 font-semibold text-sm h-10 px-4">
                   Print
                 </Button>
-                {canWrite ? (
+                {canEdit ? (
                   <Button type="button" variant="outline" onClick={openEditor} className="gap-2 border-slate-200 shadow-sm rounded-[var(--radius-input,0.75rem)] hover:bg-slate-50 text-slate-700 font-semibold text-sm h-10 px-4 bg-slate-50">
                     <Edit2 size={16} />Edit
                   </Button>
@@ -857,7 +858,7 @@ export function MemberTransactionDetailPage({
         footer={
           <div className="flex w-full justify-end gap-3">
             <Button variant="outline" type="button" onClick={closeEditor}>Cancel</Button>
-            <Button type="submit" form="transaction-voucher-form" disabled={saving || !canWrite} className="bg-[#1661F6] text-white hover:bg-blue-700">
+            <Button type="submit" form="transaction-voucher-form" disabled={saving || !canEdit} className="bg-[#1661F6] text-white hover:bg-blue-700">
               {saving ? 'Saving...' : 'Save Changes'}
             </Button>
           </div>

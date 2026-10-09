@@ -28,7 +28,7 @@ import { toneClassName } from './transactionUtils';
 
 export function OtherTransactionsPage({ sectionKey, itemKey, detailPathBase }) {
   const navigate = useNavigate();
-  const { token, hasPermission } = useAuth();
+  const { token, pageAccess } = useAuth();
   const { activeFY } = useFY();
   const [catalog, setCatalog] = useState([]);
   const [rows, setRows] = useState([]);
@@ -71,7 +71,7 @@ export function OtherTransactionsPage({ sectionKey, itemKey, detailPathBase }) {
       return matchesSearch && matchesPartyType && matchesFrom && matchesTo;
     });
   }, [rows, sectionItems, search, filterPartyType, filterDateFrom, filterDateTo]);
-  const canWrite = hasPermission('transactions.write');
+  const { canCreate, canEdit, canDelete } = pageAccess('transactions', 'receipt-interest');
 
   useEffect(() => {
     let mounted = true;
@@ -273,15 +273,15 @@ export function OtherTransactionsPage({ sectionKey, itemKey, detailPathBase }) {
           <button type="button" onClick={() => navigate(`${detailPathBase}/${row.id}`)} className="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-900" title="View">
             <Eye size={16} />
           </button>
-          {canWrite && !row.isHistorical ? (
-            <>
-              <button type="button" onClick={() => openEdit(row)} className="rounded-full p-2 text-slate-400 hover:bg-blue-50 hover:text-blue-600" title="Edit">
-                <Edit2 size={16} />
-              </button>
-              <button type="button" onClick={() => setDeleteTarget(row)} className="rounded-full p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600" title="Delete">
-                <Trash2 size={16} />
-              </button>
-            </>
+          {canEdit && !row.isHistorical ? (
+            <button type="button" onClick={() => openEdit(row)} className="rounded-full p-2 text-slate-400 hover:bg-blue-50 hover:text-blue-600" title="Edit">
+              <Edit2 size={16} />
+            </button>
+          ) : null}
+          {canDelete && !row.isHistorical ? (
+            <button type="button" onClick={() => setDeleteTarget(row)} className="rounded-full p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600" title="Delete">
+              <Trash2 size={16} />
+            </button>
           ) : null}
         </div>
       )
@@ -301,7 +301,7 @@ export function OtherTransactionsPage({ sectionKey, itemKey, detailPathBase }) {
           </Button>
           
           <div className="relative">
-            {canWrite ? (
+            {canCreate ? (
               <Button
                 type="button"
                 className="gap-2 bg-[var(--primary,#1661F6)] text-white hover:opacity-90"
@@ -313,7 +313,7 @@ export function OtherTransactionsPage({ sectionKey, itemKey, detailPathBase }) {
                 <ChevronDown size={14} className="ml-1 opacity-70" />
               </Button>
             ) : null}
-            {canWrite && dropdownOpen && (
+            {canCreate && dropdownOpen && (
               <div className="absolute right-0 top-full z-50 mt-2 w-max min-w-[18rem] origin-top-right rounded-2xl border border-slate-200 bg-white p-2 shadow-xl ring-1 ring-slate-900/5">
                 {editableItems.map((item) => (
                   <button
@@ -467,7 +467,7 @@ export function OtherTransactionsPage({ sectionKey, itemKey, detailPathBase }) {
             <Button variant="outline" type="button" onClick={closeEditor} disabled={saving}>
               Cancel
             </Button>
-            <Button type="submit" form="transaction-voucher-form" disabled={saving || !canWrite} className="bg-[var(--primary,#1661F6)] text-white hover:opacity-90">
+            <Button type="submit" form="transaction-voucher-form" disabled={saving || !(activeRecord ? canEdit : canCreate)} className="bg-[var(--primary,#1661F6)] text-white hover:opacity-90">
               {saving ? 'Saving...' : (activeRecord ? 'Save Changes' : `Create ${draft?.voucherCategory || 'Transaction'}`)}
             </Button>
           </div>

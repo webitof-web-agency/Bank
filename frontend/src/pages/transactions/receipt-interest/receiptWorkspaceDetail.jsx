@@ -56,7 +56,7 @@ function SimpleTable({ headers = [], rows = [], emptyMessage = 'No records found
 export function ReceiptVoucherWorkspaceDetailPage({ sectionKey, itemKey, detailPathBase }) {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { token, hasPermission } = useAuth();
+  const { token, pageAccess } = useAuth();
   const [catalog, setCatalog] = useState([]);
   const [lookups, setLookups] = useState({});
   const [record, setRecord] = useState(null);
@@ -67,7 +67,7 @@ export function ReceiptVoucherWorkspaceDetailPage({ sectionKey, itemKey, detailP
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [removedDocumentIds, setRemovedDocumentIds] = useState([]);
   const [activeTab, setActiveTab] = useState('overview');
-  const canWrite = hasPermission('transactions.write');
+  const { canEdit } = pageAccess('transactions', 'receipt-interest');
 
   const section = useMemo(() => catalog.find((entry) => entry.key === sectionKey) || null, [catalog, sectionKey]);
   const sectionItems = useMemo(() => {
@@ -216,7 +216,7 @@ export function ReceiptVoucherWorkspaceDetailPage({ sectionKey, itemKey, detailP
                 <Button type="button" variant="outline" onClick={() => window.print()} className="gap-2 border-slate-200 shadow-sm rounded-[var(--radius-input,0.75rem)] hover:bg-slate-50 text-slate-700 font-semibold text-sm h-10 px-4">
                   Print
                 </Button>
-                {canWrite ? (
+                {canEdit ? (
                   <Button type="button" variant="outline" onClick={openEditor} className="gap-2 border-slate-200 shadow-sm rounded-[var(--radius-input,0.75rem)] hover:bg-slate-50 text-slate-700 font-semibold text-sm h-10 px-4 bg-slate-50">
                     <Edit2 size={16} /> Edit Transaction
                   </Button>
@@ -298,7 +298,7 @@ export function ReceiptVoucherWorkspaceDetailPage({ sectionKey, itemKey, detailP
         footer={
           <div className="flex w-full justify-end gap-3">
             <Button variant="outline" type="button" onClick={closeEditor}>Cancel</Button>
-            <Button type="submit" form="transaction-voucher-form" disabled={saving || !canWrite} className="bg-[var(--primary,#1661F6)] text-white hover:opacity-90">
+            <Button type="submit" form="transaction-voucher-form" disabled={saving || !canEdit} className="bg-[var(--primary,#1661F6)] text-white hover:opacity-90">
               {saving ? 'Saving...' : 'Save Changes'}
             </Button>
           </div>

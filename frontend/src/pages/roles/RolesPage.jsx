@@ -10,14 +10,14 @@ import { ConfirmDialog } from '../../components/overlays/ConfirmDialog';
 import { Table } from '../../components/ui/Table';
 
 export function RolesPage() {
-  const { token, hasPermission } = useAuth();
+  const { token, pageAccess } = useAuth();
   const navigate = useNavigate();
   const [rows, setRows] = useState([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState(null);
 
-  const canEdit = hasPermission('roles.manage');
+  const { canCreate, canEdit, canDelete } = pageAccess('admin', 'roles');
 
   useEffect(() => {
     let mounted = true;
@@ -84,16 +84,18 @@ export function RolesPage() {
         : <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2.5 py-0.5 text-[11px] font-medium text-rose-700">No</span>
     )},
     { key: 'actions', label: 'Actions', sortable: false, align: 'right', render: (row) => (
-      canEdit ? (
-        <div className="flex justify-end gap-1">
+      <div className="flex justify-end gap-1">
+        {canEdit ? (
           <button type="button" onClick={() => openEdit(row)} className="rounded-full p-2 text-slate-400 hover:bg-blue-50 hover:text-blue-600">
             <Edit2 size={16} />
           </button>
+        ) : null}
+        {canDelete ? (
           <button type="button" onClick={() => setDeleteTarget(row)} className="rounded-full p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600">
             <Trash2 size={16} />
           </button>
-        </div>
-      ) : null
+        ) : null}
+      </div>
     ) }
   ];
 
@@ -103,7 +105,7 @@ export function RolesPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Manage Roles & Permissions</h1>
         </div>
-        {canEdit ? (
+        {canCreate ? (
           <Button onClick={openCreate} className="gap-2">
             <Plus size={16} />
             Add Role

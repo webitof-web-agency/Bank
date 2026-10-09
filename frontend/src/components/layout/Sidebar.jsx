@@ -277,6 +277,11 @@ export function Sidebar({ open = false, onClose, onToggleCollapse }) {
 
   const visibleGroups = useMemo(() => {
     function filterItem(item) {
+      // A section's own permission covers its children too.
+      if (item.permission && !checkAuthPermission(item.permission)) {
+        return null;
+      }
+
       if (item.children?.length) {
         const children = item.children
           .map((child) => filterItem(child))
@@ -284,10 +289,6 @@ export function Sidebar({ open = false, onClose, onToggleCollapse }) {
 
         if (!children.length) return null;
         return { ...item, children };
-      }
-
-      if (item.permission && !checkAuthPermission(item.permission)) {
-        return null;
       }
 
       return item;

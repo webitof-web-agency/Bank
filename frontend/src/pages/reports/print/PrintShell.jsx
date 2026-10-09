@@ -20,6 +20,9 @@ const SHEET_GAP_PX = 24;
 const STAGE_BG = 'bg-slate-100';
 
 const PageCountContext = createContext(1);
+// The report's Print / Export permissions (Settings -> Roles), set by the
+// report viewer. Download PDF counts as an export.
+export const ReportActionsContext = createContext({ canPrint: true, canExport: true });
 
 function formatPrintedAt(date) {
   const time = date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
@@ -289,6 +292,7 @@ export function PrintLetterhead({ title, meta }) {
 // Every report prints on A4 — portrait unless `landscape` (the wide ledgers).
 // The preview shows the report split onto A4 sheets as it will print.
 export function PrintShell({ headerActions, landscape = false, children }) {
+  const { canPrint, canExport } = useContext(ReportActionsContext);
   const [zoom, setZoom] = useState(1);
   const [exporting, setExporting] = useState(false);
   // The preview shows one sheet at a time (0-based); print / PDF still get
@@ -475,14 +479,18 @@ export function PrintShell({ headerActions, landscape = false, children }) {
           <span className="text-[12px] font-semibold text-slate-500">
             A4 {landscape ? 'landscape' : 'portrait'}
           </span>
-          <Button type="button" variant="outline" className="gap-2 h-9 px-3 text-[13px]" onClick={() => window.print()}>
-            <Printer size={14} />
-            Print
-          </Button>
-          <Button type="button" variant="outline" className="gap-2 h-9 px-3 text-[13px]" onClick={handleDownloadPdf} disabled={exporting}>
-            <Download size={14} />
-            {exporting ? 'Preparing PDF...' : 'Download PDF'}
-          </Button>
+          {canPrint ? (
+            <Button type="button" variant="outline" className="gap-2 h-9 px-3 text-[13px]" onClick={() => window.print()}>
+              <Printer size={14} />
+              Print
+            </Button>
+          ) : null}
+          {canExport ? (
+            <Button type="button" variant="outline" className="gap-2 h-9 px-3 text-[13px]" onClick={handleDownloadPdf} disabled={exporting}>
+              <Download size={14} />
+              {exporting ? 'Preparing PDF...' : 'Download PDF'}
+            </Button>
+          ) : null}
         </div>
 
         <div className={`w-full rounded-2xl ${STAGE_BG} p-4 sm:p-8 border border-slate-200 overflow-x-auto print:bg-transparent print:p-0 print:border-0 print:overflow-visible`}>

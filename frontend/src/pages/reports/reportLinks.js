@@ -57,7 +57,7 @@ export const REPORT_LINKS = [
     path: '/app/reports/employee-ledger',
     icon: Users,
     category: 'member-reports',
-    permission: 'reports.member-ledger.view',
+    permission: 'reports.employee-ledger.view',
     description: 'Employee ledger with running balance and summary balances.',
     hidden: true
   },

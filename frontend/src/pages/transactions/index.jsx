@@ -20,10 +20,10 @@ function toneClassName(tone = 'slate') {
 
 export function TransactionsHomePage() {
   const navigate = useNavigate();
-  const { token } = useAuth();
+  const { token, hasPermission } = useAuth();
   const [catalog, setCatalog] = useState([]);
   const [loading, setLoading] = useState(true);
-  const visibleSections = TRANSACTION_SECTIONS.filter((section) => section.key !== 'overview');
+  const visibleSections = TRANSACTION_SECTIONS.filter((section) => section.key !== 'overview' && (!section.permission || hasPermission(section.permission)));
 
   useEffect(() => {
     let mounted = true;

@@ -138,8 +138,8 @@ function useNotificationStream(token, onChange) {
 
 export function NotificationsPage() {
   const navigate = useNavigate();
-  const { token, hasPermission } = useAuth();
-  const canManage = hasPermission('notifications.write');
+  const { token, pageAccess } = useAuth();
+  const { canCreate, canDelete } = pageAccess('workspace', 'notifications');
   const [items, setItems] = useState([]);
   const [meta, setMeta] = useState({ total: 0, unreadCount: 0, page: 1, limit: 10 });
   const [loading, setLoading] = useState(true);
@@ -458,7 +458,7 @@ export function NotificationsPage() {
           >
             <RefreshCw size={16} />
           </button>
-          {canManage ? (
+          {canDelete ? (
             <button
               type="button"
               onClick={() => handleDelete(row.id)}
@@ -484,7 +484,7 @@ export function NotificationsPage() {
           </div>
         )}
         actions={[
-          ...(canManage ? [{
+          ...(canCreate ? [{
             label: 'Create Notification',
             variant: 'primary',
             icon: Plus,
@@ -550,7 +550,7 @@ export function NotificationsPage() {
             </span>
             <h3 className="text-lg font-bold text-slate-900">Group-wise notification view</h3>
           </div>
-          {canManage ? (
+          {canCreate ? (
             <button type="button" onClick={() => setCreateOpen(true)} className="inline-flex items-center gap-1.5 rounded-[var(--radius-button,1rem)] border border-[var(--primary)] px-3 py-1.5 text-[12px] font-semibold text-[var(--primary)] transition-colors">
               <Plus size={14} />
               Create Notification

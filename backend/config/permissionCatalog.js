@@ -65,6 +65,7 @@ const PERMISSION_SECTIONS = [
     pages: [
       createPage('reports', 'account-statement-view', 'Account Statement View', ['view', 'export', 'print'], 'Ledger-wise account statement with opening and closing balances.'),
       createPage('reports', 'member-ledger', 'Member Ledger', ['view', 'export', 'print'], 'Member ledger with running balance and summary balances.'),
+      createPage('reports', 'employee-ledger', 'Employee Ledger', ['view', 'export', 'print'], 'Employee ledger with running balance.'),
       createPage('reports', 'balance-sheet', 'Balance Sheet', ['view', 'export', 'print'], 'Liabilities and assets snapshot for the selected date.'),
       createPage('reports', 'trial-balance', 'Trial Balance', ['view', 'export', 'print'], 'Ledger debit and credit balances for trial review.'),
       createPage('reports', 'cash-book', 'Cash Book', ['view', 'export', 'print'], 'Cash ledger entries posted for the selected day or date.'),
@@ -86,7 +87,7 @@ const PERMISSION_SECTIONS = [
       createPage('admin', 'audit-trail', 'Audit Trail', ['view'], 'View audit and approval history.'),
       createPage('admin', 'users', 'Users', ['view', 'create', 'edit', 'delete'], 'Create, update, and delete users.'),
       createPage('admin', 'roles', 'Roles', ['view', 'create', 'edit', 'delete'], 'Create, update, and delete roles.'),
-      createPage('admin', 'settings', 'Settings', ['view', 'edit'], 'View and update system settings.')
+      createPage('admin', 'settings', 'Settings', ['view', 'create', 'edit', 'delete'], 'All settings pages: SMS, Google Drive, storage, backup and system settings.')
     ]
   }
 ];
@@ -177,6 +178,7 @@ const LEGACY_PERMISSION_ALIASES = {
   'reports.read': [
     ...pageCodes('reports', 'account-statement-view', ['view']),
     ...pageCodes('reports', 'member-ledger', ['view']),
+    ...pageCodes('reports', 'employee-ledger', ['view']),
     ...pageCodes('reports', 'balance-sheet', ['view']),
     ...pageCodes('reports', 'trial-balance', ['view']),
     ...pageCodes('reports', 'cash-book', ['view']),
@@ -193,6 +195,7 @@ const LEGACY_PERMISSION_ALIASES = {
   'reports.export': [
     ...pageCodes('reports', 'account-statement-view', ['export', 'print']),
     ...pageCodes('reports', 'member-ledger', ['export', 'print']),
+    ...pageCodes('reports', 'employee-ledger', ['export', 'print']),
     ...pageCodes('reports', 'balance-sheet', ['export', 'print']),
     ...pageCodes('reports', 'trial-balance', ['export', 'print']),
     ...pageCodes('reports', 'cash-book', ['export', 'print']),
@@ -210,7 +213,7 @@ const LEGACY_PERMISSION_ALIASES = {
   'users.manage': pageCodes('admin', 'users', ['create', 'edit', 'delete']),
   'roles.manage': pageCodes('admin', 'roles', ['create', 'edit', 'delete']),
   'settings.read': pageCodes('admin', 'settings', ['view']),
-  'settings.write': pageCodes('admin', 'settings', ['edit'])
+  'settings.write': pageCodes('admin', 'settings', ['create', 'edit', 'delete'])
 };
 
 const LEGACY_PERMISSION_CODES = Object.keys(LEGACY_PERMISSION_ALIASES);

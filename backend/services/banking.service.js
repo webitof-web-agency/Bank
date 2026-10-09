@@ -764,7 +764,7 @@ const TRANSACTION_CATALOG = [
     key: 'member',
     label: 'Member',
     description: 'Member loan, deposit, insurance, and recovery transactions.',
-    permission: 'transactions.read',
+    permission: 'transactions.member.view',
     items: [
       { key: 'loan-paid-member', label: 'Loan Paid to Member', description: 'Disburse loan amounts to members.', voucherCategory: 'Loan Paid to Member', transactionType: 'payment', accent: 'pink', mode: 'Cash / Cheque', documents: MEMBER_TRANSACTION_DOCUMENTS.loanPaidMember },
       { key: 'deposit-paid-member', label: 'Compulsory Deposit Paid to Member', description: 'Pay compulsory deposit amounts back to member accounts.', voucherCategory: 'Compulsory Deposit Paid to Member', transactionType: 'payment', accent: 'pink', mode: 'Cash / Cheque', documents: MEMBER_TRANSACTION_DOCUMENTS.depositPaidMember },
@@ -777,7 +777,7 @@ const TRANSACTION_CATALOG = [
     key: 'bank',
     label: 'Bank',
     description: 'Bank cash movement, cheque, and transfer vouchers.',
-    permission: 'bank-transactions.read',
+    permission: 'transactions.bank.view',
     items: [
       { key: 'loan-recv-cash', label: 'Loan Received to Cash/Credit A/c', description: 'Receive loan proceeds through cash or credit settlement.', voucherCategory: 'Loan Received', transactionType: 'receipt', accent: 'emerald', mode: 'Cash / Credit', documents: BANK_TRANSACTION_DOCUMENTS['loan-recv-cash'] },
       { key: 'loan-recv-saving', label: 'Loan Received to Saving A/c', description: 'Receive loan proceeds into saving account.', voucherCategory: 'Loan Received to Saving A/c', transactionType: 'receipt', accent: 'emerald', mode: 'Saving A/c', documents: BANK_TRANSACTION_DOCUMENTS['loan-recv-saving'] },
@@ -791,7 +791,7 @@ const TRANSACTION_CATALOG = [
     key: 'employee',
     label: 'Employee',
     description: 'Employee advance payment and recovery workflow.',
-    permission: 'transactions.read',
+    permission: 'transactions.employee.view',
     items: [
       { key: 'advance-paid-emp', label: 'Advance Paid by Cash/Cheque', description: 'Pay advance to employee through cash or cheque.', voucherCategory: 'Advance Paid by Cash/Cheque', transactionType: 'payment', accent: 'pink', mode: 'Cash / Cheque', documents: EMPLOYEE_TRANSACTION_DOCUMENTS['advance-paid-emp'] },
       { key: 'advance-recovery-emp', label: 'Advance Recovery by Cash/Transfer', description: 'Recover employee advance through cash or transfer.', voucherCategory: 'Advance Recovery by Cash/Transfer', transactionType: 'receipt', accent: 'emerald', mode: 'Cash / Transfer', documents: EMPLOYEE_TRANSACTION_DOCUMENTS['advance-recovery-emp'] }
@@ -801,7 +801,7 @@ const TRANSACTION_CATALOG = [
     key: 'transfer-voucher',
     label: 'Transfer Voucher',
     description: 'Inter-account transfer voucher movements.',
-    permission: 'transactions.read',
+    permission: 'transactions.transfer-voucher.view',
     items: [
       { key: 'transfer-voucher-paid', label: 'Transfer Voucher Paid to Member', description: 'Transfer voucher paid out to member.', voucherCategory: 'Transfer Voucher Paid to Member', transactionType: 'payment', accent: 'pink', mode: 'Transfer', documents: [] },
       { key: 'transfer-voucher-recover', label: 'Transfer Voucher Recover From Member', description: 'Recover transfer voucher amount from member.', voucherCategory: 'Transfer Voucher Recover From Member', transactionType: 'receipt', accent: 'emerald', mode: 'Transfer', documents: [] },
@@ -813,7 +813,7 @@ const TRANSACTION_CATALOG = [
     key: 'interest',
     label: 'Interest',
     description: 'Interest transactions.',
-    permission: 'transactions.read',
+    permission: 'transactions.receipt-interest.view',
     items: [
       { key: 'interest-paid-member', label: 'Interest Paid to Member', description: 'Post interest payout to member ledger.', voucherCategory: 'Interest Paid to Member', transactionType: 'payment', accent: 'pink', mode: 'Interest', documents: [] },
       { key: 'interest-recv-member', label: 'Interest Receive From Member', description: 'Receive interest from member.', voucherCategory: 'Interest Receive From Member', transactionType: 'receipt', accent: 'emerald', mode: 'Interest', documents: [] },
@@ -824,7 +824,7 @@ const TRANSACTION_CATALOG = [
     key: 'other',
     label: 'Other Transactions',
     description: 'Other transactions and support forms.',
-    permission: 'transactions.read',
+    permission: 'transactions.receipt-interest.view',
     items: [
       { key: 'payment-voucher', label: 'Payment Voucher', description: 'General payment entry.', voucherCategory: 'Payment Voucher', transactionType: 'payment', accent: 'pink', mode: 'Payment', documents: [] },
       { key: 'receipt-voucher', label: 'Receipt Voucher', description: 'General receipt entry for the society.', voucherCategory: 'Receipt Voucher', transactionType: 'receipt', accent: 'emerald', mode: 'Receipt', documents: [] },
@@ -4536,6 +4536,31 @@ function getTransactionCatalogItemByKey(key = '') {
   }
   return null;
 }
+// Which Transactions permission page a voucher type belongs to (Settings ->
+// Roles): the catalog section, with Interest and Other (payment / receipt
+// vouchers) under "Receipt / Interest". '' for an unknown type.
+const VOUCHER_PERMISSION_PAGE_BY_SECTION = Object.freeze({
+  member: 'member',
+  bank: 'bank',
+  employee: 'employee',
+  'transfer-voucher': 'transfer-voucher',
+  interest: 'receipt-interest',
+  other: 'receipt-interest'
+});
+
+function getVoucherPermissionPage(voucher = {}) {
+  const key = cleanText(voucher?.details?.key || voucher?.transactionKey).toLowerCase();
+  if (!key) return '';
+  const section = TRANSACTION_CATALOG.find((entry) => (entry.items || []).some((item) => cleanText(item.key).toLowerCase() === key));
+  return VOUCHER_PERMISSION_PAGE_BY_SECTION[section?.key] || '';
+}
+
+// A voucher as stored (deleted ones included), for permission checks only.
+async function findVoucherForAccess(id) {
+  if (!id || String(id).startsWith('legacy:')) return null;
+  return Voucher.findById(id).withDeleted().lean();
+}
+
 function normalizeVoucher(data = {}) {
   const details = sanitizeBankVoucherDetails(data.details);
   const catalogItem = getTransactionCatalogItemByKey(details.key || data.transactionKey || '');
@@ -4754,7 +4779,8 @@ async function assertPartyMemberAccess(payload = {}, user = {}) {
 
 // The SMS rows are queued inside the voucher's transaction (so they roll
 // back with it) and sent only after it commits; an SMS failure never fails
-// the save. `sms` on the response says what happened, when one was asked for.
+// the save. `sms` on the response is the queued state (PENDING, or SKIPPED
+// with a reason); the page follows the send with GET .../vouchers/:id/sms.
 async function createVoucher(data = {}, meta = {}) {
   const { response, smsQueued } = await withTransaction(async (tx) => {
     const branchCode = resolveBranchCode(meta.actorUser || {}, data.branchCode);
@@ -4797,12 +4823,20 @@ async function createVoucher(data = {}, meta = {}) {
     await notifySafely(buildVoucherNotificationPayload('created', response, meta));
     return { response, smsQueued };
   });
-  return withSmsResult(response, smsQueued);
+  return withSmsResult(response, smsQueued, meta);
 }
 
-async function withSmsResult(response, smsQueued = []) {
+// The save answers at once; Flowit is called in the background so a slow
+// provider never holds the save up. meta.waitForSms (tests) waits instead
+// and returns the send result.
+async function withSmsResult(response, smsQueued = [], meta = {}) {
   if (!smsQueued.length) return response;
-  const sms = smsService.summarizeForResponse(await smsService.dispatch(smsQueued));
+  if (meta.waitForSms) {
+    const sms = smsService.summarizeForResponse(await smsService.dispatch(smsQueued));
+    return sms ? { ...response, sms } : response;
+  }
+  setImmediate(() => { void smsService.dispatch(smsQueued); });
+  const sms = smsService.summarizeForResponse(smsQueued);
   return sms ? { ...response, sms } : response;
 }
 
@@ -4865,7 +4899,7 @@ async function updateVoucher(id, data = {}, meta = {}) {
     return { response, smsQueued };
   });
   if (!result) return null;
-  return withSmsResult(result.response, result.smsQueued);
+  return withSmsResult(result.response, result.smsQueued, meta);
 }
 
 // Another branch's voucher: 403. Branch-scoped users may only edit, delete
@@ -5494,6 +5528,8 @@ module.exports = {
   getNextTransactionNo,
   getNextVoucherNo,
   getTransactionCatalog,
+  getVoucherPermissionPage,
+  findVoucherForAccess,
   getResource,
   getSingle,
   listResource,

@@ -76,7 +76,7 @@ function SimpleTable({ headers = [], rows = [], emptyMessage = 'No records found
 export function TransferVoucherTransactionWorkspaceDetailPage({ sectionKey, itemKey }) {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { token, hasPermission } = useAuth();
+  const { token, pageAccess } = useAuth();
   const [catalog, setCatalog] = useState([]);
   const [lookups, setLookups] = useState({});
   const [record, setRecord] = useState(null);
@@ -93,7 +93,7 @@ export function TransferVoucherTransactionWorkspaceDetailPage({ sectionKey, item
     const items = getSectionItems(catalog, sectionKey);
     return itemKey ? items.filter((entry) => entry.key === itemKey) : items;
   }, [catalog, sectionKey, itemKey]);
-  const canWrite = hasPermission('transactions.write');
+  const { canEdit, canDelete } = pageAccess('transactions', 'transfer-voucher');
 
   useEffect(() => {
     let mounted = true;
@@ -249,7 +249,7 @@ export function TransferVoucherTransactionWorkspaceDetailPage({ sectionKey, item
   }
 
   async function handleDeleteAttachment(key, document) {
-    if (!canWrite || !document?.fileId || !record) return;
+    if (!canEdit || !document?.fileId || !record) return;
     try {
       await api.files.remove(token, document.fileId);
       const nextDocuments = { ...(record.documents || {}) };
@@ -313,17 +313,17 @@ export function TransferVoucherTransactionWorkspaceDetailPage({ sectionKey, item
                   Print
                 </Button>
 
-                {canWrite ? (
-                  <>
-                    <Button type="button" variant="outline" onClick={() => setDeleteOpen(true)} className="gap-2 border-slate-200 shadow-sm rounded-[var(--radius-input,0.75rem)] hover:bg-slate-50 text-slate-700 font-semibold text-sm h-10 px-4">
-                      <Trash2 size={16} />
-                      Delete
-                    </Button>
-                    <Button type="button" variant="outline" onClick={openEditor} className="gap-2 border-slate-200 shadow-sm rounded-[var(--radius-input,0.75rem)] hover:bg-slate-50 text-slate-700 font-semibold text-sm h-10 px-4 bg-slate-50">
-                      <Edit2 size={16} />
-                      Edit Transaction
-                    </Button>
-                  </>
+                {canDelete ? (
+                  <Button type="button" variant="outline" onClick={() => setDeleteOpen(true)} className="gap-2 border-slate-200 shadow-sm rounded-[var(--radius-input,0.75rem)] hover:bg-slate-50 text-slate-700 font-semibold text-sm h-10 px-4">
+                    <Trash2 size={16} />
+                    Delete
+                  </Button>
+                ) : null}
+                {canEdit ? (
+                  <Button type="button" variant="outline" onClick={openEditor} className="gap-2 border-slate-200 shadow-sm rounded-[var(--radius-input,0.75rem)] hover:bg-slate-50 text-slate-700 font-semibold text-sm h-10 px-4 bg-slate-50">
+                    <Edit2 size={16} />
+                    Edit Transaction
+                  </Button>
                 ) : null}
               </div>
 

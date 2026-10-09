@@ -22,7 +22,7 @@ function DetailRow({ label, value }) {
 export function RateDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { token, hasPermission } = useAuth();
+  const { token, pageAccess } = useAuth();
   const [rate, setRate] = useState(null);
   const [ledgers, setLedgers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -31,7 +31,7 @@ export function RateDetailPage() {
   const [draft, setDraft] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
 
-  const canManage = hasPermission('rates.write');
+  const { canEdit } = pageAccess('master', 'rates');
 
   useEffect(() => {
     let mounted = true;
@@ -150,7 +150,7 @@ export function RateDetailPage() {
           </div>
 
           <div className="flex flex-col md:items-end gap-4">
-            {canManage && (
+            {canEdit && (
               <Button variant="outline" type="button" onClick={openEditor} className="gap-2 border-slate-200 shadow-sm rounded-[var(--radius-input,0.75rem)] hover:bg-slate-50 text-slate-700 font-semibold">
                 <Edit2 size={16} />
                 Edit Rate

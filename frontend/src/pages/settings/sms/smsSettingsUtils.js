@@ -5,6 +5,9 @@
 // each is configured; nothing here reads or keeps a secret.
 
 export const SMS_EVENT_LABELS = {
+  MEMBER_LOAN_PAID: 'Loan Paid to Member',
+  MEMBER_CD_PAID: 'Compulsory Deposit Paid to Member',
+  MEMBER_INSURANCE_PAID: 'Insurance Premium Paid to Member',
   MEMBER_SSA_PAID: 'SSA Paid To Member',
   FLOWIT_TEST_OTP: 'Flowit connectivity test'
 };
@@ -18,8 +21,12 @@ export const TEST_SEND_CONFIRMATION = 'This sends one SMS using the temporary ex
 // The variables each event supports, in the order its DLT text expects them.
 // The backend sends the same list as `availableVariables`; this is the
 // fallback when a template row has not been loaded yet.
+const MEMBER_PAYMENT_VARIABLES = ['memberName', 'amount', 'voucherNo', 'date'];
 export const SMS_EVENT_VARIABLES = {
-  MEMBER_SSA_PAID: ['memberName', 'amount', 'voucherNo', 'date']
+  MEMBER_LOAN_PAID: MEMBER_PAYMENT_VARIABLES,
+  MEMBER_CD_PAID: MEMBER_PAYMENT_VARIABLES,
+  MEMBER_INSURANCE_PAID: MEMBER_PAYMENT_VARIABLES,
+  MEMBER_SSA_PAID: MEMBER_PAYMENT_VARIABLES
 };
 
 export const SMS_VARIABLE_LABELS = {

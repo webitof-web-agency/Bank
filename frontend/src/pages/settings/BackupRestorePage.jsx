@@ -3,12 +3,32 @@ import { Download, Upload, RefreshCcw, HardDrive } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
+import { api } from '../../api/api';
+import { useAuth } from '../../context/AuthContext';
 
 export function BackupRestorePage() {
+  const { token, hasPermission } = useAuth();
+  const canWrite = hasPermission('settings.write');
   const [fileName, setFileName] = useState('');
+  const [downloading, setDownloading] = useState(false);
 
-  function handleBackup() {
-    toast.info('Backup endpoint is not wired in the current backend.');
+  // A fresh dump of the whole database, saved on this computer (not Drive).
+  async function handleBackup() {
+    setDownloading(true);
+    try {
+      const { blob, name } = await api.backup.downloadLocal(token);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = name;
+      link.click();
+      URL.revokeObjectURL(url);
+      toast.success('Backup downloaded.');
+    } catch (error) {
+      toast.error(error.message || 'Unable to create the backup');
+    } finally {
+      setDownloading(false);
+    }
   }
 
   function handleRestore() {
@@ -32,12 +52,12 @@ export function BackupRestorePage() {
             <div className="flex h-11 w-11 items-center justify-center rounded-[14px] bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary,#1661F6)]"><Download size={20} /></div>
             <div>
               <h2 className="text-base font-semibold text-slate-900">Backup Database</h2>
-              <p className="text-[13px] text-slate-500">Current app me direct backup route abhi available nahi hai.</p>
+              <p className="text-[13px] text-slate-500">Full database backup (.dump), downloaded to this computer. Restore with pg_restore.</p>
             </div>
           </div>
-          <Button type="button" onClick={handleBackup} className="gap-2">
+          <Button type="button" onClick={handleBackup} disabled={!canWrite || downloading} title={canWrite ? '' : 'Needs Settings edit permission'} className="gap-2">
             <HardDrive size={16} />
-            Download Backup
+            {downloading ? 'Preparing backup…' : 'Download Backup'}
           </Button>
         </Card>
 

@@ -33,7 +33,7 @@ const monthLabel = (month) => MONTH_OPTIONS.find((option) => option.value === St
 // are on the list. Lines stay Pending until a saved recovery collects them.
 export function DemandEntryPage({ detailPathBase = '/app/transactions/other/demand-entry' }) {
   const navigate = useNavigate();
-  const { token, hasPermission } = useAuth();
+  const { token, pageAccess } = useAuth();
   const { activeFY } = useFY();
   const [entries, setEntries] = useState([]);
   const [branches, setBranches] = useState([]);
@@ -45,7 +45,7 @@ export function DemandEntryPage({ detailPathBase = '/app/transactions/other/dema
   const [editor, setEditor] = useState(null); // { id, draft, locked }
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
-  const canManage = hasPermission('demands.write');
+  const { canCreate, canEdit, canDelete } = pageAccess('master', 'demands', 'transactions.supporting');
   const fyQuery = { fyStart: activeFY?.start || '', fyEnd: activeFY?.end || '' };
 
   useEffect(() => {
@@ -132,7 +132,7 @@ export function DemandEntryPage({ detailPathBase = '/app/transactions/other/dema
           <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">Demand Entry</h1>
           <p className="text-[13px] text-slate-500">Monthly demand per branch for FY {activeFY?.label}. Recovery collects it member by member.</p>
         </div>
-        {canManage ? (
+        {canCreate ? (
           <Button type="button" className="gap-2 bg-[var(--primary,#1661F6)] text-white" onClick={() => setEditor({ id: null, draft: emptyDemandDraft(activeFY, entries), locked: false })}>
             <Plus size={16} /> New Demand List
           </Button>
@@ -188,11 +188,11 @@ export function DemandEntryPage({ detailPathBase = '/app/transactions/other/dema
                   <td className="px-4 py-3">
                     <div className="flex justify-end gap-1">
                       <button type="button" onClick={() => navigate(`${detailPathBase}/${row.id}`)} className="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-900" title="View"><Eye size={16} /></button>
-                      {canManage ? (
-                        <>
-                          <button type="button" onClick={() => openEdit(row)} className="rounded-full p-2 text-slate-400 hover:bg-blue-50 hover:text-blue-600" title="Edit"><Edit2 size={16} /></button>
-                          <button type="button" onClick={() => setDeleteTarget(row)} disabled={row.recoveredCount > 0} className="rounded-full p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-30" title={row.recoveredCount > 0 ? 'Has recovered members: delete the recovery first' : 'Delete'}><Trash2 size={16} /></button>
-                        </>
+                      {canEdit ? (
+                            <button type="button" onClick={() => openEdit(row)} className="rounded-full p-2 text-slate-400 hover:bg-blue-50 hover:text-blue-600" title="Edit"><Edit2 size={16} /></button>
+                      ) : null}
+                      {canDelete ? (
+                            <button type="button" onClick={() => setDeleteTarget(row)} disabled={row.recoveredCount > 0} className="rounded-full p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-30" title={row.recoveredCount > 0 ? 'Has recovered members: delete the recovery first' : 'Delete'}><Trash2 size={16} /></button>
                       ) : null}
                     </div>
                   </td>

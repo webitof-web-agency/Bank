@@ -23,7 +23,8 @@ export const SETTINGS_LINKS = [
     label: 'Change Password',
     path: '/app/settings/change-password',
     icon: KeyRound,
-    permission: 'settings.read',
+    // Everyone may change their own password.
+    permission: null,
     description: 'Update your account password from a dedicated page.',
     group: 'Administration',
     tone: 'slate'
@@ -77,7 +78,7 @@ export const SETTINGS_LINKS = [
     label: 'Storage Providers',
     path: '/app/settings/storage',
     icon: Archive,
-    permission: 'settings_manage',
+    permission: 'settings.read',
     description: 'Configure Local, GCS, or S3 storage for file uploads.',
     group: 'Configuration',
     tone: 'violet'

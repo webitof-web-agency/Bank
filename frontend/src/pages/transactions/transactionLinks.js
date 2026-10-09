@@ -66,7 +66,7 @@ export const TRANSACTION_SECTIONS = [
     label: 'Interest',
     path: '/app/transactions/interest',
     icon: ReceiptText,
-    permission: 'transactions.read',
+    permission: 'transactions.receipt-interest.view',
     description: 'Interest workspaces.',
     tone: 'sky',
     children: [
@@ -80,14 +80,14 @@ export const TRANSACTION_SECTIONS = [
     label: 'Other',
     path: '/app/transactions/other',
     icon: FileText,
-    permission: 'transactions.read',
+    permission: ['transactions.receipt-interest.view', 'no-interest-members.read', 'demands.read', 'transactions.supporting.view'],
     description: 'Other transactions and special pages.',
     tone: 'slate',
     children: [
-      { label: 'Payment Voucher', path: '/app/transactions/other/payment-voucher', icon: Banknote },
-      { label: 'Receipt Voucher', path: '/app/transactions/other/receipt-voucher', icon: ReceiptText },
-      { label: 'No Interest Members', path: '/app/transactions/other/no-interest-members', icon: Users },
-      { label: 'Demand Entry', path: '/app/transactions/other/demand-entry', icon: FileText }
+      { label: 'Payment Voucher', path: '/app/transactions/other/payment-voucher', icon: Banknote, permission: 'transactions.receipt-interest.view' },
+      { label: 'Receipt Voucher', path: '/app/transactions/other/receipt-voucher', icon: ReceiptText, permission: 'transactions.receipt-interest.view' },
+      { label: 'No Interest Members', path: '/app/transactions/other/no-interest-members', icon: Users, permission: 'no-interest-members.read' },
+      { label: 'Demand Entry', path: '/app/transactions/other/demand-entry', icon: FileText, permission: ['demands.read', 'transactions.supporting.view'] }
     ]
   }
 ];

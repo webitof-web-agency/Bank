@@ -68,7 +68,7 @@ function toTitleCase(value = '') {
 export function BankTransactionWorkspaceDetailPage({ sectionKey, itemKey = '', detailPathBase = '/app/transactions/bank' }) {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { token, hasPermission } = useAuth();
+  const { token, pageAccess } = useAuth();
   const [catalog, setCatalog] = useState([]);
   const [lookups, setLookups] = useState({});
   const [record, setRecord] = useState(null);
@@ -83,7 +83,7 @@ export function BankTransactionWorkspaceDetailPage({ sectionKey, itemKey = '', d
   const section = useMemo(() => catalog.find((item) => item.key === sectionKey) || null, [catalog, sectionKey]);
   const sectionItems = useMemo(() => getSectionItems(catalog, sectionKey), [catalog, sectionKey]);
   const activeItem = useMemo(() => getBankTransactionTypeByKey(itemKey) || sectionItems.find((item) => item.key === itemKey) || null, [itemKey, sectionItems]);
-  const canWrite = hasPermission('transactions.write');
+  const { canEdit, canDelete } = pageAccess('transactions', 'bank');
 
   useEffect(() => {
     let mounted = true;
@@ -171,7 +171,7 @@ export function BankTransactionWorkspaceDetailPage({ sectionKey, itemKey = '', d
   }
 
   async function handleDeleteAttachment(key, document) {
-    if (!canWrite || !document?.fileId || !record) return;
+    if (!canEdit || !document?.fileId || !record) return;
     try {
       await api.files.remove(token, document.fileId);
       const nextDocuments = { ...(record.documents || {}) };
@@ -228,8 +228,8 @@ export function BankTransactionWorkspaceDetailPage({ sectionKey, itemKey = '', d
             </div>
             <div className="flex flex-wrap items-center gap-2 print:hidden">
               <Button type="button" variant="outline" onClick={() => window.print()} className="gap-2 border-slate-200 shadow-sm rounded-[var(--radius-input,0.75rem)] hover:bg-slate-50 text-slate-700 font-semibold text-sm h-10 px-4">Print</Button>
-              {canWrite ? <Button type="button" variant="outline" onClick={openEditor} className="gap-2 border-slate-200 shadow-sm rounded-[var(--radius-input,0.75rem)] hover:bg-slate-50 text-slate-700 font-semibold text-sm h-10 px-4 bg-slate-50"><Edit2 size={16} /> Edit Transaction</Button> : null}
-              {canWrite ? <Button type="button" variant="outline" onClick={() => setDeleteOpen(true)} className="gap-2 border-slate-200 shadow-sm rounded-[var(--radius-input,0.75rem)] hover:bg-slate-50 text-slate-700 font-semibold text-sm h-10 px-4"><Trash2 size={16} /> Delete</Button> : null}
+              {canEdit ? <Button type="button" variant="outline" onClick={openEditor} className="gap-2 border-slate-200 shadow-sm rounded-[var(--radius-input,0.75rem)] hover:bg-slate-50 text-slate-700 font-semibold text-sm h-10 px-4 bg-slate-50"><Edit2 size={16} /> Edit Transaction</Button> : null}
+              {canDelete ? <Button type="button" variant="outline" onClick={() => setDeleteOpen(true)} className="gap-2 border-slate-200 shadow-sm rounded-[var(--radius-input,0.75rem)] hover:bg-slate-50 text-slate-700 font-semibold text-sm h-10 px-4"><Trash2 size={16} /> Delete</Button> : null}
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-5 overflow-x-auto rounded-[14px] border border-slate-100 bg-slate-50/80 px-5 py-3 shadow-sm">

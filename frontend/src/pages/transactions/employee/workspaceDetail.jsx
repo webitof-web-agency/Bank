@@ -83,7 +83,7 @@ function toTitleCase(value = '') {
 export function EmployeeTransactionWorkspaceDetailPage({ sectionKey, itemKey }) {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { token, hasPermission } = useAuth();
+  const { token, pageAccess } = useAuth();
   const [catalog, setCatalog] = useState([]);
   const [lookups, setLookups] = useState({});
   const [record, setRecord] = useState(null);
@@ -100,7 +100,7 @@ export function EmployeeTransactionWorkspaceDetailPage({ sectionKey, itemKey }) 
     const items = getSectionItems(catalog, sectionKey);
     return itemKey ? items.filter((entry) => entry.key === itemKey) : items;
   }, [catalog, sectionKey, itemKey]);
-  const canWrite = hasPermission('transactions.write');
+  const { canEdit, canDelete } = pageAccess('transactions', 'employee');
 
   useEffect(() => {
     let mounted = true;
@@ -247,13 +247,13 @@ export function EmployeeTransactionWorkspaceDetailPage({ sectionKey, itemKey }) 
             </div>
 
             <div className="flex flex-wrap items-center gap-2 print:hidden">
-              {canWrite ? (
+              {canEdit ? (
                 <Button type="button" variant="outline" onClick={openEditor} className="gap-2 border-slate-200 text-slate-700">
                   <Edit2 size={16} />
                   Edit Entry
                 </Button>
               ) : null}
-              {canWrite ? (
+              {canDelete ? (
                 <Button type="button" variant="outline" onClick={() => setDeleteOpen(true)} className="gap-2 border-slate-200 text-slate-700">
                   <Trash2 size={16} />
                   Delete
@@ -360,7 +360,7 @@ export function EmployeeTransactionWorkspaceDetailPage({ sectionKey, itemKey }) 
                 documents={record.documents || {}}
                 editable={false}
                 onDeleteFile={async (_key, document) => {
-                  if (!canWrite || !document?.fileId || !record) return;
+                  if (!canEdit || !document?.fileId || !record) return;
                   try {
                     await api.files.remove(token, document.fileId);
                     const nextDocuments = { ...(record.documents || {}) };
@@ -423,7 +423,7 @@ export function EmployeeTransactionWorkspaceDetailPage({ sectionKey, itemKey }) 
         footer={
           <div className="flex w-full justify-end gap-3">
             <Button variant="outline" type="button" onClick={closeEditor}>Cancel</Button>
-            <Button type="submit" form="transaction-voucher-form" disabled={saving || !canWrite} className="bg-[#1661F6] text-white hover:bg-blue-700">
+            <Button type="submit" form="transaction-voucher-form" disabled={saving || !canEdit} className="bg-[#1661F6] text-white hover:bg-blue-700">
               {saving ? 'Saving...' : 'Save Changes'}
             </Button>
           </div>

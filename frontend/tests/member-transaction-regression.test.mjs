@@ -190,3 +190,15 @@ test('a failed document upload after a successful save is reported, never as a f
     assert.ok(save.indexOf("toast.error(error.message || 'Unable to save transaction')") < save.indexOf('documentError = error;'), file);
   }
 });
+
+test('SMS toast is separate from the save toast: sending, sent, skipped, failed', () => {
+  const { describeSmsResult } = transactionUtils;
+  assert.equal(describeSmsResult(null), null);
+  assert.deepEqual(describeSmsResult({ status: 'PENDING' }), { tone: 'loading', message: 'Sending SMS...' });
+  assert.deepEqual(describeSmsResult({ status: 'SENT' }), { tone: 'success', message: 'SMS sent to the member.' });
+  assert.equal(describeSmsResult({ status: 'SKIPPED', reason: 'NO_MOBILE' }).tone, 'warning');
+  assert.match(describeSmsResult({ status: 'SKIPPED', reason: 'NO_MOBILE' }).message, /no valid mobile/);
+  assert.equal(describeSmsResult({ status: 'FAILED' }).tone, 'warning');
+  // No save wording inside the SMS toast.
+  for (const status of ['PENDING', 'SENT', 'FAILED']) assert.doesNotMatch(describeSmsResult({ status }).message, /saved|created|updated/i);
+});
