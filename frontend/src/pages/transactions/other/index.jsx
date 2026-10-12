@@ -65,21 +65,24 @@ export function OtherTransactionsPage({ sectionKey, itemKey, detailPathBase }) {
     let mounted = true;
     setLoading(true);
 
-    Promise.all([
-      api.banking.getTransactionCatalog(token),
-      api.banking.getLookups(token)
-    ])
-      .then(([catalogRes, lookupsRes]) => {
-        if (!mounted) return;
-        setCatalog(Array.isArray(catalogRes.data) ? catalogRes.data : []);
-        setLookups(lookupsRes.data || {});
+    // Independent: the catalog (page title, types) is quick; lookups (party
+    // names) load every member/ledger and must not hold up the list.
+    api.banking.getTransactionCatalog(token)
+      .then((catalogRes) => {
+        if (mounted) setCatalog(Array.isArray(catalogRes.data) ? catalogRes.data : []);
       })
       .catch((error) => {
-        if (!mounted) return;
-        toast.error(error.message || 'Unable to load transactions');
+        if (mounted) toast.error(error.message || 'Unable to load transactions');
       })
       .finally(() => {
         if (mounted) setLoading(false);
+      });
+    api.banking.getLookups(token)
+      .then((lookupsRes) => {
+        if (mounted) setLookups(lookupsRes.data || {});
+      })
+      .catch((error) => {
+        if (mounted) toast.error(error.message || 'Unable to load transactions');
       });
 
     return () => {
@@ -87,8 +90,8 @@ export function OtherTransactionsPage({ sectionKey, itemKey, detailPathBase }) {
     };
   }, [token, activeFY]);
 
-  function openCreate() {
-    const item = activeItem;
+  function openCreate(key = '') {
+    const item = sectionItems.find((entry) => entry.key === key) || activeItem;
     setActiveRecord(null);
     setDraft(() => {
       const next = createEmptyTransactionDraft(sectionKey, sectionItems);
@@ -215,6 +218,9 @@ export function OtherTransactionsPage({ sectionKey, itemKey, detailPathBase }) {
 
   const linkedItems = useMemo(() => (sectionItems || []).filter((item) => item.route), [sectionItems]);
   const editableItems = useMemo(() => (sectionItems || []).filter((item) => !item.route), [sectionItems]);
+  // A page for one voucher type creates it directly; the menu is only for a
+  // page that lists several.
+  const directCreateItem = itemKey ? activeItem : (editableItems.length === 1 ? editableItems[0] : null);
 
   const columns = [
     {
@@ -280,7 +286,7 @@ export function OtherTransactionsPage({ sectionKey, itemKey, detailPathBase }) {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">{section?.label || sectionKey} Transactions</h1>
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">{(itemKey && activeItem?.label) || `${section?.label || sectionKey}`.replace(/( Transactions)?$/, ' Transactions')}</h1>
         </div>
 
         <div className="flex flex-wrap gap-2">
@@ -288,6 +294,12 @@ export function OtherTransactionsPage({ sectionKey, itemKey, detailPathBase }) {
             Export CSV
           </Button>
           
+          {canCreate && directCreateItem ? (
+            <Button type="button" className="gap-2 bg-[var(--primary,#1661F6)] text-white hover:opacity-90" onClick={() => openCreate(directCreateItem.key)}>
+              <Plus size={16} />
+              Create {directCreateItem.label}
+            </Button>
+          ) : (
           <div className="relative">
             {canCreate ? (
               <Button
@@ -321,6 +333,7 @@ export function OtherTransactionsPage({ sectionKey, itemKey, detailPathBase }) {
               </div>
             )}
           </div>
+          )}
         </div>
       </div>
 
@@ -338,7 +351,7 @@ export function OtherTransactionsPage({ sectionKey, itemKey, detailPathBase }) {
               <div className="min-w-0">
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 truncate">{item.label}</p>
                 <div className="flex items-baseline gap-2">
-                  <p className="text-xl font-bold text-slate-900 truncate">{loading ? '...' : item.value}</p>
+                  <p className="text-xl font-bold text-slate-900 truncate">{list.loading && !list.rows.length ? '...' : item.value}</p>
                 </div>
                 <p className="text-[11px] text-slate-400 mt-0.5 truncate">{item.subLabel}</p>
               </div>
@@ -367,10 +380,7 @@ export function OtherTransactionsPage({ sectionKey, itemKey, detailPathBase }) {
       ) : null}
 
       <Card className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm mt-4">
-        {loading ? (
-          <div className="flex h-40 items-center justify-center text-sm text-slate-500">Loading transactions...</div>
-        ) : (
-          <Table
+                  <Table
             columns={columns}
             data={visibleRows}
             serverPagination={list.serverPagination}
@@ -442,7 +452,6 @@ export function OtherTransactionsPage({ sectionKey, itemKey, detailPathBase }) {
               </div>
             }
           />
-        )}
       </Card>
 
       <Modal

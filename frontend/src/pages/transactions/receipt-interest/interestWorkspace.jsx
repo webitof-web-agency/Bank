@@ -54,21 +54,24 @@ export function InterestVoucherWorkspacePage({ sectionKey, itemKey, detailPathBa
     let mounted = true;
     setLoading(true);
 
-    Promise.all([
-      api.banking.getTransactionCatalog(token),
-      api.banking.getLookups(token)
-    ])
-      .then(([catalogRes, lookupsRes]) => {
-        if (!mounted) return;
-        setCatalog(Array.isArray(catalogRes.data) ? catalogRes.data : []);
-        setLookups(lookupsRes.data || {});
+    // Independent: the catalog (page title, types) is quick; lookups (party
+    // names) load every member/ledger and must not hold up the list.
+    api.banking.getTransactionCatalog(token)
+      .then((catalogRes) => {
+        if (mounted) setCatalog(Array.isArray(catalogRes.data) ? catalogRes.data : []);
       })
       .catch((error) => {
-        if (!mounted) return;
-        toast.error(error.message || 'Unable to load interest records');
+        if (mounted) toast.error(error.message || 'Unable to load interest records');
       })
       .finally(() => {
         if (mounted) setLoading(false);
+      });
+    api.banking.getLookups(token)
+      .then((lookupsRes) => {
+        if (mounted) setLookups(lookupsRes.data || {});
+      })
+      .catch((error) => {
+        if (mounted) toast.error(error.message || 'Unable to load interest records');
       });
 
     return () => {
@@ -246,7 +249,7 @@ export function InterestVoucherWorkspacePage({ sectionKey, itemKey, detailPathBa
     <div className="space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">{section?.label || sectionKey} Transactions</h1>
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">{(itemKey && activeItem?.label) || `${section?.label || sectionKey}`.replace(/( Transactions)?$/, ' Transactions')}</h1>
         </div>
 
         <div className="flex flex-wrap gap-2">
@@ -309,7 +312,7 @@ export function InterestVoucherWorkspacePage({ sectionKey, itemKey, detailPathBa
               <div className="min-w-0">
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 truncate">{item.label}</p>
                 <div className="flex items-baseline gap-2">
-                  <p className="text-xl font-bold text-slate-900 truncate">{loading ? '...' : item.value}</p>
+                  <p className="text-xl font-bold text-slate-900 truncate">{list.loading && !list.rows.length ? '...' : item.value}</p>
                 </div>
                 <p className="text-[11px] text-slate-400 mt-0.5 truncate">{item.subLabel}</p>
               </div>
@@ -319,10 +322,7 @@ export function InterestVoucherWorkspacePage({ sectionKey, itemKey, detailPathBa
       </div>
 
       <Card className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm mt-4">
-        {loading ? (
-          <div className="flex h-40 items-center justify-center text-sm text-slate-500">Loading transactions...</div>
-        ) : (
-          <Table
+                  <Table
             columns={columns}
             data={visibleRows}
             serverPagination={list.serverPagination}
@@ -352,7 +352,6 @@ export function InterestVoucherWorkspacePage({ sectionKey, itemKey, detailPathBa
               </div>
             }
           />
-        )}
       </Card>
 
       <Modal

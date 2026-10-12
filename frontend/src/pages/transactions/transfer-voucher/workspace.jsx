@@ -55,21 +55,24 @@ export function TransferVoucherTransactionWorkspacePage({ sectionKey, itemKey, d
     let mounted = true;
     setLoading(true);
 
-    Promise.all([
-      api.banking.getTransactionCatalog(token),
-      api.banking.getLookups(token)
-    ])
-      .then(([catalogRes, lookupsRes]) => {
-        if (!mounted) return;
-        setCatalog(Array.isArray(catalogRes.data) ? catalogRes.data : []);
-        setLookups(lookupsRes.data || {});
+    // Independent: the catalog (page title, types) is quick; lookups (party
+    // names) load every member/ledger and must not hold up the list.
+    api.banking.getTransactionCatalog(token)
+      .then((catalogRes) => {
+        if (mounted) setCatalog(Array.isArray(catalogRes.data) ? catalogRes.data : []);
       })
       .catch((error) => {
-        if (!mounted) return;
-        toast.error(error.message || 'Unable to load transfer vouchers');
+        if (mounted) toast.error(error.message || 'Unable to load transfer vouchers');
       })
       .finally(() => {
         if (mounted) setLoading(false);
+      });
+    api.banking.getLookups(token)
+      .then((lookupsRes) => {
+        if (mounted) setLookups(lookupsRes.data || {});
+      })
+      .catch((error) => {
+        if (mounted) toast.error(error.message || 'Unable to load transfer vouchers');
       });
 
     return () => {
@@ -270,7 +273,7 @@ export function TransferVoucherTransactionWorkspacePage({ sectionKey, itemKey, d
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.25em] text-violet-500">Transfer Voucher</p>
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">{activeItem?.label || section?.label || sectionKey} Transactions</h1>
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">{activeItem?.label || `${section?.label || sectionKey}`.replace(/( Transactions)?$/, ' Transactions')}</h1>
         </div>
 
         <div className="flex gap-2">
@@ -288,7 +291,7 @@ export function TransferVoucherTransactionWorkspacePage({ sectionKey, itemKey, d
       </Card>
 
       <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <Table loading={loading} columns={columns} data={visibleRows} serverPagination={list.serverPagination} emptyMessage="No transfer voucher entries found." />
+        <Table columns={columns} data={visibleRows} serverPagination={list.serverPagination} emptyMessage="No transfer voucher entries found." />
       </Card>
 
       <Modal open={editorOpen} onClose={closeEditor} title={`${activeRecord ? 'Edit' : 'Create'} ${transactionLabel}`} width="min(860px, 96vw)" footer={<div className="flex w-full justify-end gap-3">

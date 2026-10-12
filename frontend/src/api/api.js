@@ -221,7 +221,8 @@ export const api = {
     getMaster: (path, token) => request(`/banking${path}`, { token, skipCache: true }),
     updateMaster: (path, token, payload) => request(`/banking${path}`, { method: 'PUT', token, body: payload }),
     dashboard: (token) => request('/banking/dashboard', { token, skipCache: true }),
-    getTransactionCatalog: (token) => request('/banking/transactions/catalog', { token, skipCache: true }),
+    // Static per release: the 15-minute response cache is fine.
+    getTransactionCatalog: (token) => request('/banking/transactions/catalog', { token }),
     getLookups: (token) => request('/banking/lookups', { token, skipCache: true }),
     // Demand Entry: demand list header + member component lines.
     demandEntry: {

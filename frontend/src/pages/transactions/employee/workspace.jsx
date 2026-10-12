@@ -55,21 +55,24 @@ export function EmployeeTransactionWorkspacePage({ sectionKey, itemKey, detailPa
     let mounted = true;
     setLoading(true);
 
-    Promise.all([
-      api.banking.getTransactionCatalog(token),
-      api.banking.getLookups(token)
-    ])
-      .then(([catalogRes, lookupsRes]) => {
-        if (!mounted) return;
-        setCatalog(Array.isArray(catalogRes.data) ? catalogRes.data : []);
-        setLookups(lookupsRes.data || {});
+    // Independent: the catalog (page title, types) is quick; lookups (party
+    // names) load every member/ledger and must not hold up the list.
+    api.banking.getTransactionCatalog(token)
+      .then((catalogRes) => {
+        if (mounted) setCatalog(Array.isArray(catalogRes.data) ? catalogRes.data : []);
       })
       .catch((error) => {
-        if (!mounted) return;
-        toast.error(error.message || 'Unable to load employee transactions');
+        if (mounted) toast.error(error.message || 'Unable to load employee transactions');
       })
       .finally(() => {
         if (mounted) setLoading(false);
+      });
+    api.banking.getLookups(token)
+      .then((lookupsRes) => {
+        if (mounted) setLookups(lookupsRes.data || {});
+      })
+      .catch((error) => {
+        if (mounted) toast.error(error.message || 'Unable to load employee transactions');
       });
 
     return () => {
@@ -307,7 +310,7 @@ export function EmployeeTransactionWorkspacePage({ sectionKey, itemKey, detailPa
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.25em] text-amber-500">Employee Transactions</p>
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">{activeItem?.label || section?.label || sectionKey} Transactions</h1>
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">{activeItem?.label || `${section?.label || sectionKey}`.replace(/( Transactions)?$/, ' Transactions')}</h1>
         </div>
 
         <div className="flex gap-2">
