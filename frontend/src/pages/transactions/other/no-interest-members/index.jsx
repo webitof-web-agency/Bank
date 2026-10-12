@@ -175,7 +175,7 @@ export function NoInterestMembersPage({ basePath = '/app/master/no-interest-memb
         {canCreate ? (
           <Button onClick={openCreate} className="gap-2">
             <Plus size={16} />
-            Add Record
+            Add Entry
           </Button>
         ) : null}
       </div>

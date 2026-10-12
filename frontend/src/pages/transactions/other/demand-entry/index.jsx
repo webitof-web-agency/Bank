@@ -134,7 +134,7 @@ export function DemandEntryPage({ detailPathBase = '/app/transactions/other/dema
         </div>
         {canCreate ? (
           <Button type="button" className="gap-2 bg-[var(--primary,#1661F6)] text-white" onClick={() => setEditor({ id: null, draft: emptyDemandDraft(activeFY, entries), locked: false })}>
-            <Plus size={16} /> New Demand List
+            <Plus size={16} /> Add Entry
           </Button>
         ) : null}
       </div>

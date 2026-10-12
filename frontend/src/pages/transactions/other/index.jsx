@@ -297,7 +297,7 @@ export function OtherTransactionsPage({ sectionKey, itemKey, detailPathBase }) {
           {canCreate && directCreateItem ? (
             <Button type="button" className="gap-2 bg-[var(--primary,#1661F6)] text-white hover:opacity-90" onClick={() => openCreate(directCreateItem.key)}>
               <Plus size={16} />
-              Create {directCreateItem.label}
+              Add Entry
             </Button>
           ) : (
           <div className="relative">
@@ -309,7 +309,7 @@ export function OtherTransactionsPage({ sectionKey, itemKey, detailPathBase }) {
                 onBlur={() => setTimeout(() => setDropdownOpen(false), 200)}
               >
                 <Plus size={16} />
-                Create Transaction
+                Add Entry
                 <ChevronDown size={14} className="ml-1 opacity-70" />
               </Button>
             ) : null}

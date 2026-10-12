@@ -320,7 +320,7 @@ export function EmployeeTransactionWorkspacePage({ sectionKey, itemKey, detailPa
           </Button>
           <Button type="button" className="gap-2 bg-[var(--primary,#1661F6)] text-white hover:opacity-90" onClick={openCreate} disabled={!activeItem}>
             <Plus size={16} />
-            Create Entry
+            Add Entry
           </Button>
         </div>
       </div>

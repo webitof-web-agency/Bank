@@ -123,7 +123,7 @@ export function JournalVoucherPage() {
         </div>
         {canCreate ? (
           <Button type="button" className="gap-2" onClick={() => setEditor({ id: null, draft: emptyJournalDraft() })}>
-            <Plus size={16} /> New Journal Voucher
+            <Plus size={16} /> Add Entry
           </Button>
         ) : null}
       </div>

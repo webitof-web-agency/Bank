@@ -305,7 +305,7 @@ export function BankTransactionsPage({ sectionKey, detailPathBase }) {
                 onBlur={() => setTimeout(() => setDropdownOpen(false), 200)}
               >
                 <Plus size={16} />
-                Create Transaction
+                Add Entry
                 <ChevronDown size={14} className="ml-1 opacity-70" />
               </Button>
             ) : null}

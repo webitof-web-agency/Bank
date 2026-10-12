@@ -274,7 +274,7 @@ export function TransferVoucherPaymentWorkspacePage({ sectionKey, itemKey, detai
         <div className="flex gap-2">
           <Button type="button" className="gap-2 bg-[var(--primary,#1661F6)] text-white hover:opacity-90" onClick={openCreate} disabled={!activeItem || !canCreate}>
             <Plus size={16} />
-            New Entry
+            Add Entry
           </Button>
         </div>
       </div>

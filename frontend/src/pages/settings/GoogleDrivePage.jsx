@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
-import { HardDrive } from 'lucide-react';
+import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { api } from '../../api/api';
 import { useAuth } from '../../context/AuthContext';
@@ -9,10 +8,11 @@ import { ConfirmDialog } from '../../components/overlays/ConfirmDialog';
 import { DriveBackupsCard, DriveConnectionCard } from './googleDrive/GoogleDriveSections';
 import { backupFileName, readConnectResult } from './googleDrive/googleDriveUtils';
 
-// Settings -> Google Drive: connect a Google account (Gmail sign-in), daily
-// database backups to Drive with the newest 7 kept. A manual backup is a
-// download to this computer (Settings -> Backup & Restore).
-export function GoogleDrivePage() {
+// The Google Drive section of Settings -> Storage Providers: connect a Google
+// account (Gmail sign-in), daily database backups to Drive with the newest 7
+// kept. A manual backup is a download to this computer (Settings -> Backup).
+// `onStatus` receives the status after every load (connected or not).
+export function GoogleDrivePanel({ onStatus }) {
   const { token, hasPermission } = useAuth();
   const canWrite = hasPermission('settings.write');
   const location = useLocation();
@@ -31,13 +31,14 @@ export function GoogleDrivePage() {
         api.googleDrive.listBackups(token).catch(() => ({ data: [] }))
       ]);
       setStatus(statusResponse.data || null);
+      onStatus?.(statusResponse.data || null);
       setBackups(backupsResponse.data || []);
     } catch (error) {
       toast.error(error.message || 'Unable to load Google Drive settings');
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     load();
@@ -102,12 +103,6 @@ export function GoogleDrivePage() {
   const drive = status?.drive || null;
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight text-slate-900">
-          <HardDrive className="text-emerald-600" /> Google Drive
-        </h1>
-        <p className="mt-1 text-sm text-slate-500">Daily database backups (latest 7 kept) and file uploads in your Google Drive.</p>
-      </div>
 
       {loading && !status ? (
         <Card className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500 shadow-sm">Loading Google Drive settings...</Card>
@@ -142,6 +137,12 @@ export function GoogleDrivePage() {
       />
     </div>
   );
+}
+
+// The old Settings -> Google Drive address now opens Storage Providers.
+export function GoogleDrivePage() {
+  const location = useLocation();
+  return <Navigate to={`/app/settings/storage${location.search}`} replace />;
 }
 
 export default GoogleDrivePage;

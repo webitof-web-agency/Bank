@@ -12,14 +12,18 @@ async function driveStorageSummary() {
   };
 }
 
+const SELECTABLE_PROVIDERS = ['local', 'gdrive'];
+
 async function getSettings(req, res, next) {
   try {
     const settingsDoc = await Settings.findOne({ key: 'storage_settings' }).lean();
     const config = settingsDoc?.payload || {};
 
+    const fromEnvironment = (config.configurationSource || 'environment') !== 'site_settings';
     const safeConfig = {
       configurationSource: config.configurationSource || 'environment',
-      activeProvider: config.activeProvider || 'local',
+      // What new uploads use right now (STORAGE_PROVIDER until a choice is saved).
+      activeProvider: (fromEnvironment ? process.env.STORAGE_PROVIDER : config.activeProvider) || 'local',
       local: config.local || { uploadDir: './uploads', prefix: 'images' },
       gcs: {
         projectId: config.gcs?.projectId || '',
@@ -49,57 +53,32 @@ async function getSettings(req, res, next) {
 
 async function updateSettings(req, res, next) {
   try {
-    const { configurationSource, activeProvider, local, gcs, s3 } = req.body;
-    if (configurationSource === 'site_settings' && activeProvider === 'gdrive') {
+    // The page offers Local storage or Google Drive. Saving makes the choice
+    // here the one used (site settings); GCS / S3 settings saved earlier are
+    // kept as they are.
+    const { activeProvider, local } = req.body || {};
+    if (!SELECTABLE_PROVIDERS.includes(activeProvider)) {
+      return res.status(400).json({ success: false, message: 'Choose Local Storage or Google Drive.' });
+    }
+    if (activeProvider === 'gdrive') {
       const drive = await driveConnection.getStatus();
       if (!drive.connected || drive.needsReconnect) {
-        return res.status(400).json({ success: false, message: 'Connect Google Drive (Settings -> Google Drive) before choosing it for uploads.' });
+        return res.status(400).json({ success: false, message: 'Connect Google Drive before choosing it for uploads.' });
       }
     }
-    
+
     const settingsDoc = await Settings.findOne({ key: 'storage_settings' }).lean();
     const currentConfig = settingsDoc?.payload || {};
 
     const updatedConfig = {
-      configurationSource: configurationSource || 'environment',
-      activeProvider: activeProvider || 'local',
-      local: local || { uploadDir: './uploads', prefix: 'images' },
-      gcs: {
-        projectId: gcs?.projectId || '',
-        bucket: gcs?.bucket || '',
-        prefix: gcs?.prefix || 'images',
-        authMode: gcs?.authMode || 'ADC'
-      },
-      s3: {
-        region: s3?.region || '',
-        bucket: s3?.bucket || '',
-        prefix: s3?.prefix || 'images',
-        authMode: s3?.authMode || 'default',
-        accessKeyId: s3?.accessKeyId || ''
+      ...currentConfig,
+      configurationSource: 'site_settings',
+      activeProvider,
+      local: {
+        uploadDir: String(local?.uploadDir || currentConfig.local?.uploadDir || './uploads').trim(),
+        prefix: String(local?.prefix ?? currentConfig.local?.prefix ?? 'images').trim()
       }
     };
-
-    if (gcs?.authMode === 'service_account') {
-      if (gcs.serviceAccountJson) {
-        updatedConfig.gcs.encryptedCredentials = encryption.encrypt(gcs.serviceAccountJson);
-      } else if (currentConfig.gcs?.encryptedCredentials) {
-        updatedConfig.gcs.encryptedCredentials = currentConfig.gcs.encryptedCredentials;
-      }
-    }
-
-    if (s3?.authMode === 'access_key') {
-      if (s3.secretAccessKey) {
-        updatedConfig.s3.encryptedSecret = encryption.encrypt(s3.secretAccessKey);
-      } else if (currentConfig.s3?.encryptedSecret) {
-        updatedConfig.s3.encryptedSecret = currentConfig.s3.encryptedSecret;
-      }
-      
-      if (s3.sessionToken) {
-        updatedConfig.s3.encryptedSessionToken = encryption.encrypt(s3.sessionToken);
-      } else if (currentConfig.s3?.encryptedSessionToken) {
-        updatedConfig.s3.encryptedSessionToken = currentConfig.s3.encryptedSessionToken;
-      }
-    }
 
     await Settings.findOneAndUpdate(
       { key: 'storage_settings' },

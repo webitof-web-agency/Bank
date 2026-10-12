@@ -1,359 +1,183 @@
-import React, { useState, useEffect } from 'react';
-import { Archive, Save, RefreshCw } from 'lucide-react';
-import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/Card';
+import { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
+import { Archive, HardDrive, RefreshCw, Save, Server } from 'lucide-react';
+import { toast } from 'sonner';
+import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../api/api';
+import { GoogleDrivePanel } from './GoogleDrivePage';
 
+const PROVIDERS = [
+  { value: 'local', label: 'Local Storage', description: 'Files are kept on this server.', icon: Server },
+  { value: 'gdrive', label: 'Google Drive', description: 'Files go to the connected Google Drive; daily database backups too.', icon: HardDrive }
+];
+
+// Settings -> Storage Providers: where new uploads are stored (this server or
+// Google Drive). Choosing Google Drive shows its connection and the database
+// backups kept there.
 export function StorageSettingsPage() {
   const { token, hasPermission } = useAuth();
   const canWrite = hasPermission('settings.write');
+  const location = useLocation();
+  // Back from the Google sign-in (?gdrive=...): open on the Drive section.
+  const returningFromGoogle = new URLSearchParams(location.search).has('gdrive');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
-  
-  const [config, setConfig] = useState({
-    configurationSource: 'environment',
-    activeProvider: 'local',
-    local: { uploadDir: './uploads', prefix: 'images' },
-    gcs: { projectId: '', bucket: '', prefix: 'images', authMode: 'ADC', serviceAccountJson: '', credentialsConfigured: false },
-    s3: { region: '', bucket: '', prefix: 'images', authMode: 'default', accessKeyId: '', secretAccessKey: '', sessionToken: '', secretConfigured: false },
-    gdrive: { connected: false, accountEmail: '', uploadsFolderLink: '' }
-  });
+  const [savedProvider, setSavedProvider] = useState('local');
+  const [provider, setProvider] = useState(returningFromGoogle ? 'gdrive' : 'local');
+  const [local, setLocal] = useState({ uploadDir: './uploads', prefix: 'images' });
+  const [driveReady, setDriveReady] = useState(false);
 
-  useEffect(() => {
-    loadSettings();
-  }, []);
-
-  const loadSettings = async () => {
+  async function loadSettings() {
     setLoading(true);
     try {
       const res = await api.settings.storage.get(token);
-      if (res.success && res.data) {
-        setConfig({
-           ...res.data,
-           gcs: { ...res.data.gcs, serviceAccountJson: '' },
-           s3: { ...res.data.s3, secretAccessKey: '', sessionToken: '' }
-        });
-      }
+      const data = res.data || {};
+      const current = data.activeProvider === 'gdrive' ? 'gdrive' : 'local';
+      setSavedProvider(current);
+      if (!returningFromGoogle) setProvider(current);
+      setLocal({ uploadDir: data.local?.uploadDir || './uploads', prefix: data.local?.prefix ?? 'images' });
+      setDriveReady(Boolean(data.gdrive?.connected));
     } catch (err) {
-      console.error(err);
-      alert('Failed to load storage settings');
+      toast.error(err.message || 'Unable to load storage settings');
     } finally {
       setLoading(false);
     }
-  };
+  }
 
-  const handleChange = (section, field, value) => {
-    if (section) {
-      setConfig(prev => ({ ...prev, [section]: { ...prev[section], [field]: value } }));
-    } else {
-      setConfig(prev => ({ ...prev, [field]: value }));
-    }
-  };
+  useEffect(() => {
+    loadSettings();
+  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleTest = async () => {
+  async function handleTest() {
     setTesting(true);
     setTestResult(null);
     try {
-      const payload = {
-        provider: config.activeProvider,
-        config: config[config.activeProvider]
-      };
-      const res = await api.settings.storage.test(token, payload);
+      const res = await api.settings.storage.test(token, { provider: 'local', config: local });
       setTestResult({ success: res.success, message: res.message });
     } catch (err) {
       setTestResult({ success: false, message: err.message || 'Test failed' });
     } finally {
       setTesting(false);
     }
-  };
+  }
 
-  const handleSave = async () => {
+  async function handleSave() {
     setSaving(true);
     try {
-      const res = await api.settings.storage.save(token, config);
-      if (res.success) {
-        alert('Settings saved successfully');
-        loadSettings();
-      } else {
-        alert(res.message || 'Failed to save settings');
-      }
+      await api.settings.storage.save(token, { activeProvider: provider, local });
+      toast.success(provider === 'gdrive' ? 'New uploads will be stored in Google Drive.' : 'New uploads will be stored on this server.');
+      await loadSettings();
     } catch (err) {
-      alert(err.message || 'Failed to save settings');
+      toast.error(err.message || 'Unable to save storage settings');
     } finally {
       setSaving(false);
     }
-  };
+  }
 
   if (loading) {
     return <div className="p-8 text-center text-slate-500">Loading settings...</div>;
   }
 
+  const blockedByDrive = provider === 'gdrive' && !driveReady;
+  const unchanged = provider === savedProvider && provider === 'gdrive';
+
   return (
-    <div className="max-w-4xl mx-auto py-8">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
+    <div className="space-y-6">
+      <div>
+        <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight text-slate-900">
           <Archive className="text-violet-600" />
           Storage Providers
         </h1>
-        <p className="text-slate-500 mt-1">Configure where uploaded files and images are stored.</p>
+        <p className="mt-1 text-sm text-slate-500">Where uploaded files and images are stored. Changing it does not move or break existing files.</p>
       </div>
 
-      <Card className="p-6 mb-6">
-        <h3 className="text-lg font-semibold mb-4">General Configuration</h3>
-        
-        <div className="grid grid-cols-2 gap-6">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Configuration Source</label>
-            <select
-              className="w-full h-10 px-3 border border-slate-300 rounded-md focus:ring-2 focus:ring-violet-500 focus:border-violet-500"
-              value={config.configurationSource}
-              onChange={(e) => handleChange(null, 'configurationSource', e.target.value)}
-            >
-              <option value="environment">Environment Variables</option>
-              <option value="site_settings">Site Settings (Database)</option>
-            </select>
-            <p className="text-xs text-slate-500 mt-1">
-              If Environment Variables is selected, settings configured here will be ignored.
-            </p>
-          </div>
+      <Card className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h3 className="mb-4 text-lg font-semibold text-slate-900">Upload storage</h3>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {PROVIDERS.map(({ value, label, description, icon: Icon }) => {
+            const selected = provider === value;
+            return (
+              <button
+                key={value}
+                type="button"
+                disabled={!canWrite}
+                onClick={() => { setProvider(value); setTestResult(null); }}
+                className={`flex items-start gap-3 rounded-xl border p-4 text-left transition ${selected ? 'border-[var(--primary)] bg-[color-mix(in_srgb,var(--primary)_6%,transparent)] ring-1 ring-[var(--primary)]' : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'} disabled:cursor-not-allowed disabled:opacity-70`}
+              >
+                <span className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${selected ? 'bg-[var(--primary)] text-white' : 'bg-slate-100 text-slate-500'}`}>
+                  <Icon size={18} />
+                </span>
+                <span>
+                  <span className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                    {label}
+                    {savedProvider === value ? <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">In use</span> : null}
+                  </span>
+                  <span className="mt-1 block text-xs text-slate-500">{description}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
 
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Active Provider</label>
-            <select
-              className="w-full h-10 px-3 border border-slate-300 rounded-md focus:ring-2 focus:ring-violet-500 focus:border-violet-500"
-              value={config.activeProvider}
-              onChange={(e) => handleChange(null, 'activeProvider', e.target.value)}
-              disabled={config.configurationSource === 'environment'}
-            >
-              <option value="local">Local Storage</option>
-              <option value="gcs">Google Cloud Storage</option>
-              <option value="s3">Amazon S3</option>
-              <option value="gdrive">Google Drive</option>
-            </select>
-            <p className="text-xs text-slate-500 mt-1">
-              The provider to use for new uploads. Changing this does not break existing files.
-            </p>
+        {provider === 'local' ? (
+          <div className="mt-6 grid gap-6 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">Upload Directory</label>
+              <input
+                type="text"
+                className="h-10 w-full rounded-md border border-slate-300 px-3"
+                value={local.uploadDir}
+                disabled={!canWrite}
+                onChange={(e) => setLocal((current) => ({ ...current, uploadDir: e.target.value }))}
+                placeholder="./uploads"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">Prefix / Path</label>
+              <input
+                type="text"
+                className="h-10 w-full rounded-md border border-slate-300 px-3"
+                value={local.prefix}
+                disabled={!canWrite}
+                onChange={(e) => setLocal((current) => ({ ...current, prefix: e.target.value }))}
+              />
+            </div>
           </div>
+        ) : null}
+
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-4">
+            {provider === 'local' ? (
+              <Button variant="outline" onClick={handleTest} disabled={testing || !canWrite} className="gap-2">
+                <RefreshCw size={16} className={testing ? 'animate-spin' : ''} />
+                Test Connection
+              </Button>
+            ) : null}
+            {testResult ? (
+              <span className={`text-sm ${testResult.success ? 'text-emerald-600' : 'text-red-600'}`}>{testResult.message}</span>
+            ) : null}
+            {blockedByDrive ? (
+              <span className="text-sm text-amber-700">Connect Google Drive below before using it for uploads.</span>
+            ) : null}
+          </div>
+          {canWrite ? (
+            <Button onClick={handleSave} disabled={saving || blockedByDrive || unchanged} className="gap-2 bg-[var(--primary,#1661F6)] px-6 text-white hover:opacity-90">
+              <Save size={16} />
+              {saving ? 'Saving...' : 'Save'}
+            </Button>
+          ) : null}
         </div>
       </Card>
 
-      {config.configurationSource === 'site_settings' && (
-        <>
-          {config.activeProvider === 'local' && (
-            <Card className="p-6 mb-6">
-              <h3 className="text-lg font-semibold mb-4">Local Storage Configuration</h3>
-              <div className="grid grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Upload Directory</label>
-                  <input
-                    type="text"
-                    className="w-full h-10 px-3 border border-slate-300 rounded-md"
-                    value={config.local.uploadDir}
-                    onChange={(e) => handleChange('local', 'uploadDir', e.target.value)}
-                    placeholder="./uploads"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Prefix / Path</label>
-                  <input
-                    type="text"
-                    className="w-full h-10 px-3 border border-slate-300 rounded-md"
-                    value={config.local.prefix}
-                    onChange={(e) => handleChange('local', 'prefix', e.target.value)}
-                  />
-                </div>
-              </div>
-            </Card>
-          )}
-
-          {config.activeProvider === 'gcs' && (
-            <Card className="p-6 mb-6">
-              <h3 className="text-lg font-semibold mb-4">Google Cloud Storage (GCS) Configuration</h3>
-              <div className="grid grid-cols-2 gap-6 mb-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Project ID</label>
-                  <input
-                    type="text"
-                    className="w-full h-10 px-3 border border-slate-300 rounded-md"
-                    value={config.gcs.projectId}
-                    onChange={(e) => handleChange('gcs', 'projectId', e.target.value)}
-                    placeholder="my-gcp-project"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Bucket Name</label>
-                  <input
-                    type="text"
-                    className="w-full h-10 px-3 border border-slate-300 rounded-md"
-                    value={config.gcs.bucket}
-                    onChange={(e) => handleChange('gcs', 'bucket', e.target.value)}
-                    placeholder="my-bucket"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Prefix</label>
-                  <input
-                    type="text"
-                    className="w-full h-10 px-3 border border-slate-300 rounded-md"
-                    value={config.gcs.prefix}
-                    onChange={(e) => handleChange('gcs', 'prefix', e.target.value)}
-                    placeholder="images"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Authentication Mode</label>
-                  <select
-                    className="w-full h-10 px-3 border border-slate-300 rounded-md"
-                    value={config.gcs.authMode}
-                    onChange={(e) => handleChange('gcs', 'authMode', e.target.value)}
-                  >
-                    <option value="ADC">Application Default Credentials (ADC)</option>
-                    <option value="service_account">Service Account JSON</option>
-                  </select>
-                </div>
-              </div>
-
-              {config.gcs.authMode === 'service_account' && (
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Service Account JSON
-                    {config.gcs.credentialsConfigured && <span className="ml-2 text-xs text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">Credentials Saved</span>}
-                  </label>
-                  <textarea
-                    className="w-full h-32 p-3 border border-slate-300 rounded-md font-mono text-sm"
-                    value={config.gcs.serviceAccountJson}
-                    onChange={(e) => handleChange('gcs', 'serviceAccountJson', e.target.value)}
-                    placeholder={config.gcs.credentialsConfigured ? "Leave blank to keep existing credentials..." : "Paste JSON here..."}
-                  />
-                  <p className="text-xs text-slate-500 mt-1">This will be encrypted before saving.</p>
-                </div>
-              )}
-            </Card>
-          )}
-
-          {config.activeProvider === 'gdrive' && (
-            <Card className="p-6 mb-6">
-              <h3 className="text-lg font-semibold mb-2">Google Drive</h3>
-              {config.gdrive?.connected ? (
-                <p className="text-sm text-slate-600">
-                  New images and files will be stored in the &quot;Uploads&quot; folder of <strong>{config.gdrive.accountEmail}</strong>.
-                  {config.gdrive.uploadsFolderLink ? <> <a className="text-violet-700 underline" href={config.gdrive.uploadsFolderLink} target="_blank" rel="noreferrer">Open folder</a>.</> : null}
-                  {' '}Files uploaded earlier stay where they are and keep working.
-                </p>
-              ) : (
-                <p className="text-sm text-amber-700">
-                  Google Drive is not connected. Connect it first under <a className="underline" href="/app/settings/google-drive">Settings → Google Drive</a>.
-                </p>
-              )}
-            </Card>
-          )}
-
-          {config.activeProvider === 's3' && (
-            <Card className="p-6 mb-6">
-              <h3 className="text-lg font-semibold mb-4">Amazon S3 Configuration</h3>
-              <div className="grid grid-cols-2 gap-6 mb-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Region</label>
-                  <input
-                    type="text"
-                    className="w-full h-10 px-3 border border-slate-300 rounded-md"
-                    value={config.s3.region}
-                    onChange={(e) => handleChange('s3', 'region', e.target.value)}
-                    placeholder="us-east-1"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Bucket Name</label>
-                  <input
-                    type="text"
-                    className="w-full h-10 px-3 border border-slate-300 rounded-md"
-                    value={config.s3.bucket}
-                    onChange={(e) => handleChange('s3', 'bucket', e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Prefix</label>
-                  <input
-                    type="text"
-                    className="w-full h-10 px-3 border border-slate-300 rounded-md"
-                    value={config.s3.prefix}
-                    onChange={(e) => handleChange('s3', 'prefix', e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Authentication Mode</label>
-                  <select
-                    className="w-full h-10 px-3 border border-slate-300 rounded-md"
-                    value={config.s3.authMode}
-                    onChange={(e) => handleChange('s3', 'authMode', e.target.value)}
-                  >
-                    <option value="default">Default Credentials / IAM Role</option>
-                    <option value="access_key">Access Key</option>
-                  </select>
-                </div>
-              </div>
-
-              {config.s3.authMode === 'access_key' && (
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Access Key ID</label>
-                    <input
-                      type="text"
-                      className="w-full h-10 px-3 border border-slate-300 rounded-md"
-                      value={config.s3.accessKeyId}
-                      onChange={(e) => handleChange('s3', 'accessKeyId', e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">
-                      Secret Access Key
-                      {config.s3.secretConfigured && <span className="ml-2 text-xs text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">Secret Saved</span>}
-                    </label>
-                    <input
-                      type="password"
-                      className="w-full h-10 px-3 border border-slate-300 rounded-md"
-                      value={config.s3.secretAccessKey}
-                      onChange={(e) => handleChange('s3', 'secretAccessKey', e.target.value)}
-                      placeholder={config.s3.secretConfigured ? "Leave blank to keep existing secret" : ""}
-                    />
-                  </div>
-                </div>
-              )}
-            </Card>
-          )}
-
-          <div className="flex items-center justify-between mt-6">
-            <div className="flex items-center gap-4">
-              <Button 
-                variant="outline" 
-                onClick={handleTest} 
-                disabled={testing || !canWrite}
-                className="gap-2"
-              >
-                <RefreshCw size={16} className={testing ? "animate-spin" : ""} />
-                Test Connection
-              </Button>
-              {testResult && (
-                <span className={`text-sm ${testResult.success ? 'text-emerald-600' : 'text-red-600'}`}>
-                  {testResult.message}
-                </span>
-              )}
-            </div>
-
-            <Button 
-              onClick={handleSave} 
-              disabled={saving || !canWrite}
-              className="bg-violet-600 text-white hover:bg-violet-700 gap-2 px-6"
-            >
-              <Save size={16} />
-              {saving ? 'Saving...' : 'Save Settings'}
-            </Button>
-          </div>
-        </>
-      )}
+      {provider === 'gdrive' ? (
+        <GoogleDrivePanel onStatus={(status) => setDriveReady(Boolean(status?.drive?.connected && !status?.drive?.needsReconnect))} />
+      ) : null}
     </div>
   );
 }
+
+export default StorageSettingsPage;

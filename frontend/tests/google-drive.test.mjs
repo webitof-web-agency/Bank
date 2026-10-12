@@ -38,11 +38,13 @@ const CONNECTED = {
 };
 const BACKUP = { running: false, keep: 7, schedule: { enabled: true, hourIst: 2, label: 'Daily at 02:00 IST' }, last: null };
 
-test('Google Drive is linked under Settings at /app/settings/google-drive', async () => {
-  const link = links.SETTINGS_LINKS.find((item) => item.path === '/app/settings/google-drive');
-  assert.equal(link.permission, 'settings.read');
+test('Google Drive lives in Storage Providers; the old address redirects there', async () => {
+  assert.equal(links.SETTINGS_LINKS.some((item) => item.path === '/app/settings/google-drive'), false);
+  assert.equal(links.SETTINGS_LINKS.find((item) => item.path === '/app/settings/storage').permission, 'settings.read');
   const app = await readFile(new URL('../src/App.jsx', import.meta.url), 'utf8');
   assert.match(app, /path="settings\/google-drive" element=\{<PermissionRoute permission="settings\.read"><GoogleDrivePage \/>/);
+  const page = await readFile(new URL('../src/pages/settings/GoogleDrivePage.jsx', import.meta.url), 'utf8');
+  assert.match(page, /Navigate to=\{`\/app\/settings\/storage/);
 });
 
 test('connection: not configured shows what is missing and the redirect URI; connect disabled', () => {
@@ -54,11 +56,11 @@ test('connection: not configured shows what is missing and the redirect URI; con
   assert.match(html, /<button[^>]*disabled=""[^>]*>.*Connect Google Drive/);
 });
 
-test('connection: connected shows the account and both folders; disconnect blocked while Drive stores uploads', () => {
+test('connection: connected shows both folders but not the account email; disconnect blocked while Drive stores uploads', () => {
   const html = render(sections.DriveConnectionCard, { drive: CONNECTED, canWrite: true, usedForUploads: true });
   const plain = text(html);
   assert.match(plain, /Connected/);
-  assert.match(plain, /Signed in as society\.backup@gmail\.com/);
+  assert.doesNotMatch(plain, /society\.backup@gmail\.com/);
   assert.match(html, /href="https:\/\/drive\.google\.com\/drive\/folders\/f1"/);
   assert.match(plain, /Banking Raipur – Uploads/);
   assert.match(plain, /new images and files are stored in Google Drive/);

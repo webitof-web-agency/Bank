@@ -320,7 +320,7 @@ export function BankTransactionWorkspacePage({ sectionKey, itemKey = '', detailP
           {activeItem ? (
             <Button type="button" className="gap-2 bg-[var(--primary,#1661F6)] text-white hover:opacity-90" onClick={() => openCreate(activeItem.key)}>
               <Plus size={16} />
-              Create {activeItem.label}
+              Add Entry
             </Button>
           ) : (
             <div className="relative">
@@ -331,7 +331,7 @@ export function BankTransactionWorkspacePage({ sectionKey, itemKey = '', detailP
                 onBlur={() => setTimeout(() => setDropdownOpen(false), 200)}
               >
                 <Plus size={16} />
-                Create Transaction
+                Add Entry
                 <ChevronDown size={14} className="ml-1 opacity-70" />
               </Button>
               {dropdownOpen && (

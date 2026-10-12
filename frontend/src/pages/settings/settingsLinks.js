@@ -57,7 +57,9 @@ const ALL_SETTINGS_LINKS = [
     permission: 'settings.read',
     description: 'Connect Google Drive for daily database backups (latest 7 kept) and file uploads.',
     group: 'Administration',
-    tone: 'emerald'
+    tone: 'emerald',
+    // Part of Storage Providers now; the old address redirects there.
+    hidden: true
   },
   {
     label: 'Financial Year Closing',
@@ -82,7 +84,7 @@ const ALL_SETTINGS_LINKS = [
     path: '/app/settings/storage',
     icon: Archive,
     permission: 'settings.read',
-    description: 'Configure Local, GCS, or S3 storage for file uploads.',
+    description: 'Store uploads on this server or Google Drive; Drive connection and daily database backups.',
     group: 'Configuration',
     tone: 'violet'
   }

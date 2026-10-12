@@ -261,7 +261,7 @@ test('callback: a bad or missing state, a denial or a bad code connects nothing'
     const response = await call('GET', `/google-drive/oauth/callback?${query}`);
     assert.equal(response.status, 302);
     const target = new URL(response.location);
-    assert.equal(target.origin + target.pathname, 'http://localhost:5173/app/settings/google-drive');
+    assert.equal(target.origin + target.pathname, 'http://localhost:5173/app/settings/storage');
     assert.equal(target.searchParams.get('gdrive'), 'error', query);
     assertNoSecrets(response.location);
   }

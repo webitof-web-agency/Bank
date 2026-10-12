@@ -24,8 +24,9 @@ function getGoogleDriveConfig() {
     clientSecret: cleanText(process.env.GOOGLE_OAUTH_CLIENT_SECRET),
     // Must be listed exactly under "Authorized redirect URIs" of the OAuth client.
     redirectUri: cleanText(process.env.GOOGLE_OAUTH_REDIRECT_URI) || `http://localhost:${port}${apiPrefix}/google-drive/oauth/callback`,
-    // Where the browser lands after Google sends it back.
-    returnUrl: (firstFrontend || 'http://localhost:5173').replace(/\/+$/, '') + '/app/settings/google-drive',
+    // Where the browser lands after Google sends it back (Storage Providers,
+    // which holds the Google Drive section).
+    returnUrl: (firstFrontend || 'http://localhost:5173').replace(/\/+$/, '') + '/app/settings/storage',
     backupFolderName: cleanText(process.env.GDRIVE_BACKUP_FOLDER_NAME) || 'Banking Raipur – DB Backups',
     uploadsFolderName: cleanText(process.env.GDRIVE_UPLOADS_FOLDER_NAME) || 'Banking Raipur – Uploads',
     // Optional main folder holding both folders (an id or a Drive folder link);

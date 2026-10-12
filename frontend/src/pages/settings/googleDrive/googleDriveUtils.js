@@ -32,7 +32,7 @@ export function describeConnection(drive) {
   if (drive.connected && drive.needsReconnect) {
     return { tone: 'error', label: 'Reconnect needed', detail: 'Google no longer accepts the saved sign-in (access was removed or expired). Connect again.' };
   }
-  if (drive.connected) return { tone: 'success', label: 'Connected', detail: drive.accountEmail ? `Signed in as ${drive.accountEmail}` : '' };
+  if (drive.connected) return { tone: 'success', label: 'Connected', detail: '' };
   return { tone: 'muted', label: 'Not connected', detail: 'Connect a Google account to start backups.' };
 }
 
