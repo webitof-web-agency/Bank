@@ -7,6 +7,7 @@ const FileFolder = require('../models/fileFolder.model');
 const { toResponse } = require('../utils/response');
 const { buildFileViewUrl } = require('../utils/file-url');
 const StorageService = require('./storage/storage.service');
+const { buildStorageKey } = require('../utils/uploadPath');
 
 const UPLOAD_ROOT = path.join(__dirname, '..', 'uploads');
 const MODULE_ROOT_NAMES = {
@@ -285,6 +286,39 @@ async function deleteFolder(folderId) {
   return Boolean(deleted);
 }
 
+// The record an upload belongs to, for its folder: transaction documents go
+// under their voucher type (recovery, advance-paid, ...) and every record's
+// files under its unique code (member code, employee code, voucher number).
+// Pages upload with the saved record's id as entityId.
+async function resolveUploadTarget(moduleName, entityId) {
+  const module = String(moduleName || '').trim().toLowerCase();
+  const id = String(entityId || '').trim();
+  if (!id) return { voucherKey: '', code: '' };
+  try {
+    if (module === 'transactions') {
+      const { Voucher } = require('../models/banking.models');
+      const voucher = await Voucher.findById(id).lean();
+      return { voucherKey: voucher?.details?.key || '', code: voucher?.voucherNo || '' };
+    }
+    if (module === 'members' || module === 'member') {
+      const { Member } = require('../models/banking.models');
+      const member = await Member.findById(id).lean();
+      return { voucherKey: '', code: member?.code || '' };
+    }
+    if (module === 'employees' || module === 'employee' || module === 'users') {
+      const { staffCodeFromId } = require('./auth.service');
+      const staffCode = staffCodeFromId(id);
+      if (staffCode) return { voucherKey: '', code: staffCode };
+      const User = require('../models/user.model');
+      const user = await User.findById(id).lean();
+      return { voucherKey: '', code: user?.employeeCode || user?.code || '' };
+    }
+  } catch (_error) {
+    // Unknown id: the file still saves, just without the code folder.
+  }
+  return { voucherKey: '', code: '' };
+}
+
 async function saveUploads(files = [], { folderId = null, moduleName = 'general', entityId = '', documentType = '', isPublic = false, createdBy = null } = {}) {
   if (!files.length) {
     const error = new Error('No files uploaded');
@@ -294,6 +328,7 @@ async function saveUploads(files = [], { folderId = null, moduleName = 'general'
 
   const folderPath = await ensureFolderPath(folderId || null);
   const saved = [];
+  const { voucherKey, code } = await resolveUploadTarget(moduleName, entityId);
 
   for (const file of files) {
     const maxSize = Number(process.env.UPLOAD_MAX_SIZE_BYTES || 25 * 1024 * 1024);
@@ -309,16 +344,12 @@ async function saveUploads(files = [], { folderId = null, moduleName = 'general'
     }
 
     const { base, ext } = splitExt(file.originalname);
-    
-    const prefix = (documentType || '').toLowerCase().includes('photo') || (file.mimetype || '').startsWith('image/') ? 'images' : 'documents';
+
     const modDir = String(moduleName || 'general').trim() || 'general';
     const entDir = String(entityId || '').trim();
-    const storedName = `${Date.now()}-${randomUUID()}${ext}`;
-    
-    const storageKeySegments = [prefix, modDir];
-    if (entDir) storageKeySegments.push(entDir);
-    storageKeySegments.push(storedName);
-    const storageKey = storageKeySegments.join('/');
+    // The original name, kept readable, plus a short unique suffix.
+    const storedName = `${base.replace(/\s+/g, '-')}-${Date.now().toString(36)}${randomUUID().slice(0, 4)}${ext}`;
+    const storageKey = buildStorageKey({ moduleName: modDir, voucherKey, code, storedName });
 
     const locator = await StorageService.upload(file.buffer, storageKey, { mimeType: file.mimetype });
 

@@ -170,6 +170,15 @@ class DriveClient {
     return data;
   }
 
+  // The folder named `name` directly inside `parentId`, or null.
+  async findFolder(parentId, name) {
+    const escape = (value) => String(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    const q = `'${escape(parentId)}' in parents and name = '${escape(name)}' and mimeType = '${FOLDER_MIME}' and trashed = false`;
+    const params = new URLSearchParams({ q, pageSize: '1', fields: 'files(id,name)' });
+    const response = await this.request(`${API}/files?${params.toString()}`, {}, 'find folder');
+    return (await readJson(response))?.files?.[0] || null;
+  }
+
   async listFiles(folderId, { pageSize = 200 } = {}) {
     const q = `'${String(folderId).replace(/'/g, "\\'")}' in parents and trashed = false`;
     const params = new URLSearchParams({ q, orderBy: 'createdTime desc', pageSize: String(pageSize), fields: 'files(id,name,size,createdTime,mimeType)' });

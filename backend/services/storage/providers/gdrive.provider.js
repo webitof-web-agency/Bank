@@ -4,22 +4,57 @@
 // (/api/files/:id/view), never by a public Drive link.
 const connection = require('../../googleDrive/driveConnection.service');
 
+// Folder ids by "<parent id>/<name>", and lookups in flight, so concurrent
+// uploads into a new month don't create the same folder twice.
+const folderIds = new Map();
+const pendingFolders = new Map();
+
 class GoogleDriveStorageProvider {
-  // Drive name from the app's storage key: images/members/<id>/<stored>.jpg
-  // -> images__members__<id>__<stored>.jpg (flat folder, still traceable).
-  _driveName(storageKey) {
+  // The storage key's folders, mirrored under the Uploads folder:
+  // 2026/oct/recovery/photo.png -> Uploads/2026/oct/recovery/photo.png.
+  _splitKey(storageKey) {
     if (!storageKey) throw new Error('Storage key is required');
-    return String(storageKey).replace(/^\/+/, '').split('/').filter(Boolean).join('__');
+    const segments = String(storageKey).replace(/^\/+/, '').split('/').filter(Boolean);
+    return { folders: segments.slice(0, -1), name: segments[segments.length - 1] };
+  }
+
+  async _folderIn(client, parentId, name) {
+    const cacheKey = `${parentId}/${name}`;
+    if (folderIds.has(cacheKey)) return folderIds.get(cacheKey);
+    if (!pendingFolders.has(cacheKey)) {
+      pendingFolders.set(cacheKey, (async () => {
+        const folder = await client.findFolder(parentId, name) || await client.createFolder(name, parentId);
+        folderIds.set(cacheKey, folder.id);
+        return folder.id;
+      })().finally(() => pendingFolders.delete(cacheKey)));
+    }
+    return pendingFolders.get(cacheKey);
+  }
+
+  async _ensurePath(client, rootId, folders) {
+    let parentId = rootId;
+    for (const name of folders) parentId = await this._folderIn(client, parentId, name);
+    return parentId;
   }
 
   async upload(buffer, storageKey, { mimeType } = {}) {
     const client = await connection.getClient();
-    const folderId = await connection.ensureFolder('uploads', client);
-    const file = await client.uploadFile({ name: this._driveName(storageKey), parentId: folderId, mimeType: mimeType || 'application/octet-stream', buffer });
+    const rootId = await connection.ensureFolder('uploads', client);
+    const { folders, name } = this._splitKey(storageKey);
+    const send = async () => client.uploadFile({ name, parentId: await this._ensurePath(client, rootId, folders), mimeType: mimeType || 'application/octet-stream', buffer });
+    let file;
+    try {
+      file = await send();
+    } catch (error) {
+      // A remembered folder was deleted in Drive: forget them and retry once.
+      if (error.status !== 404) throw error;
+      folderIds.clear();
+      file = await send();
+    }
     return {
       storageProvider: 'gdrive',
       storageKey: file.id,
-      storageBucket: folderId,
+      storageBucket: rootId,
       storageRegion: null,
       storageProject: null
     };

@@ -94,9 +94,13 @@ async function fakeGoogle(url, options = {}) {
     return jsonResponse(200, { id: file.id, name: file.name });
   }
   if (u.pathname === '/drive/v3/files' && method === 'GET') {
-    const parent = /'([^']+)' in parents/.exec(u.searchParams.get('q'))[1];
+    const q = u.searchParams.get('q');
+    const parent = /'([^']+)' in parents/.exec(q)[1];
     if (!google.files.has(parent)) return jsonResponse(404, { error: { message: 'File not found' } });
-    const files = [...google.files.values()].filter((f) => !f.trashed && (f.parents || []).includes(parent))
+    const byName = /name = '([^']+)'/.exec(q)?.[1];
+    const byType = /mimeType = '([^']+)'/.exec(q)?.[1];
+    const files = [...google.files.values()].filter((f) => !f.trashed && (f.parents || []).includes(parent)
+      && (!byName || f.name === byName) && (!byType || f.mimeType === byType))
       .sort((a, b) => b.createdTime.localeCompare(a.createdTime));
     return jsonResponse(200, { files: files.map(({ id, name, size, createdTime, mimeType }) => ({ id, name, size, createdTime, mimeType })) });
   }
@@ -482,14 +486,24 @@ test('real pg_dump: a backup of the test database is a valid custom-format dump'
 // ---------------------------------------------------------------------------
 // Upload storage provider
 
-test('gdrive storage: upload, exists, stream, delete in the Uploads folder', async () => {
+test('gdrive storage: upload into Uploads/<year>/<mon>/<section>, exists, stream, delete', async () => {
   await connect();
   const provider = new GoogleDriveStorageProvider({});
-  const locator = await provider.upload(Buffer.from('photo-bytes'), 'images/members/M1/123-abc.jpg', { mimeType: 'image/jpeg' });
+  const locator = await provider.upload(Buffer.from('photo-bytes'), '2026/oct/recovery/photo-abc.jpg', { mimeType: 'image/jpeg' });
   const state = await connection.readState();
   assert.deepEqual([locator.storageProvider, locator.storageBucket], ['gdrive', state.uploadsFolderId]);
   const file = google.files.get(locator.storageKey);
-  assert.deepEqual([file.name, file.mimeType, file.parents[0]], ['images__members__M1__123-abc.jpg', 'image/jpeg', state.uploadsFolderId]);
+  assert.deepEqual([file.name, file.mimeType], ['photo-abc.jpg', 'image/jpeg']);
+  // The folder chain up to the Uploads folder.
+  const chain = [];
+  for (let id = file.parents[0]; id && id !== state.uploadsFolderId; id = google.files.get(id).parents[0]) chain.unshift(google.files.get(id).name);
+  assert.deepEqual(chain, ['2026', 'oct', 'recovery']);
+  // A second file in the same month reuses the folders.
+  const second = await provider.upload(Buffer.from('x'), '2026/oct/recovery/other.jpg', { mimeType: 'image/jpeg' });
+  assert.equal(google.files.get(second.storageKey).parents[0], file.parents[0]);
+  // Site files sit in Uploads/site.
+  const site = await provider.upload(Buffer.from('logo'), 'site/logo.png', { mimeType: 'image/png' });
+  assert.equal(google.files.get(google.files.get(site.storageKey).parents[0]).name, 'site');
   assert.equal(await provider.exists(locator), true);
   assert.equal(await provider.getSignedUrl(locator), null);
   const stream = await provider.getStream(locator);
