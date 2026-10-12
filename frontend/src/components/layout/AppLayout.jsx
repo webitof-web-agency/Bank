@@ -5,6 +5,8 @@ import { useAuth } from '../../context/AuthContext';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
 import { cn } from '../../lib/cn';
+import { setFavicon } from '../../lib/branding';
+import { useSociety } from '../../pages/reports/print/useSociety';
 
 function findNavItem(items = [], pathname = '') {
   for (const item of items) {
@@ -26,7 +28,13 @@ function resolveTitle(pathname) {
 
 export function AppLayout() {
   const location = useLocation();
-  const { user } = useAuth();
+  const { user, branding } = useAuth();
+  const society = useSociety();
+
+  // A favicon uploaded in branding wins; otherwise use the society logo.
+  useEffect(() => {
+    if (!branding?.faviconUrl && society.logoUrl) setFavicon(society.logoUrl);
+  }, [branding?.faviconUrl, society.logoUrl]);
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
 

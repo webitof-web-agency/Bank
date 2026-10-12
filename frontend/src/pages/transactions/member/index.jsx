@@ -17,7 +17,6 @@ import {
   buildTransactionVoucherPayload,
   createEmptyTransactionDraft,
   createTransactionDraftFromRecord,
-  filterTransactionRows,
   formatTransactionAmount,
   formatTransactionModeLabel,
   getSectionItems,
@@ -29,13 +28,13 @@ import {
 import { toneClassName } from './transactionUtils';
 import { followSmsResult } from './smsToast';
 import { getMemberTransactionTypeByKey } from './memberConfig';
+import { useServerList } from '../../../lib/useServerList';
 
 export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '' }) {
   const navigate = useNavigate();
   const { token, pageAccess } = useAuth();
   const { activeFY } = useFY();
   const [catalog, setCatalog] = useState([]);
-  const [rows, setRows] = useState([]);
   const [lookups, setLookups] = useState({});
   const [loading, setLoading] = useState(true);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -43,7 +42,6 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '
   const [draft, setDraft] = useState(createEmptyTransactionDraft(sectionKey, []));
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
-  const [search, setSearch] = useState('');
   const [filterPartyType, setFilterPartyType] = useState('');
   const [filterDateFrom, setFilterDateFrom] = useState('');
   const [filterDateTo, setFilterDateTo] = useState('');
@@ -55,25 +53,13 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '
   const activeItem = useMemo(() => getMemberTransactionTypeByKey(itemKey), [itemKey]);
   const activeSectionItems = useMemo(() => (activeItem ? sectionItems.filter((entry) => entry.key === activeItem.key) : sectionItems), [activeItem, sectionItems]);
   const currentItemKey = activeItem?.key || '';
-  const visibleRows = useMemo(() => {
-    const baseRows = filterTransactionRows(rows, activeSectionItems, currentItemKey);
-    const searchValue = String(search || '').trim().toLowerCase();
-
-    return baseRows.filter((row) => {
-      const matchesSearch = !searchValue || [
-        row.voucherNo,
-        row.voucherCategory,
-        row.partyCode,
-        row.narration,
-        row.referenceNo,
-        row.instrumentNo
-      ].some((value) => String(value || '').toLowerCase().includes(searchValue));
-      const matchesPartyType = !filterPartyType || String(row.partyType || '').toLowerCase() === String(filterPartyType || '').toLowerCase();
-      const matchesFrom = !filterDateFrom || String(row.date || '') >= filterDateFrom;
-      const matchesTo = !filterDateTo || String(row.date || '') <= filterDateTo;
-      return matchesSearch && matchesPartyType && matchesFrom && matchesTo;
-    });
-  }, [rows, activeSectionItems, currentItemKey, search, filterPartyType, filterDateFrom, filterDateTo]);
+  // The server filters, sorts and pages; only the visible page is loaded.
+  const listFilters = { section: sectionKey, item: currentItemKey, partyType: filterPartyType, filterFrom: filterDateFrom, filterTo: filterDateTo };
+  const list = useServerList(
+    (query) => api.banking.listTransactionVouchers(token, { ...listFilters, ...query }),
+    [token, activeFY?.start, listFilters]
+  );
+  const visibleRows = list.rows;
   const { canCreate, canEdit, canDelete } = pageAccess('transactions', 'member');
 
   useEffect(() => {
@@ -82,13 +68,11 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '
 
     Promise.all([
       api.banking.getTransactionCatalog(token),
-      api.banking.listTransactionVouchers(token),
       api.banking.getLookups(token)
     ])
-      .then(([catalogRes, rowsRes, lookupsRes]) => {
+      .then(([catalogRes, lookupsRes]) => {
         if (!mounted) return;
         setCatalog(Array.isArray(catalogRes.data) ? catalogRes.data : []);
-        setRows(Array.isArray(rowsRes.data) ? rowsRes.data : []);
         setLookups(lookupsRes.data || {});
       })
       .catch((error) => {
@@ -142,12 +126,20 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '
     }
   }
 
-  function exportCsv() {
+  async function exportCsv() {
+    let exportRows;
+    try {
+      const response = await api.banking.listTransactionVouchers(token, { ...listFilters, ...list.query, page: 1, limit: 'all' });
+      exportRows = Array.isArray(response.data) ? response.data : [];
+    } catch (error) {
+      toast.error(error.message || 'Unable to export transactions');
+      return;
+    }
     const headers = ['Voucher No', 'Date', 'Category', 'Party', 'Amount', 'Narration'];
     const escape = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
     const csv = [
       headers.map(escape).join(','),
-      ...visibleRows.map((row) => ([
+      ...exportRows.map((row) => ([
         row.voucherNo,
         row.date,
         row.voucherCategory,
@@ -215,9 +207,7 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '
       } catch (error) {
         documentError = error;
       }
-      setRows((current) => (activeRecord
-        ? current.map((item) => (item.id === nextRecord.id ? nextRecord : item))
-        : [nextRecord, ...current]));
+      list.reload();
       toast.success(savedLabel);
       followSmsResult(token, savedId, savedSms);
       if (documentError) toast.warning(describeDocumentUploadFailure(nextRecord, documentError));
@@ -231,7 +221,7 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '
     if (!deleteTarget) return;
     try {
       await api.banking.deleteTransactionVoucher(token, deleteTarget.id);
-      setRows((current) => current.filter((item) => item.id !== deleteTarget.id));
+      list.reload();
       toast.success('Transaction deleted');
     } catch (error) {
       toast.error(error.message || 'Unable to delete transaction');
@@ -240,10 +230,7 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '
     }
   }
 
-  const stats = useMemo(() => ({
-    total: visibleRows.length,
-    amount: visibleRows.reduce((sum, row) => sum + Number(row.amount || 0), 0)
-  }), [visibleRows]);
+  const stats = { total: list.total, amount: Number(list.summary.amount || 0) };
 
   const linkedItems = useMemo(() => (activeSectionItems || []).filter((item) => item.route), [activeSectionItems]);
   const editableItems = useMemo(() => (activeSectionItems || []).filter((item) => !item.route), [activeSectionItems]);
@@ -281,11 +268,11 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '
       return [
         { key: 'voucherNo', label: 'Voucher No', sortable: true, render: (row) => <span className="font-medium text-slate-900">{row.voucherNo || '-'}</span> },
         { key: 'date', label: 'Date', sortable: true, render: (row) => <span className="text-slate-700">{row.date || '-'}</span> },
-        { key: 'member', label: 'Member', sortable: true, sortValue: (row) => getTransactionPartyLabel(row.partyCode, lookups, row.partyType), render: (row) => <span className="text-slate-700">{getTransactionPartyLabel(row.partyCode, lookups, row.partyType)}</span> },
-        { key: 'branch', label: 'Branch', sortable: true, sortValue: (row) => getBranch(row.partyCode), render: (row) => <span className="text-slate-700">{getBranch(row.partyCode)}</span> },
-        { key: 'designation', label: 'Designation', sortable: true, sortValue: (row) => getDesignation(row.partyCode), render: (row) => <span className="text-slate-700">{getDesignation(row.partyCode)}</span> },
-        { key: 'mode', label: 'Paymode', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionModeLabel(row.details?.payMode || row.mode)}</span> },
-        { key: 'instrument', label: 'Cheque No', sortable: true, render: (row) => <span className="text-slate-700">{row.instrumentNo || '-'}</span> },
+        { key: 'member', label: 'Member', sortable: true, sortField: 'partyCode', sortValue: (row) => getTransactionPartyLabel(row.partyCode, lookups, row.partyType), render: (row) => <span className="text-slate-700">{getTransactionPartyLabel(row.partyCode, lookups, row.partyType)}</span> },
+        { key: 'branch', label: 'Branch', sortable: true, sortField: 'partyBranch', sortValue: (row) => getBranch(row.partyCode), render: (row) => <span className="text-slate-700">{getBranch(row.partyCode)}</span> },
+        { key: 'designation', label: 'Designation', sortable: true, sortField: 'partyDesignation', sortValue: (row) => getDesignation(row.partyCode), render: (row) => <span className="text-slate-700">{getDesignation(row.partyCode)}</span> },
+        { key: 'mode', label: 'Paymode', sortable: true, sortField: 'mode', render: (row) => <span className="text-slate-700">{formatTransactionModeLabel(row.details?.payMode || row.mode)}</span> },
+        { key: 'instrument', label: 'Cheque No', sortable: true, sortField: 'instrumentNo', render: (row) => <span className="text-slate-700">{row.instrumentNo || '-'}</span> },
         { key: 'amount', label: 'Amount', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionAmount(row.amount ?? 0)}</span> },
         actionsColumn
       ];
@@ -295,9 +282,9 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '
       return [
         { key: 'voucherNo', label: 'Voucher No', sortable: true, render: (row) => <span className="font-medium text-slate-900">{row.voucherNo || '-'}</span> },
         { key: 'date', label: 'Date', sortable: true, render: (row) => <span className="text-slate-700">{row.date || '-'}</span> },
-        { key: 'member', label: 'Member', sortable: true, sortValue: (row) => getTransactionPartyLabel(row.partyCode, lookups, row.partyType), render: (row) => <span className="text-slate-700">{getTransactionPartyLabel(row.partyCode, lookups, row.partyType)}</span> },
-        { key: 'mode', label: 'Mode', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionModeLabel(row.details?.payMode || row.mode)}</span> },
-        { key: 'instrument', label: 'Instrument', sortable: true, render: (row) => <span className="text-slate-700">{row.instrumentNo || '-'}</span> },
+        { key: 'member', label: 'Member', sortable: true, sortField: 'partyCode', sortValue: (row) => getTransactionPartyLabel(row.partyCode, lookups, row.partyType), render: (row) => <span className="text-slate-700">{getTransactionPartyLabel(row.partyCode, lookups, row.partyType)}</span> },
+        { key: 'mode', label: 'Mode', sortable: true, sortField: 'mode', render: (row) => <span className="text-slate-700">{formatTransactionModeLabel(row.details?.payMode || row.mode)}</span> },
+        { key: 'instrument', label: 'Instrument', sortable: true, sortField: 'instrumentNo', render: (row) => <span className="text-slate-700">{row.instrumentNo || '-'}</span> },
         { key: 'amount', label: 'Amount', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionAmount(row.amount ?? 0)}</span> },
         actionsColumn
       ];
@@ -307,9 +294,9 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '
       return [
         { key: 'voucherNo', label: 'Voucher No', sortable: true, render: (row) => <span className="font-medium text-slate-900">{row.voucherNo || '-'}</span> },
         { key: 'date', label: 'Date', sortable: true, render: (row) => <span className="text-slate-700">{row.date || '-'}</span> },
-        { key: 'member', label: 'Member', sortable: true, sortValue: (row) => getTransactionPartyLabel(row.partyCode, lookups, row.partyType), render: (row) => <span className="text-slate-700">{getTransactionPartyLabel(row.partyCode, lookups, row.partyType)}</span> },
-        { key: 'loan', label: 'Loan Amount', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionAmount(Number(row.details?.components?.loanAmt || 0))}</span> },
-        { key: 'lad', label: 'LAD', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionAmount(Number(row.details?.components?.lad || 0))}</span> },
+        { key: 'member', label: 'Member', sortable: true, sortField: 'partyCode', sortValue: (row) => getTransactionPartyLabel(row.partyCode, lookups, row.partyType), render: (row) => <span className="text-slate-700">{getTransactionPartyLabel(row.partyCode, lookups, row.partyType)}</span> },
+        { key: 'loan', label: 'Loan Amount', sortable: true, sortField: 'details.components.loanAmt', render: (row) => <span className="text-slate-700">{formatTransactionAmount(Number(row.details?.components?.loanAmt || 0))}</span> },
+        { key: 'lad', label: 'LAD', sortable: true, sortField: 'details.components.lad', render: (row) => <span className="text-slate-700">{formatTransactionAmount(Number(row.details?.components?.lad || 0))}</span> },
         actionsColumn
       ];
     }
@@ -318,7 +305,7 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '
       return [
         { key: 'voucherNo', label: 'Voucher No', sortable: true, render: (row) => <span className="font-medium text-slate-900">{row.voucherNo || '-'}</span> },
         { key: 'date', label: 'Date', sortable: true, render: (row) => <span className="text-slate-700">{row.date || '-'}</span> },
-        { key: 'member', label: 'Member', sortable: true, sortValue: (row) => getTransactionPartyLabel(row.partyCode, lookups, row.partyType), render: (row) => <span className="text-slate-700">{getTransactionPartyLabel(row.partyCode, lookups, row.partyType)}</span> },
+        { key: 'member', label: 'Member', sortable: true, sortField: 'partyCode', sortValue: (row) => getTransactionPartyLabel(row.partyCode, lookups, row.partyType), render: (row) => <span className="text-slate-700">{getTransactionPartyLabel(row.partyCode, lookups, row.partyType)}</span> },
         { key: 'amount', label: 'Amount', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionAmount(row.amount ?? 0)}</span> },
         actionsColumn
       ];
@@ -328,7 +315,7 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '
       return [
         { key: 'voucherNo', label: 'Voucher No', sortable: true, render: (row) => <span className="font-medium text-slate-900">{row.voucherNo || '-'}</span> },
         { key: 'date', label: 'Date', sortable: true, render: (row) => <span className="text-slate-700">{row.date || '-'}</span> },
-        { key: 'member', label: 'Member', sortable: true, sortValue: (row) => getTransactionPartyLabel(row.partyCode, lookups, row.partyType), render: (row) => <span className="text-slate-700">{getTransactionPartyLabel(row.partyCode, lookups, row.partyType)}</span> },
+        { key: 'member', label: 'Member', sortable: true, sortField: 'partyCode', sortValue: (row) => getTransactionPartyLabel(row.partyCode, lookups, row.partyType), render: (row) => <span className="text-slate-700">{getTransactionPartyLabel(row.partyCode, lookups, row.partyType)}</span> },
         { key: 'amount', label: 'Amount', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionAmount(row.amount ?? 0)}</span> },
         actionsColumn
       ];
@@ -337,8 +324,8 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '
     return [
       { key: 'voucherNo', label: 'Voucher No', sortable: true, render: (row) => <span className="font-medium text-slate-900">{row.voucherNo || '-'}</span> },
       { key: 'date', label: 'Date', sortable: true, render: (row) => <span className="text-slate-700">{row.date || '-'}</span> },
-      { key: 'type', label: 'Type', sortable: true, sortValue: (row) => getTransactionVoucherTitle(row, activeSectionItems, currentItemKey), render: (row) => <span className="text-slate-700">{getTransactionVoucherTitle(row, activeSectionItems, currentItemKey)}</span> },
-      { key: 'party', label: 'Member', sortable: true, sortValue: (row) => getTransactionPartyLabel(row.partyCode, lookups, row.partyType), render: (row) => <span className="text-slate-700">{getTransactionPartyLabel(row.partyCode, lookups, row.partyType)}</span> },
+      { key: 'type', label: 'Type', sortable: true, sortField: 'voucherCategory', sortValue: (row) => getTransactionVoucherTitle(row, activeSectionItems, currentItemKey), render: (row) => <span className="text-slate-700">{getTransactionVoucherTitle(row, activeSectionItems, currentItemKey)}</span> },
+      { key: 'party', label: 'Member', sortable: true, sortField: 'partyCode', sortValue: (row) => getTransactionPartyLabel(row.partyCode, lookups, row.partyType), render: (row) => <span className="text-slate-700">{getTransactionPartyLabel(row.partyCode, lookups, row.partyType)}</span> },
       { key: 'amount', label: 'Amount', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionAmount(row.amount ?? 0)}</span> },
       actionsColumn
     ];
@@ -454,10 +441,10 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '
           <Table
             columns={columns}
             data={visibleRows}
-            defaultRowsPerPage={10}
+            serverPagination={list.serverPagination}
             emptyMessage="No transactions found."
-            search={search}
-            onSearch={setSearch}
+            search={list.search}
+            onSearch={list.setSearch}
             searchPlaceholder="Search voucher no, party, narration..."
             headerActions={
               <div className="relative">
@@ -511,7 +498,7 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '
                           setFilterPartyType('');
                           setFilterDateFrom('');
                           setFilterDateTo('');
-                          setSearch('');
+                          list.setSearch('');
                           setFilterDropdownOpen(false);
                         }}
                       >

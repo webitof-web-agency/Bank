@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useServerList } from '../../../lib/useServerList';
 import { BookOpen, Edit2, Eye, Landmark, Plus, Trash2, TrendingDown, TrendingUp } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../api/api';
@@ -23,9 +24,10 @@ function isLedgerActive(ledger) {
 export function LedgersPage() {
   const navigate = useNavigate();
   const { token, pageAccess } = useAuth();
-  const [rows, setRows] = useState([]);
+  // The server filters, sorts and pages; only the visible page is loaded.
+  const list = useServerList((query) => api.resources.page('/banking/masters/ledgers', token, query), [token], { errorMessage: 'Unable to load ledgers' });
+  const rows = list.rows;
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
   const [editorOpen, setEditorOpen] = useState(false);
   const [activeRecord, setActiveRecord] = useState(null);
   const [draft, setDraft] = useState(createEmptyLedgerDraft());
@@ -35,26 +37,8 @@ export function LedgersPage() {
   const { canCreate, canEdit, canDelete } = pageAccess('master', 'ledgers');
 
   useEffect(() => {
-    let mounted = true;
-    setLoading(true);
-
-    api.resources.list('/banking/masters/ledgers', token, search)
-      .then((response) => {
-        if (!mounted) return;
-        setRows(response.data || []);
-      })
-      .catch((error) => {
-        if (!mounted) return;
-        toast.error(error.message || 'Unable to load ledgers');
-      })
-      .finally(() => {
-        if (mounted) setLoading(false);
-      });
-
-    return () => {
-      mounted = false;
-    };
-  }, [search, token]);
+    if (!list.loading) setLoading(false);
+  }, [list.loading]);
 
   function openCreate() {
     setActiveRecord(null);
@@ -84,12 +68,7 @@ export function LedgersPage() {
         : await api.resources.create('/banking/masters/ledgers', payload, token);
 
       const nextRecord = response.data || response;
-      setRows((current) => {
-        const next = activeRecord
-          ? current.map((item) => (item.id === nextRecord.id ? nextRecord : item))
-          : [nextRecord, ...current];
-        return next;
-      });
+      list.reload();
       toast.success(activeRecord ? 'Ledger updated' : 'Ledger created');
       closeEditor();
     } catch (error) {
@@ -103,7 +82,7 @@ export function LedgersPage() {
     if (!deleteTarget) return;
     try {
       await api.resources.remove('/banking/masters/ledgers', deleteTarget.id, token);
-      setRows((current) => current.filter((item) => item.id !== deleteTarget.id));
+      list.reload();
       toast.success('Ledger deleted');
     } catch (error) {
       toast.error(error.message || 'Unable to delete ledger');
@@ -112,14 +91,7 @@ export function LedgersPage() {
     }
   }
 
-  const stats = useMemo(() => {
-    const active = rows.filter((row) => isLedgerActive(row)).length;
-    const asset = rows.filter((row) => getLedgerNature(row) === 'ASSET').length;
-    const liability = rows.filter((row) => getLedgerNature(row) === 'LIABILITY').length;
-    const bankAccounts = rows.filter((row) => row.isBankAccount).length;
-
-    return { total: rows.length, active, asset, liability, bankAccounts };
-  }, [rows]);
+  const stats = { ...list.summary, total: list.total };
 
   const columns = [
     { key: 'code', label: 'Code', sortable: true, render: (row) => <span className="font-medium text-slate-900">{row.code || '-'}</span> },
@@ -212,10 +184,10 @@ export function LedgersPage() {
           <Table
             columns={columns}
             data={rows}
-            defaultRowsPerPage={10}
+            serverPagination={list.serverPagination}
             emptyMessage="No ledgers found."
-            search={search}
-            onSearch={setSearch}
+            search={list.search}
+            onSearch={list.setSearch}
             searchPlaceholder="Search ledgers..."
           />
         )}

@@ -1,5 +1,14 @@
 const bankingService = require('../services/banking.service');
 const { hasPermission } = require('../middlewares/auth');
+const { paginateRows, wantsPaging } = require('../utils/paginate');
+
+// Fields the voucher list search box matches (live and legacy rows alike).
+const VOUCHER_SEARCH_FIELDS = ['voucherNo', 'voucherCategory', 'partyCode', 'partyLabel', 'narration', 'referenceNo', 'instrumentNo', 'mode', 'amount'];
+
+
+function sumAmounts(rows = []) {
+  return { amount: rows.reduce((sum, row) => sum + (Number(row.amount) || 0), 0) };
+}
 
 // Vouchers share one route, so the page permission (Member / Bank / Employee
 // / Transfer Voucher / Receipt-Interest) is checked here from the voucher's
@@ -15,14 +24,50 @@ function voucherForbidden(res, action) {
   return res.status(403).json({ success: false, message: `You do not have permission to ${verb} this type of voucher.` });
 }
 
+// Stat-card totals per master list, over every matching row (not one page).
+// Mirrors the counts each list page used to compute from the full list.
+const lower = (value, fallback = '') => String(value || fallback).trim().toLowerCase();
+const RESOURCE_SUMMARIES = {
+  members: (rows) => {
+    const status = (row) => lower(row.status, 'active');
+    return {
+      active: rows.filter((row) => !['inactive', 'exited'].includes(status(row))).length,
+      inactive: rows.filter((row) => status(row) === 'inactive').length,
+      exited: rows.filter((row) => status(row) === 'exited').length
+    };
+  },
+  ledgers: (rows) => ({
+    active: rows.filter((row) => row.isActive !== false).length,
+    asset: rows.filter((row) => String(row.nature || 'ASSET').toUpperCase() === 'ASSET').length,
+    liability: rows.filter((row) => String(row.nature || 'ASSET').toUpperCase() === 'LIABILITY').length,
+    bankAccounts: rows.filter((row) => row.isBankAccount).length
+  }),
+  branches: (rows) => ({
+    active: rows.filter((row) => row.isActive !== false).length,
+    inactive: rows.filter((row) => row.isActive === false).length,
+    places: new Set(rows.map((row) => String(row.place || '').trim()).filter(Boolean)).size
+  }),
+  noInterestMembers: (rows) => ({
+    active: rows.filter((row) => lower(row.status, 'active') !== 'inactive').length,
+    inactive: rows.filter((row) => lower(row.status, 'active') === 'inactive').length,
+    linked: rows.filter((row) => String(row.memberCode || '').trim()).length
+  })
+};
+
 function buildCrudControllers(resource, { allowDelete = true } = {}) {
   return {
     async list(req, res, next) {
       try {
-        const rows = await bankingService.listResource(resource, req.query.search || '', req.user || {}, {
-          fyStart: req.query.fyStart || '',
-          fyEnd: req.query.fyEnd || ''
-        });
+        const fy = { fyStart: req.query.fyStart || '', fyEnd: req.query.fyEnd || '' };
+        // Employees are logins (users table), not a cached banking table.
+        if (wantsPaging(req.query) && resource !== 'employees') {
+          const { rows, searchFields } = await bankingService.getCachedResourceRows(resource, req.user || {}, fy);
+          return res.json({ success: true, ...paginateRows(rows, req.query, { searchFields, summarize: RESOURCE_SUMMARIES[resource] }) });
+        }
+        const rows = await bankingService.listResource(resource, req.query.search || '', req.user || {}, fy);
+        if (wantsPaging(req.query)) {
+          return res.json({ success: true, ...paginateRows(rows, { ...req.query, search: '' }) });
+        }
         res.json({ success: true, data: rows });
       } catch (error) {
         next(error);
@@ -171,16 +216,45 @@ const transactions = {
   },
   async listVouchers(req, res, next) {
     try {
-      const rows = await bankingService.buildVoucherRows({
+      const paging = wantsPaging(req.query);
+      const filter = {
         user: req.user || {},
-        search: req.query.search || '',
         partyType: req.query.partyType || '',
         branchCode: req.query.branchCode || '',
         dateFrom: req.query.dateFrom || req.query.fyStart || '',
         dateTo: req.query.dateTo || req.query.fyEnd || ''
-      });
+      };
+      // The year's rows come from a cache that any voucher/party write expires;
+      // when paging, search runs below over live and legacy rows together.
+      const rows = paging || !req.query.search
+        ? await bankingService.getCachedVoucherRows(filter)
+        : await bankingService.buildVoucherRows({ ...filter, search: req.query.search });
       // Only the voucher types whose page this user may view.
-      res.json({ success: true, data: rows.filter((row) => canVoucher(req.user || {}, row, 'view')) });
+      let visible = rows.filter((row) => canVoucher(req.user || {}, row, 'view'));
+      if (!paging) {
+        return res.json({ success: true, data: visible });
+      }
+
+      if (req.query.section) {
+        visible = bankingService.filterVouchersBySection(visible, req.query.section, req.query.item);
+      } else if (req.query.item) {
+        // A voucher type outside the catalog (e.g. journal-voucher): by key only.
+        const item = String(req.query.item).toLowerCase();
+        visible = visible.filter((row) => String(row.details?.key || '').toLowerCase() === item);
+      }
+      // The page's own date filter, inside the selected financial year.
+      const from = String(req.query.filterFrom || '');
+      const to = String(req.query.filterTo || '');
+      if (from || to) {
+        visible = visible.filter((row) => {
+          const day = String(row.date || '').slice(0, 10);
+          return (!from || day >= from) && (!to || day <= to);
+        });
+      }
+      res.json({
+        success: true,
+        ...paginateRows(visible, req.query, { searchFields: VOUCHER_SEARCH_FIELDS, summarize: sumAmounts })
+      });
     } catch (error) {
       next(error);
     }

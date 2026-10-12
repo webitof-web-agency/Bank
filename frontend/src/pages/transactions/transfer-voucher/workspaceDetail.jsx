@@ -1,5 +1,6 @@
 ﻿import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useGoBack } from '../../../lib/useGoBack';
 import { ArrowLeft, Edit2, FileText, Layers3, ShieldCheck, Trash2, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../api/api';
@@ -76,6 +77,7 @@ function SimpleTable({ headers = [], rows = [], emptyMessage = 'No records found
 export function TransferVoucherTransactionWorkspaceDetailPage({ sectionKey, itemKey }) {
   const { id } = useParams();
   const navigate = useNavigate();
+  const goBack = useGoBack();
   const { token, pageAccess } = useAuth();
   const [catalog, setCatalog] = useState([]);
   const [lookups, setLookups] = useState({});
@@ -171,7 +173,7 @@ export function TransferVoucherTransactionWorkspaceDetailPage({ sectionKey, item
     try {
       await api.banking.deleteTransactionVoucher(token, record.id);
       toast.success('Transfer voucher deleted');
-      navigate(`/app/transactions/transfer-voucher/${itemKey || (getVoucherSectionItem(record, sectionItems, sectionKey)?.key || '')}`);
+      navigate(`/app/transactions/transfer-voucher/${itemKey || (getVoucherSectionItem(record, sectionItems, sectionKey)?.key || '')}`, { replace: true });
     } catch (error) {
       toast.error(error.message || 'Unable to delete transfer voucher');
     } finally {
@@ -284,7 +286,7 @@ export function TransferVoucherTransactionWorkspaceDetailPage({ sectionKey, item
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2 text-[13px] font-medium text-slate-500 print:hidden">
-        <button type="button" onClick={() => navigate(`/app/transactions/transfer-voucher/${itemKey || ''}`)} className="flex items-center gap-1.5 transition-colors hover:text-slate-900">
+        <button type="button" onClick={() => goBack(`/app/transactions/transfer-voucher/${itemKey || ''}`)} className="flex items-center gap-1.5 transition-colors hover:text-slate-900">
           <ArrowLeft size={14} /> Back
         </button>
         <span className="text-slate-300">/</span>

@@ -395,8 +395,17 @@ async function deleteNotification(notificationId, userId) {
   return Boolean(record);
 }
 
+// Notifications are kept for one month; anything older is deleted.
+async function purgeOldNotifications(now = new Date()) {
+  const cutoff = new Date(now);
+  cutoff.setMonth(cutoff.getMonth() - 1);
+  const { deletedCount = 0 } = await Notification.deleteMany({ createdAt: { $lt: cutoff } });
+  return { deletedCount, cutoff: cutoff.toISOString() };
+}
+
 module.exports = {
   createNotification,
+  purgeOldNotifications,
   deleteNotification,
   getNotificationById,
   getUnreadCount,

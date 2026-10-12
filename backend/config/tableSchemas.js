@@ -625,6 +625,45 @@ const TABLE_SCHEMAS = {
     payload: T.json
   }, [['sourceDatabase', 'sourceTable', 'sourceKey']]),
 
+  // Read-only archive of closed legacy FYs' demand lists (EntDemandList /
+  // EntDemandListData). The live demand_lists / demand_lines hold only the
+  // cutover FY's active demand; these keep earlier years' history apart so it
+  // never shows up in Recovery or Demand Entry. Loaded by
+  // tools/legacy-migration/src/load-remaining-archive.js.
+  legacy_historical_demand_lists: schema({
+    sourceDatabase: T.string(120),
+    sourceTable: T.string(120),
+    sourceKey: T.string(120),
+    demandListNo: T.string(80),
+    branchCode: T.string(40),
+    month: T.string(20),
+    year: T.string(20),
+    demandListDate: T.date,
+    payload: T.json
+  }, [['sourceDatabase', 'sourceTable', 'sourceKey']]),
+
+  legacy_historical_demand_lines: schema({
+    sourceDatabase: T.string(120),
+    sourceTable: T.string(120),
+    sourceKey: T.string(120),
+    demandListNo: T.string(80),
+    branchCode: T.string(40),
+    memberCode: T.string(80),
+    totalAmount: T.money,
+    payload: T.json
+  }, [['sourceDatabase', 'sourceTable', 'sourceKey']]),
+
+  // Every other legacy table of the closed FYs, one row per source row,
+  // verbatim in payload.raw (MbrCBlnc / EmpCBlnc in full, per-FY
+  // MstAccountMaster, rate list, sessions, branches, company, ledger opening
+  // adjustments, Excel import log, SMS jobs, ...). Purely historical record.
+  legacy_archive_rows: schema({
+    sourceDatabase: T.string(120),
+    sourceTable: T.string(120),
+    sourceKey: T.string(120),
+    payload: T.json
+  }, [['sourceDatabase', 'sourceTable', 'sourceKey']]),
+
   recovery_import_rows: schema({
     batchId: T.string(80),
     sourceRowNo: T.number,

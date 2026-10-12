@@ -51,7 +51,7 @@ const { getSettings, updateSettings, mergeDeep } = require('./settings.service')
 const { toResponse } = require('../utils/response');
 const { getNextSequenceValue, syncSequence } = require('./sequence.service');
 const { buildFileViewUrl } = require('../utils/file-url');
-const { withTransaction, restoreMainRow, initializeDatabase } = require('../config/postgres');
+const { withTransaction, restoreMainRow, initializeDatabase, getTableVersion } = require('../config/postgres');
 const { buildJournalLinesForVoucher } = require('./posting.service');
 const rateHistory = require('../utils/rateHistory');
 const smsService = require('./sms/sms.service');
@@ -1217,7 +1217,7 @@ function isMemberVisibleInFY(member, fyStart, fyEnd) {
 async function listResource(resource, search = '', user = {}, options = {}) {
   const def = getResourceDef(resource);
   if (resource === 'employees') {
-    const rows = await authService.listUsers(search);
+    const rows = authService.withoutBootstrapAdmin(await authService.listUsers(search));
     return rows.filter((row) => canAccessBranchRecord(resource, row, user));
   }
   const query = applyBranchScope(buildSearchQuery(def.searchFields, search), resource, user);
@@ -2412,7 +2412,7 @@ function mapLegacyVoucherRow(row, partyIndex, { branchCode, partyTypeFilter } = 
 
   return {
     id: `legacy:${row.id}`,
-    voucherNo: `LGCY-${row.voucherNo}`,
+    voucherNo: String(row.voucherNo ?? ''),
     date: voucherDate,
     voucherCategory: catalogItem.label,
     transactionType: catalogItem.transactionType,
@@ -2499,6 +2499,94 @@ async function buildVoucherRows(filter = {}) {
   const historicalRows = await buildHistoricalVoucherRows(filter);
 
   return [...liveRows, ...historicalRows].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+}
+
+// ---- Cached list rows ------------------------------------------------------
+// The transaction and master pages page through a whole financial year. The
+// year's rows are built once and kept until a table they come from changes
+// (any create / edit / delete bumps that table's version), so paging,
+// searching and sorting don't rebuild the list on every request.
+
+const LIST_CACHE_LIMIT = 30;
+// Rows hold signed file URLs (member photos) that expire after ~2h, so an
+// entry is also rebuilt after this long even with no writes.
+const LIST_CACHE_MAX_AGE_MS = 30 * 60 * 1000;
+const VOUCHER_SOURCE_TABLES = ['vouchers', 'members', 'employees', 'ledgers', 'bank_accounts'];
+const listRowsCache = new Map();
+
+function readListCache(key, version) {
+  const hit = listRowsCache.get(key);
+  if (!hit || hit.version !== version || Date.now() - hit.at > LIST_CACHE_MAX_AGE_MS) return null;
+  return hit.rows;
+}
+
+function writeListCache(key, version, rows) {
+  listRowsCache.delete(key);
+  if (listRowsCache.size >= LIST_CACHE_LIMIT) {
+    listRowsCache.delete(listRowsCache.keys().next().value);
+  }
+  listRowsCache.set(key, { version, rows, at: Date.now() });
+}
+
+function tablesVersion(tables) {
+  return tables.map((table) => `${table}:${getTableVersion(table)}`).join('|');
+}
+
+// Party name / branch / designation on every row, so the pages can search and
+// sort by what they display. Legacy rows already carry partyLabel.
+async function attachVoucherParties(rows = []) {
+  const [members, employees, ledgers, bankAccounts] = await Promise.all([
+    Member.find({}).lean(),
+    Employee.find({}).lean(),
+    Ledger.find({}).lean(),
+    BankAccount.find({}).lean()
+  ]);
+  const index = (list, toParty) => new Map(list.map((row) => [cleanUpper(row.code), toParty(row)]));
+  const byType = {
+    member: index(members, (row) => ({ label: row.name, branch: row.branch || row.branchCode, designation: row.designation })),
+    employee: index(employees, (row) => ({ label: row.name || row.fullName, branch: row.branchCode, designation: row.designation })),
+    bank: index(bankAccounts, (row) => ({ label: row.bankName })),
+    ledger: index(ledgers, (row) => ({ label: row.name }))
+  };
+  return rows.map((row) => {
+    const parties = byType[cleanLower(row.partyType)] || byType.ledger;
+    const party = parties.get(cleanUpper(row.partyCode)) || {};
+    return {
+      ...row,
+      partyLabel: row.partyLabel || party.label || '',
+      partyBranch: party.branch || row.branchCode || '',
+      partyDesignation: party.designation || ''
+    };
+  });
+}
+
+// Every voucher row of the filter's year/branch (no search), cached.
+async function getCachedVoucherRows(filter = {}) {
+  await initializeDatabase();
+  const key = JSON.stringify(['vouchers', resolveBranchCode(filter.user, filter.branchCode), cleanText(filter.partyType), cleanText(filter.dateFrom), cleanText(filter.dateTo)]);
+  // Read the version before building: a write during the build leaves the
+  // entry stale-versioned, so the next request rebuilds it.
+  const version = tablesVersion(VOUCHER_SOURCE_TABLES);
+  const cached = readListCache(key, version);
+  if (cached) return cached;
+  const rows = await attachVoucherParties(await buildVoucherRows({ ...filter, search: '' }));
+  writeListCache(key, version, rows);
+  return rows;
+}
+
+// A master list (members, ledgers, ...) for the user's branch and year, cached;
+// searched in memory over the same fields the database search uses.
+async function getCachedResourceRows(resource, user = {}, options = {}) {
+  await initializeDatabase();
+  const def = getResourceDef(resource);
+  const key = JSON.stringify([resource, resolveBranchCode(user), cleanText(options.fyStart), cleanText(options.fyEnd)]);
+  const version = tablesVersion([def.model.tableName]);
+  let rows = readListCache(key, version);
+  if (!rows) {
+    rows = await listResource(resource, '', user, options);
+    writeListCache(key, version, rows);
+  }
+  return { rows, searchFields: def.searchFields || [] };
 }
 
 async function buildBankTransactionRows(filter = {}) {
@@ -2673,7 +2761,7 @@ async function getLegacyMemberInterestRows(members = []) {
     const payment = String(raw.VoucherType).toUpperCase() === 'P';
     const deposit = (amount) => (isPaid ? (payment ? -amount : amount) : -amount);
     const row = {
-      voucherNo: `LGCY-${v.voucherNo}`,
+      voucherNo: String(v.voucherNo ?? ''),
       date,
       share: { credit: 0, debit: 0, balance: 0 },
       specialDeposit: { credit: 0, debit: 0, balance: 0, interest: 0 },
@@ -3219,7 +3307,7 @@ async function getHistoricalMemberLedgerRowsBatch(members) {
       if (!date) continue;
 
       const row = {
-        voucherNo: `LGCY-${v.voucherNo}`,
+        voucherNo: String(v.voucherNo ?? ''),
         date,
         share: { credit: 0, debit: 0, balance: 0 },
         specialDeposit: { credit: 0, debit: 0, balance: 0, interest: 0 },
@@ -3272,7 +3360,7 @@ async function getHistoricalMemberLedgerRowsBatch(members) {
       if (!date) continue;
 
       list.push({
-        voucherNo: r.parent_voucher_no ? `LGCY-${r.parent_voucher_no}` : 'LGCY-RECOVERY',
+        voucherNo: r.parent_voucher_no ? String(r.parent_voucher_no) : 'RECOVERY',
         date,
         share: { credit: toPaise(rraw.Share), debit: 0, balance: 0 },
         specialDeposit: { credit: toPaise(rraw.SSA), debit: 0, balance: 0, interest: 0 },
@@ -4770,6 +4858,27 @@ async function getNextTransactionNo(branchCode = '') {
   return await getNextSequenceValue('bank_transactions', 'transactionNo');
 }
 
+// Server-side copy of the transaction pages' row filter
+// (frontend transactionUtils.filterTransactionRows): a voucher belongs to a
+// catalog item by its stored key, else by its category label.
+function filterVouchersBySection(rows = [], sectionKey = '', itemKey = '') {
+  const section = TRANSACTION_CATALOG.find((entry) => entry.key === cleanText(sectionKey));
+  if (!section) return rows;
+  const activeKey = cleanText(itemKey).toLowerCase();
+  const items = activeKey
+    ? (section.items || []).filter((item) => cleanText(item.key).toLowerCase() === activeKey)
+    : (section.items || []);
+  const itemKeys = new Set(items.map((item) => cleanText(item.key).toLowerCase()));
+  const labels = new Set(items.map((item) => cleanText(item.label).toLowerCase()));
+
+  return rows.filter((row) => {
+    const rowKey = cleanText(row?.details?.key || row?.transactionKey || row?.sectionKey || '').toLowerCase();
+    if (activeKey && rowKey) return rowKey === activeKey;
+    if (rowKey && itemKeys.has(rowKey)) return true;
+    return labels.has(cleanText(row.voucherCategory).toLowerCase());
+  });
+}
+
 function getTransactionCatalogItemByKey(key = '') {
   const normalized = cleanText(key).toLowerCase();
   if (!normalized) return null;
@@ -5492,7 +5601,7 @@ async function getHistoricalEmployeeLedgerRows(employee) {
     if (!date) continue;
 
     const row = {
-      voucherNo: `LGCY-${v.voucherNo}`,
+      voucherNo: String(v.voucherNo ?? ''),
       date,
       housingLoan: { credit: 0, debit: 0, balance: 0 },
       vehicleLoan: { credit: 0, debit: 0, balance: 0 },
@@ -5808,6 +5917,9 @@ module.exports = {
   buildProfitLossReport,
   buildTrialBalanceReport,
   buildVoucherRows,
+  getCachedVoucherRows,
+  getCachedResourceRows,
+  filterVouchersBySection,
   getHistoricalVoucherById,
   buildVoucherSummaryReport,
   createBankTransaction,

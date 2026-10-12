@@ -19,7 +19,7 @@ async function listController(req, res, next) {
 async function getController(req, res, next) {
   try {
     const role = await getRoleById(req.params.id);
-    if (!role) {
+    if (!role || role.code === 'admin') {
       return res.status(404).json({ success: false, message: 'Role not found' });
     }
     res.json({ success: true, data: role });

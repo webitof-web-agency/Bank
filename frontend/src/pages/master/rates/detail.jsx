@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useGoBack } from '../../../lib/useGoBack';
 import { ArrowLeft, Edit2, Percent, BookOpen, Clock3, TrendingUp, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../api/api';
@@ -22,6 +23,7 @@ function DetailRow({ label, value }) {
 export function RateDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const goBack = useGoBack();
   const { token, pageAccess } = useAuth();
   const [rate, setRate] = useState(null);
   const [ledgers, setLedgers] = useState([]);
@@ -114,7 +116,7 @@ export function RateDetailPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2 text-[13px] font-medium text-slate-500">
-        <button type="button" onClick={() => navigate(-1)} className="flex items-center gap-1.5 transition-colors hover:text-slate-900">
+        <button type="button" onClick={() => goBack('/app/master/rates')} className="flex items-center gap-1.5 transition-colors hover:text-slate-900">
           <ArrowLeft size={14} /> Back
         </button>
         <span className="text-slate-300">/</span>

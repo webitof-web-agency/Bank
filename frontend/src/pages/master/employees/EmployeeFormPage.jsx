@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useGoBack } from '../../../lib/useGoBack';
 import { toast } from 'sonner';
 import { useAuth } from '../../../context/AuthContext';
 import { api } from '../../../api/api';
@@ -15,6 +16,7 @@ import { uploadDocumentMap } from '../documentUpload';
 export function EmployeeFormPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const goBack = useGoBack();
   const { token } = useAuth();
   const isEdit = Boolean(id);
 
@@ -54,7 +56,7 @@ export function EmployeeFormPage() {
     }).catch(error => {
       if (!mounted) return;
       toast.error(error.message || 'Unable to load data');
-      navigate('/app/master/employees');
+      navigate('/app/master/employees', { replace: true });
     }).finally(() => {
       if (mounted) setLoading(false);
     });
@@ -154,7 +156,7 @@ export function EmployeeFormPage() {
       }
 
       toast.success(isEdit ? 'Employee updated' : 'Employee created');
-      navigate(isEdit ? `/app/master/employees/${entityId}` : '/app/master/employees');
+      goBack(isEdit ? `/app/master/employees/${entityId}` : '/app/master/employees');
     } catch (error) {
       toast.error(error.message || 'Unable to save employee');
     } finally {
@@ -169,7 +171,7 @@ export function EmployeeFormPage() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center gap-2 text-[13px] font-medium text-slate-500 mb-2">
-        <button type="button" onClick={() => navigate(isEdit ? `/app/master/employees/${id}` : '/app/master/employees')} className="flex items-center gap-1.5 transition-colors hover:text-slate-900">
+        <button type="button" onClick={() => goBack(isEdit ? `/app/master/employees/${id}` : '/app/master/employees')} className="flex items-center gap-1.5 transition-colors hover:text-slate-900">
           <ArrowLeft size={14} /> Back
         </button>
         <span className="text-slate-300">/</span>
@@ -191,7 +193,7 @@ export function EmployeeFormPage() {
           onAvatarClear={handleAvatarClear}
           onDocumentRemove={handleDocumentRemove}
           saving={saving}
-          onCancel={() => navigate(isEdit ? `/app/master/employees/${id}` : '/app/master/employees')}
+          onCancel={() => goBack(isEdit ? `/app/master/employees/${id}` : '/app/master/employees')}
         />
       </div>
     </div>

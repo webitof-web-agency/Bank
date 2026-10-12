@@ -72,13 +72,16 @@ export function applyBranding(branding = DEFAULT_BRANDING) {
   root.style.setProperty('--radius-button', radiuses.button);
   root.style.setProperty('--radius-input', radiuses.input);
 
-  if (branding.faviconUrl) {
-    let link = document.querySelector("link[rel~='icon']");
-    if (!link) {
-      link = document.createElement('link');
-      link.rel = 'icon';
-      document.getElementsByTagName('head')[0].appendChild(link);
-    }
-    link.href = getImageUrl(branding.faviconUrl);
+  if (branding.faviconUrl) setFavicon(branding.faviconUrl);
+}
+
+export function setFavicon(url) {
+  if (typeof document === 'undefined' || !url) return;
+  let link = document.querySelector("link[rel~='icon']");
+  if (!link) {
+    link = document.createElement('link');
+    link.rel = 'icon';
+    document.head.appendChild(link);
   }
+  link.href = getImageUrl(url);
 }

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useServerList } from '../../../lib/useServerList';
 import { Banknote, ChevronDown, Edit2, Eye, FileText, Filter, Plus, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../api/api';
@@ -41,7 +42,6 @@ export function BankTransactionWorkspacePage({ sectionKey, itemKey = '', detailP
   const { token, pageAccess } = useAuth();
   const { activeFY } = useFY();
   const [catalog, setCatalog] = useState([]);
-  const [rows, setRows] = useState([]);
   const [lookups, setLookups] = useState({});
   const [loading, setLoading] = useState(true);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -49,7 +49,6 @@ export function BankTransactionWorkspacePage({ sectionKey, itemKey = '', detailP
   const [draft, setDraft] = useState(createEmptyTransactionDraft(sectionKey, []));
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
-  const [search, setSearch] = useState('');
   const [filterPartyType, setFilterPartyType] = useState('');
   const [filterDateFrom, setFilterDateFrom] = useState('');
   const [filterDateTo, setFilterDateTo] = useState('');
@@ -61,17 +60,13 @@ export function BankTransactionWorkspacePage({ sectionKey, itemKey = '', detailP
   const sectionItems = useMemo(() => getSectionItems(catalog, sectionKey), [catalog, sectionKey]);
   const activeItem = useMemo(() => getBankTransactionTypeByKey(itemKey), [itemKey]);
   const activeItems = useMemo(() => (activeItem ? sectionItems.filter((entry) => entry.key === activeItem.key) : sectionItems), [activeItem, sectionItems]);
-  const visibleRows = useMemo(() => {
-    const searchValue = String(search || '').trim().toLowerCase();
-    return rows.filter((row) => {
-      if (!matchesWorkspaceRow(row, itemKey, activeItems)) return false;
-      const matchesSearch = !searchValue || [row.voucherNo, row.voucherCategory, row.partyCode, row.narration, row.referenceNo, row.instrumentNo].some((value) => String(value || '').toLowerCase().includes(searchValue));
-      const matchesPartyType = !filterPartyType || String(row.partyType || '').toLowerCase() === String(filterPartyType || '').toLowerCase();
-      const matchesFrom = !filterDateFrom || String(row.date || '') >= filterDateFrom;
-      const matchesTo = !filterDateTo || String(row.date || '') <= filterDateTo;
-      return matchesSearch && matchesPartyType && matchesFrom && matchesTo;
-    });
-  }, [rows, itemKey, activeItems, search, filterPartyType, filterDateFrom, filterDateTo]);
+  // The server filters, sorts and pages; only the visible page is loaded.
+  const listFilters = { section: sectionKey, item: itemKey, partyType: filterPartyType, filterFrom: filterDateFrom, filterTo: filterDateTo };
+  const list = useServerList(
+    (query) => api.banking.listTransactionVouchers(token, { ...listFilters, ...query }),
+    [token, activeFY?.start, listFilters]
+  );
+  const visibleRows = list.rows;
   const { canCreate, canEdit, canDelete } = pageAccess('transactions', 'bank');
 
   useEffect(() => {
@@ -79,13 +74,11 @@ export function BankTransactionWorkspacePage({ sectionKey, itemKey = '', detailP
     setLoading(true);
     Promise.all([
       api.banking.getTransactionCatalog(token),
-      api.banking.listTransactionVouchers(token),
       api.banking.getLookups(token)
     ])
-      .then(([catalogRes, rowsRes, lookupsRes]) => {
+      .then(([catalogRes, lookupsRes]) => {
         if (!mounted) return;
         setCatalog(Array.isArray(catalogRes.data) ? catalogRes.data : []);
-        setRows(Array.isArray(rowsRes.data) ? rowsRes.data : []);
         setLookups(lookupsRes.data || {});
       })
       .catch((error) => {
@@ -139,12 +132,20 @@ export function BankTransactionWorkspacePage({ sectionKey, itemKey = '', detailP
     }
   }
 
-  function exportCsv() {
+  async function exportCsv() {
+    let exportRows;
+    try {
+      const response = await api.banking.listTransactionVouchers(token, { ...listFilters, ...list.query, page: 1, limit: 'all' });
+      exportRows = Array.isArray(response.data) ? response.data : [];
+    } catch (error) {
+      toast.error(error.message || 'Unable to export transactions');
+      return;
+    }
     const headers = ['Voucher No', 'Date', 'Category', 'Party', 'Amount', 'Narration'];
     const escape = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
     const csv = [
       headers.map(escape).join(','),
-      ...visibleRows.map((row) => ([
+      ...exportRows.map((row) => ([
         row.voucherNo,
         row.date,
         row.voucherCategory,
@@ -185,7 +186,7 @@ export function BankTransactionWorkspacePage({ sectionKey, itemKey = '', detailP
         : await api.banking.createTransactionVoucher(token, payload);
       let nextRecord = response.data || response;
       nextRecord = await persistVoucherDocuments(nextRecord, draft);
-      setRows((current) => activeRecord ? current.map((item) => (item.id === nextRecord.id ? nextRecord : item)) : [nextRecord, ...current]);
+      list.reload();
       toast.success(activeRecord ? 'Transaction updated' : 'Transaction created');
       closeEditor();
     } catch (error) {
@@ -199,7 +200,7 @@ export function BankTransactionWorkspacePage({ sectionKey, itemKey = '', detailP
     if (!deleteTarget) return;
     try {
       await api.banking.deleteTransactionVoucher(token, deleteTarget.id);
-      setRows((current) => current.filter((item) => item.id !== deleteTarget.id));
+      list.reload();
       toast.success('Transaction deleted');
     } catch (error) {
       toast.error(error.message || 'Unable to delete transaction');
@@ -234,58 +235,58 @@ export function BankTransactionWorkspacePage({ sectionKey, itemKey = '', detailP
   const bankColumnsByKey = {
     'loan-recv-cash': [
       ...baseColumns,
-      { key: 'type', label: 'Type', sortable: true, sortValue: (row) => getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems), render: (row) => <span className="text-slate-700">{getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems)}</span> },
-      { key: 'party', label: 'Party', sortable: true, sortValue: (row) => getTransactionPartyLabel(row.partyCode, lookups, row.partyType), render: (row) => <span className="text-slate-700">{getTransactionPartyLabel(row.partyCode, lookups, row.partyType)}</span> },
-      { key: 'instrument', label: 'Cheque / Ref', sortable: true, render: (row) => <span className="text-slate-700">{row.instrumentNo || row.referenceNo || '-'}</span> },
+      { key: 'type', label: 'Type', sortable: true, sortField: 'voucherCategory', sortValue: (row) => getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems), render: (row) => <span className="text-slate-700">{getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems)}</span> },
+      { key: 'party', label: 'Party', sortable: true, sortField: 'partyCode', sortValue: (row) => getTransactionPartyLabel(row.partyCode, lookups, row.partyType), render: (row) => <span className="text-slate-700">{getTransactionPartyLabel(row.partyCode, lookups, row.partyType)}</span> },
+      { key: 'instrument', label: 'Cheque / Ref', sortable: true, sortField: 'instrumentNo|referenceNo', render: (row) => <span className="text-slate-700">{row.instrumentNo || row.referenceNo || '-'}</span> },
       { key: 'amount', label: 'Amount', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionAmount(row.amount ?? 0)}</span> },
       makeActionsColumn()
     ],
     'loan-recv-saving': [
       ...baseColumns,
-      { key: 'type', label: 'Type', sortable: true, sortValue: (row) => getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems), render: (row) => <span className="text-slate-700">{getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems)}</span> },
-      { key: 'party', label: 'Party', sortable: true, sortValue: (row) => getTransactionPartyLabel(row.partyCode, lookups, row.partyType), render: (row) => <span className="text-slate-700">{getTransactionPartyLabel(row.partyCode, lookups, row.partyType)}</span> },
-      { key: 'instrument', label: 'Cheque / Ref', sortable: true, render: (row) => <span className="text-slate-700">{row.instrumentNo || row.referenceNo || '-'}</span> },
+      { key: 'type', label: 'Type', sortable: true, sortField: 'voucherCategory', sortValue: (row) => getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems), render: (row) => <span className="text-slate-700">{getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems)}</span> },
+      { key: 'party', label: 'Party', sortable: true, sortField: 'partyCode', sortValue: (row) => getTransactionPartyLabel(row.partyCode, lookups, row.partyType), render: (row) => <span className="text-slate-700">{getTransactionPartyLabel(row.partyCode, lookups, row.partyType)}</span> },
+      { key: 'instrument', label: 'Cheque / Ref', sortable: true, sortField: 'instrumentNo|referenceNo', render: (row) => <span className="text-slate-700">{row.instrumentNo || row.referenceNo || '-'}</span> },
       { key: 'amount', label: 'Amount', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionAmount(row.amount ?? 0)}</span> },
       makeActionsColumn()
     ],
     'deposit-in-bank': [
       ...baseColumns,
-      { key: 'type', label: 'Type', sortable: true, sortValue: (row) => getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems), render: (row) => <span className="text-slate-700">{getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems)}</span> },
-      { key: 'depositIn', label: 'Deposit In', sortable: true, sortValue: (row) => getTransactionLedgerLabel(row.details?.depositIn || '', lookups), render: (row) => <span className="text-slate-700">{getTransactionLedgerLabel(row.details?.depositIn || '', lookups)}</span> },
-      { key: 'depositBy', label: 'Deposit By', sortable: true, render: (row) => <span className="text-slate-700">{row.details?.depositBy || '-'}</span> },
-      { key: 'instrument', label: 'Slip / Ref', sortable: true, render: (row) => <span className="text-slate-700">{row.instrumentNo || row.referenceNo || '-'}</span> },
+      { key: 'type', label: 'Type', sortable: true, sortField: 'voucherCategory', sortValue: (row) => getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems), render: (row) => <span className="text-slate-700">{getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems)}</span> },
+      { key: 'depositIn', label: 'Deposit In', sortable: true, sortField: 'details.depositIn', sortValue: (row) => getTransactionLedgerLabel(row.details?.depositIn || '', lookups), render: (row) => <span className="text-slate-700">{getTransactionLedgerLabel(row.details?.depositIn || '', lookups)}</span> },
+      { key: 'depositBy', label: 'Deposit By', sortable: true, sortField: 'details.depositBy', render: (row) => <span className="text-slate-700">{row.details?.depositBy || '-'}</span> },
+      { key: 'instrument', label: 'Slip / Ref', sortable: true, sortField: 'instrumentNo|referenceNo', render: (row) => <span className="text-slate-700">{row.instrumentNo || row.referenceNo || '-'}</span> },
       { key: 'amount', label: 'Amount', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionAmount(row.amount ?? 0)}</span> },
       makeActionsColumn()
     ],
     'cheque-issue-saving': [
       ...baseColumns,
-      { key: 'type', label: 'Type', sortable: true, sortValue: (row) => getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems), render: (row) => <span className="text-slate-700">{getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems)}</span> },
-      { key: 'selfUse', label: 'Self Use', sortable: true, render: (row) => <span className="text-slate-700">{row.details?.selfUse ? 'Yes' : 'No'}</span> },
-      { key: 'instrument', label: 'Cheque No', sortable: true, render: (row) => <span className="text-slate-700">{row.instrumentNo || '-'}</span> },
+      { key: 'type', label: 'Type', sortable: true, sortField: 'voucherCategory', sortValue: (row) => getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems), render: (row) => <span className="text-slate-700">{getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems)}</span> },
+      { key: 'selfUse', label: 'Self Use', sortable: true, sortField: 'details.selfUse', render: (row) => <span className="text-slate-700">{row.details?.selfUse ? 'Yes' : 'No'}</span> },
+      { key: 'instrument', label: 'Cheque No', sortable: true, sortField: 'instrumentNo', render: (row) => <span className="text-slate-700">{row.instrumentNo || '-'}</span> },
       { key: 'amount', label: 'Amount', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionAmount(row.amount ?? 0)}</span> },
       makeActionsColumn()
     ],
     'cheque-issue-loan': [
       ...baseColumns,
-      { key: 'type', label: 'Type', sortable: true, sortValue: (row) => getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems), render: (row) => <span className="text-slate-700">{getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems)}</span> },
-      { key: 'selfUse', label: 'Self Use', sortable: true, render: (row) => <span className="text-slate-700">{row.details?.selfUse ? 'Yes' : 'No'}</span> },
-      { key: 'instrument', label: 'Cheque No', sortable: true, render: (row) => <span className="text-slate-700">{row.instrumentNo || '-'}</span> },
+      { key: 'type', label: 'Type', sortable: true, sortField: 'voucherCategory', sortValue: (row) => getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems), render: (row) => <span className="text-slate-700">{getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems)}</span> },
+      { key: 'selfUse', label: 'Self Use', sortable: true, sortField: 'details.selfUse', render: (row) => <span className="text-slate-700">{row.details?.selfUse ? 'Yes' : 'No'}</span> },
+      { key: 'instrument', label: 'Cheque No', sortable: true, sortField: 'instrumentNo', render: (row) => <span className="text-slate-700">{row.instrumentNo || '-'}</span> },
       { key: 'amount', label: 'Amount', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionAmount(row.amount ?? 0)}</span> },
       makeActionsColumn()
     ],
     'transfer-saving': [
       ...baseColumns,
-      { key: 'type', label: 'Type', sortable: true, sortValue: (row) => getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems), render: (row) => <span className="text-slate-700">{getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems)}</span> },
-      { key: 'transferType', label: 'Transfer Type', sortable: true, render: (row) => <span className="text-slate-700">{row.details?.transferType || '-'}</span> },
-      { key: 'instrument', label: 'Ref / Cheque', sortable: true, render: (row) => <span className="text-slate-700">{row.instrumentNo || row.referenceNo || '-'}</span> },
+      { key: 'type', label: 'Type', sortable: true, sortField: 'voucherCategory', sortValue: (row) => getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems), render: (row) => <span className="text-slate-700">{getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems)}</span> },
+      { key: 'transferType', label: 'Transfer Type', sortable: true, sortField: 'details.transferType', render: (row) => <span className="text-slate-700">{row.details?.transferType || '-'}</span> },
+      { key: 'instrument', label: 'Ref / Cheque', sortable: true, sortField: 'instrumentNo|referenceNo', render: (row) => <span className="text-slate-700">{row.instrumentNo || row.referenceNo || '-'}</span> },
       { key: 'amount', label: 'Amount', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionAmount(row.amount ?? 0)}</span> },
       makeActionsColumn()
     ],
     'transfer-cashcredit': [
       ...baseColumns,
-      { key: 'type', label: 'Type', sortable: true, sortValue: (row) => getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems), render: (row) => <span className="text-slate-700">{getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems)}</span> },
-      { key: 'transferType', label: 'Transfer Type', sortable: true, render: (row) => <span className="text-slate-700">{row.details?.transferType || '-'}</span> },
-      { key: 'instrument', label: 'Ref / Cheque', sortable: true, render: (row) => <span className="text-slate-700">{row.instrumentNo || row.referenceNo || '-'}</span> },
+      { key: 'type', label: 'Type', sortable: true, sortField: 'voucherCategory', sortValue: (row) => getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems), render: (row) => <span className="text-slate-700">{getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems)}</span> },
+      { key: 'transferType', label: 'Transfer Type', sortable: true, sortField: 'details.transferType', render: (row) => <span className="text-slate-700">{row.details?.transferType || '-'}</span> },
+      { key: 'instrument', label: 'Ref / Cheque', sortable: true, sortField: 'instrumentNo|referenceNo', render: (row) => <span className="text-slate-700">{row.instrumentNo || row.referenceNo || '-'}</span> },
       { key: 'amount', label: 'Amount', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionAmount(row.amount ?? 0)}</span> },
       makeActionsColumn()
     ]
@@ -293,15 +294,12 @@ export function BankTransactionWorkspacePage({ sectionKey, itemKey = '', detailP
 
   const columns = bankColumnsByKey[itemKey] || [
     ...baseColumns,
-    { key: 'type', label: 'Type', sortable: true, sortValue: (row) => getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems), render: (row) => <span className="text-slate-700">{getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems)}</span> },
-    { key: 'reference', label: 'Cheque / Ref No', sortable: true, sortValue: (row) => row.referenceNo || row.instrumentNo || '', render: (row) => <span className="text-slate-700">{row.referenceNo || row.instrumentNo || '-'}</span> },
-    { key: 'bank', label: 'Bank A/c', sortable: true, sortValue: (row) => getTransactionLedgerLabel(row.details?.ledgerTarget || row.details?.depositIn || row.details?.fromAccount || '', lookups), render: (row) => <span className="text-slate-700">{getTransactionLedgerLabel(row.details?.ledgerTarget || row.details?.depositIn || row.details?.fromAccount || '', lookups)}</span> },
+    { key: 'type', label: 'Type', sortable: true, sortField: 'voucherCategory', sortValue: (row) => getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems), render: (row) => <span className="text-slate-700">{getTransactionVoucherTitle(row, activeItems.length ? activeItems : sectionItems)}</span> },
+    { key: 'reference', label: 'Cheque / Ref No', sortable: true, sortField: 'referenceNo|instrumentNo', sortValue: (row) => row.referenceNo || row.instrumentNo || '', render: (row) => <span className="text-slate-700">{row.referenceNo || row.instrumentNo || '-'}</span> },
+    { key: 'bank', label: 'Bank A/c', sortable: true, sortField: 'details.ledgerTarget|details.depositIn|details.fromAccount', sortValue: (row) => getTransactionLedgerLabel(row.details?.ledgerTarget || row.details?.depositIn || row.details?.fromAccount || '', lookups), render: (row) => <span className="text-slate-700">{getTransactionLedgerLabel(row.details?.ledgerTarget || row.details?.depositIn || row.details?.fromAccount || '', lookups)}</span> },
     { key: 'amount', label: 'Amount', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionAmount(row.amount ?? 0)}</span> },
     makeActionsColumn()
-  ];  const stats = useMemo(() => ({
-    total: visibleRows.length,
-    amount: visibleRows.reduce((sum, row) => sum + Number(row.amount || 0), 0)
-  }), [visibleRows]);
+  ];  const stats = { total: list.total, amount: Number(list.summary.amount || 0) };
 
   return (
     <div className="space-y-6">
@@ -387,10 +385,10 @@ export function BankTransactionWorkspacePage({ sectionKey, itemKey = '', detailP
           <Table
             columns={columns}
             data={visibleRows}
-            defaultRowsPerPage={10}
+            serverPagination={list.serverPagination}
             emptyMessage="No transactions found."
-            search={search}
-            onSearch={setSearch}
+            search={list.search}
+            onSearch={list.setSearch}
             searchPlaceholder="Search voucher no, reference, narration..."
             headerActions={
               <div className="relative">
@@ -419,7 +417,7 @@ export function BankTransactionWorkspacePage({ sectionKey, itemKey = '', detailP
                       </div>
                     </div>
                     <div className="mt-6">
-                      <Button type="button" className="h-10 w-full rounded-[0.75rem] bg-[var(--primary)] text-white hover:opacity-90" onClick={() => { setFilterPartyType(''); setFilterDateFrom(''); setFilterDateTo(''); setSearch(''); setFilterDropdownOpen(false); }}>
+                      <Button type="button" className="h-10 w-full rounded-[0.75rem] bg-[var(--primary)] text-white hover:opacity-90" onClick={() => { setFilterPartyType(''); setFilterDateFrom(''); setFilterDateTo(''); list.setSearch(''); setFilterDropdownOpen(false); }}>
                         Clear Filters
                       </Button>
                     </div>

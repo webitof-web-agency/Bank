@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useGoBack } from '../../lib/useGoBack';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -76,6 +77,7 @@ function NotificationIcon({ item, size = 20 }) {
 export function NotificationDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const goBack = useGoBack();
   const { token, pageAccess } = useAuth();
   const { canDelete } = pageAccess('workspace', 'notifications');
   const [notification, setNotification] = useState(null);
@@ -194,7 +196,7 @@ export function NotificationDetailPage() {
       await api.notifications.remove(token, notification.id);
       notifyNotificationsChanged();
       toast.success('Notification deleted');
-      navigate('/app/notifications');
+      navigate('/app/notifications', { replace: true });
     } catch (error) {
       toast.error(error.message || 'Unable to delete notification');
     } finally {
@@ -224,7 +226,7 @@ export function NotificationDetailPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2 text-[13px] font-medium text-slate-500">
-        <button type="button" onClick={() => navigate('/app/notifications')} className="flex items-center gap-1.5 transition-colors hover:text-slate-900">
+        <button type="button" onClick={() => goBack('/app/notifications')} className="flex items-center gap-1.5 transition-colors hover:text-slate-900">
           <ArrowLeft size={14} /> Back
         </button>
         <span className="text-slate-300">/</span>

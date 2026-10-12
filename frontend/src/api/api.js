@@ -189,6 +189,8 @@ export const api = {
   users: {
     list: (token, search = '') => request(`/users${buildQuery({ search })}`, { token }),
     lookup: (token, search = '') => request(`/users/lookup${buildQuery({ search })}`, { token }),
+    // One page of the list: { data, meta: { total, page, limit, summary } }.
+    page: (token, query = {}) => request(`/users${buildQuery(query)}`, { token, skipCache: true }),
     get: (token, id) => request(`/users/${id}`, { token }),
     create: (token, payload) => request('/users', { method: 'POST', token, body: payload }),
     update: (token, id, payload) => request(`/users/${id}`, { method: 'PUT', token, body: payload }),
@@ -340,6 +342,8 @@ export const api = {
     viewUrl: (id, token = readStoredAuthToken()) => appendFileAccessToken(`${API_BASE_URL}/files/${id}/view`, token)
   },
   resources: {
+    // One page of the list: { data, meta: { total, page, limit, summary } }.
+    page: (path, token, query = {}) => request(`${path}${buildQuery(query)}`, { token, skipCache: true }),
     list: (path, token, search = '', query = {}) => {
       const params = new URLSearchParams();
       if (search) params.set('search', search);

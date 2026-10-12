@@ -1,6 +1,6 @@
 const DemandList = require('../models/banking.models').DemandList;
 const JobState = require('../models/jobState.model');
-const { createNotification } = require('./notification.service');
+const { createNotification, purgeOldNotifications } = require('./notification.service');
 const { buildMonthlySummaryReport } = require('./banking.service');
 const { getSettings } = require('./settings.service');
 const smsService = require('./sms/sms.service');
@@ -200,6 +200,7 @@ async function runAutomationCycle() {
     results.push(await runMonthlySummary());
     results.push(await retryPendingSms());
     results.push(await runDriveBackup());
+    results.push(await runNotificationPurge());
     return { results };
   } finally {
     automationRunning = false;
@@ -215,6 +216,16 @@ async function runDriveBackup() {
   } catch (error) {
     console.error('[automation] Google Drive backup failed:', error.message);
     return { job: 'gdrive-backup', error: error.message };
+  }
+}
+
+async function runNotificationPurge() {
+  try {
+    const result = await purgeOldNotifications();
+    return { job: 'notification-purge', ...result };
+  } catch (error) {
+    console.error('[automation] notification purge failed:', error.message);
+    return { job: 'notification-purge', error: error.message };
   }
 }
 

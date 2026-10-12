@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Plus, Edit2, Trash2, Eye, Key, Users, UserCheck, User, UserX } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
+import { useServerList } from '../../../lib/useServerList';
 import { api } from '../../../api/api';
 import { useAuth } from '../../../context/AuthContext';
 import { Card } from '../../../components/ui/Card';
@@ -42,10 +43,11 @@ function UserForm(props) {
 export function EmployeesPage() {
   const navigate = useNavigate();
   const { token, pageAccess } = useAuth();
-  const [rows, setRows] = useState([]);
+  // The server filters, sorts and pages; only the visible page is loaded.
+  const list = useServerList((query) => api.users.page(token, query), [token], { errorMessage: 'Unable to load employees' });
+  const rows = list.rows;
   const [roles, setRoles] = useState([]);
   const [branches, setBranches] = useState([]);
-  const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [lookupsLoading, setLookupsLoading] = useState(true);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -98,24 +100,8 @@ export function EmployeesPage() {
   }, [token]);
 
   useEffect(() => {
-    let mounted = true;
-    api.users.list(token, search)
-      .then((usersRes) => {
-        if (!mounted) return;
-        setRows(usersRes.data || []);
-      })
-      .catch((error) => {
-        if (!mounted) return;
-        toast.error(error.message || 'Unable to load employees');
-      })
-      .finally(() => {
-        if (mounted) setLoading(false);
-      });
-
-    return () => {
-      mounted = false;
-    };
-  }, [search, token]);
+    if (!list.loading) setLoading(false);
+  }, [list.loading]);
 
   function openCreate() {
     navigate('/app/master/employees/new');
@@ -218,12 +204,7 @@ export function EmployeesPage() {
         await Promise.allSettled(removedDocumentIds.map((fileId) => api.files.remove(token, fileId)));
       }
 
-      setRows((current) => {
-        const next = activeRecord
-          ? current.map((item) => (item.id === response.data.id ? response.data : item))
-          : [response.data, ...current];
-        return next;
-      });
+      list.reload();
       toast.success(activeRecord ? 'Employee updated' : 'Employee created');
       closeEditor();
     } catch (error) {
@@ -237,7 +218,7 @@ export function EmployeesPage() {
     if (!deleteTarget) return;
     try {
       await api.users.remove(token, deleteTarget.id);
-      setRows((current) => current.filter((item) => item.id !== deleteTarget.id));
+      list.reload();
       toast.success('Employee deleted');
     } catch (error) {
       toast.error(error.message || 'Unable to delete employee');
@@ -272,12 +253,7 @@ export function EmployeesPage() {
     }
   }
 
-  const stats = useMemo(() => ({
-    total: rows.length,
-    active: rows.filter((row) => isEmployeeActive(row)).length,
-    assigned: rows.filter((row) => (row.roles || []).length > 0).length,
-    inactive: rows.filter((row) => !isEmployeeActive(row)).length
-  }), [rows]);
+  const stats = { ...list.summary, total: list.total, inactive: list.total - Number(list.summary.active || 0) };
 
   const columns = [
     { key: 'code', label: 'Code', sortable: true, render: (row) => <span className="text-slate-700">{row.code || '-'}</span> },
@@ -294,7 +270,14 @@ export function EmployeesPage() {
     },
     { key: 'designation', label: 'Designation', sortable: true, render: (row) => <span className="text-slate-700">{row.designation || '-'}</span> },
     { key: 'mobileNo', label: 'Mobile No', sortable: true, render: (row) => <span className="text-slate-700">{formatEmployeePhone(row.mobileNo || '') || '-'}</span> },
-    { key: 'username', label: 'Login Username', sortable: true, render: (row) => <span className="text-slate-700">{row.username}</span> },
+    {
+      key: 'username',
+      label: 'Login Username',
+      sortable: true,
+      render: (row) => (row.hasLogin === false
+        ? <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[11px] font-medium text-slate-500">No login</span>
+        : <span className="text-slate-700">{row.username}</span>)
+    },
     {
       key: 'branchCode',
       label: 'Branch',
@@ -331,7 +314,7 @@ export function EmployeesPage() {
           >
             <Eye size={16} />
           </button>
-          {canEdit ? (
+          {canEdit && row.hasLogin !== false ? (
             <button
               type="button"
               onClick={() => openPasswordReset(row)}
@@ -351,7 +334,7 @@ export function EmployeesPage() {
               <Edit2 size={16} />
             </button>
           ) : null}
-          {canDelete ? (
+          {canDelete && row.hasLogin !== false ? (
             <button
               type="button"
               onClick={() => setDeleteTarget(row)}
@@ -412,10 +395,10 @@ export function EmployeesPage() {
           <Table
             columns={columns}
             data={rows}
-            defaultRowsPerPage={10}
+            serverPagination={list.serverPagination}
             emptyMessage="No employees found."
-            search={search}
-            onSearch={setSearch}
+            search={list.search}
+            onSearch={list.setSearch}
             searchPlaceholder="Search employees..."
           />
         )}

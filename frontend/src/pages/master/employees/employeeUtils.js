@@ -113,6 +113,7 @@ export function createEmployeeDraftFromRecord(user = {}) {
     status: user.status || (user.isActive === false ? 'Inactive' : 'Active'),
     password: '',
     isActive: user.isActive !== false,
+    hasLogin: user.hasLogin !== false,
     roleIds: (user.roles || []).map((role) => role.id),
     payload,
     documents: hydrateDocumentMap(EMPLOYEE_DOCUMENT_DEFS, user.documents || {})

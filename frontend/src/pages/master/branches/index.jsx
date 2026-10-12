@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useServerList } from '../../../lib/useServerList';
 import { Building2, Edit2, Eye, GitBranch, Plus, Trash2, MapPin, Phone } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../api/api';
@@ -19,9 +20,10 @@ function isActiveBranch(branch) {
 export function BranchesPage() {
   const navigate = useNavigate();
   const { token, pageAccess } = useAuth();
-  const [rows, setRows] = useState([]);
+  // The server filters, sorts and pages; only the visible page is loaded.
+  const list = useServerList((query) => api.resources.page('/banking/masters/branches', token, query), [token], { errorMessage: 'Unable to load branches' });
+  const rows = list.rows;
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
   const [editorOpen, setEditorOpen] = useState(false);
   const [activeRecord, setActiveRecord] = useState(null);
   const [draft, setDraft] = useState(createEmptyBranchDraft());
@@ -31,26 +33,8 @@ export function BranchesPage() {
   const { canCreate, canEdit, canDelete } = pageAccess('master', 'branches');
 
   useEffect(() => {
-    let mounted = true;
-    setLoading(true);
-
-    api.resources.list('/banking/masters/branches', token, search)
-      .then((response) => {
-        if (!mounted) return;
-        setRows(response.data || []);
-      })
-      .catch((error) => {
-        if (!mounted) return;
-        toast.error(error.message || 'Unable to load branches');
-      })
-      .finally(() => {
-        if (mounted) setLoading(false);
-      });
-
-    return () => {
-      mounted = false;
-    };
-  }, [search, token]);
+    if (!list.loading) setLoading(false);
+  }, [list.loading]);
 
   function openCreate() {
     setActiveRecord(null);
@@ -80,12 +64,7 @@ export function BranchesPage() {
         : await api.resources.create('/banking/masters/branches', payload, token);
 
       const nextRecord = response.data || response;
-      setRows((current) => {
-        const next = activeRecord
-          ? current.map((item) => (item.id === nextRecord.id ? nextRecord : item))
-          : [nextRecord, ...current];
-        return next;
-      });
+      list.reload();
       toast.success(activeRecord ? 'Branch updated' : 'Branch created');
       closeEditor();
     } catch (error) {
@@ -99,7 +78,7 @@ export function BranchesPage() {
     if (!deleteTarget) return;
     try {
       await api.resources.remove('/banking/masters/branches', deleteTarget.id, token);
-      setRows((current) => current.filter((item) => item.id !== deleteTarget.id));
+      list.reload();
       toast.success('Branch deleted');
     } catch (error) {
       toast.error(error.message || 'Unable to delete branch');
@@ -108,12 +87,7 @@ export function BranchesPage() {
     }
   }
 
-  const stats = useMemo(() => ({
-    total: rows.length,
-    active: rows.filter((row) => isActiveBranch(row)).length,
-    inactive: rows.filter((row) => !isActiveBranch(row)).length,
-    places: new Set(rows.map((row) => String(row.place || '').trim()).filter(Boolean)).size
-  }), [rows]);
+  const stats = { ...list.summary, total: list.total };
 
   const columns = [
     { key: 'code', label: 'Code', sortable: true, render: (row) => <span className="font-medium text-slate-900">{row.code || '-'}</span> },
@@ -201,10 +175,10 @@ export function BranchesPage() {
           <Table
             columns={columns}
             data={rows}
-            defaultRowsPerPage={10}
+            serverPagination={list.serverPagination}
             emptyMessage="No branches found."
-            search={search}
-            onSearch={setSearch}
+            search={list.search}
+            onSearch={list.setSearch}
             searchPlaceholder="Search branches..."
           />
         )}

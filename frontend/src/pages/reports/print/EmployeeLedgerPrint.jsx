@@ -16,10 +16,9 @@ const GROUPS = [
 ];
 const COLUMN_COUNT = 2 + GROUPS.reduce((sum, g) => sum + (g.interest ? 4 : 3), 0);
 
-// Legacy numbers are the voucher's own number; LGCY- only marks archive rows.
 function voucherLabel(row) {
   if (row.isOpening) return 'Op.';
-  return String(row.voucherNo || '').replace(/^LGCY-/, '');
+  return String(row.voucherNo || '');
 }
 
 export function EmployeeLedgerPrint({ data, filters, headerActions }) {

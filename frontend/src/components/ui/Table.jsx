@@ -67,6 +67,15 @@ export function Table({
   }, [isServerPagination, serverPagination?.page]);
 
   const handleSort = (key) => {
+    if (isServerPagination) {
+      // Same asc -> desc -> off cycle, but the server does the sorting.
+      const current = serverPagination?.sortKey || '';
+      const direction = serverPagination?.sortDir || 'asc';
+      if (current !== key) serverPagination?.onSortChange?.(key, 'asc');
+      else if (direction === 'asc') serverPagination?.onSortChange?.(key, 'desc');
+      else serverPagination?.onSortChange?.('', 'asc');
+      return;
+    }
     if (sortKey === key) {
       if (sortDirection === 'asc') {
         setSortDirection('desc');
@@ -113,6 +122,11 @@ export function Table({
       });
     }
   }, [isServerPagination, pageCount]);
+
+  const activeSortKey = isServerPagination ? (serverPagination?.sortKey || null) : sortKey;
+  const activeSortDirection = isServerPagination ? (serverPagination?.sortDir || 'asc') : sortDirection;
+  const canSort = (col) => col.sortable && (!isServerPagination || (serverPagination?.onSortChange && col.serverSort !== false));
+  const sortFieldOf = (col) => (isServerPagination ? (col.sortField || col.key) : col.key);
 
   const paginatedData = useMemo(() => {
     if (isServerPagination) return sortedData;
@@ -199,15 +213,15 @@ export function Table({
               {columns.map((col) => (
                 <th
                   key={col.key}
-                  className={`px-4 py-3.5 whitespace-nowrap ${col.sortable ? 'cursor-pointer hover:bg-slate-100 transition-colors select-none' : ''} ${col.align === 'right' ? 'text-right' : ''} ${col.align === 'center' ? 'text-center' : ''}`}
-                  onClick={() => col.sortable && !isServerPagination && handleSort(col.key)}
+                  className={`px-4 py-3.5 whitespace-nowrap ${canSort(col) ? 'cursor-pointer hover:bg-slate-100 transition-colors select-none' : ''} ${col.align === 'right' ? 'text-right' : ''} ${col.align === 'center' ? 'text-center' : ''}`}
+                  onClick={() => canSort(col) && handleSort(sortFieldOf(col))}
                 >
                   <div className={`flex items-center gap-1.5 ${col.align === 'right' ? 'justify-end' : ''} ${col.align === 'center' ? 'justify-center' : ''}`}>
                     {col.label}
-                    {col.sortable && !isServerPagination && (
+                    {canSort(col) && (
                       <span className="text-slate-400">
-                        {sortKey === col.key ? (
-                          sortDirection === 'asc' ? <ArrowUp size={14} className="text-blue-600" /> : <ArrowDown size={14} className="text-blue-600" />
+                        {activeSortKey === sortFieldOf(col) ? (
+                          activeSortDirection === 'asc' ? <ArrowUp size={14} className="text-blue-600" /> : <ArrowDown size={14} className="text-blue-600" />
                         ) : (
                           <ArrowUpDown size={14} />
                         )}
@@ -218,11 +232,11 @@ export function Table({
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className={`divide-y divide-slate-100 transition-opacity ${serverPagination?.loading ? 'opacity-60' : ''}`}>
             {paginatedData.length === 0 ? (
               <tr>
                 <td colSpan={columns.length + 1} className="px-4 py-8 text-center text-slate-500">
-                  {emptyMessage}
+                  {serverPagination?.loading ? 'Loading...' : emptyMessage}
                 </td>
               </tr>
             ) : (

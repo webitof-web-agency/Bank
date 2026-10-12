@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useServerList } from '../../../lib/useServerList';
 import { Eye, Edit2, Plus, Trash2, ChevronDown, FileText, Banknote, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../api/api';
@@ -30,7 +31,6 @@ export function InterestVoucherWorkspacePage({ sectionKey, itemKey, detailPathBa
   const { token, pageAccess } = useAuth();
   const { activeFY } = useFY();
   const [catalog, setCatalog] = useState([]);
-  const [rows, setRows] = useState([]);
   const [lookups, setLookups] = useState({});
   const [loading, setLoading] = useState(true);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -38,7 +38,6 @@ export function InterestVoucherWorkspacePage({ sectionKey, itemKey, detailPathBa
   const [draft, setDraft] = useState(createEmptyTransactionDraft(sectionKey, []));
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
-  const [search, setSearch] = useState('');
   const [removedDocumentIds, setRemovedDocumentIds] = useState([]);
   const [filterDropdownOpen, setFilterDropdownOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -57,13 +56,11 @@ export function InterestVoucherWorkspacePage({ sectionKey, itemKey, detailPathBa
 
     Promise.all([
       api.banking.getTransactionCatalog(token),
-      api.banking.listTransactionVouchers(token),
       api.banking.getLookups(token)
     ])
-      .then(([catalogRes, rowsRes, lookupsRes]) => {
+      .then(([catalogRes, lookupsRes]) => {
         if (!mounted) return;
         setCatalog(Array.isArray(catalogRes.data) ? catalogRes.data : []);
-        setRows(Array.isArray(rowsRes.data) ? rowsRes.data : []);
         setLookups(lookupsRes.data || {});
       })
       .catch((error) => {
@@ -79,22 +76,15 @@ export function InterestVoucherWorkspacePage({ sectionKey, itemKey, detailPathBa
     };
   }, [token, activeFY]);
 
-  const visibleRows = useMemo(() => {
-    const baseRows = filterTransactionRows(rows, sectionItems, itemKey);
-    const searchValue = String(search || '').trim().toLowerCase();
+  // The server filters, sorts and pages; only the visible page is loaded.
+  const listFilters = { section: sectionKey, item: itemKey };
+  const list = useServerList(
+    (query) => api.banking.listTransactionVouchers(token, { ...listFilters, ...query }),
+    [token, activeFY?.start, listFilters]
+  );
+  const visibleRows = list.rows;
 
-    return baseRows.filter((row) => {
-      const member = getTransactionPartyLabel(row.partyCode, lookups, row.partyType);
-      const accountHead = getTransactionLedgerLabel(row.details?.accountHead || '', lookups);
-      const matchesSearch = !searchValue || [row.voucherNo, member, accountHead, row.narration, row.amount].some((value) => String(value || '').toLowerCase().includes(searchValue));
-      return matchesSearch;
-    });
-  }, [rows, sectionItems, sectionKey, search, lookups]);
-
-  const stats = useMemo(() => ({
-    total: visibleRows.length,
-    amount: visibleRows.reduce((sum, row) => sum + Number(row.amount || 0), 0)
-  }), [visibleRows]);
+  const stats = { total: list.total, amount: Number(list.summary.amount || 0) };
 
   function openCreate() {
     const next = createEmptyTransactionDraft(sectionKey, sectionItems);
@@ -131,12 +121,20 @@ export function InterestVoucherWorkspacePage({ sectionKey, itemKey, detailPathBa
     }
   }
 
-  function exportCsv() {
+  async function exportCsv() {
+    let exportRows;
+    try {
+      const response = await api.banking.listTransactionVouchers(token, { ...listFilters, ...list.query, page: 1, limit: 'all' });
+      exportRows = Array.isArray(response.data) ? response.data : [];
+    } catch (error) {
+      toast.error(error.message || 'Unable to export transactions');
+      return;
+    }
     const headers = ['Voucher No', 'Date', 'Category', 'Party', 'Amount', 'Narration'];
     const escape = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
     const csv = [
       headers.map(escape).join(','),
-      ...visibleRows.map((row) => ([
+      ...exportRows.map((row) => ([
         row.voucherNo,
         row.date,
         row.voucherCategory,
@@ -190,7 +188,7 @@ export function InterestVoucherWorkspacePage({ sectionKey, itemKey, detailPathBa
 
       let nextRecord = response.data || response;
       nextRecord = await persistVoucherDocuments(nextRecord, draft);
-      setRows((current) => (activeRecord ? current.map((item) => (item.id === nextRecord.id ? nextRecord : item)) : [nextRecord, ...current]));
+      list.reload();
       toast.success(activeRecord ? 'Interest updated' : 'Interest created');
       closeEditor();
     } catch (error) {
@@ -204,7 +202,7 @@ export function InterestVoucherWorkspacePage({ sectionKey, itemKey, detailPathBa
     if (!deleteTarget) return;
     try {
       await api.banking.deleteTransactionVoucher(token, deleteTarget.id);
-      setRows((current) => current.filter((item) => item.id !== deleteTarget.id));
+      list.reload();
       toast.success('Interest deleted');
     } catch (error) {
       toast.error(error.message || 'Unable to delete interest');
@@ -216,8 +214,8 @@ export function InterestVoucherWorkspacePage({ sectionKey, itemKey, detailPathBa
   const columns = [
     { key: 'voucherNo', label: 'Voucher No', sortable: true, render: (row) => <span className="font-medium text-slate-900">{row.voucherNo || '-'}</span> },
     { key: 'date', label: 'Date', sortable: true, render: (row) => <span className="text-slate-700">{row.date || '-'}</span> },
-    { key: 'member', label: 'Member', sortable: true, sortValue: (row) => getTransactionPartyLabel(row.partyCode, lookups, row.partyType), render: (row) => <span className="text-slate-700">{getTransactionPartyLabel(row.partyCode, lookups, row.partyType)}</span> },
-    { key: 'accountHead', label: 'Account Head', sortable: true, sortValue: (row) => getTransactionLedgerLabel(row.details?.accountHead || '', lookups), render: (row) => <span className="text-slate-700">{getTransactionLedgerLabel(row.details?.accountHead || '', lookups)}</span> },
+    { key: 'member', label: 'Member', sortable: true, sortField: 'partyCode', sortValue: (row) => getTransactionPartyLabel(row.partyCode, lookups, row.partyType), render: (row) => <span className="text-slate-700">{getTransactionPartyLabel(row.partyCode, lookups, row.partyType)}</span> },
+    { key: 'accountHead', label: 'Account Head', sortable: true, sortField: 'details.accountHead', sortValue: (row) => getTransactionLedgerLabel(row.details?.accountHead || '', lookups), render: (row) => <span className="text-slate-700">{getTransactionLedgerLabel(row.details?.accountHead || '', lookups)}</span> },
     { key: 'amount', label: 'Amount', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionAmount(row.amount ?? 0)}</span> },
     {
       key: 'actions',
@@ -327,10 +325,10 @@ export function InterestVoucherWorkspacePage({ sectionKey, itemKey, detailPathBa
           <Table
             columns={columns}
             data={visibleRows}
-            defaultRowsPerPage={10}
+            serverPagination={list.serverPagination}
             emptyMessage="No interest entries found."
-            search={search}
-            onSearch={setSearch}
+            search={list.search}
+            onSearch={list.setSearch}
             searchPlaceholder="Search voucher no, member, narration..."
             headerActions={
               <div className="relative">
@@ -344,7 +342,7 @@ export function InterestVoucherWorkspacePage({ sectionKey, itemKey, detailPathBa
                     </div>
                     <div className="grid gap-4">
                       <div className="flex items-end mt-2">
-                        <Button type="button" className="w-full gap-2 bg-[var(--primary,#1661F6)] text-white hover:opacity-90" onClick={() => { setSearch(''); setFilterDropdownOpen(false); }}>
+                        <Button type="button" className="w-full gap-2 bg-[var(--primary,#1661F6)] text-white hover:opacity-90" onClick={() => { list.setSearch(''); setFilterDropdownOpen(false); }}>
                           Clear Filters
                         </Button>
                       </div>

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useGoBack } from '../../../lib/useGoBack';
 import { ArrowLeft, Edit2, Mail, Phone, Shield, User, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../api/api';
@@ -38,6 +39,7 @@ function DetailRow({ label, value }) {
 export function EmployeeDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const goBack = useGoBack();
   const { token, pageAccess } = useAuth();
   const [user, setUser] = useState(null);
   const [roles, setRoles] = useState([]);
@@ -140,7 +142,7 @@ export function EmployeeDetailPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2 text-[13px] font-medium text-slate-500">
-        <button type="button" onClick={() => navigate(-1)} className="flex items-center gap-1.5 transition-colors hover:text-slate-900">
+        <button type="button" onClick={() => goBack('/app/master/employees')} className="flex items-center gap-1.5 transition-colors hover:text-slate-900">
           <ArrowLeft size={14} /> Back
         </button>
         <span className="text-slate-300">/</span>
@@ -237,7 +239,7 @@ export function EmployeeDetailPage() {
               <Card className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                 <div className="divide-y divide-slate-100 px-6">
                   <DetailRow label="Employee Code" value={employeeCode} />
-                  <DetailRow label="Login Username" value={user.username} />
+                  <DetailRow label="Login Username" value={user.hasLogin === false ? 'No login' : user.username} />
                   <DetailRow label="Designation" value={user.designation} />
                   <DetailRow label="Branch" value={formatBranchLabel(employeeBranch) || user.branchCode} />
                   <DetailRow label="Category" value={user.category || employeePayload.category} />

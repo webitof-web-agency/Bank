@@ -406,6 +406,11 @@ export function EmployeeForm({
           <div>
             <h3 className="text-lg font-bold text-slate-900">Security & Access</h3>
             <p className="text-[13px] text-slate-500 mt-1">Configure login credentials.</p>
+            {isEdit && value.hasLogin === false ? (
+              <p className="mt-2 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-[13px] text-amber-800">
+                This employee has no login yet. Fill in username, email and password to create one, or leave them blank to save only the details.
+              </p>
+            ) : null}
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">

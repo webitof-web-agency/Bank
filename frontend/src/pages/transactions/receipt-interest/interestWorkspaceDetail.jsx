@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useGoBack } from '../../../lib/useGoBack';
 import { ArrowLeft, Edit2, FileText, ShieldCheck, Sparkles, WalletCards } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../api/api';
@@ -55,6 +56,7 @@ function SimpleTable({ headers = [], rows = [], emptyMessage = 'No records found
 export function InterestVoucherWorkspaceDetailPage({ sectionKey, itemKey, detailPathBase }) {
   const { id } = useParams();
   const navigate = useNavigate();
+  const goBack = useGoBack();
   const { token, pageAccess } = useAuth();
   const [catalog, setCatalog] = useState([]);
   const [lookups, setLookups] = useState({});
@@ -150,7 +152,7 @@ export function InterestVoucherWorkspaceDetailPage({ sectionKey, itemKey, detail
     try {
       await api.banking.deleteTransactionVoucher(token, record.id);
       toast.success('Interest deleted');
-      navigate(detailPathBase || '/app/transactions/receipt-interest/interest-paid-member');
+      navigate(detailPathBase || '/app/transactions/receipt-interest/interest-paid-member', { replace: true });
     } catch (error) {
       toast.error(error.message || 'Unable to delete interest');
     } finally {
@@ -199,7 +201,7 @@ export function InterestVoucherWorkspaceDetailPage({ sectionKey, itemKey, detail
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2 text-[13px] font-medium text-slate-500 print:hidden">
-        <button type="button" onClick={() => navigate(detailPathBase || '/app/transactions/receipt-interest/interest-paid-member')} className="flex items-center gap-1.5 transition-colors hover:text-slate-900">
+        <button type="button" onClick={() => goBack(detailPathBase || '/app/transactions/receipt-interest/interest-paid-member')} className="flex items-center gap-1.5 transition-colors hover:text-slate-900">
           <ArrowLeft size={14} /> Back
         </button>
         <span className="text-slate-300">/</span>

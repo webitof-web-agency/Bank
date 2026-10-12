@@ -6,6 +6,7 @@ import { navigationGroups } from '../../config/navigation';
 import { useAuth } from '../../context/AuthContext';
 import { getImageUrl } from '../../api/api';
 import { cn } from '../../lib/cn';
+import { useSociety } from '../../pages/reports/print/useSociety';
 
 function isPathActive(pathname, path) {
   if (!path) return false;
@@ -59,13 +60,16 @@ function PopoverLink({ item, onNavigate }) {
   );
 }
 
+// The flyout starts flush against the trigger; `leftGap` is transparent
+// padding so the pointer never crosses dead space on its way to the menu.
 function getFlyoutPosition(rect, leftGap) {
   if (!rect) return {};
   const viewportPadding = 12;
   const top = Math.max(viewportPadding, Math.min(rect.top, window.innerHeight - viewportPadding - 120));
   return {
     top,
-    left: rect.right + leftGap,
+    left: rect.right,
+    paddingLeft: leftGap,
     maxHeight: window.innerHeight - top - viewportPadding
   };
 }
@@ -100,8 +104,15 @@ function useHoverFlyout() {
   return { isHovered, rect, open, scheduleClose };
 }
 
-function PopoverDropdown({ item, onNavigate, pathname }) {
-  const { isHovered, rect, open, scheduleClose } = useHoverFlyout();
+// `activeSub`/`setActiveSub` come from the parent flyout so only one sibling
+// sub-menu is ever open: hovering a sibling swaps it in immediately.
+function PopoverDropdown({ item, onNavigate, pathname, activeSub, setActiveSub }) {
+  const { isHovered, rect, open: openFlyout, scheduleClose } = useHoverFlyout();
+  const [childSub, setChildSub] = useState(null);
+  const open = (e) => {
+    openFlyout(e);
+    setActiveSub(item.label);
+  };
   const activeChild = item.children.some((child) => isItemActive(pathname, child));
 
   return (
@@ -110,7 +121,10 @@ function PopoverDropdown({ item, onNavigate, pathname }) {
       onMouseEnter={open}
       onMouseLeave={scheduleClose}
     >
+      {/* React's enter/leave skips the wrapper when coming back from the
+          portalled flyout, so the row itself must cancel the pending close. */}
       <div
+        onMouseEnter={() => open()}
         className={cn(
           'flex cursor-pointer items-center justify-between px-4 py-2.5 text-[14px] transition-colors',
           activeChild ? 'bg-slate-50 font-semibold text-[var(--primary,#2563eb)]' : 'text-slate-700 hover:bg-slate-100 hover:text-[var(--primary,#2563eb)]'
@@ -120,20 +134,22 @@ function PopoverDropdown({ item, onNavigate, pathname }) {
         <ChevronRight size={16} className="text-slate-400" />
       </div>
 
-      {isHovered && rect ? createPortal(
+      {isHovered && rect && activeSub === item.label ? createPortal(
         <div
-          className="fixed z-[110] w-52 overflow-y-auto rounded-md bg-white py-1.5 shadow-lg ring-1 ring-black/5 border border-slate-100"
+          className="fixed z-[110] flex"
           style={getFlyoutPosition(rect, 4)}
-          onMouseEnter={open}
+          onMouseEnter={() => open()}
           onMouseLeave={scheduleClose}
         >
-          {item.children.map((child) => (
-            child.children ? (
-              <PopoverDropdown key={child.label} item={child} onNavigate={onNavigate} pathname={pathname} />
-            ) : (
-              <PopoverLink key={child.path || child.label} item={child} onNavigate={onNavigate} />
-            )
-          ))}
+          <div className="w-52 overflow-y-auto rounded-md bg-white py-1.5 shadow-lg ring-1 ring-black/5 border border-slate-100">
+            {item.children.map((child) => (
+              child.children ? (
+                <PopoverDropdown key={child.label} item={child} onNavigate={onNavigate} pathname={pathname} activeSub={childSub} setActiveSub={setChildSub} />
+              ) : (
+                <PopoverLink key={child.path || child.label} item={child} onNavigate={onNavigate} />
+              )
+            ))}
+          </div>
         </div>,
         document.body
       ) : null}
@@ -152,6 +168,7 @@ function isItemActive(pathname, item) {
 function SidebarDropdown({ item, onNavigate, open, pathname, expanded, onToggle }) {
   const [localExpanded, setLocalExpanded] = useState(false);
   const [expandedChild, setExpandedChild] = useState(null);
+  const [activeSub, setActiveSub] = useState(null);
   const { isHovered, rect, open: openFlyout, scheduleClose } = useHoverFlyout();
 
   const activeChild = item.children.some((child) => isItemActive(pathname, child));
@@ -177,13 +194,16 @@ function SidebarDropdown({ item, onNavigate, open, pathname, expanded, onToggle 
         if (!open) openFlyout(e);
       }}
       onMouseLeave={() => !open && scheduleClose()}
+      // Padding (not margin) so the inset stays inside the hover target; when
+      // collapsed the wrapper reaches the sidebar edge and meets the flyout.
       style={{
-        marginLeft: open ? '0.5rem' : '0.35rem',
-        marginRight: open ? '0.5rem' : '0.35rem'
+        paddingLeft: open ? '0.5rem' : '0.35rem',
+        paddingRight: open ? '0.5rem' : '0.35rem'
       }}
     >
       <button
         type="button"
+        onMouseEnter={() => !open && isHovered && openFlyout()}
         onClick={() => {
           if (open) handleToggle(!visible);
         }}
@@ -231,21 +251,23 @@ function SidebarDropdown({ item, onNavigate, open, pathname, expanded, onToggle 
       {/* Popover children (when collapsed) */}
       {!open && isHovered && rect ? createPortal(
         <div
-          className="fixed z-[100] w-56 overflow-y-auto rounded-xl bg-white py-2 shadow-xl ring-1 ring-black/5 border border-slate-100"
-          style={getFlyoutPosition(rect, 12)}
-          onMouseEnter={openFlyout}
+          className="fixed z-[100] flex"
+          style={getFlyoutPosition(rect, 0)}
+          onMouseEnter={() => openFlyout()}
           onMouseLeave={scheduleClose}
         >
-          <div className="px-4 pb-2 mb-1 border-b border-slate-100 font-semibold text-slate-800 text-sm">
-            {item.label}
+          <div className="w-56 overflow-y-auto rounded-xl bg-white py-2 shadow-xl ring-1 ring-black/5 border border-slate-100">
+            <div className="px-4 pb-2 mb-1 border-b border-slate-100 font-semibold text-slate-800 text-sm">
+              {item.label}
+            </div>
+            {item.children.map((child) => (
+              child.children ? (
+                <PopoverDropdown key={child.label} item={child} onNavigate={onNavigate} pathname={pathname} activeSub={activeSub} setActiveSub={setActiveSub} />
+              ) : (
+                <PopoverLink key={child.path || child.label} item={child} onNavigate={onNavigate} />
+              )
+            ))}
           </div>
-          {item.children.map((child) => (
-            child.children ? (
-              <PopoverDropdown key={child.label} item={child} onNavigate={onNavigate} pathname={pathname} />
-            ) : (
-              <PopoverLink key={child.path || child.label} item={child} onNavigate={onNavigate} />
-            )
-          ))}
         </div>,
         document.body
       ) : null}
@@ -257,6 +279,11 @@ export function Sidebar({ open = false, onClose, onToggleCollapse }) {
   const { user, branding, hasPermission: checkAuthPermission } = useAuth();
   const { pathname } = useLocation();
   const [expandedGroups, setExpandedGroups] = useState({});
+  const society = useSociety();
+  // Uploaded sidebar branding wins; otherwise fall back to the society logo.
+  const expandedLogo = branding?.sidebarExpandedUrl || branding?.logoUrl || society.logoUrl;
+  const collapsedLogo = branding?.sidebarCollapsedUrl || branding?.logoUrl || society.logoUrl;
+  const logoAlt = society.name || branding?.appName || 'Logo';
 
   useEffect(() => {
     // When pathname changes, we want to auto-expand the parent containing the active item
@@ -316,12 +343,12 @@ export function Sidebar({ open = false, onClose, onToggleCollapse }) {
         <div className={cn('relative flex min-h-[5rem] items-center justify-center px-5 py-4')}>
           <div className="flex items-center justify-center">
             {open ? (
-              (branding?.sidebarExpandedUrl || branding?.logoUrl) ? (
-                <img src={getImageUrl(branding?.sidebarExpandedUrl || branding?.logoUrl)} alt={branding?.appName || 'Logo'} className="h-16 w-auto max-w-[200px] object-contain" />
+              expandedLogo ? (
+                <img src={getImageUrl(expandedLogo)} alt={logoAlt} className="h-16 w-auto max-w-[200px] object-contain" />
               ) : null
             ) : (
-              (branding?.sidebarCollapsedUrl || branding?.logoUrl) ? (
-                <img src={getImageUrl(branding?.sidebarCollapsedUrl || branding?.logoUrl)} alt={branding?.appName || 'Logo'} className="hidden h-12 w-auto max-w-[64px] object-contain lg:block" />
+              collapsedLogo ? (
+                <img src={getImageUrl(collapsedLogo)} alt={logoAlt} className="hidden h-12 w-auto max-w-[64px] object-contain lg:block" />
               ) : null
             )}
           </div>
@@ -335,7 +362,7 @@ export function Sidebar({ open = false, onClose, onToggleCollapse }) {
           </button>
         </div>
 
-        <nav className="flex-1 space-y-2 overflow-y-auto overflow-x-hidden px-2 py-5">
+        <nav className={cn('flex-1 space-y-2 overflow-y-auto overflow-x-hidden py-5', open ? 'px-2' : 'px-2 lg:px-0')}>
           {visibleGroups.map((group) => (
             <div key={group.title}>
               <div className="space-y-1">

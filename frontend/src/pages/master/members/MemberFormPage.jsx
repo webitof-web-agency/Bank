@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useGoBack } from '../../../lib/useGoBack';
 import { toast } from 'sonner';
 import { useAuth } from '../../../context/AuthContext';
 import { api } from '../../../api/api';
@@ -16,6 +17,7 @@ import { uploadDocumentMap } from '../documentUpload';
 export function MemberFormPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const goBack = useGoBack();
   const { token } = useAuth();
   const isEdit = Boolean(id);
 
@@ -57,7 +59,7 @@ export function MemberFormPage() {
       .catch((error) => {
         if (!mounted) return;
         toast.error(error.message || 'Unable to load member data');
-        navigate('/app/master/members');
+        navigate('/app/master/members', { replace: true });
       })
       .finally(() => {
         if (mounted) setLoading(false);
@@ -164,7 +166,7 @@ export function MemberFormPage() {
       }
 
       toast.success(isEdit ? 'Member updated' : 'Member created');
-      navigate(isEdit ? `/app/master/members/${entityId}` : '/app/master/members');
+      goBack(isEdit ? `/app/master/members/${entityId}` : '/app/master/members');
     } catch (error) {
       toast.error(error.message || 'Unable to save member');
     } finally {
@@ -179,7 +181,7 @@ export function MemberFormPage() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center gap-2 text-[13px] font-medium text-slate-500 mb-2">
-        <button type="button" onClick={() => navigate(isEdit ? `/app/master/members/${id}` : '/app/master/members')} className="flex items-center gap-1.5 transition-colors hover:text-slate-900">
+        <button type="button" onClick={() => goBack(isEdit ? `/app/master/members/${id}` : '/app/master/members')} className="flex items-center gap-1.5 transition-colors hover:text-slate-900">
           <ArrowLeft size={14} /> Back
         </button>
         <span className="text-slate-300">/</span>
@@ -200,7 +202,7 @@ export function MemberFormPage() {
           onAvatarClear={handleAvatarClear}
           onDocumentRemove={handleDocumentRemove}
           saving={saving}
-          onCancel={() => navigate(isEdit ? `/app/master/members/${id}` : '/app/master/members')}
+          onCancel={() => goBack(isEdit ? `/app/master/members/${id}` : '/app/master/members')}
         />
       </div>
     </div>

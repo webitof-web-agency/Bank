@@ -1,5 +1,6 @@
 ﻿import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useServerList } from '../../../lib/useServerList';
 import { Eye, Edit2, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../api/api';
@@ -31,7 +32,6 @@ export function TransferVoucherTransactionWorkspacePage({ sectionKey, itemKey, d
   const { token, pageAccess } = useAuth();
   const { activeFY } = useFY();
   const [catalog, setCatalog] = useState([]);
-  const [rows, setRows] = useState([]);
   const [lookups, setLookups] = useState({});
   const [loading, setLoading] = useState(true);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -39,7 +39,6 @@ export function TransferVoucherTransactionWorkspacePage({ sectionKey, itemKey, d
   const [draft, setDraft] = useState(createEmptyTransactionDraft(sectionKey, []));
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
-  const [search, setSearch] = useState('');
   const [removedDocumentIds, setRemovedDocumentIds] = useState([]);
 
   const section = useMemo(() => catalog.find((entry) => entry.key === sectionKey) || null, [catalog, sectionKey]);
@@ -58,13 +57,11 @@ export function TransferVoucherTransactionWorkspacePage({ sectionKey, itemKey, d
 
     Promise.all([
       api.banking.getTransactionCatalog(token),
-      api.banking.listTransactionVouchers(token),
       api.banking.getLookups(token)
     ])
-      .then(([catalogRes, rowsRes, lookupsRes]) => {
+      .then(([catalogRes, lookupsRes]) => {
         if (!mounted) return;
         setCatalog(Array.isArray(catalogRes.data) ? catalogRes.data : []);
-        setRows(Array.isArray(rowsRes.data) ? rowsRes.data : []);
         setLookups(lookupsRes.data || {});
       })
       .catch((error) => {
@@ -80,24 +77,13 @@ export function TransferVoucherTransactionWorkspacePage({ sectionKey, itemKey, d
     };
   }, [token, activeFY]);
 
-  const visibleRows = useMemo(() => {
-    const baseRows = filterTransactionRows(rows, sectionItems, itemKey);
-    const searchValue = String(search || '').trim().toLowerCase();
-
-    return baseRows.filter((row) => {
-      const total = getTransferVoucherAllocationTotal(row.details?.allocations || [], row.details?.key || itemKey);
-      const amount = Number(row.amount || total || 0);
-      const matchesSearch = !searchValue || [
-        row.voucherNo,
-        row.partyCode,
-        getTransactionPartyLabel(row.partyCode, lookups, row.partyType),
-        row.narration,
-        row.referenceNo,
-        String(amount)
-      ].some((value) => String(value || '').toLowerCase().includes(searchValue));
-      return matchesSearch;
-    });
-  }, [rows, sectionItems, sectionKey, search, lookups, itemKey]);
+  // The server filters, sorts and pages; only the visible page is loaded.
+  const listFilters = { section: sectionKey, item: itemKey };
+  const list = useServerList(
+    (query) => api.banking.listTransactionVouchers(token, { ...listFilters, ...query }),
+    [token, activeFY?.start, listFilters]
+  );
+  const visibleRows = list.rows;
 
   function openCreate() {
     const next = createEmptyTransactionDraft(sectionKey, sectionItems);
@@ -132,12 +118,20 @@ export function TransferVoucherTransactionWorkspacePage({ sectionKey, itemKey, d
     }
   }
 
-  function exportCsv() {
+  async function exportCsv() {
+    let exportRows;
+    try {
+      const response = await api.banking.listTransactionVouchers(token, { ...listFilters, ...list.query, page: 1, limit: 'all' });
+      exportRows = Array.isArray(response.data) ? response.data : [];
+    } catch (error) {
+      toast.error(error.message || 'Unable to export transactions');
+      return;
+    }
     const headers = ['Voucher No', 'Date', 'Category', 'Party', 'Amount', 'Narration'];
     const escape = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
     const csv = [
       headers.map(escape).join(','),
-      ...visibleRows.map((row) => ([
+      ...exportRows.map((row) => ([
         row.voucherNo,
         row.date,
         row.voucherCategory,
@@ -193,10 +187,7 @@ export function TransferVoucherTransactionWorkspacePage({ sectionKey, itemKey, d
 
       let nextRecord = response.data || response;
       nextRecord = await persistVoucherDocuments(nextRecord, draft);
-      setRows((current) => (activeRecord
-        ? current.map((item) => (item.id === nextRecord.id ? nextRecord : item))
-        : [nextRecord, ...current]
-      ));
+      list.reload();
       toast.success(activeRecord ? 'Transfer voucher updated' : 'Transfer voucher created');
       closeEditor();
     } catch (error) {
@@ -210,7 +201,7 @@ export function TransferVoucherTransactionWorkspacePage({ sectionKey, itemKey, d
     if (!deleteTarget) return;
     try {
       await api.banking.deleteTransactionVoucher(token, deleteTarget.id);
-      setRows((current) => current.filter((item) => item.id !== deleteTarget.id));
+      list.reload();
       toast.success('Transfer voucher deleted');
     } catch (error) {
       toast.error(error.message || 'Unable to delete transfer voucher');
@@ -236,6 +227,7 @@ export function TransferVoucherTransactionWorkspacePage({ sectionKey, itemKey, d
       key: 'member',
       label: 'Member',
       sortable: true,
+      sortField: 'partyCode',
       sortValue: (row) => getTransactionPartyLabel(row.partyCode, lookups, row.partyType),
       render: (row) => <span className="text-slate-700">{getTransactionPartyLabel(row.partyCode, lookups, row.partyType)}</span>
     },
@@ -291,12 +283,12 @@ export function TransferVoucherTransactionWorkspacePage({ sectionKey, itemKey, d
 
       <Card className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="grid gap-3">
-          <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search voucher, member or narration" />
+          <Input value={list.search} onChange={(event) => list.setSearch(event.target.value)} placeholder="Search voucher, member or narration" />
         </div>
       </Card>
 
       <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <Table loading={loading} columns={columns} data={visibleRows} emptyMessage="No transfer voucher entries found." />
+        <Table loading={loading} columns={columns} data={visibleRows} serverPagination={list.serverPagination} emptyMessage="No transfer voucher entries found." />
       </Card>
 
       <Modal open={editorOpen} onClose={closeEditor} title={`${activeRecord ? 'Edit' : 'Create'} ${transactionLabel}`} width="min(860px, 96vw)" footer={<div className="flex w-full justify-end gap-3">

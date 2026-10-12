@@ -1,5 +1,6 @@
 ﻿import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useServerList } from '../../../lib/useServerList';
 import { Plus, Eye, Edit2, Trash2, Filter, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../api/api';
@@ -30,7 +31,6 @@ export function EmployeeTransactionWorkspacePage({ sectionKey, itemKey, detailPa
   const { token, pageAccess } = useAuth();
   const { activeFY } = useFY();
   const [catalog, setCatalog] = useState([]);
-  const [rows, setRows] = useState([]);
   const [lookups, setLookups] = useState({});
   const [loading, setLoading] = useState(true);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -38,7 +38,6 @@ export function EmployeeTransactionWorkspacePage({ sectionKey, itemKey, detailPa
   const [draft, setDraft] = useState(createEmptyTransactionDraft(sectionKey, []));
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
-  const [search, setSearch] = useState('');
   const [filterDropdownOpen, setFilterDropdownOpen] = useState(false);
   const [removedDocumentIds, setRemovedDocumentIds] = useState([]);
 
@@ -58,13 +57,11 @@ export function EmployeeTransactionWorkspacePage({ sectionKey, itemKey, detailPa
 
     Promise.all([
       api.banking.getTransactionCatalog(token),
-      api.banking.listTransactionVouchers(token),
       api.banking.getLookups(token)
     ])
-      .then(([catalogRes, rowsRes, lookupsRes]) => {
+      .then(([catalogRes, lookupsRes]) => {
         if (!mounted) return;
         setCatalog(Array.isArray(catalogRes.data) ? catalogRes.data : []);
-        setRows(Array.isArray(rowsRes.data) ? rowsRes.data : []);
         setLookups(lookupsRes.data || {});
       })
       .catch((error) => {
@@ -80,24 +77,13 @@ export function EmployeeTransactionWorkspacePage({ sectionKey, itemKey, detailPa
     };
   }, [token, activeFY]);
 
-  const visibleRows = useMemo(() => {
-    const baseRows = filterTransactionRows(rows, sectionItems);
-    const searchValue = String(search || '').trim().toLowerCase();
-
-    return baseRows.filter((row) => {
-      const total = getEmployeeComponentTotal(row);
-      const matchesSearch = !searchValue || [
-        row.voucherNo,
-        row.partyCode,
-        getTransactionPartyLabel(row.partyCode, lookups, row.partyType),
-        row.narration,
-        row.mode,
-        row.instrumentNo,
-        String(total)
-      ].some((value) => String(value || '').toLowerCase().includes(searchValue));
-      return matchesSearch;
-    });
-  }, [rows, sectionItems, search, lookups]);
+  // The server filters, sorts and pages; only the visible page is loaded.
+  const listFilters = { section: sectionKey, item: itemKey };
+  const list = useServerList(
+    (query) => api.banking.listTransactionVouchers(token, { ...listFilters, ...query }),
+    [token, activeFY?.start, listFilters]
+  );
+  const visibleRows = list.rows;
 
   function openCreate() {
     const next = createEmptyTransactionDraft(sectionKey, sectionItems);
@@ -132,12 +118,20 @@ export function EmployeeTransactionWorkspacePage({ sectionKey, itemKey, detailPa
     }
   }
 
-  function exportCsv() {
+  async function exportCsv() {
+    let exportRows;
+    try {
+      const response = await api.banking.listTransactionVouchers(token, { ...listFilters, ...list.query, page: 1, limit: 'all' });
+      exportRows = Array.isArray(response.data) ? response.data : [];
+    } catch (error) {
+      toast.error(error.message || 'Unable to export transactions');
+      return;
+    }
     const headers = ['Voucher No', 'Date', 'Category', 'Party', 'Amount', 'Narration'];
     const escape = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
     const csv = [
       headers.map(escape).join(','),
-      ...visibleRows.map((row) => ([
+      ...exportRows.map((row) => ([
         row.voucherNo,
         row.date,
         row.voucherCategory,
@@ -191,10 +185,7 @@ export function EmployeeTransactionWorkspacePage({ sectionKey, itemKey, detailPa
 
       let nextRecord = response.data || response;
       nextRecord = await persistVoucherDocuments(nextRecord, draft);
-      setRows((current) => (activeRecord
-        ? current.map((item) => (item.id === nextRecord.id ? nextRecord : item))
-        : [nextRecord, ...current]
-      ));
+      list.reload();
       toast.success(activeRecord ? 'Employee transaction updated' : 'Employee transaction created');
       closeEditor();
     } catch (error) {
@@ -208,7 +199,7 @@ export function EmployeeTransactionWorkspacePage({ sectionKey, itemKey, detailPa
     if (!deleteTarget) return;
     try {
       await api.banking.deleteTransactionVoucher(token, deleteTarget.id);
-      setRows((current) => current.filter((item) => item.id !== deleteTarget.id));
+      list.reload();
       toast.success('Employee transaction deleted');
     } catch (error) {
       toast.error(error.message || 'Unable to delete employee transaction');
@@ -234,6 +225,7 @@ export function EmployeeTransactionWorkspacePage({ sectionKey, itemKey, detailPa
       key: 'employee',
       label: 'Employee Name',
       sortable: true,
+      sortField: 'partyCode',
       sortValue: (row) => getTransactionPartyLabel(row.partyCode, lookups, row.partyType),
       render: (row) => <span className="text-slate-700">{getTransactionPartyLabel(row.partyCode, lookups, row.partyType)}</span>
     },
@@ -241,18 +233,21 @@ export function EmployeeTransactionWorkspacePage({ sectionKey, itemKey, detailPa
       key: 'house',
       label: 'House Loan',
       sortable: true,
+      sortField: 'details.components.house',
       render: (row) => <span className="text-slate-700">{formatTransactionAmount(row.details?.components?.house ?? 0)}</span>
     },
     {
       key: 'vehicle',
       label: 'Vehicle Loan',
       sortable: true,
+      sortField: 'details.components.vehicle',
       render: (row) => <span className="text-slate-700">{formatTransactionAmount(row.details?.components?.vehicle ?? 0)}</span>
     },
     {
       key: 'grain',
       label: 'Grain Advance',
       sortable: true,
+      sortField: 'details.components.grain',
       render: (row) => <span className="text-slate-700">{formatTransactionAmount(row.details?.components?.grain ?? 0)}</span>
     },
     {
@@ -272,6 +267,7 @@ export function EmployeeTransactionWorkspacePage({ sectionKey, itemKey, detailPa
         key: 'instrumentDate',
         label: 'Cheque Date',
         sortable: true,
+        sortField: 'instrumentDate',
         render: (row) => <span className="text-slate-700">{row.instrumentDate || '-'}</span>
       }
     ] : []),
@@ -330,9 +326,9 @@ export function EmployeeTransactionWorkspacePage({ sectionKey, itemKey, detailPa
         <Table
           columns={columns}
           data={visibleRows}
-          defaultRowsPerPage={10}
-          search={search}
-          onSearch={setSearch}
+          serverPagination={list.serverPagination}
+          search={list.search}
+          onSearch={list.setSearch}
           searchPlaceholder="Search voucher no, employee, narration..."
           emptyMessage="No employee transactions found."
           headerActions={
@@ -350,7 +346,7 @@ export function EmployeeTransactionWorkspacePage({ sectionKey, itemKey, detailPa
                       type="button"
                       className="w-full bg-[var(--primary,#1661F6)] text-white hover:opacity-90"
                       onClick={() => {
-                        setSearch('');
+                        list.setSearch('');
                         setFilterDropdownOpen(false);
                       }}
                     >

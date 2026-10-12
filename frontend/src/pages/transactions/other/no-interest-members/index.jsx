@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useServerList } from '../../../../lib/useServerList';
 import { Ban, Edit2, Eye, Plus, Trash2, UserRound, Calendar, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../../api/api';
@@ -19,11 +20,12 @@ function isActive(record) {
 export function NoInterestMembersPage({ basePath = '/app/master/no-interest-members' } = {}) {
   const navigate = useNavigate();
   const { token, pageAccess } = useAuth();
-  const [rows, setRows] = useState([]);
+  // The server filters, sorts and pages; only the visible page is loaded.
+  const list = useServerList((query) => api.resources.page('/banking/masters/no-interest-members', token, query), [token], { errorMessage: 'Unable to load no-interest members' });
+  const rows = list.rows;
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [lookupsLoading, setLookupsLoading] = useState(true);
-  const [search, setSearch] = useState('');
   const [editorOpen, setEditorOpen] = useState(false);
   const [activeRecord, setActiveRecord] = useState(null);
   const [draft, setDraft] = useState(createEmptyNoInterestMemberDraft());
@@ -38,12 +40,10 @@ export function NoInterestMembersPage({ basePath = '/app/master/no-interest-memb
     setLookupsLoading(true);
 
     Promise.all([
-      api.resources.list('/banking/masters/no-interest-members', token, search),
       api.resources.list('/banking/masters/members', token)
     ])
-      .then(([recordsRes, membersRes]) => {
+      .then(([membersRes]) => {
         if (!mounted) return;
-        setRows(recordsRes.data || []);
         setMembers(membersRes.data || []);
       })
       .catch((error) => {
@@ -60,7 +60,7 @@ export function NoInterestMembersPage({ basePath = '/app/master/no-interest-memb
     return () => {
       mounted = false;
     };
-  }, [search, token]);
+  }, [token]);
 
   function openCreate() {
     setActiveRecord(null);
@@ -90,12 +90,7 @@ export function NoInterestMembersPage({ basePath = '/app/master/no-interest-memb
         : await api.resources.create('/banking/masters/no-interest-members', payload, token);
 
       const nextRecord = response.data || response;
-      setRows((current) => {
-        const next = activeRecord
-          ? current.map((item) => (item.id === nextRecord.id ? nextRecord : item))
-          : [nextRecord, ...current];
-        return next;
-      });
+      list.reload();
       toast.success(activeRecord ? 'Record updated' : 'Record created');
       closeEditor();
     } catch (error) {
@@ -109,7 +104,7 @@ export function NoInterestMembersPage({ basePath = '/app/master/no-interest-memb
     if (!deleteTarget) return;
     try {
       await api.resources.remove('/banking/masters/no-interest-members', deleteTarget.id, token);
-      setRows((current) => current.filter((item) => item.id !== deleteTarget.id));
+      list.reload();
       toast.success('Record deleted');
     } catch (error) {
       toast.error(error.message || 'Unable to delete record');
@@ -120,12 +115,7 @@ export function NoInterestMembersPage({ basePath = '/app/master/no-interest-memb
 
   const memberLookup = useMemo(() => new Map(members.map((member) => [String(member.code || '').toUpperCase(), member])), [members]);
 
-  const stats = useMemo(() => ({
-    total: rows.length,
-    active: rows.filter((row) => isActive(row)).length,
-    inactive: rows.filter((row) => !isActive(row)).length,
-    linked: rows.filter((row) => String(row.memberCode || '').trim()).length
-  }), [rows]);
+  const stats = { ...list.summary, total: list.total };
 
   const columns = [
     { key: 'code', label: 'Code', sortable: true, render: (row) => <span className="font-medium text-slate-900">{row.code || '-'}</span> },
@@ -220,10 +210,10 @@ export function NoInterestMembersPage({ basePath = '/app/master/no-interest-memb
           <Table
             columns={columns}
             data={rows}
-            defaultRowsPerPage={10}
+            serverPagination={list.serverPagination}
             emptyMessage="No no-interest member records found."
-            search={search}
-            onSearch={setSearch}
+            search={list.search}
+            onSearch={list.setSearch}
             searchPlaceholder="Search members..."
           />
         )}

@@ -64,6 +64,8 @@ function NotificationIcon({ item, size = 16 }) {
   }
 }
 
+const NOTIFICATIONS_PAGE_SIZE = 20;
+
 export function Topbar({ title, subtitle, onMenuClick }) {
   const { user, token, logout, hasPermission } = useAuth();
   const { activeFY, setActiveFY, fyList } = useFY();
@@ -73,6 +75,9 @@ export function Topbar({ title, subtitle, onMenuClick }) {
   const [fyDropdownOpen, setFyDropdownOpen] = useState(false);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [latestNotifications, setLatestNotifications] = useState([]);
+  const [notificationsPage, setNotificationsPage] = useState(1);
+  const [notificationsHasMore, setNotificationsHasMore] = useState(false);
+  const [notificationsLoadingMore, setNotificationsLoadingMore] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const userDropdownRef = useRef(null);
   const reportsDropdownRef = useRef(null);
@@ -140,14 +145,48 @@ export function Topbar({ title, subtitle, onMenuClick }) {
 
     setNotificationsLoading(true);
     try {
-      const response = await api.notifications.list(token, { page: 1, limit: 5 });
+      const response = await api.notifications.list(token, { page: 1, limit: NOTIFICATIONS_PAGE_SIZE });
       if (!active) return;
-      setLatestNotifications(Array.isArray(response.data?.items) ? response.data.items : []);
+      const items = Array.isArray(response.data?.items) ? response.data.items : [];
+      setLatestNotifications(items);
+      setNotificationsPage(1);
+      setNotificationsHasMore(items.length < Number(response.data?.total || 0));
     } catch {
-      if (active) setLatestNotifications([]);
+      if (active) {
+        setLatestNotifications([]);
+        setNotificationsHasMore(false);
+      }
     } finally {
       if (active) setNotificationsLoading(false);
     }
+  }
+
+  async function loadMoreNotifications() {
+    if (notificationsLoading || notificationsLoadingMore || !notificationsHasMore) return;
+    const nextPage = notificationsPage + 1;
+    setNotificationsLoadingMore(true);
+    try {
+      const response = await api.notifications.list(token, { page: nextPage, limit: NOTIFICATIONS_PAGE_SIZE });
+      const items = Array.isArray(response.data?.items) ? response.data.items : [];
+      let loaded = 0;
+      setLatestNotifications((current) => {
+        const seen = new Set(current.map((item) => item.id));
+        const next = [...current, ...items.filter((item) => !seen.has(item.id))];
+        loaded = next.length;
+        return next;
+      });
+      setNotificationsPage(nextPage);
+      setNotificationsHasMore(items.length === NOTIFICATIONS_PAGE_SIZE && loaded < Number(response.data?.total || 0));
+    } catch {
+      setNotificationsHasMore(false);
+    } finally {
+      setNotificationsLoadingMore(false);
+    }
+  }
+
+  function handleNotificationsScroll(event) {
+    const el = event.currentTarget;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 80) loadMoreNotifications();
   }
 
   useEffect(() => {
@@ -335,7 +374,7 @@ export function Topbar({ title, subtitle, onMenuClick }) {
                   </button>
                 </div>
 
-                <div className="max-h-[28rem] overflow-y-auto p-2">
+                <div className="max-h-[28rem] overflow-y-auto p-2" onScroll={handleNotificationsScroll}>
                   {notificationsLoading ? (
                     <div className="flex h-32 items-center justify-center text-sm text-slate-500">Loading...</div>
                   ) : latestNotifications.length ? (
@@ -363,6 +402,9 @@ export function Topbar({ title, subtitle, onMenuClick }) {
                           </button>
                         );
                       })}
+                      {notificationsLoadingMore ? (
+                        <div className="py-3 text-center text-[12px] text-slate-400">Loading more...</div>
+                      ) : null}
                     </div>
                   ) : (
                     <div className="flex h-32 flex-col items-center justify-center gap-2 text-sm text-slate-500">

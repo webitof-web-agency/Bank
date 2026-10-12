@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useServerList } from '../../../lib/useServerList';
 import { Eye, Edit2, Plus, Trash2, ArrowRight, Sparkles, Link2, ChevronDown, FileText, Banknote, Filter, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../api/api';
@@ -31,7 +32,6 @@ export function OtherTransactionsPage({ sectionKey, itemKey, detailPathBase }) {
   const { token, pageAccess } = useAuth();
   const { activeFY } = useFY();
   const [catalog, setCatalog] = useState([]);
-  const [rows, setRows] = useState([]);
   const [lookups, setLookups] = useState({});
   const [loading, setLoading] = useState(true);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -39,7 +39,7 @@ export function OtherTransactionsPage({ sectionKey, itemKey, detailPathBase }) {
   const [draft, setDraft] = useState(createEmptyTransactionDraft(sectionKey, []));
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
-  const [search, setSearch] = useState('');
+  const [removedDocumentIds, setRemovedDocumentIds] = useState([]);
   const [filterPartyType, setFilterPartyType] = useState('');
   const [filterDateFrom, setFilterDateFrom] = useState('');
   const [filterDateTo, setFilterDateTo] = useState('');
@@ -52,25 +52,13 @@ export function OtherTransactionsPage({ sectionKey, itemKey, detailPathBase }) {
     return itemKey ? items.filter(i => i.key === itemKey) : items;
   }, [catalog, sectionKey, itemKey]);
   const activeItem = sectionItems[0] || null;
-  const visibleRows = useMemo(() => {
-    const baseRows = filterTransactionRows(rows, sectionItems);
-    const searchValue = String(search || '').trim().toLowerCase();
-
-    return baseRows.filter((row) => {
-      const matchesSearch = !searchValue || [
-        row.voucherNo,
-        row.voucherCategory,
-        row.partyCode,
-        row.narration,
-        row.referenceNo,
-        row.instrumentNo
-      ].some((value) => String(value || '').toLowerCase().includes(searchValue));
-      const matchesPartyType = !filterPartyType || String(row.partyType || '').toLowerCase() === String(filterPartyType || '').toLowerCase();
-      const matchesFrom = !filterDateFrom || String(row.date || '') >= filterDateFrom;
-      const matchesTo = !filterDateTo || String(row.date || '') <= filterDateTo;
-      return matchesSearch && matchesPartyType && matchesFrom && matchesTo;
-    });
-  }, [rows, sectionItems, search, filterPartyType, filterDateFrom, filterDateTo]);
+  // The server filters, sorts and pages; only the visible page is loaded.
+  const listFilters = { section: sectionKey, item: itemKey, partyType: filterPartyType, filterFrom: filterDateFrom, filterTo: filterDateTo };
+  const list = useServerList(
+    (query) => api.banking.listTransactionVouchers(token, { ...listFilters, ...query }),
+    [token, activeFY?.start, listFilters]
+  );
+  const visibleRows = list.rows;
   const { canCreate, canEdit, canDelete } = pageAccess('transactions', 'receipt-interest');
 
   useEffect(() => {
@@ -79,13 +67,11 @@ export function OtherTransactionsPage({ sectionKey, itemKey, detailPathBase }) {
 
     Promise.all([
       api.banking.getTransactionCatalog(token),
-      api.banking.listTransactionVouchers(token),
       api.banking.getLookups(token)
     ])
-      .then(([catalogRes, rowsRes, lookupsRes]) => {
+      .then(([catalogRes, lookupsRes]) => {
         if (!mounted) return;
         setCatalog(Array.isArray(catalogRes.data) ? catalogRes.data : []);
-        setRows(Array.isArray(rowsRes.data) ? rowsRes.data : []);
         setLookups(lookupsRes.data || {});
       })
       .catch((error) => {
@@ -138,12 +124,20 @@ export function OtherTransactionsPage({ sectionKey, itemKey, detailPathBase }) {
     }
   }
 
-  function exportCsv() {
+  async function exportCsv() {
+    let exportRows;
+    try {
+      const response = await api.banking.listTransactionVouchers(token, { ...listFilters, ...list.query, page: 1, limit: 'all' });
+      exportRows = Array.isArray(response.data) ? response.data : [];
+    } catch (error) {
+      toast.error(error.message || 'Unable to export transactions');
+      return;
+    }
     const headers = ['Voucher No', 'Date', 'Category', 'Party', 'Amount', 'Narration'];
     const escape = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
     const csv = [
       headers.map(escape).join(','),
-      ...visibleRows.map((row) => ([
+      ...exportRows.map((row) => ([
         row.voucherNo,
         row.date,
         row.voucherCategory,
@@ -194,12 +188,7 @@ export function OtherTransactionsPage({ sectionKey, itemKey, detailPathBase }) {
 
       let nextRecord = response.data || response;
       nextRecord = await persistVoucherDocuments(nextRecord, draft);
-      setRows((current) => {
-        const next = activeRecord
-          ? current.map((item) => (item.id === nextRecord.id ? nextRecord : item))
-          : [nextRecord, ...current];
-        return next;
-      });
+      list.reload();
       toast.success(activeRecord ? 'Transaction updated' : 'Transaction created');
       closeEditor();
     } catch (error) {
@@ -213,7 +202,7 @@ export function OtherTransactionsPage({ sectionKey, itemKey, detailPathBase }) {
     if (!deleteTarget) return;
     try {
       await api.banking.deleteTransactionVoucher(token, deleteTarget.id);
-      setRows((current) => current.filter((item) => item.id !== deleteTarget.id));
+      list.reload();
       toast.success('Transaction deleted');
     } catch (error) {
       toast.error(error.message || 'Unable to delete transaction');
@@ -222,10 +211,7 @@ export function OtherTransactionsPage({ sectionKey, itemKey, detailPathBase }) {
     }
   }
 
-  const stats = useMemo(() => ({
-    total: visibleRows.length,
-    amount: visibleRows.reduce((sum, row) => sum + Number(row.amount || 0), 0)
-  }), [visibleRows]);
+  const stats = { total: list.total, amount: Number(list.summary.amount || 0) };
 
   const linkedItems = useMemo(() => (sectionItems || []).filter((item) => item.route), [sectionItems]);
   const editableItems = useMemo(() => (sectionItems || []).filter((item) => !item.route), [sectionItems]);
@@ -247,6 +233,7 @@ export function OtherTransactionsPage({ sectionKey, itemKey, detailPathBase }) {
       key: 'type',
       label: 'Type',
       sortable: true,
+      sortField: 'voucherCategory',
       sortValue: (row) => getTransactionVoucherTitle(row, sectionItems),
       render: (row) => <span className="text-slate-700">{getTransactionVoucherTitle(row, sectionItems)}</span>
     },
@@ -254,6 +241,7 @@ export function OtherTransactionsPage({ sectionKey, itemKey, detailPathBase }) {
       key: 'party',
       label: 'Received From',
       sortable: true,
+      sortField: 'partyCode',
       sortValue: (row) => getTransactionPartyLabel(row.partyCode, lookups, row.partyType),
       render: (row) => <span className="text-slate-700">{getTransactionPartyLabel(row.partyCode, lookups, row.partyType)}</span>
     },
@@ -385,10 +373,10 @@ export function OtherTransactionsPage({ sectionKey, itemKey, detailPathBase }) {
           <Table
             columns={columns}
             data={visibleRows}
-            defaultRowsPerPage={10}
+            serverPagination={list.serverPagination}
             emptyMessage="No transactions found."
-            search={search}
-            onSearch={setSearch}
+            search={list.search}
+            onSearch={list.setSearch}
             searchPlaceholder="Search voucher no, party, narration..."
             headerActions={
               <div className="relative">
@@ -441,7 +429,7 @@ export function OtherTransactionsPage({ sectionKey, itemKey, detailPathBase }) {
                             setFilterPartyType('');
                             setFilterDateFrom('');
                             setFilterDateTo('');
-                            setSearch('');
+                            list.setSearch('');
                             setFilterDropdownOpen(false);
                           }}
                         >

@@ -11,6 +11,7 @@ import { Table } from '../../../../components/ui/Table';
 import { ConfirmDialog } from '../../../../components/overlays/ConfirmDialog';
 import { useAuth } from '../../../../context/AuthContext';
 import { useFY } from '../../../../context/FYContext';
+import { useServerList } from '../../../../lib/useServerList';
 import { formatTransactionAmount } from '../transactionUtils';
 import { emptyJournalDraft, journalDraftFromRecord, journalPayload, journalTotals } from './journalUtils';
 
@@ -20,21 +21,22 @@ export function JournalVoucherPage() {
   const { token, pageAccess } = useAuth();
   const { activeFY } = useFY();
   const { canCreate, canEdit, canDelete } = pageAccess('transactions', 'receipt-interest');
-  const [rows, setRows] = useState([]);
   const [ledgers, setLedgers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editor, setEditor] = useState(null);
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
 
+  // Journal vouchers are paged by the server; only ledgers load up front.
+  const list = useServerList(
+    (query) => api.banking.listTransactionVouchers(token, { fyStart: activeFY?.start || '', fyEnd: activeFY?.end || '', item: 'journal-voucher', ...query }),
+    [token, activeFY?.start, activeFY?.end]
+  );
+
   async function load() {
     setLoading(true);
     try {
-      const [vouchers, lookups] = await Promise.all([
-        api.banking.listTransactionVouchers(token, { fyStart: activeFY?.start || '', fyEnd: activeFY?.end || '' }),
-        api.banking.getLookups(token)
-      ]);
-      setRows((vouchers.data || []).filter((row) => row.details?.key === 'journal-voucher'));
+      const lookups = await api.banking.getLookups(token);
       setLedgers(lookups.data?.ledgers || []);
     } catch (error) {
       toast.error(error.message || 'Unable to load journal vouchers');
@@ -64,7 +66,7 @@ export function JournalVoucherPage() {
       else await api.banking.createTransactionVoucher(token, payload);
       toast.success(editor.id ? 'Journal voucher updated' : 'Journal voucher created');
       setEditor(null);
-      await load();
+      list.reload();
     } catch (error) {
       toast.error(error.message || 'Unable to save the journal voucher');
     } finally {
@@ -77,7 +79,7 @@ export function JournalVoucherPage() {
       await api.banking.deleteTransactionVoucher(token, deleteTarget.id);
       toast.success('Journal voucher deleted');
       setDeleteTarget(null);
-      await load();
+      list.reload();
     } catch (error) {
       toast.error(error.message || 'Unable to delete the journal voucher');
     }
@@ -127,7 +129,7 @@ export function JournalVoucherPage() {
       </div>
 
       <Card className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <Table columns={columns} data={rows} emptyMessage={loading ? 'Loading...' : 'No journal vouchers in this year'} />
+        <Table columns={columns} data={list.rows} serverPagination={list.serverPagination} emptyMessage={loading ? 'Loading...' : 'No journal vouchers in this year'} />
       </Card>
 
       <Modal

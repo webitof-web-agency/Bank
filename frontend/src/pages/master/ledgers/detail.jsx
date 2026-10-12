@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useGoBack } from '../../../lib/useGoBack';
 import { ArrowLeft, Edit2, Landmark, BookOpen, ShieldCheck, CheckCircle2, History, Activity, TrendingUp, CalendarDays } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../api/api';
@@ -22,6 +23,7 @@ function DetailRow({ label, value }) {
 export function LedgerDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const goBack = useGoBack();
   const { token, pageAccess } = useAuth();
   const [ledger, setLedger] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -117,7 +119,7 @@ export function LedgerDetailPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2 text-[13px] font-medium text-slate-500">
-        <button type="button" onClick={() => navigate(-1)} className="flex items-center gap-1.5 transition-colors hover:text-[var(--primary,#1661F6)]">
+        <button type="button" onClick={() => goBack('/app/master/ledgers')} className="flex items-center gap-1.5 transition-colors hover:text-[var(--primary,#1661F6)]">
           <ArrowLeft size={14} /> Back
         </button>
         <span className="text-slate-300">/</span>

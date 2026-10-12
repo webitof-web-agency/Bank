@@ -1,6 +1,8 @@
 import { Bell, Building2, CalendarClock, Archive, KeyRound, ShieldCheck, Mail, MessageSquare, HardDrive } from 'lucide-react';
 
-export const SETTINGS_LINKS = [
+// `hidden: true` keeps a page (and its route) but leaves it out of the menu
+// and the Settings home.
+const ALL_SETTINGS_LINKS = [
   {
     label: 'Head Office',
     path: '/app/settings/head-office',
@@ -8,7 +10,8 @@ export const SETTINGS_LINKS = [
     permission: 'society.read',
     description: 'Head office code, location, and contact details.',
     group: 'Configuration',
-    tone: 'slate'
+    tone: 'slate',
+    hidden: true
   },
   {
     label: 'Society Details',
@@ -39,11 +42,11 @@ export const SETTINGS_LINKS = [
     tone: 'emerald'
   },
   {
-    label: 'Backup & Restore',
+    label: 'Backup',
     path: '/app/settings/backup-restore',
     icon: Archive,
     permission: 'settings.read',
-    description: 'Database backup and restore utilities.',
+    description: 'Download a full database backup.',
     group: 'Administration',
     tone: 'amber'
   },
@@ -84,3 +87,5 @@ export const SETTINGS_LINKS = [
     tone: 'violet'
   }
 ];
+
+export const SETTINGS_LINKS = ALL_SETTINGS_LINKS.filter((link) => !link.hidden);

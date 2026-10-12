@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Plus, Edit2, Trash2, Eye, Users, UserCheck, UserX, Building2, BookOpen } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
+import { useServerList } from '../../../lib/useServerList';
 import { api } from '../../../api/api';
 import { useAuth } from '../../../context/AuthContext';
 import { REPORT_LINK_MAP } from '../../reports/reportLinks';
@@ -41,9 +42,10 @@ function isMemberActive(member) {
 export function MembersPage() {
   const navigate = useNavigate();
   const { token, hasPermission, pageAccess } = useAuth();
-  const [rows, setRows] = useState([]);
+  // The server filters, sorts and pages; only the visible page is loaded.
+  const list = useServerList((query) => api.resources.page('/banking/masters/members', token, query), [token], { errorMessage: 'Unable to load members' });
+  const rows = list.rows;
   const [branches, setBranches] = useState([]);
-  const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [lookupsLoading, setLookupsLoading] = useState(true);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -60,13 +62,11 @@ export function MembersPage() {
   useEffect(() => {
     let mounted = true;
     Promise.all([
-      api.resources.list('/banking/masters/branches', token),
-      api.resources.list('/banking/masters/members', token, search)
+      api.resources.list('/banking/masters/branches', token)
     ])
-      .then(([branchesRes, membersRes]) => {
+      .then(([branchesRes]) => {
         if (!mounted) return;
         setBranches(branchesRes.data || []);
-        setRows(membersRes.data || []);
       })
       .catch((error) => {
         if (!mounted) return;
@@ -82,7 +82,7 @@ export function MembersPage() {
     return () => {
       mounted = false;
     };
-  }, [search, token]);
+  }, [token]);
 
   function openCreate() {
     navigate('/app/master/members/new');
@@ -146,12 +146,7 @@ export function MembersPage() {
       }
 
       const nextRecord = response.data || response;
-      setRows((current) => {
-        const next = activeRecord
-          ? current.map((item) => (item.id === nextRecord.id ? nextRecord : item))
-          : [nextRecord, ...current];
-        return next;
-      });
+      list.reload();
       toast.success(activeRecord ? 'Member updated' : 'Member created');
       closeEditor();
     } catch (error) {
@@ -165,7 +160,7 @@ export function MembersPage() {
     if (!deleteTarget) return;
     try {
       await api.resources.remove('/banking/masters/members', deleteTarget.id, token);
-      setRows((current) => current.filter((item) => item.id !== deleteTarget.id));
+      list.reload();
       toast.success('Member deleted');
     } catch (error) {
       toast.error(error.message || 'Unable to delete member');
@@ -174,12 +169,7 @@ export function MembersPage() {
     }
   }
 
-  const stats = useMemo(() => ({
-    total: rows.length,
-    active: rows.filter((row) => isMemberActive(row)).length,
-    inactive: rows.filter((row) => String(getMemberStatus(row)).toLowerCase() === 'inactive').length,
-    exited: rows.filter((row) => String(getMemberStatus(row)).toLowerCase() === 'exited').length
-  }), [rows]);
+  const stats = { ...list.summary, total: list.total };
 
   const columns = [
     { key: 'code', label: 'Code', sortable: true, render: (row) => <span className="text-slate-700">{row.code || '-'}</span> },
@@ -205,7 +195,7 @@ export function MembersPage() {
     },
     { key: 'membershipNo', label: 'Membership No', sortable: true, render: (row) => <span className="text-slate-700">{row.membershipNo || '-'}</span> },
     { key: 'mobileNo', label: 'Mobile No', sortable: true, render: (row) => <span className="text-slate-700">{formatMemberPhone(row.mobileNo || '') || '-'}</span> },
-    { key: 'depositBalance', label: 'Deposit', sortable: true, render: (row) => <span className="text-slate-700">{formatMoney(row.depositBalance ?? row.balances?.compulsoryDeposit ?? 0)}</span> },
+    { key: 'depositBalance', label: 'Deposit', sortable: true, sortField: 'depositBalance|balances.compulsoryDeposit', render: (row) => <span className="text-slate-700">{formatMoney(row.depositBalance ?? row.balances?.compulsoryDeposit ?? 0)}</span> },
     {
       key: 'status',
       label: 'Status',
@@ -316,10 +306,10 @@ export function MembersPage() {
           <Table
             columns={columns}
             data={rows}
-            defaultRowsPerPage={10}
+            serverPagination={list.serverPagination}
             emptyMessage="No members found."
-            search={search}
-            onSearch={setSearch}
+            search={list.search}
+            onSearch={list.setSearch}
             searchPlaceholder="Search members..."
           />
         )}

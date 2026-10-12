@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useGoBack } from '../../../lib/useGoBack';
 import { ArrowLeft, Edit2, FileText, Layers3, ShieldCheck, Sparkles, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../api/api';
@@ -68,6 +69,7 @@ function toTitleCase(value = '') {
 export function BankTransactionWorkspaceDetailPage({ sectionKey, itemKey = '', detailPathBase = '/app/transactions/bank' }) {
   const { id } = useParams();
   const navigate = useNavigate();
+  const goBack = useGoBack();
   const { token, pageAccess } = useAuth();
   const [catalog, setCatalog] = useState([]);
   const [lookups, setLookups] = useState({});
@@ -156,7 +158,7 @@ export function BankTransactionWorkspaceDetailPage({ sectionKey, itemKey = '', d
     try {
       await api.banking.deleteTransactionVoucher(token, record.id);
       toast.success('Transaction deleted');
-      navigate(detailPathBase);
+      navigate(detailPathBase, { replace: true });
     } catch (error) {
       toast.error(error.message || 'Unable to delete transaction');
     } finally {
@@ -211,7 +213,7 @@ export function BankTransactionWorkspaceDetailPage({ sectionKey, itemKey = '', d
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2 text-[13px] font-medium text-slate-500 print:hidden">
-        <button type="button" onClick={() => navigate(detailPathBase)} className="flex items-center gap-1.5 transition-colors hover:text-slate-900"><ArrowLeft size={14} /> Back</button>
+        <button type="button" onClick={() => goBack(detailPathBase)} className="flex items-center gap-1.5 transition-colors hover:text-slate-900"><ArrowLeft size={14} /> Back</button>
         <span className="text-slate-300">/</span>
         <span className="text-slate-900">{activeItem?.label || section?.label || sectionKey} Detail</span>
       </div>

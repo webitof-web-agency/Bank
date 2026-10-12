@@ -434,8 +434,9 @@ async function buildAccessProfile(userDoc) {
     isActive: user.isActive !== false,
     lastLoginAt: user.lastLoginAt || null,
     employeeCode: user.employeeCode || '',
+    hasLogin: true,
     payload: user.payload || {},
-    roles,
+    roles: roles.filter((role) => !isHiddenRole(role)),
     permissions: [...permissionMap.keys()],
     permissionObjects: [...permissionMap.values()],
     isSuperAdmin: roles.some((role) => role.code === 'admin')
@@ -695,6 +696,95 @@ async function listUsers(search = '') {
   return rows;
 }
 
+// Staff with an HR record but no login (e.g. the society's own staff migrated
+// from legacy) are listed on Master -> Employees too, under the id
+// `staff-<employee code>`. Saving one with a username, email and password
+// creates their login; without them only the HR record is updated.
+const STAFF_ID_PREFIX = 'staff-';
+
+function staffCodeFromId(id) {
+  const text = String(id || '');
+  return text.startsWith(STAFF_ID_PREFIX) ? text.slice(STAFF_ID_PREFIX.length) : null;
+}
+
+function buildStaffProfile(employee) {
+  const profile = {
+    id: `${STAFF_ID_PREFIX}${employee.code}`,
+    code: employee.code || '',
+    fullName: employee.name || '',
+    name: employee.name || '',
+    username: '',
+    email: '',
+    mobileNo: normalizePhone(employee.mobileNo || ''),
+    address: employee.address || '',
+    gender: '',
+    designation: employee.designation || '',
+    branchCode: employee.branchCode || '',
+    status: employee.isActive === false ? 'Inactive' : 'Active',
+    avatarUrl: '',
+    avatarFileId: null,
+    documentsFolderId: employee.documentsFolderId ? String(employee.documentsFolderId) : null,
+    documents: employee.documents || {},
+    isActive: employee.isActive !== false,
+    lastLoginAt: null,
+    employeeCode: employee.code || '',
+    hasLogin: false,
+    payload: {},
+    roles: [],
+    permissions: [],
+    permissionObjects: [],
+    isSuperAdmin: false
+  };
+  return mergeEmployeeIntoResponse(profile, employee);
+}
+
+async function listStaffWithoutLogin(search = '') {
+  const users = await User.find({}).lean();
+  const linked = new Set(users.map((user) => String(user.employeeCode || '').toUpperCase()).filter(Boolean));
+  const term = String(search || '').trim().toLowerCase();
+  const employees = await Employee.find({}).sort({ code: 1 }).lean();
+  return employees
+    .filter((employee) => employee.code && !linked.has(String(employee.code).toUpperCase()))
+    .filter((employee) => !term || [employee.code, employee.name, employee.designation, employee.mobileNo, employee.branchCode]
+      .some((value) => String(value || '').toLowerCase().includes(term)))
+    .map(buildStaffProfile);
+}
+
+async function getStaffProfile(code) {
+  const linkedUser = await User.findOne({ employeeCode: code });
+  if (linkedUser) return buildAccessProfile(linkedUser);
+  const employee = await Employee.findOne({ code }).lean();
+  return employee ? buildStaffProfile(employee) : null;
+}
+
+async function updateStaff(code, data = {}) {
+  const employee = await Employee.findOne({ code }).lean();
+  if (!employee) return null;
+  const linkedUser = await User.findOne({ employeeCode: code });
+  if (linkedUser) return updateUser(String(linkedUser._id), data);
+
+  const wantsLogin = ['username', 'email', 'password'].some((key) => String(data[key] || '').trim());
+  if (wantsLogin) return createUser({ ...data, code });
+
+  await syncLinkedEmployee(code, data);
+  return buildStaffProfile(await Employee.findOne({ code }).lean());
+}
+
+// The admin role is a system role: it is never listed, shown, edited or
+// assigned from the app. Users who already hold it keep it (see updateUser).
+const HIDDEN_ROLE_CODE = 'admin';
+
+function isHiddenRole(role) {
+  return String(role?.code || '').trim().toLowerCase() === HIDDEN_ROLE_CODE;
+}
+
+async function stripHiddenRoleIds(roleIds = []) {
+  const ids = roleIds.filter(Boolean);
+  if (!ids.length) return ids;
+  const hidden = await Role.findOne({ code: HIDDEN_ROLE_CODE }).select('_id').lean();
+  return hidden ? ids.filter((id) => String(id) !== String(hidden._id)) : ids;
+}
+
 async function getRoleById(roleId) {
   const role = await Role.findById(roleId).lean();
   return role ? mapRoleForResponse(role) : null;
@@ -711,6 +801,7 @@ async function listRoles(search = '') {
         ]
       }
     : {};
+  query.code = { $ne: HIDDEN_ROLE_CODE };
 
   const roles = await Role.find(query).sort({ updatedAt: -1 }).lean();
   return roles.map((role) => mapRoleForResponse(role));
@@ -886,7 +977,7 @@ async function createUser(data = {}) {
     throw error;
   }
 
-  const roleIds = Array.isArray(data.roleIds) ? data.roleIds.filter(Boolean) : [];
+  const roleIds = await stripHiddenRoleIds(Array.isArray(data.roleIds) ? data.roleIds : []);
   const passwordHash = await hashPassword(password);
   const status = normalizeStatus(data.status, data.isActive === false ? 'Inactive' : 'Active');
   // The HR record (employees table) is the canonical code source
@@ -960,7 +1051,13 @@ async function updateUser(userId, data = {}) {
   if (data.documentsFolderId !== undefined) user.documentsFolderId = data.documentsFolderId || null;
   if (data.documents !== undefined) user.documents = data.documents || {};
   if (data.payload !== undefined) user.payload = data.payload || {};
-  if (Array.isArray(data.roleIds)) user.roles = data.roleIds.filter(Boolean);
+  if (Array.isArray(data.roleIds)) {
+    // The admin role can't be picked in the app, so keep it if the user has it.
+    const hidden = await Role.findOne({ code: HIDDEN_ROLE_CODE }).select('_id').lean();
+    const hadHidden = hidden && (user.roles || []).some((id) => String(id?._id || id) === String(hidden._id));
+    const next = await stripHiddenRoleIds(data.roleIds);
+    user.roles = hadHidden ? [hidden._id, ...next] : next;
+  }
   if (data.password) {
     user.passwordHash = await hashPassword(data.password);
   }
@@ -1093,7 +1190,7 @@ async function createRole(data = {}) {
 
 async function updateRole(roleId, data = {}) {
   const role = await Role.findById(roleId);
-  if (!role) return null;
+  if (!role || isHiddenRole(role)) return null;
 
   if (data.code !== undefined) role.code = String(data.code || '').trim().toLowerCase().replace(/\s+/g, '-');
   if (data.name !== undefined) role.name = String(data.name || '').trim();
@@ -1125,7 +1222,7 @@ async function updateRole(roleId, data = {}) {
 
 async function updateRolePermissions(roleId, permissionCodes = []) {
   const role = await Role.findById(roleId);
-  if (!role) return null;
+  if (!role || isHiddenRole(role)) return null;
 
   role.permissions = normalizePermissionCodes(permissionCodes);
   await role.save();
@@ -1146,7 +1243,7 @@ async function updateRolePermissions(roleId, permissionCodes = []) {
 
 async function deleteRole(roleId) {
   const role = await Role.findById(roleId);
-  if (!role) return false;
+  if (!role || isHiddenRole(role)) return false;
   if (role.isSystem) {
     const error = new Error('System roles cannot be deleted');
     error.statusCode = 400;
@@ -1186,9 +1283,20 @@ async function ensureDemoRoles() {
   return seededRoles;
 }
 
+function getBootstrapAdminUsername() {
+  return normalizeUsername(process.env.BOOTSTRAP_ADMIN_USERNAME || normalizeEmail(process.env.BOOTSTRAP_ADMIN_EMAIL || 'admin@bank.local'));
+}
+
+// The bootstrap login is a system account, not a staff member, so staff
+// listings leave it out. It can still sign in and appears in user pickers.
+function withoutBootstrapAdmin(rows = []) {
+  const username = getBootstrapAdminUsername();
+  return rows.filter((row) => !username || normalizeUsername(row?.username || '') !== username);
+}
+
 async function seedBootstrapAdmin() {
   const bootstrapEmail = normalizeEmail(process.env.BOOTSTRAP_ADMIN_EMAIL || 'admin@bank.local');
-  const bootstrapUsername = normalizeUsername(process.env.BOOTSTRAP_ADMIN_USERNAME || bootstrapEmail);
+  const bootstrapUsername = getBootstrapAdminUsername();
   const bootstrapPassword = String(process.env.BOOTSTRAP_ADMIN_PASSWORD || 'Admin@12345').trim();
   const bootstrapName = String(process.env.BOOTSTRAP_ADMIN_NAME || 'System Admin').trim() || 'System Admin';
   const bootstrapCode = normalizeUpper(process.env.BOOTSTRAP_ADMIN_CODE || 'EMP-1000');
@@ -1263,10 +1371,13 @@ module.exports = {
   ensureDemoRoles,
   findUserByLogin,
   getRoleById,
+  getStaffProfile,
   hashPassword,
   listPermissions,
   listRoles,
+  listStaffWithoutLogin,
   listUsers,
+  withoutBootstrapAdmin,
   login,
   normalizeEmail,
   normalizeUsername,
@@ -1274,8 +1385,10 @@ module.exports = {
   seedBootstrapAdmin,
   seedDemoUsers,
   signToken,
+  staffCodeFromId,
   updateRole,
   updateRolePermissions,
+  updateStaff,
   updateUser
 };
 

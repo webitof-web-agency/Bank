@@ -22,7 +22,32 @@ let initialized = false;
 let embeddedInitPromise = null;
 let embeddedProcess = null;
 let embeddedConnection = null;
-const tableCache = new Map();
+// Every write to a cached table goes through set/delete/clear, so a table's
+// version changes whenever its rows do. Derived caches (e.g. the voucher list
+// in banking.service) compare versions to know when to rebuild.
+const tableVersions = new Map();
+let cacheGeneration = 0;
+class VersionedTableCache extends Map {
+  set(tableName, rows) {
+    tableVersions.set(tableName, (tableVersions.get(tableName) || 0) + 1);
+    return super.set(tableName, rows);
+  }
+
+  delete(tableName) {
+    tableVersions.set(tableName, (tableVersions.get(tableName) || 0) + 1);
+    return super.delete(tableName);
+  }
+
+  clear() {
+    cacheGeneration += 1;
+    return super.clear();
+  }
+}
+const tableCache = new VersionedTableCache();
+
+function getTableVersion(tableName) {
+  return `${cacheGeneration}.${tableVersions.get(tableName) || 0}`;
+}
 
 function clone(value) {
   return value == null ? value : JSON.parse(JSON.stringify(value));
@@ -901,6 +926,7 @@ module.exports = {
   getDumpConnection,
   deleteMainRow,
   getCachedRows,
+  getTableVersion,
   getUserRoles,
   getUserRolesForUsers,
   initializeDatabase,

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useGoBack } from '../../lib/useGoBack';
 import { toast } from 'sonner';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../api/api';
@@ -10,6 +11,7 @@ import { mapRoleForForm } from '../../lib/rbac';
 export function RoleFormPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const goBack = useGoBack();
   const { token } = useAuth();
   const isEdit = Boolean(id);
 
@@ -36,14 +38,14 @@ export function RoleFormPage() {
             setDraft(mapRoleForForm(role));
           } else {
             toast.error('Role not found');
-            navigate('/app/roles');
+            navigate('/app/roles', { replace: true });
           }
         }
       })
       .catch((error) => {
         if (!mounted) return;
         toast.error(error.message || 'Unable to load data');
-        navigate('/app/roles');
+        navigate('/app/roles', { replace: true });
       })
       .finally(() => {
         if (mounted) setLoading(false);
@@ -65,7 +67,7 @@ export function RoleFormPage() {
         await api.roles.create(token, draft);
         toast.success('Role created');
       }
-      navigate('/app/roles');
+      goBack('/app/roles');
     } catch (error) {
       toast.error(error.message || 'Unable to save role');
     } finally {
@@ -80,7 +82,7 @@ export function RoleFormPage() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center gap-2 text-[13px] font-medium text-slate-500 mb-2">
-        <button type="button" onClick={() => navigate('/app/roles')} className="flex items-center gap-1.5 transition-colors hover:text-slate-900">
+        <button type="button" onClick={() => goBack('/app/roles')} className="flex items-center gap-1.5 transition-colors hover:text-slate-900">
           <ArrowLeft size={14} /> Back
         </button>
         <span className="text-slate-300">/</span>
@@ -95,7 +97,7 @@ export function RoleFormPage() {
           onSubmit={saveRole}
           isEdit={isEdit}
           saving={saving}
-          onCancel={() => navigate('/app/roles')}
+          onCancel={() => goBack('/app/roles')}
         />
       </div>
     </div>
