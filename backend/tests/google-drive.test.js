@@ -89,11 +89,13 @@ async function fakeGoogle(url, options = {}) {
   if (u.pathname === '/drive/v3/about') return jsonResponse(200, { user: { emailAddress: google.email, displayName: 'Society' } });
   if (u.pathname === '/drive/v3/files' && method === 'POST') {
     const body = JSON.parse(options.body);
+    if ((body.parents || []).some((id) => !google.files.has(id))) return jsonResponse(404, { error: { message: 'File not found' } });
     const file = addFile({ name: body.name, mimeType: body.mimeType, parents: body.parents || [] });
     return jsonResponse(200, { id: file.id, name: file.name });
   }
   if (u.pathname === '/drive/v3/files' && method === 'GET') {
     const parent = /'([^']+)' in parents/.exec(u.searchParams.get('q'))[1];
+    if (!google.files.has(parent)) return jsonResponse(404, { error: { message: 'File not found' } });
     const files = [...google.files.values()].filter((f) => !f.trashed && (f.parents || []).includes(parent))
       .sort((a, b) => b.createdTime.localeCompare(a.createdTime));
     return jsonResponse(200, { files: files.map(({ id, name, size, createdTime, mimeType }) => ({ id, name, size, createdTime, mimeType })) });
@@ -104,7 +106,7 @@ async function fakeGoogle(url, options = {}) {
     if (!file) return jsonResponse(404, { error: { message: 'File not found' } });
     if (method === 'DELETE') { google.files.delete(file.id); return new Response(null, { status: 204 }); }
     if (u.searchParams.get('alt') === 'media') return new Response(file.content || Buffer.alloc(0), { status: 200 });
-    return jsonResponse(200, { id: file.id, name: file.name, mimeType: file.mimeType, trashed: file.trashed, size: String(file.content?.length || 0), createdTime: file.createdTime });
+    return jsonResponse(200, { id: file.id, name: file.name, mimeType: file.mimeType, trashed: file.trashed, parents: file.parents || [], size: String(file.content?.length || 0), createdTime: file.createdTime });
   }
   if (u.pathname === '/upload/drive/v3/files' && method === 'POST') {
     const body = JSON.parse(options.body);
@@ -512,4 +514,62 @@ test('storage service: Drive is used for new uploads once selected; old files ke
   assert.ok(await storage._getHistoricalProviderWithAuth({ storageProvider: 'local', storageKey: 'images/x.jpg' }) instanceof LocalStorageProvider);
   await Settings.findOneAndUpdate({ key: 'storage_settings' }, { $set: { payload: { configurationSource: 'site_settings', activeProvider: 'local' } } });
   await storage.reloadConfig();
+});
+
+test('GOOGLE_OAUTH_REFRESH_TOKEN: connects without sign-in, once per token value', async () => {
+  resetGoogle();
+  await resetState();
+  setEnv({ GOOGLE_OAUTH_REFRESH_TOKEN: REFRESH_TOKEN });
+  try {
+    const status = await call('GET', '/google-drive/status');
+    assert.equal(status.status, 200);
+    assert.equal(status.body.data.drive.connected, true);
+    assert.equal(status.body.data.drive.accountEmail, 'society.backup@gmail.com');
+    assert.ok(status.body.data.drive.backupFolder.id && status.body.data.drive.uploadsFolder.id);
+    assertNoSecrets(status.text);
+
+    // Disconnecting in Settings is not undone by the same env token.
+    assert.equal((await call('POST', '/google-drive/disconnect')).status, 200);
+    assert.equal((await call('GET', '/google-drive/status')).body.data.drive.connected, false);
+
+    // A bad token is logged once and leaves Drive disconnected.
+    setEnv({ GOOGLE_OAUTH_REFRESH_TOKEN: 'not-a-valid-token' });
+    const bad = await call('GET', '/google-drive/status');
+    assert.equal(bad.status, 200);
+    assert.equal(bad.body.data.drive.connected, false);
+  } finally {
+    delete process.env.GOOGLE_OAUTH_REFRESH_TOKEN;
+    await resetState();
+  }
+});
+
+test('GDRIVE_PARENT_FOLDER_ID: both folders live in the main folder (link or id)', async () => {
+  resetGoogle();
+  await resetState();
+  setEnv();
+  const FOLDER = 'application/vnd.google-apps.folder';
+  const main = addFile({ name: 'Society Drive', mimeType: FOLDER, parents: [] });
+  // Already there by name: reused, not duplicated.
+  const existingUploads = addFile({ name: 'Banking Raipur – Uploads', mimeType: FOLDER, parents: [main.id] });
+  try {
+    // Connected first without a main folder: folders land in the root.
+    assert.equal((await connect()).status, 302);
+    const rootBackup = (await connection.readState()).backupFolderId;
+    assert.deepEqual(google.files.get(rootBackup).parents, []);
+
+    setEnv({ GDRIVE_PARENT_FOLDER_ID: `https://drive.google.com/drive/folders/${main.id}?usp=sharing` });
+    const backupId = await connection.ensureFolder('backup');
+    const uploadsId = await connection.ensureFolder('uploads');
+    assert.notEqual(backupId, rootBackup);
+    assert.deepEqual(google.files.get(backupId).parents, [main.id]);
+    assert.equal(uploadsId, existingUploads.id);
+    // Stable once in place.
+    assert.equal(await connection.ensureFolder('backup'), backupId);
+
+    setEnv({ GDRIVE_PARENT_FOLDER_ID: 'missing-folder' });
+    await assert.rejects(() => connection.ensureFolder('backup'), (error) => error.code === 'GDRIVE_PARENT_FOLDER');
+  } finally {
+    delete process.env.GDRIVE_PARENT_FOLDER_ID;
+    await resetState();
+  }
 });

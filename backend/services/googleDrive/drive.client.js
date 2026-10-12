@@ -137,7 +137,7 @@ class DriveClient {
   async getFile(id) {
     if (!id) return null;
     try {
-      const response = await this.request(`${API}/files/${encodeURIComponent(id)}?fields=id,name,mimeType,size,createdTime,trashed,webViewLink`, {}, 'file lookup');
+      const response = await this.request(`${API}/files/${encodeURIComponent(id)}?fields=id,name,mimeType,size,createdTime,trashed,webViewLink,parents`, {}, 'file lookup');
       const data = await readJson(response);
       return data && !data.trashed ? data : null;
     } catch (error) {

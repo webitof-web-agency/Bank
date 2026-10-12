@@ -238,6 +238,7 @@ async function runScheduledBackupIfDue(now = new Date()) {
 }
 
 async function listBackups() {
+  await connection.connectFromEnvToken();
   const state = await connection.readState();
   if (!state.encryptedRefreshToken || !state.backupFolderId) return [];
   const client = await connection.getClient();

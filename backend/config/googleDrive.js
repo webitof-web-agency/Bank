@@ -7,6 +7,12 @@ function cleanText(value) {
   return String(value ?? '').trim();
 }
 
+function parseFolderId(value) {
+  const text = cleanText(value);
+  const fromLink = text.match(/\/folders\/([A-Za-z0-9_-]+)/) || text.match(/[?&]id=([A-Za-z0-9_-]+)/);
+  return fromLink ? fromLink[1] : text;
+}
+
 function getGoogleDriveConfig() {
   const port = cleanText(process.env.PORT) || '8001';
   const apiPrefix = cleanText(process.env.API_PREFIX) || '/api';
@@ -22,6 +28,9 @@ function getGoogleDriveConfig() {
     returnUrl: (firstFrontend || 'http://localhost:5173').replace(/\/+$/, '') + '/app/settings/google-drive',
     backupFolderName: cleanText(process.env.GDRIVE_BACKUP_FOLDER_NAME) || 'Banking Raipur – DB Backups',
     uploadsFolderName: cleanText(process.env.GDRIVE_UPLOADS_FOLDER_NAME) || 'Banking Raipur – Uploads',
+    // Optional main folder holding both folders (an id or a Drive folder link);
+    // empty = My Drive root.
+    parentFolderId: parseFolderId(process.env.GDRIVE_PARENT_FOLDER_ID),
     backupKeep: Number.isInteger(keep) && keep > 0 ? Math.min(keep, 100) : 7,
     // Daily backup at this hour, India time (0-23); -1 turns the schedule off.
     backupHourIst: Number.isInteger(hour) && hour >= -1 && hour <= 23 ? hour : 2,
