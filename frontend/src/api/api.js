@@ -104,7 +104,7 @@ async function parseResponse(response) {
   }
 
   if (!response.ok || data.success === false) {
-    const error = new Error(data.message || `Request failed with status ${response.status}`);
+    const error = new Error(data.message || data.error || `Request failed with status ${response.status}`);
     error.status = response.status;
     error.payload = data;
     throw error;

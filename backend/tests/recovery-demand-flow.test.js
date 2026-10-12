@@ -132,6 +132,19 @@ test('21: the same demand line twice in one recovery is rejected, nothing saved'
   assert.equal(await status(ids.d103), 'PENDING');
 });
 
+test('Excel vs demand: unresolved warnings or an unmatched Excel row stop the Save; confirmed ones pass', async () => {
+  const before = await Voucher.countDocuments({});
+  await assert.rejects(banking.createVoucher(recoveryVoucher([
+    { ...fromDemand(ids.d103, 3, { cd: 900 }), warnings: ['Excel ₹900 ≠ Demand ₹1,000'] }
+  ])), /warnings/);
+  await assert.rejects(banking.createVoucher(recoveryVoucher([
+    fromDemand(ids.d103, 3, { cd: 1000 }),
+    { member: '', source: 'EXCEL', unmatched: true, heads: {}, warnings: ['no member'], confirmed: true }
+  ])), /warnings/);
+  assert.equal(await Voucher.countDocuments({}), before);
+  assert.equal(await status(ids.d103), 'PENDING');
+});
+
 test('22-23: a stale demand line (already recovered) fails the save and rolls everything back', async () => {
   const before = await Voucher.countDocuments({});
   const err = await banking.createVoucher(recoveryVoucher([

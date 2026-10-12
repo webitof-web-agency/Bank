@@ -4715,9 +4715,25 @@ async function buildDemandListReport({ month = '', year = '', date = '', fyStart
   const memberByCode = new Map(members.map((m) => [cleanUpper(m.code), m]));
   const listByKey = new Map(lists.map((l) => [`${l.demandListNo}|${l.branchCode}`, l]));
 
+  // What saved recoveries actually collected against each demand line (a
+  // recovery line keeps the demand line it came from). Migrated lines carry
+  // recoveredAmount instead.
+  const lineIds = lines.map((line) => String(line.id || line._id));
+  const recoveredById = new Map();
+  if (lineIds.length) {
+    for (const recovery of await RecoveryLine.find({ demandLineId: { $in: lineIds } }).lean()) {
+      const current = recoveredById.get(recovery.demandLineId) || { paise: 0, voucherNo: '' };
+      current.paise += toPaise(recovery.total || 0);
+      current.voucherNo = current.voucherNo || recovery.voucherNo || '';
+      recoveredById.set(recovery.demandLineId, current);
+    }
+  }
+
   return lines.map((line) => {
     const list = listByKey.get(`${line.demandListNo}|${line.postedBranch}`) || {};
     const member = memberByCode.get(cleanUpper(line.memberCode)) || {};
+    const collected = recoveredById.get(String(line.id || line._id));
+    const recovered = collected ? toRupees(collected.paise) : toNumber(line.recoveredAmount, 0);
     return {
       demandListNo: line.demandListNo,
       memberCode: line.memberCode,
@@ -4731,10 +4747,10 @@ async function buildDemandListReport({ month = '', year = '', date = '', fyStart
       loanAgainstDeposit: toNumber(line.loanAgainstDeposit, 0),
       other: toNumber(line.other, 0) + toNumber(line.insurancePremium, 0),
       total: toNumber(line.totalAmount, 0),
-      recovered: toNumber(line.recoveredAmount, 0),
-      pending: Math.max(0, toNumber(line.totalAmount, 0) - toNumber(line.recoveredAmount, 0)),
+      recovered,
+      pending: toRupees(Math.max(0, toPaise(line.totalAmount || 0) - toPaise(recovered))),
       status: line.recoveryStatus,
-      recoveryVoucherNo: line?.payload?.recoveryVoucherNo || ''
+      recoveryVoucherNo: collected?.voucherNo || line?.payload?.recoveryVoucherNo || ''
     };
   });
 }
@@ -5044,6 +5060,10 @@ async function prepareRecoveryLines(payload) {
   if (payload?.details?.key !== RECOVERY_KEY) return { lines: payload?.details?.recoveryLines || [], links: [] };
   const draftLines = toArray(payload.details.recoveryLines);
   if (!draftLines.length) throw recoveryHttpError('Add at least one member line before saving the recovery.');
+  // The entry screen compares the Excel with the demand and stores each row's
+  // warnings; any not fixed or confirmed on its row stop the Save.
+  const open = draftLines.filter((line) => line?.unmatched || (toArray(line?.warnings).length && !line?.confirmed));
+  if (open.length) throw recoveryHttpError(`${open.length} recovery row(s) still have warnings (Excel vs demand). Fix, remove or confirm them before saving.`);
   const lines = draftLines.map((line, index) => toRecoveryLine(line, index));
 
   const codes = [...new Set(lines.map((line) => line.memberCode))];

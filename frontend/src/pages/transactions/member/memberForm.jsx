@@ -8,9 +8,10 @@ import { getMemberDocumentDefinitions } from './memberDocumentUtils';
 import { Modal } from '../../../components/ui/Modal';
 import { useFY } from '../../../context/FYContext';
 import UploadModal from './recovery-import/UploadModal';
+import { toast } from 'sonner';
 import {
-  RECOVERY_HEADS, addDemandLines, addImportRows, draftTotals, emptyHeads, lineTotal, manualLine,
-  normalizeDraftLines, removeLine, updateLineHeads
+  RECOVERY_HEADS, addDemandLines, applyExcelHeads, draftTotals, emptyHeads, isUnresolved, lineTotal, manualLine,
+  mergeImportRows, normalizeDraftLines, removeLine, setLineConfirmed, unresolvedCount, updateLineHeads, withWarnings
 } from './recoveryDraft';
 
 function deepClone(value) {
@@ -142,7 +143,6 @@ function LookupSelect({ label, value, onChange, groups = [], placeholder = 'Sele
 const MONTH_OPTIONS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
   .map((label, index) => ({ label, value: String(index + 1) }));
 
-const SOURCE_LABELS = { DEMAND: 'Demand', EXCEL: 'Excel', MANUAL: 'Manual' };
 
 function formatHead(value) {
   const number = Number(value || 0);
@@ -382,17 +382,21 @@ function RecoveryLinesEditor({ rows = [], onChange, memberGroups = [], lookups =
   const [notice, setNotice] = useState('');
   const totals = draftTotals(safeRows);
   const members = Array.isArray(lookups.members) ? lookups.members : [];
-  const toReview = safeRows.filter((row) => row.needsReview).length;
+  // Warnings are worked out fresh (rows saved before this check have none stored).
+  const checkedRows = withWarnings(safeRows);
+  const unresolved = checkedRows.filter(isUnresolved).length;
+  const hasDemand = safeRows.some((row) => row.source === 'DEMAND');
+  const hasExcel = safeRows.some((row) => row.excel);
 
   function saveMemberLine({ member, memberRecord, heads }) {
     if (memberDialog.index != null) {
       onChange(updateLineHeads(safeRows, memberDialog.index, heads));
     } else {
-      onChange([...safeRows, manualLine({
+      onChange(withWarnings([...safeRows, manualLine({
         ...(memberRecord || { code: member }),
         branchName: getBranchLabel(lookups, memberRecord?.branchCode),
         designation: getDesignationLabel(memberRecord)
-      }, heads)]);
+      }, heads)]));
     }
     setMemberDialog(null);
   }
@@ -409,12 +413,10 @@ function RecoveryLinesEditor({ rows = [], onChange, memberGroups = [], lookups =
     try {
       const response = await api.recoveryImport.getBatchRows(token, batch.id);
       const importRows = Array.isArray(response.data?.rows) ? response.data.rows : [];
-      const result = addImportRows(safeRows, importRows, members, batch.id);
+      const result = mergeImportRows(safeRows, importRows, members, batch.id);
       onChange(result.lines);
-      const rejected = result.rejected.length
-        ? ` ${result.rejected.length} row(s) not added: ${result.rejected.slice(0, 5).map((row) => `row ${row.row} PF ${row.pfNo} (${row.reason})`).join('; ')}${result.rejected.length > 5 ? '…' : ''}`
-        : '';
-      setNotice(`${result.added} Excel row(s) added, ${result.flagged} to review.${rejected}`);
+      const issues = result.lines.filter(isUnresolved).length;
+      setNotice(`Excel compared with the demand: ${result.matched} matched a demand line, ${result.added} not in the demand, ${result.unmatched} with no member. ${issues ? `${issues} row(s) to fix or confirm.` : 'Everything matches.'}`);
     } catch (error) {
       alert(error.message || 'Unable to read the imported rows');
     }
@@ -425,60 +427,82 @@ function RecoveryLinesEditor({ rows = [], onChange, memberGroups = [], lookups =
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <SectionTitle subtitle="Load members, correct any wrong amounts, check the totals, then Save.">Member Recovery</SectionTitle>
+        <SectionTitle subtitle="1. Load the demand  2. Import the Excel to compare  3. Fix or confirm every warning, then Save.">Member Recovery</SectionTitle>
         <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={() => setDemandOpen(true)} className={toolbarButton}>Add From Demand List</button>
-          <button type="button" onClick={() => setUploadOpen(true)} className={toolbarButton}>Import Excel</button>
+          <button type="button" onClick={() => setDemandOpen(true)} className={toolbarButton}>1. Load Demand</button>
+          <button type="button" onClick={() => setUploadOpen(true)} className={toolbarButton} title={hasDemand ? '' : 'Load the demand first to compare against it'}>2. Import Excel</button>
           <button type="button" onClick={() => setMemberDialog({ index: null, heads: emptyHeads() })} className="rounded-lg bg-[var(--primary,#2563eb)] px-4 py-2 text-sm font-medium text-white">+ Add Record</button>
         </div>
       </div>
       {notice ? <p className="rounded-lg bg-slate-50 px-3 py-2 text-[13px] text-slate-700">{notice}</p> : null}
-      {toReview ? <p className="rounded-lg bg-amber-50 px-3 py-2 text-[13px] text-amber-800">{toReview} row(s) need review — open Edit, correct the amounts and Update.</p> : null}
+      {unresolved ? (
+        <p className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-[13px] font-medium text-red-700">
+          {unresolved} row(s) have warnings. Fix the amounts (Edit / Use Excel), remove the row, or tick Confirm — Save is blocked until all are resolved.
+        </p>
+      ) : (hasExcel ? <p className="rounded-lg bg-emerald-50 px-3 py-2 text-[13px] text-emerald-700">Excel and demand checked — no open warnings.</p> : null)}
 
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
         <table className="min-w-full text-left text-[12px]">
           <thead className="bg-slate-50 text-[11px] font-semibold uppercase tracking-[0.06em] text-slate-500">
             <tr>
               <th className="px-2 py-2">Member</th>
-              <th className="px-2 py-2">Branch</th>
-              <th className="px-2 py-2">Designation</th>
               {RECOVERY_HEADS.map(([key, label]) => <th key={key} className="px-2 py-2 text-right">{label}</th>)}
               <th className="px-2 py-2 text-right">Total</th>
-              <th className="px-2 py-2">Source</th>
+              {hasExcel ? <th className="px-2 py-2 text-right">Excel</th> : null}
               <th className="px-2 py-2"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {safeRows.map((row, index) => {
+            {checkedRows.map((row, index) => {
               const record = getMemberRecord(lookups, row.member);
+              const open = isUnresolved(row);
+              const warnings = row.warnings || [];
               return (
-                <tr key={`${row.demandLineId || row.importRowId || 'line'}-${index}`} className={row.needsReview ? 'bg-amber-50/60' : ''}>
-                  <td className="px-2 py-1.5"><span className="font-medium text-slate-800">{row.member}</span> <span className="text-slate-600">{row.memberName || record?.name || ''}</span></td>
-                  <td className="px-2 py-1.5 text-slate-600">{row.branchName || getBranchLabel(lookups, record?.branchCode)}</td>
-                  <td className="px-2 py-1.5 text-slate-600">{row.designation || getDesignationLabel(record)}</td>
+                <tr
+                  key={`${row.demandLineId || row.importRowId || 'line'}-${index}`}
+                  className={open ? 'bg-red-50 shadow-[inset_4px_0_0_0_#dc2626]' : (warnings.length ? 'bg-amber-50/60' : '')}
+                >
+                  <td className="px-2 py-1.5 align-top">
+                    {row.unmatched
+                      ? <span className="font-medium text-red-700">PF {row.excel?.pfNo || '—'} <span className="font-normal">{row.memberName}</span></span>
+                      : <><span className="font-medium text-slate-800">{row.member}</span> <span className="text-slate-600">{row.memberName || record?.name || ''}</span></>}
+                    {warnings.length ? (
+                      <ul className={`mt-1 space-y-0.5 text-[11px] ${open ? 'font-semibold text-red-700' : 'text-amber-700'}`}>
+                        {warnings.map((warning) => <li key={warning}>⚠ {warning}</li>)}
+                      </ul>
+                    ) : null}
+                    {warnings.length && !row.unmatched ? (
+                      <label className="mt-1 inline-flex cursor-pointer items-center gap-1.5 text-[11px] font-medium text-slate-700">
+                        <input type="checkbox" checked={Boolean(row.confirmed)} onChange={(e) => onChange(setLineConfirmed(safeRows, index, e.target.checked))} />
+                        Confirm as is
+                      </label>
+                    ) : null}
+                  </td>
                   {RECOVERY_HEADS.map(([key]) => <td key={key} className="px-2 py-1.5 text-right text-slate-700">{formatHead(row.heads?.[key])}</td>)}
                   <td className="px-2 py-1.5 text-right font-semibold text-slate-800">{formatHead(lineTotal(row))}</td>
-                  <td className="px-2 py-1.5 text-slate-600" title={row.reviewNote || ''}>
-                    {SOURCE_LABELS[row.source] || 'Manual'}{row.demandListNo ? ` #${row.demandListNo}` : ''}{row.needsReview ? ' ⚠' : ''}
-                  </td>
+                  {hasExcel ? <td className="px-2 py-1.5 text-right text-slate-700">{row.excel ? formatHead(row.excel.amount) : '—'}</td> : null}
                   <td className="whitespace-nowrap px-2 py-1.5 text-right">
-                    <button type="button" onClick={() => setMemberDialog({ index, ...row })} className="mr-3 font-medium text-[var(--primary,#2563eb)] hover:underline">Edit</button>
+                    {row.excel && !row.unmatched && warnings.length ? (
+                      <button type="button" onClick={() => onChange(applyExcelHeads(safeRows, index))} className="mr-3 font-medium text-emerald-700 hover:underline" title="Use the Excel amount, split over the member's demand heads">Use Excel</button>
+                    ) : null}
+                    {!row.unmatched ? <button type="button" onClick={() => setMemberDialog({ index, ...row })} className="mr-3 font-medium text-[var(--primary,#2563eb)] hover:underline">Edit</button> : null}
                     <button type="button" onClick={() => onChange(removeLine(safeRows, index))} className="font-medium text-rose-600 hover:text-rose-700">Remove</button>
                   </td>
                 </tr>
               );
             })}
             {!safeRows.length ? (
-              <tr><td colSpan={RECOVERY_HEADS.length + 6} className="px-3 py-6 text-center text-slate-500">No members yet — use Add From Demand List, Import Excel or Add Record.</td></tr>
+              <tr><td colSpan={RECOVERY_HEADS.length + (hasExcel ? 4 : 3)} className="px-3 py-6 text-center text-slate-500">No members yet — Load Demand first, then Import Excel to compare (or Add Record).</td></tr>
             ) : null}
           </tbody>
           {safeRows.length ? (
             <tfoot className="bg-slate-50 font-semibold text-slate-800">
               <tr>
-                <td className="px-2 py-2" colSpan={3}>Total ({safeRows.length} members)</td>
+                <td className="px-2 py-2">Total ({safeRows.length} members)</td>
                 {RECOVERY_HEADS.map(([key]) => <td key={key} className="px-2 py-2 text-right">{formatHead(totals.heads[key])}</td>)}
                 <td className="px-2 py-2 text-right">{formatHead(totals.total)}</td>
-                <td colSpan={2}></td>
+                {hasExcel ? <td className="px-2 py-2 text-right">{formatHead(safeRows.reduce((sum, row) => sum + Number(row.excel?.amount || 0), 0))}</td> : null}
+                <td></td>
               </tr>
             </tfoot>
           ) : null}
@@ -619,8 +643,19 @@ export function MemberTransactionForm({ section, lookups = {}, value, setValue, 
     setDetailsValue(setValue, ['components', path], nextValue);
   }
 
+  // Recovery: Save waits until every Excel/demand warning is fixed or confirmed.
+  function handleSubmit(event) {
+    const open = isRecovery ? unresolvedCount(recoveryRows) : 0;
+    if (open) {
+      event.preventDefault();
+      toast.error(`${open} recovery row(s) still have warnings. Fix, remove or confirm them before saving.`);
+      return;
+    }
+    onSubmit?.(event);
+  }
+
   function updateRecoveryRows(nextRows) {
-    setDetailsValue(setValue, 'recoveryLines', nextRows);
+    setDetailsValue(setValue, 'recoveryLines', withWarnings(nextRows));
     const nextTotal = draftTotals(nextRows).total;
     setRootValue(setValue, 'amount', nextTotal > 0 ? nextTotal : '');
   }
@@ -954,7 +989,7 @@ export function MemberTransactionForm({ section, lookups = {}, value, setValue, 
   }
 
   return (
-    <form id="transaction-voucher-form" className="mx-auto w-full max-w-5xl space-y-3" onSubmit={onSubmit}>
+    <form id="transaction-voucher-form" className="mx-auto w-full max-w-5xl space-y-3" onSubmit={handleSubmit}>
       {!isRecovery && renderCommonHeader()}
       {isLoan ? renderLoanForm() : null}
       {isDeposit ? renderDepositForm() : null}

@@ -1,5 +1,10 @@
 import {
   BarChart3,
+  BookUser,
+  ClipboardList,
+  Coins,
+  Receipt,
+  Wallet,
   Banknote,
   Building2,
   CalendarRange,
@@ -46,7 +51,7 @@ export const REPORT_LINKS = [
     // Sidebar / hub name: this entry opens the whole report-host screen.
     navLabel: 'Report',
     path: '/app/reports/member-ledger',
-    icon: Users,
+    icon: BookUser,
     category: 'member-reports',
     permission: 'reports.member-ledger.view',
     description: 'Member ledger with running balance and summary balances.'
@@ -143,7 +148,7 @@ export const REPORT_LINKS = [
     key: 'cash-book',
     label: 'Cash Book',
     path: '/app/reports/cash-book',
-    icon: Banknote,
+    icon: Wallet,
     category: 'financial-statements',
     permission: 'reports.cash-book.view',
     description: 'Cash ledger entries posted for the selected day or date.'
@@ -170,7 +175,7 @@ export const REPORT_LINKS = [
     key: 'demand-list-report',
     label: 'Demand List',
     path: '/app/reports/demand-list-report',
-    icon: FileText,
+    icon: ClipboardList,
     category: 'voucher-and-summary',
     permission: 'reports.demand-list-report.view',
     description: 'Demand totals, recovery and pending balance.'
@@ -179,7 +184,7 @@ export const REPORT_LINKS = [
     key: 'profit-loss',
     label: 'Profit / Loss',
     path: '/app/reports/profit-loss',
-    icon: Percent,
+    icon: TrendingUp,
     category: 'financial-statements',
     permission: 'reports.profit-loss.view',
     description: 'Income versus expenditure snapshot.'
@@ -197,7 +202,7 @@ export const REPORT_LINKS = [
     key: 'payment-receipt-statement',
     label: 'Statement of Payment and Receipt',
     path: '/app/reports/payment-receipt-statement',
-    icon: ReceiptText,
+    icon: Receipt,
     category: 'member-reports',
     permission: 'reports.payment-receipt-statement.view',
     description: 'Payment and receipt statement in voucher order.'
@@ -215,7 +220,7 @@ export const REPORT_LINKS = [
     key: 'dividend-report',
     label: 'Dividend Report',
     path: '/app/reports/dividend-report',
-    icon: Landmark,
+    icon: Coins,
     category: 'member-reports',
     permission: 'reports.dividend-report.view',
     description: 'Dividend on member share — branchwise, memberwise or summary, on opening or closing balance.'

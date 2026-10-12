@@ -7,7 +7,16 @@
 //     demandLineId, demandListNo,          // exact demand provenance
 //     importBatchId, importRowId,          // Excel provenance
 //     needsReview, reviewNote,             // flagged for the operator
+//     excel: { amount, name, branch, ... } // the matching Excel row, if any
+//     unmatched,                           // Excel row with no member
+//     confirmed,                           // operator accepted the warnings
+//     warnings: [...],                     // see lineWarnings(); kept for Save
 //     heads: { share, cd, ssa, loan, lad, ins, admfee, suspense } }
+//
+// The flow: load the demand, then import the Excel. Each Excel row is matched
+// to the member's demand line and compared; every difference is a warning,
+// and Save is refused until each warning is fixed (amounts edited, row
+// removed) or confirmed on its row.
 // Nothing here talks to the server: loading, editing and removing lines only
 // changes this draft. The server converts the lines, posts the voucher and
 // marks the exact linked demand lines recovered, all in one Save.
@@ -109,47 +118,143 @@ export function lineFromDemand(candidate = {}) {
 export function addDemandLines(lines = [], candidates = []) {
   const present = new Set(lines.map((line) => line.demandLineId).filter(Boolean));
   const added = candidates.filter((candidate) => candidate.demandLineId && !present.has(candidate.demandLineId)).map(lineFromDemand);
-  return { lines: [...lines, ...added], added: added.length, skipped: candidates.length - added.length };
+  return { lines: withWarnings([...lines, ...added]), added: added.length, skipped: candidates.length - added.length };
 }
 
-// Excel rows from the recovery import (already PF-matched and split over the
-// member's configured demand heads by the import). A row that matched a
-// member is added; one whose total did not split exactly (SHORT / EXTRA) is
-// added flagged for review; one with no member is reported, not added.
-export function addImportRows(lines = [], rows = [], members = [], batchId = '') {
+const formatRupees = (value) => new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 }).format(Number(value || 0));
+
+// The Excel row as kept on a draft line.
+function excelOf(row = {}, batchId = '') {
+  const notes = String(row.warnings || '');
+  return {
+    amount: Number(row.importedTotalAmount || 0),
+    rowNo: row.sourceRowNo || null,
+    pfNo: row.pfNo || '',
+    name: row.sourceEmployeeName || '',
+    branch: row.sourceBranch || '',
+    nameDiffers: notes.includes('SOURCE NAME DIFFERENCE'),
+    branchDiffers: notes.includes('SOURCE BRANCH DIFFERENCE'),
+    batchId: batchId || row.batchId || '',
+    rowId: row.id || '',
+    // The import's split of the Excel amount over the member's demand heads.
+    heads: {
+      share: amountOrBlank(row.allocatedShare),
+      cd: amountOrBlank(row.allocatedCompulsoryDeposit),
+      ssa: amountOrBlank(row.allocatedSpecialDeposit),
+      loan: amountOrBlank(row.allocatedRegularLoan),
+      lad: amountOrBlank(row.allocatedLoanAgainstDeposit)
+    }
+  };
+}
+
+// "Use Excel": the line takes the Excel split, which matches the Excel total
+// when the import could split it exactly.
+export function applyExcelHeads(lines = [], index) {
+  const line = lines[index];
+  if (!line?.excel?.heads) return lines;
+  return updateLineHeads(lines, index, { ...emptyHeads(), ...line.excel.heads });
+}
+
+// Excel rows from the recovery import (PF-matched by the import, and split
+// over the member's demand heads). A row joins the member's line already in
+// the draft (normally its demand line) for comparison; a member with no line
+// gets a new Excel line; a PF that matches no member becomes an "unmatched"
+// line that has to be removed before Save.
+export function mergeImportRows(lines = [], rows = [], members = [], batchId = '') {
   const memberById = new Map(members.map((member) => [String(member.id || member._id), member]));
-  const added = [];
-  const rejected = [];
+  const next = lines.map((line) => ({ ...line }));
+  let matched = 0;
+  let added = 0;
+  let unmatched = 0;
   for (const row of rows) {
-    // The import's validation result (VALID, SHORT, EXTRA, MEMBER NOT FOUND...).
+    // The import's validation result (VALID, SHORT, MEMBER NOT FOUND...).
     const { status: validation = '' } = row;
     const member = memberById.get(String(row.memberId || ''));
+    const excel = excelOf(row, batchId);
     if (!member) {
-      rejected.push({ row: row.sourceRowNo, pfNo: row.pfNo, reason: row.errorMessage || validation || 'Member not found' });
+      unmatched += 1;
+      next.push({
+        member: '',
+        memberName: excel.name,
+        source: 'EXCEL',
+        unmatched: true,
+        unmatchedReason: row.errorMessage || validation || 'No member found',
+        importBatchId: excel.batchId,
+        importRowId: excel.rowId,
+        excel,
+        heads: emptyHeads()
+      });
       continue;
     }
-    const valid = String(validation).toUpperCase() === 'VALID';
-    added.push({
-      member: String(member.code || '').toUpperCase(),
+    const code = String(member.code || '').toUpperCase();
+    const target = next.find((line) => line.member === code && !line.excel && !line.unmatched);
+    if (target) {
+      target.excel = excel;
+      target.importBatchId = excel.batchId;
+      target.importRowId = excel.rowId;
+      target.confirmed = false;
+      matched += 1;
+      continue;
+    }
+    added += 1;
+    next.push({
+      member: code,
       memberName: member.name || '',
       branchName: member.branchName || member.branchCode || '',
       designation: member.designation || '',
       source: 'EXCEL',
-      importBatchId: batchId || row.batchId || '',
-      importRowId: row.id || '',
-      needsReview: !valid,
-      reviewNote: valid ? '' : `Excel ${row.importedTotalAmount}: ${row.errorMessage || validation}. Correct the amounts.`,
-      heads: {
-        ...emptyHeads(),
-        share: amountOrBlank(row.allocatedShare),
-        cd: amountOrBlank(row.allocatedCompulsoryDeposit),
-        ssa: amountOrBlank(row.allocatedSpecialDeposit),
-        loan: amountOrBlank(row.allocatedRegularLoan),
-        lad: amountOrBlank(row.allocatedLoanAgainstDeposit)
-      }
+      importBatchId: excel.batchId,
+      importRowId: excel.rowId,
+      excel,
+      heads: { ...emptyHeads(), ...excel.heads }
     });
   }
-  return { lines: [...lines, ...added], added: added.length, flagged: added.filter((line) => line.needsReview).length, rejected };
+  return { lines: withWarnings(next), matched, added, unmatched };
+}
+
+// Everything to resolve on one line, given the whole draft (whether a demand
+// was loaded and an Excel imported decides the "not in ..." checks).
+export function lineWarnings(line = {}, lines = []) {
+  if (line.unmatched) {
+    return [`Excel row ${line.excel?.rowNo ?? ''}: PF ${line.excel?.pfNo || '—'} — ${line.unmatchedReason || 'no member found'}. Remove this row.`];
+  }
+  const demandLoaded = lines.some((entry) => entry.source === 'DEMAND');
+  const excelImported = lines.some((entry) => entry.excel);
+  const warnings = [];
+  if (line.excel) {
+    const excelPaise = toPaise(line.excel.amount);
+    const linePaise = lineTotalPaise(line);
+    if (excelPaise !== linePaise) {
+      const label = line.source === 'DEMAND' ? 'Demand' : 'Recovery';
+      warnings.push(`Excel ₹${formatRupees(line.excel.amount)} ≠ ${label} ₹${formatRupees(fromPaise(linePaise))}`);
+    }
+    if (line.excel.nameDiffers) warnings.push(`Excel name "${line.excel.name}" differs from the member`);
+    if (line.excel.branchDiffers) warnings.push(`Excel branch "${line.excel.branch}" differs from the member`);
+  }
+  if (excelImported && line.source === 'DEMAND' && !line.excel) warnings.push('In demand, not in the Excel');
+  if (demandLoaded && line.source === 'EXCEL') warnings.push('In the Excel, not in the demand');
+  if (line.needsReview && line.reviewNote) warnings.push(line.reviewNote);
+  return warnings;
+}
+
+// The draft with each line's warnings stored on it (Save sends them, and the
+// server refuses unresolved ones too).
+export function withWarnings(lines = []) {
+  return lines.map((line) => ({ ...line, warnings: lineWarnings(line, lines) }));
+}
+
+// A line still blocking Save: warnings not confirmed, or an unmatched row.
+export function isUnresolved(line = {}) {
+  const warnings = Array.isArray(line.warnings) ? line.warnings : [];
+  return Boolean(line.unmatched) || (warnings.length > 0 && !line.confirmed);
+}
+
+export function unresolvedCount(lines = []) {
+  return withWarnings(lines).filter(isUnresolved).length;
+}
+
+export function setLineConfirmed(lines = [], index, confirmed) {
+  return withWarnings(lines.map((line, i) => (i === index ? { ...line, confirmed: Boolean(confirmed) } : line)));
 }
 
 // Add Record: a manual line has no demand link, whatever demand the member has.
@@ -165,13 +270,14 @@ export function manualLine(member = {}, heads = {}) {
   };
 }
 
-// Edit a line's amounts (Update): provenance stays, the review flag clears.
+// Edit a line's amounts (Update): provenance stays, the review flag and any
+// earlier confirmation clear, and the warnings are worked out again.
 export function updateLineHeads(lines = [], index, heads = {}) {
-  return lines.map((line, i) => (i === index
-    ? { ...line, heads: { ...normalizeHeads(line.heads), ...heads }, needsReview: false, reviewNote: '' }
-    : line));
+  return withWarnings(lines.map((line, i) => (i === index
+    ? { ...line, heads: { ...normalizeHeads(line.heads), ...heads }, needsReview: false, reviewNote: '', confirmed: false }
+    : line)));
 }
 
 export function removeLine(lines = [], index) {
-  return lines.filter((_, i) => i !== index);
+  return withWarnings(lines.filter((_, i) => i !== index));
 }

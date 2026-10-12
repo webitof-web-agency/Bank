@@ -4,7 +4,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  addDemandLines, addImportRows, draftTotals, lineTotal, manualLine, removeLine, updateLineHeads
+  addDemandLines, applyExcelHeads, draftTotals, isUnresolved, lineTotal, manualLine, mergeImportRows, removeLine,
+  setLineConfirmed, unresolvedCount, updateLineHeads
 } from '../src/pages/transactions/member/recoveryDraft.js';
 
 const demand = {
@@ -59,19 +60,59 @@ test('12, 14: a manual row adds to the totals and carries no demand link', () =>
   assert.equal(draftTotals(withManual).total, 4500);
 });
 
-test('13, 15: Excel rows join the same draft; unmatched rows are reported, short/extra flagged', () => {
-  const members = [{ id: 'm1', code: '1473', name: 'A' }, { id: 'm2', code: '1474', name: 'B' }];
+const members = [{ id: 'm1', code: '1473', name: 'A' }, { id: 'm2', code: '1474', name: 'B' }, { id: 'm3', code: '1475', name: 'C' }];
+
+test('Excel rows are compared with the loaded demand: match, amount differs, missing both ways, no member', () => {
+  const demandLines = addDemandLines([], [demand, { ...demand, demandLineId: 'D102', memberCode: '1474' }]).lines;
+  assert.equal(unresolvedCount(demandLines), 0, 'no warnings before an Excel is imported');
   const rows = [
-    { id: 'r1', memberId: 'm1', status: 'VALID', importedTotalAmount: 1500, allocatedCompulsoryDeposit: 1000, allocatedRegularLoan: 500 },
-    { id: 'r2', memberId: 'm2', status: 'SHORT', importedTotalAmount: 800, errorMessage: 'Demand Total > Imported Total', allocatedCompulsoryDeposit: 800 },
-    { id: 'r3', memberId: null, status: 'MEMBER NOT FOUND', pfNo: '999', sourceRowNo: 4, errorMessage: 'No member found with PF No: 999' }
+    { id: 'r1', memberId: 'm1', status: 'VALID', importedTotalAmount: 3500, allocatedCompulsoryDeposit: 1000, allocatedSpecialDeposit: 500, allocatedRegularLoan: 2000 },
+    { id: 'r3', memberId: 'm3', status: 'VALID', importedTotalAmount: 700, allocatedCompulsoryDeposit: 700 },
+    { id: 'r4', memberId: null, status: 'MEMBER NOT FOUND', pfNo: '999', sourceRowNo: 5, errorMessage: 'No member found with PF No: 999' }
   ];
-  const result = addImportRows([], rows, members, 'B1');
-  assert.equal(result.added, 2);
-  assert.equal(result.flagged, 1);
-  assert.equal(result.rejected.length, 1);
-  assert.ok(result.lines.every((line) => line.source === 'EXCEL' && !line.demandLineId));
-  assert.equal(draftTotals(result.lines).total, 2300);
+  const result = mergeImportRows(demandLines, rows, members, 'B1');
+  assert.deepEqual([result.matched, result.added, result.unmatched], [1, 1, 1]);
+  const [m1473, m1474, m1475, noMember] = result.lines;
+  assert.deepEqual(m1473.warnings, [], 'Excel equals demand');
+  assert.equal(m1473.demandLineId, 'D101');
+  assert.deepEqual(m1474.warnings, ['In demand, not in the Excel']);
+  assert.deepEqual(m1475.warnings, ['In the Excel, not in the demand']);
+  assert.equal(noMember.unmatched, true);
+  assert.equal(unresolvedCount(result.lines), 3);
+});
+
+test('an amount difference is fixed by Use Excel or Edit, or confirmed; an unmatched row must be removed', () => {
+  const demandLines = addDemandLines([], [demand]).lines;
+  const rows = [{ id: 'r1', memberId: 'm1', status: 'SHORT', importedTotalAmount: 3000, allocatedCompulsoryDeposit: 1000, allocatedSpecialDeposit: 500, allocatedRegularLoan: 1500 }];
+  const { lines } = mergeImportRows(demandLines, rows, members, 'B1');
+  assert.match(lines[0].warnings[0], /Excel ₹3,000 ≠ Demand ₹3,500/);
+  assert.equal(isUnresolved(lines[0]), true);
+
+  const usedExcel = applyExcelHeads(lines, 0);
+  assert.equal(lineTotal(usedExcel[0]), 3000);
+  assert.deepEqual(usedExcel[0].warnings, []);
+
+  const edited = updateLineHeads(lines, 0, { loan: 1500 });
+  assert.deepEqual(edited[0].warnings, []);
+
+  const confirmed = setLineConfirmed(lines, 0, true);
+  assert.equal(isUnresolved(confirmed[0]), false);
+  assert.equal(unresolvedCount(confirmed), 0);
+  // Editing again clears the confirmation.
+  assert.equal(updateLineHeads(confirmed, 0, { loan: 1000 })[0].confirmed, false);
+
+  const withUnknown = mergeImportRows([], [{ id: 'x', memberId: null, pfNo: '1', sourceRowNo: 2 }], members, 'B1').lines;
+  assert.equal(isUnresolved(setLineConfirmed(withUnknown, 0, true)[0]), true, 'confirm does not clear an unmatched row');
+  assert.equal(unresolvedCount(removeLine(withUnknown, 0)), 0);
+});
+
+test('Excel name / branch differences are warnings', () => {
+  const demandLines = addDemandLines([], [demand]).lines;
+  const rows = [{ id: 'r1', memberId: 'm1', importedTotalAmount: 3500, allocatedCompulsoryDeposit: 1000, allocatedSpecialDeposit: 500, allocatedRegularLoan: 2000,
+    sourceEmployeeName: 'AA', sourceBranch: 'X', warnings: 'SOURCE NAME DIFFERENCE\nSOURCE BRANCH DIFFERENCE' }];
+  const [line] = mergeImportRows(demandLines, rows, members, 'B1').lines;
+  assert.equal(line.warnings.length, 2);
+  assert.match(line.warnings.join(' '), /name "AA".*branch "X"/);
 });
 
 test('totals are exact in paise', () => {

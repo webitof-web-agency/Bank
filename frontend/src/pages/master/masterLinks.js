@@ -5,6 +5,7 @@ import {
   BookOpen,
   Percent,
   Landmark,
+  UserCog,
   FileText
 } from 'lucide-react';
 
@@ -21,7 +22,7 @@ export const MASTER_LINKS = [
   {
     label: 'Employees',
     path: '/app/master/employees',
-    icon: Users,
+    icon: UserCog,
     permission: ['master.employees.view', 'admin.users.view'],
     description: 'Employee access, roles, and staff profile.',
     group: 'Operations',

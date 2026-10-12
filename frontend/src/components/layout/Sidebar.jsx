@@ -20,7 +20,8 @@ function SidebarLink({ item, onNavigate, open }) {
       onClick={onNavigate}
       className={({ isActive }) =>
         cn(
-          'group flex items-center gap-3 px-3 py-2.5 text-[15px] transition-all duration-200 overflow-hidden whitespace-nowrap rounded-[var(--radius-button,1rem)]',
+          'group flex items-center gap-3 px-3 py-2.5 text-[15px] transition-all duration-200 overflow-hidden rounded-[var(--radius-button,1rem)]',
+          open ? 'whitespace-normal' : 'whitespace-nowrap',
           isActive ? 'font-medium bg-[var(--brand-sidebar-active,#e0e7ff)] text-[var(--primary,#2563eb)]' : 'font-medium text-slate-700 hover:bg-[color-mix(in_srgb,var(--primary)_8%,transparent)] hover:text-[var(--primary,#2563eb)]',
           !open && 'lg:justify-center lg:px-0 lg:bg-transparent lg:hover:bg-transparent'
         )
@@ -34,7 +35,7 @@ function SidebarLink({ item, onNavigate, open }) {
       {({ isActive }) => (
         <>
           <item.icon size={20} strokeWidth={2} className={cn('shrink-0 transition-colors', isActive ? 'text-[var(--primary,#2563eb)]' : 'text-slate-700 group-hover:text-[var(--primary,#2563eb)]')} />
-          <span className={cn('truncate transition-colors duration-200 group-hover:text-[var(--primary,#2563eb)]', !open && 'lg:hidden', isActive && 'text-[var(--primary,#2563eb)] font-semibold')}>
+          <span className={cn('transition-colors duration-200 group-hover:text-[var(--primary,#2563eb)]', open ? 'leading-snug' : 'truncate lg:hidden', isActive && 'text-[var(--primary,#2563eb)] font-semibold')}>
             {item.label}
           </span>
         </>
@@ -208,20 +209,21 @@ function SidebarDropdown({ item, onNavigate, open, pathname, expanded, onToggle 
           if (open) handleToggle(!visible);
         }}
         className={cn(
-          'group flex w-full items-center justify-between gap-3 px-3 py-2.5 text-[15px] transition-all duration-200 whitespace-nowrap rounded-[var(--radius-button,1rem)]',
+          'group flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-[15px] transition-all duration-200 rounded-[var(--radius-button,1rem)]',
+          open ? 'whitespace-normal' : 'whitespace-nowrap',
           activeChild || activeParent || (open && visible) ? 'font-medium text-[var(--primary,#2563eb)]' : 'font-medium text-slate-700 hover:bg-[color-mix(in_srgb,var(--primary)_8%,transparent)] hover:text-[var(--primary,#2563eb)]',
           !open && 'lg:justify-center lg:px-0 lg:bg-transparent lg:hover:bg-transparent',
           !open && isHovered && 'bg-[color-mix(in_srgb,var(--primary)_8%,transparent)]'
         )}
         title={!open ? item.label : undefined}
       >
-        <span className="flex items-center gap-3 overflow-hidden">
+        <span className="flex min-w-0 items-center gap-3 overflow-hidden">
           <item.icon size={20} strokeWidth={2} className={cn('shrink-0 transition-colors', activeChild || activeParent || (open && visible) ? 'text-[var(--primary,#2563eb)]' : 'text-slate-700 group-hover:text-[var(--primary,#2563eb)]')} />
-          <span className={cn('truncate transition-colors duration-200 group-hover:text-[var(--primary,#2563eb)]', !open && 'lg:hidden')}>
+          <span className={cn('transition-colors duration-200 group-hover:text-[var(--primary,#2563eb)]', open ? 'leading-snug' : 'truncate lg:hidden')}>
             {item.label}
           </span>
         </span>
-        <span className={cn('transition-transform duration-200', !open && 'lg:hidden', visible && 'rotate-180')}>
+        <span className={cn('shrink-0 transition-transform duration-200', !open && 'lg:hidden', visible && 'rotate-180')}>
           <ChevronDown size={16} />
         </span>
       </button>
@@ -337,7 +339,7 @@ export function Sidebar({ open = false, onClose, onToggleCollapse }) {
       <aside
         className={cn(
           'fixed inset-y-0 left-0 z-40 flex flex-col border-r border-slate-200 bg-white shadow-sm transition-all duration-300 lg:translate-x-0 print:hidden',
-          open ? 'translate-x-0 w-64' : '-translate-x-full w-64 lg:w-20'
+          open ? 'translate-x-0 w-72' : '-translate-x-full w-72 lg:w-20'
         )}
       >
         <div className={cn('relative flex min-h-[5rem] items-center justify-center px-5 py-4')}>

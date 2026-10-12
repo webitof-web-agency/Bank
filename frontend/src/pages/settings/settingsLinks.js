@@ -1,4 +1,4 @@
-import { Bell, Building2, CalendarClock, Archive, KeyRound, ShieldCheck, Mail, MessageSquare, HardDrive } from 'lucide-react';
+import { Bell, Building2, CalendarClock, Archive, DatabaseBackup, KeyRound, ShieldCheck, Mail, MessageSquare, HardDrive } from 'lucide-react';
 
 // `hidden: true` keeps a page (and its route) but leaves it out of the menu
 // and the Settings home.
@@ -44,7 +44,7 @@ const ALL_SETTINGS_LINKS = [
   {
     label: 'Backup',
     path: '/app/settings/backup-restore',
-    icon: Archive,
+    icon: DatabaseBackup,
     permission: 'settings.read',
     description: 'Download a full database backup.',
     group: 'Administration',
@@ -82,7 +82,7 @@ const ALL_SETTINGS_LINKS = [
   {
     label: 'Storage Providers',
     path: '/app/settings/storage',
-    icon: Archive,
+    icon: HardDrive,
     permission: 'settings.read',
     description: 'Store uploads on this server or Google Drive; Drive connection and daily database backups.',
     group: 'Configuration',

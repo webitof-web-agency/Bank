@@ -57,7 +57,7 @@ export function AppLayout() {
         onClose={() => setSidebarOpen(false)}
         onToggleCollapse={() => setSidebarOpen((current) => !current)}
       />
-      <div className={cn('min-h-screen transition-all duration-300 print:pl-0 print:h-auto print:min-h-0 print:block', sidebarOpen ? 'lg:pl-64' : 'lg:pl-20')}>
+      <div className={cn('min-h-screen transition-all duration-300 print:pl-0 print:h-auto print:min-h-0 print:block', sidebarOpen ? 'lg:pl-72' : 'lg:pl-20')}>
         <Topbar
           title={title}
           subtitle={subtitle}

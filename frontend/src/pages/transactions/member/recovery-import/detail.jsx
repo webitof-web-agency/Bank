@@ -50,16 +50,20 @@ export default function RecoveryImportDetail() {
     }
   };
 
+  // A row that cannot be posted: an error message, or a status other than
+  // valid / short / extra.
+  const isErrorRow = (row) => Boolean(row.errorMessage) || !['VALID', 'SHORT', 'EXTRA'].includes(row.status);
+
   const getStatusColor = (status) => {
     switch (status) {
       case 'READY': return 'bg-blue-100 text-blue-800';
       case 'ACCEPTED': return 'bg-amber-100 text-amber-800';
       case 'POSTED': return 'bg-green-100 text-green-800';
-      case 'INVALID': return 'bg-red-100 text-red-800';
+      case 'INVALID': return 'bg-red-600 text-white';
       case 'VALID': return 'bg-green-100 text-green-800';
       case 'SHORT':
       case 'EXTRA': return 'bg-orange-100 text-orange-800';
-      default: return 'bg-red-100 text-red-800';
+      default: return 'bg-red-600 text-white';
     }
   };
 
@@ -163,7 +167,12 @@ export default function RecoveryImportDetail() {
               </TableHeader>
               <TableBody>
                 {rows.map(row => (
-                  <TableRow key={row.id} className={row.warnings ? 'bg-amber-50/50' : ''}>
+                  <TableRow
+                    key={row.id}
+                    className={isErrorRow(row)
+                      ? 'bg-red-100 hover:bg-red-100 shadow-[inset_4px_0_0_0_#dc2626]'
+                      : (row.warnings ? 'bg-amber-50' : '')}
+                  >
                     <TableCell>{row.sourceRowNo}</TableCell>
                     <TableCell className="font-medium font-mono">{row.pfNo}</TableCell>
 
@@ -223,7 +232,7 @@ export default function RecoveryImportDetail() {
                     </TableCell>
                     <TableCell className="text-xs max-w-[220px]">
                       {row.errorMessage && (
-                        <div className="text-red-600 truncate" title={row.errorMessage}>{row.errorMessage}</div>
+                        <div className="font-semibold text-red-700 whitespace-normal">{row.errorMessage}</div>
                       )}
                       {row.warnings && (
                         <div className="text-amber-700 mt-0.5 whitespace-pre-line text-[10px]">{row.warnings}</div>

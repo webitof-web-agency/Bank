@@ -1,4 +1,4 @@
-import { LayoutDashboard, LayoutGrid, ArrowLeftRight, FileText, Settings } from 'lucide-react';
+import { ArrowLeftRight, BarChart3, Database, LayoutDashboard, Settings } from 'lucide-react';
 import { MASTER_LINKS } from '../pages/master/masterLinks';
 import { REPORT_NAV_LINKS } from '../pages/reports/reportLinks';
 import { TRANSACTION_LINKS } from '../pages/transactions/transactionLinks';
@@ -14,7 +14,7 @@ export const navigationGroups = [
   {
     title: 'Master',
     items: [
-      { label: 'Masters', icon: LayoutGrid, children: MASTER_LINKS }
+      { label: 'Masters', icon: Database, children: MASTER_LINKS }
     ]
   },
   {
@@ -26,7 +26,7 @@ export const navigationGroups = [
   {
     title: 'Reports',
     items: [
-      { label: 'Reports', path: '/app/reports', icon: FileText, children: REPORT_NAV_LINKS }
+      { label: 'Reports', path: '/app/reports', icon: BarChart3, children: REPORT_NAV_LINKS }
     ]
   },
   {

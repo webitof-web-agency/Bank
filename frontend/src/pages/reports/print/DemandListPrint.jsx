@@ -19,9 +19,11 @@ export function DemandListPrint({ data, filters, branches = [], headerActions })
       regularLoan: acc.regularLoan + Number(row.regularLoan || 0),
       loanAgainstDeposit: acc.loanAgainstDeposit + Number(row.loanAgainstDeposit || 0),
       other: acc.other + Number(row.other || 0),
-      total: acc.total + Number(row.total || 0)
+      total: acc.total + Number(row.total || 0),
+      recovered: acc.recovered + Number(row.recovered || 0),
+      pending: acc.pending + Number(row.pending || 0)
     }),
-    { cd: 0, ssa: 0, regularLoan: 0, loanAgainstDeposit: 0, other: 0, total: 0 }
+    { cd: 0, ssa: 0, regularLoan: 0, loanAgainstDeposit: 0, other: 0, total: 0, recovered: 0, pending: 0 }
   );
 
   return (
@@ -49,6 +51,8 @@ export function DemandListPrint({ data, filters, branches = [], headerActions })
             <th className={th}>D.Loan</th>
             <th className={th}>Other</th>
             <th className={th}>Total</th>
+            <th className={th}>Recovered</th>
+            <th className={th}>Pending</th>
           </tr>
         </thead>
         <tbody>
@@ -64,11 +68,13 @@ export function DemandListPrint({ data, filters, branches = [], headerActions })
               <td className={td}>{formatMoney(row.loanAgainstDeposit)}</td>
               <td className={td}>{formatMoney(row.other)}</td>
               <td className={td}>{formatMoney(row.total)}</td>
+              <td className={td}>{formatMoney(row.recovered)}</td>
+              <td className={`${td} ${Number(row.pending) > 0 ? 'font-bold text-red-700' : ''}`}>{formatMoney(row.pending)}</td>
             </tr>
           ))}
           {rows.length === 0 && (
             <tr>
-              <td colSpan={10} className="border border-black p-4 text-center text-[12px]">No demand records found.</td>
+              <td colSpan={12} className="border border-black p-4 text-center text-[12px]">No demand records found.</td>
             </tr>
           )}
         </tbody>
@@ -82,6 +88,8 @@ export function DemandListPrint({ data, filters, branches = [], headerActions })
               <td className={td}>{formatMoney(totals.loanAgainstDeposit)}</td>
               <td className={td}>{formatMoney(totals.other)}</td>
               <td className={td}>{formatMoney(totals.total)}</td>
+              <td className={td}>{formatMoney(totals.recovered)}</td>
+              <td className={td}>{formatMoney(totals.pending)}</td>
             </tr>
           </tfoot>
         )}

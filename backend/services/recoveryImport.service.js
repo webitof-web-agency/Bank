@@ -116,17 +116,29 @@ function analyzeFileHeaders(buffer) {
  *   Legacy (name-based):  { pfNo: 'PF No.', amount: 'Total Amt.', branch: 'Branch', ... }
  *   Manual (index-based): { pfNo: 2, amount: 5 }
  */
+// 0-based sheet row of a parsed row: SheetJS records it as __rowNum__
+// (blank rows are skipped, so the list position is not enough).
+function sheetRowIndex(row, index) {
+  return Number.isInteger(row.__rowNum__) ? row.__rowNum__ : index + 1;
+}
+
 function parseImportFile(buffer, colMap) {
   const workbook = xlsx.read(buffer, { type: 'buffer' });
   const sheetName = workbook.SheetNames[0];
   const sheet = workbook.Sheets[sheetName];
 
-  // Formula check
+  // Formulas are read by the value Excel saved with them. One without a saved
+  // value (file written by a tool that does not calculate) cannot be read.
+  // Rows holding a formula are remembered: a formula row with no PF No. is a
+  // total line (e.g. =SUM(...)) and is skipped.
+  const formulaRows = new Set();
   for (const key in sheet) {
     if (key[0] === '!') continue;
-    if (sheet[key].f) {
-      throw new Error('Formulas are not allowed in the import file. Please paste values only.');
+    if (!sheet[key].f) continue;
+    if (sheet[key].v === undefined) {
+      throw new Error(`Cell ${key} has a formula with no saved value. Open the file in Excel, save it, and import again (or paste values only).`);
     }
+    formulaRows.add(xlsx.utils.decode_cell(key).r);
   }
 
   // Determine whether colMap uses string header names or numeric indices
@@ -141,6 +153,7 @@ function parseImportFile(buffer, colMap) {
     data = rawRows.slice(1).map(row => {
       const obj = {};
       (rawRows[0] || []).forEach((h, i) => { obj[i] = row[i]; });
+      Object.defineProperty(obj, '__rowNum__', { value: row.__rowNum__, enumerable: false });
       return obj;
     });
   }
@@ -160,6 +173,7 @@ function parseImportFile(buffer, colMap) {
     const amount = rawAmount != null ? parseFloat(rawAmount) : null;
 
     if (!pfNo && !amount) return; // Skip completely empty rows
+    if (!pfNo && formulaRows.has(sheetRowIndex(row, index))) return; // Total line
 
     const sourceBranch = branchKey != null && row[branchKey] != null
       ? String(row[branchKey]).trim() : null;
