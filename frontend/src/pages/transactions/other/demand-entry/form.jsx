@@ -5,7 +5,7 @@ import { Input, Textarea } from '../../../../components/ui/Input';
 import { Select } from '../../../../components/ui/Select';
 import { useAuth } from '../../../../context/AuthContext';
 import {
-  DEMAND_HEADS, MONTH_OPTIONS, demandLineTotal, demandTotals, isRecoveredLine, mergeLoadedMembers, removeDemandLine, updateDemandLine
+  DEMAND_HEADS, MONTH_OPTIONS, demandLineTotal, demandTotals, isRecoveredLine, listNoForMonth, mergeLoadedMembers, removeDemandLine, updateDemandLine
 } from './demandEntryDraft';
 
 function FieldLabel({ children, required }) {
@@ -24,15 +24,27 @@ function money(value) {
 
 // Demand Entry: header (FY, branch, month, year, list no, date) and member
 // lines with the demand heads. Totals are derived; recovered lines are locked.
-export function DemandForm({ value, setValue, onSubmit, branches = [], members = [], fy = null, locked = false }) {
+// allowAllBranches (not for a locked list): "All branches" loads every
+// branch's members and saves one list per branch with the same list number;
+// when editing, the list's own branch is updated and the others are added.
+export function DemandForm({ value, setValue, onSubmit, branches = [], members = [], fy = null, locked = false, allowAllBranches = false, entries = [] }) {
   const { token } = useAuth();
   const [loading, setLoading] = useState(false);
   const [addCode, setAddCode] = useState('');
   const lines = Array.isArray(value.lines) ? value.lines : [];
   const totals = demandTotals(lines);
   const setField = (key, next) => setValue((current) => ({ ...current, [key]: next }));
+  // Changing the month or year suggests that month's list number (shared by all
+  // branches); a branch-wise list may use its own number.
+  const setPeriod = (key, next) => setValue((current) => {
+    const draft = { ...current, [key]: next };
+    return { ...draft, demandListNo: listNoForMonth(entries, draft.month, draft.year) || current.demandListNo };
+  });
   const setLines = (next) => setValue((current) => ({ ...current, lines: typeof next === 'function' ? next(current.lines || []) : next }));
-  const branchMembers = members.filter((member) => String(member.branchCode || '').toUpperCase() === String(value.branchCode || '').toUpperCase());
+  const allBranches = value.branchCode === 'ALL';
+  const branchMembers = allBranches
+    ? members
+    : members.filter((member) => String(member.branchCode || '').toUpperCase() === String(value.branchCode || '').toUpperCase());
 
   async function loadMembers() {
     if (!value.branchCode) {
@@ -44,7 +56,7 @@ export function DemandForm({ value, setValue, onSubmit, branches = [], members =
       const response = await api.banking.demandEntry.members(token, value.branchCode);
       const result = mergeLoadedMembers(lines, Array.isArray(response.data) ? response.data : []);
       setLines(result.lines);
-      toast.success(`${result.added} member(s) loaded with their usual demand. Correct any amount before saving.`);
+      toast.success(`${result.added} member(s)${allBranches ? ' of all branches' : ''} loaded with their usual demand. Correct any amount before saving.`);
     } catch (error) {
       toast.error(error.message || 'Unable to load members');
     } finally {
@@ -55,7 +67,7 @@ export function DemandForm({ value, setValue, onSubmit, branches = [], members =
   function addMember() {
     const member = members.find((item) => String(item.code) === String(addCode));
     if (!member) return;
-    setLines((current) => mergeLoadedMembers(current, [{ memberCode: member.code, memberName: member.name, designation: member.designation }]).lines);
+    setLines((current) => mergeLoadedMembers(current, [{ memberCode: member.code, memberName: member.name, branchCode: member.branchCode, designation: member.designation }]).lines);
     setAddCode('');
   }
 
@@ -73,19 +85,23 @@ export function DemandForm({ value, setValue, onSubmit, branches = [], members =
             disabled={locked}
             value={value.branchCode || ''}
             onChange={(next) => setField('branchCode', next)}
-            options={[{ value: '', label: 'Select branch' }, ...branches.map((branch) => ({ value: branch.code, label: `${branch.code} - ${branch.place || branch.label || ''}` }))]}
+            options={[
+              { value: '', label: 'Select branch' },
+              ...(allowAllBranches ? [{ value: 'ALL', label: 'All branches (one list per branch)' }] : []),
+              ...branches.map((branch) => ({ value: branch.code, label: `${branch.code} - ${branch.place || branch.label || ''}` }))
+            ]}
           />
         </div>
         <div>
           <FieldLabel required>Month</FieldLabel>
-          <Select disabled={locked} value={value.month || ''} onChange={(next) => setField('month', next)} options={MONTH_OPTIONS} placeholder="Month" />
+          <Select disabled={locked} value={value.month || ''} onChange={(next) => setPeriod('month', next)} options={MONTH_OPTIONS} placeholder="Month" />
         </div>
         <div>
           <FieldLabel required>Year</FieldLabel>
-          <Input type="number" disabled={locked} value={value.year || ''} onChange={(event) => setField('year', event.target.value)} placeholder="2026" />
+          <Input type="number" disabled={locked} value={value.year || ''} onChange={(event) => setPeriod('year', event.target.value)} placeholder="2026" />
         </div>
         <div>
-          <FieldLabel required>List No.</FieldLabel>
+          <FieldLabel required>List No. <span className="font-normal text-slate-400">(one per branch per month)</span></FieldLabel>
           <Input disabled={locked} value={value.demandListNo || ''} onChange={(event) => setField('demandListNo', event.target.value)} />
         </div>
         <div>
@@ -139,7 +155,10 @@ export function DemandForm({ value, setValue, onSubmit, branches = [], members =
               const recovered = isRecoveredLine(line);
               return (
                 <tr key={line.memberCode} className={recovered ? 'bg-emerald-50/50' : ''}>
-                  <td className="px-2 py-1"><span className="font-medium text-slate-800">{line.memberCode}</span> <span className="text-slate-600">{line.memberName}</span></td>
+                  <td className="px-2 py-1">
+                    <span className="font-medium text-slate-800">{line.memberCode}</span> <span className="text-slate-600">{line.memberName}</span>
+                    {allBranches && line.branchCode ? <span className="ml-1 text-[11px] text-slate-400">· Branch {line.branchCode}</span> : null}
+                  </td>
                   {DEMAND_HEADS.map(([key]) => (
                     <td key={key} className="px-1 py-1 text-right">
                       {recovered ? money(line[key]) : (

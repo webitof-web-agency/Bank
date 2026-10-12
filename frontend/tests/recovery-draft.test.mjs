@@ -106,6 +106,19 @@ test('an amount difference is fixed by Use Excel or Edit, or confirmed; an unmat
   assert.equal(unresolvedCount(removeLine(withUnknown, 0)), 0);
 });
 
+test('Excel rows of branches whose demand is not loaded are skipped, not flagged', () => {
+  const demandLines = addDemandLines([], [{ ...demand, branchCode: '59' }]).lines;
+  const branchMembers = [{ id: 'm1', code: '1473', branchCode: '59' }, { id: 'm8', code: '1800', branchCode: '12' }];
+  const rows = [
+    { id: 'r1', memberId: 'm1', importedTotalAmount: 3500, allocatedCompulsoryDeposit: 1000, allocatedSpecialDeposit: 500, allocatedRegularLoan: 2000 },
+    { id: 'r8', memberId: 'm8', importedTotalAmount: 999, allocatedCompulsoryDeposit: 999 }
+  ];
+  const result = mergeImportRows(demandLines, rows, branchMembers, 'B1');
+  assert.deepEqual([result.matched, result.added, result.otherBranch], [1, 0, 1]);
+  assert.equal(result.lines.length, 1);
+  assert.equal(unresolvedCount(result.lines), 0);
+});
+
 test('Excel name / branch differences are warnings', () => {
   const demandLines = addDemandLines([], [demand]).lines;
   const rows = [{ id: 'r1', memberId: 'm1', importedTotalAmount: 3500, allocatedCompulsoryDeposit: 1000, allocatedSpecialDeposit: 500, allocatedRegularLoan: 2000,

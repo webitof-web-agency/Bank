@@ -42,14 +42,22 @@ export function demandTotals(lines = []) {
 
 export const isRecoveredLine = (line = {}) => String(line.recoveryStatus || '').toUpperCase() === 'RECOVERED';
 
-// A new list defaults to the next list number and the current month of the FY.
-export function emptyDemandDraft(fy = null, entries = []) {
+// One demand per month: the month's existing list number (every branch's list
+// for a month shares it), else the next number after the highest in use.
+export function listNoForMonth(entries = [], month = '', year = '') {
+  const existing = entries.find((entry) => String(entry.month) === String(month) && String(entry.year) === String(year));
+  if (existing) return String(existing.demandListNo);
   const numbers = entries.map((entry) => Number(entry.demandListNo)).filter(Number.isFinite);
+  return numbers.length ? String(Math.max(...numbers) + 1) : '';
+}
+
+// A new list defaults to the current month of the FY and its list number.
+export function emptyDemandDraft(fy = null, entries = []) {
   const today = new Date();
   const iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   const date = fy?.start && fy?.end ? (iso < fy.start ? fy.start : iso > fy.end ? fy.end : iso) : iso;
   return {
-    demandListNo: numbers.length ? String(Math.max(...numbers) + 1) : '',
+    demandListNo: listNoForMonth(entries, String(Number(date.slice(5, 7))), date.slice(0, 4)),
     demandListDate: date,
     branchCode: '',
     month: String(Number(date.slice(5, 7))),
@@ -80,6 +88,7 @@ export function mergeLoadedMembers(lines = [], loaded = []) {
     .map((member) => ({
       memberCode: member.memberCode,
       memberName: member.memberName || '',
+      branchCode: member.branchCode || '',
       designation: member.designation || '',
       ...Object.fromEntries(HEAD_KEYS.map((key) => [key, Number(member[key] || 0) || ''])),
       recoveryStatus: 'PENDING'

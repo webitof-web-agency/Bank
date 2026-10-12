@@ -96,6 +96,7 @@ export function lineFromDemand(candidate = {}) {
   return {
     member: String(candidate.memberCode || '').toUpperCase(),
     memberName: candidate.memberName || '',
+    branchCode: String(candidate.branchCode || '').toUpperCase(),
     branchName: candidate.branchName || '',
     designation: candidate.designation || '',
     source: 'DEMAND',
@@ -159,13 +160,17 @@ export function applyExcelHeads(lines = [], index) {
 // over the member's demand heads). A row joins the member's line already in
 // the draft (normally its demand line) for comparison; a member with no line
 // gets a new Excel line; a PF that matches no member becomes an "unmatched"
-// line that has to be removed before Save.
+// line that has to be removed before Save. The bank's Excel covers every
+// branch: once demand is loaded, rows of members from branches whose demand
+// was not loaded are left out (counted in otherBranch).
 export function mergeImportRows(lines = [], rows = [], members = [], batchId = '') {
   const memberById = new Map(members.map((member) => [String(member.id || member._id), member]));
   const next = lines.map((line) => ({ ...line }));
+  const demandBranches = new Set(lines.filter((line) => line.source === 'DEMAND' && line.branchCode).map((line) => line.branchCode));
   let matched = 0;
   let added = 0;
   let unmatched = 0;
+  let otherBranch = 0;
   for (const row of rows) {
     // The import's validation result (VALID, SHORT, MEMBER NOT FOUND...).
     const { status: validation = '' } = row;
@@ -188,6 +193,11 @@ export function mergeImportRows(lines = [], rows = [], members = [], batchId = '
     }
     const code = String(member.code || '').toUpperCase();
     const target = next.find((line) => line.member === code && !line.excel && !line.unmatched);
+    const memberBranch = String(member.branchCode || '').toUpperCase();
+    if (!target && demandBranches.size && memberBranch && !demandBranches.has(memberBranch)) {
+      otherBranch += 1;
+      continue;
+    }
     if (target) {
       target.excel = excel;
       target.importBatchId = excel.batchId;
@@ -209,7 +219,7 @@ export function mergeImportRows(lines = [], rows = [], members = [], batchId = '
       heads: { ...emptyHeads(), ...excel.heads }
     });
   }
-  return { lines: withWarnings(next), matched, added, unmatched };
+  return { lines: withWarnings(next), matched, added, unmatched, otherBranch };
 }
 
 // Everything to resolve on one line, given the whole draft (whether a demand

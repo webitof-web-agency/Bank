@@ -101,6 +101,15 @@ export function DemandEntryPage({ detailPathBase = '/app/transactions/other/dema
         ? await api.banking.demandEntry.update(token, editor.id, payload, fyQuery)
         : await api.banking.demandEntry.create(token, payload, fyQuery);
       const saved = response.data;
+      if (saved?.bulk) {
+        // All branches: one list per branch (the edited list updated, the
+        // other branches' lists new).
+        const updatedById = new Map((saved.updated || []).map((row) => [row.id, row]));
+        setEntries((current) => [...saved.lists, ...current.map((row) => updatedById.get(row.id) || row)]);
+        toast.success(`Demand list saved for ${saved.branchCount} branch(es): ${saved.memberCount} member(s), all pending`);
+        setEditor(null);
+        return;
+      }
       const { lines, ...summary } = saved;
       setEntries((current) => (editor.id ? current.map((row) => (row.id === saved.id ? summary : row)) : [summary, ...current]));
       toast.success(editor.id ? 'Demand list updated' : `Demand list saved: ${saved.memberCount} member(s), all pending`);
@@ -227,6 +236,8 @@ export function DemandEntryPage({ detailPathBase = '/app/transactions/other/dema
             members={members}
             fy={activeFY}
             locked={editor.locked}
+            allowAllBranches={!editor.locked}
+            entries={entries.filter((row) => row.id !== editor.id)}
           />
         ) : null}
       </Modal>

@@ -416,7 +416,8 @@ function RecoveryLinesEditor({ rows = [], onChange, memberGroups = [], lookups =
       const result = mergeImportRows(safeRows, importRows, members, batch.id);
       onChange(result.lines);
       const issues = result.lines.filter(isUnresolved).length;
-      setNotice(`Excel compared with the demand: ${result.matched} matched a demand line, ${result.added} not in the demand, ${result.unmatched} with no member. ${issues ? `${issues} row(s) to fix or confirm.` : 'Everything matches.'}`);
+      const skipped = result.otherBranch ? ` ${result.otherBranch} row(s) of other branches skipped (their demand is not loaded).` : '';
+      setNotice(`Excel compared with the demand: ${result.matched} matched a demand line, ${result.added} not in the demand, ${result.unmatched} with no member.${skipped} ${issues ? `${issues} row(s) to fix or confirm.` : 'Everything matches.'}`);
     } catch (error) {
       alert(error.message || 'Unable to read the imported rows');
     }
