@@ -318,8 +318,12 @@ async function removeOpenings(db, fy, start, previousInterest = {}) {
 // Close / reopen
 
 // appropriation: [{ ledgerCode, amount }] — amount credited to that fund
-// (negative = debited, e.g. a loss charged to the Reserve Fund). Must add up
-// to the year's net profit after interest, to the paisa.
+// (negative = debited, e.g. a loss charged to the Reserve Fund). Optional,
+// as in the old software, where the accountant posted the split as a normal
+// Journal Voucher (often after the general body meeting). Any part of the
+// profit or loss may be split here; whatever is not stays in the Profit &
+// Loss A/c and is carried into the next year's balance sheet, from where a
+// later Journal Voucher (P&L A/c Dr, funds Cr) can appropriate it.
 // includeEmployeeInterest: post and carry the staff loan interest — the
 // accrual net of the year's "Interest Receive From Employee" vouchers, as
 // legacy computed it. On by default; the accountant can leave it out.
@@ -341,14 +345,19 @@ async function closeYear(fy, { appropriation = [], remarks = '', includeEmployee
   if (interest.missing.length) throw httpError(interest.missing.join('; '), 409, 'FY_CLOSE_LEDGERS');
   if (!posting.profitAndLoss) throw httpError('No Profit & Loss A/c ledger (nature PRIMARY) was found.', 409, 'FY_CLOSE_LEDGERS');
 
-  // Appropriation must clear the year's profit exactly.
+  // The appropriation may cover all, part or none of the year's result, but
+  // not more than it, nor the opposite way (a loss is entered as negatives).
   const profit = await yearProfit(fy, interest.lines);
   const lines = (Array.isArray(appropriation) ? appropriation : [])
     .map((row) => ({ ledgerCode: cleanText(row.ledgerCode).toUpperCase(), amount: round2(row.amount) }))
     .filter((row) => row.ledgerCode && row.amount);
   const appropriated = round2(lines.reduce((t, row) => t + row.amount, 0));
-  if (Math.abs(appropriated - profit) >= 0.005) {
-    throw httpError(`The appropriation adds up to ${appropriated.toFixed(2)} but the year's ${profit >= 0 ? 'profit' : 'loss'} is ${Math.abs(profit).toFixed(2)}${profit < 0 ? ' (enter it as negative amounts)' : ''}.`, 400, 'FY_CLOSE_APPROPRIATION');
+  const within = profit >= 0 ? appropriated >= -0.005 && appropriated <= profit + 0.005 : appropriated <= 0.005 && appropriated >= profit - 0.005;
+  if (!within) {
+    throw httpError(`The appropriation adds up to ${appropriated.toFixed(2)}, outside the year's ${profit >= 0 ? 'profit' : 'loss'} of ${Math.abs(profit).toFixed(2)}${profit < 0 ? ' (enter a loss as negative amounts)' : ''}.`, 400, 'FY_CLOSE_APPROPRIATION');
+  }
+  if (new Set(lines.map((row) => row.ledgerCode)).size !== lines.length) {
+    throw httpError('A fund is listed twice in the appropriation.', 400, 'FY_CLOSE_APPROPRIATION');
   }
   const knownCodes = new Set(posting.ledgers.map((l) => cleanText(l.code).toUpperCase()));
   const unknown = lines.filter((row) => !knownCodes.has(row.ledgerCode));
@@ -372,9 +381,10 @@ async function closeYear(fy, { appropriation = [], remarks = '', includeEmployee
     }
     if (lines.length) {
       const journalLines = [];
-      const plAmount = Math.abs(profit);
-      // Profit: P&L A/c Dr, funds Cr. A loss: funds Dr, P&L A/c Cr.
-      journalLines.push({ ledgerCode: plCode, debit: profit >= 0 ? plAmount : 0, credit: profit < 0 ? plAmount : 0 });
+      // Only the amount split: profit -> P&L A/c Dr, funds Cr; loss -> funds
+      // Dr, P&L A/c Cr. The rest of the result stays in the P&L A/c.
+      const plAmount = Math.abs(appropriated);
+      if (plAmount) journalLines.push({ ledgerCode: plCode, debit: appropriated > 0 ? plAmount : 0, credit: appropriated < 0 ? plAmount : 0 });
       for (const row of lines) journalLines.push({ ledgerCode: row.ledgerCode, debit: row.amount < 0 ? -row.amount : 0, credit: row.amount > 0 ? row.amount : 0 });
       const voucher = await banking.createVoucher({
         date: bounds.end,

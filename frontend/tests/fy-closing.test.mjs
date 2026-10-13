@@ -39,15 +39,23 @@ test('journal voucher payload: only lines with a ledger and an amount, as number
   assert.equal(draft.lines[0].debit, '500');
 });
 
-test('appropriation: remaining to the paisa, missing fund and duplicate fund are caught', () => {
+test('appropriation: optional, remaining to the paisa, over-allocation, missing and duplicate fund are caught', () => {
   assert.deepEqual(fy.appropriationState([{ ledgerCode: '12', amount: '115789' }, { ledgerCode: '13', amount: '347369.33' }], 463158.33), {
-    allocated: 463158.33, remaining: 0, balanced: true, missingFund: false, duplicate: false
+    allocated: 463158.33, remaining: 0, balanced: true, valid: true, exceeds: false, missingFund: false, duplicate: false
   });
   assert.equal(fy.appropriationState([{ ledgerCode: '12', amount: '100' }], 463158.33).remaining, 463058.33);
   assert.equal(fy.appropriationState([{ ledgerCode: '', amount: '10' }], 10).missingFund, true);
   assert.equal(fy.appropriationState([{ ledgerCode: '12', amount: '5' }, { ledgerCode: '12', amount: '5' }], 10).duplicate, true);
   // A loss is appropriated as negative amounts.
   assert.equal(fy.appropriationState([{ ledgerCode: '12', amount: '-775930.32' }], -775930.32).balanced, true);
+  // Optional: nothing or part of it is fine (the rest stays in the P&L A/c);
+  // more than the result, or the other way, is not.
+  assert.equal(fy.appropriationState([{ ledgerCode: '', amount: '' }], 463158.33).valid, true);
+  assert.equal(fy.appropriationState([{ ledgerCode: '12', amount: '100' }], 463158.33).valid, true);
+  assert.equal(fy.appropriationState([{ ledgerCode: '12', amount: '463158.34' }], 463158.33).exceeds, true);
+  assert.equal(fy.appropriationState([{ ledgerCode: '12', amount: '-1' }], 463158.33).valid, false);
+  assert.equal(fy.appropriationState([{ ledgerCode: '12', amount: '-500' }], -775930.32).valid, true);
+  assert.equal(fy.appropriationState([{ ledgerCode: '12', amount: '10' }], -775930.32).valid, false);
   assert.deepEqual(fy.appropriationPayload([{ ledgerCode: '12', amount: '10.005' }, { ledgerCode: '', amount: '1' }]), [{ ledgerCode: '12', amount: 10.01 }]);
 });
 

@@ -35,10 +35,16 @@ export function appropriationState(rows = [], profit = 0) {
   const remaining = paise(profit) - allocated;
   const missingFund = filled.some((row) => !row.ledgerCode);
   const duplicate = new Set(filled.map((row) => row.ledgerCode)).size !== filled.length;
+  // The split is optional (all, part or none); it may not exceed the result
+  // or go the other way. What is left stays in the Profit & Loss A/c.
+  const target = paise(profit);
+  const exceeds = target >= 0 ? allocated < 0 || allocated > target : allocated > 0 || allocated < target;
   return {
     allocated: allocated / 100,
     remaining: remaining / 100,
     balanced: remaining === 0 && !missingFund && !duplicate,
+    valid: !missingFund && !duplicate && !exceeds,
+    exceeds,
     missingFund,
     duplicate
   };

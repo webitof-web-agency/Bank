@@ -46,6 +46,9 @@ export function Table({
   onSearch,
   searchPlaceholder = 'Search...',
   headerActions,
+  // Optional heading shown at the start of the toolbar row, on the same
+  // line as the search box and the rows-per-page picker.
+  title,
   serverPagination = null
 }) {
   const isServerPagination = Boolean(serverPagination);
@@ -169,25 +172,33 @@ export function Table({
     return Array.from({ length: maxVisible }, (_, i) => start + i);
   };
 
+  const searchBox = (
+    <div className="relative w-full">
+      <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+      <input
+        type="text"
+        value={search}
+        onChange={(e) => onSearch(e.target.value)}
+        placeholder={searchPlaceholder}
+        className="flex h-9 w-full rounded-[var(--radius-input,0.75rem)] border border-slate-200 bg-white px-3 pl-9 text-[13px] text-slate-900 placeholder:text-slate-400 focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
+      />
+    </div>
+  );
+
   return (
     <div className="flex flex-col">
       {(onSearch !== undefined || headerActions !== undefined || true) && (
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3 px-1">
-          <div className="flex w-full items-center gap-3 sm:w-auto sm:flex-1 max-w-md">
-            {onSearch !== undefined && (
-              <div className="relative w-full">
-                <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(e) => onSearch(e.target.value)}
-                  placeholder={searchPlaceholder}
-                  className="flex h-9 w-full rounded-[var(--radius-input,0.75rem)] border border-slate-200 bg-white px-3 pl-9 text-[13px] text-slate-900 placeholder:text-slate-400 focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
-                />
-              </div>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
+          {title ? (
+            <p className="text-sm font-semibold text-slate-700">{title}</p>
+          ) : (
+            <div className="flex w-full items-center gap-3 sm:w-auto sm:flex-1 max-w-md">
+              {onSearch !== undefined ? searchBox : null}
+            </div>
+          )}
+          <div className={`flex items-center gap-2 ${title ? 'w-full sm:w-auto' : ''}`}>
+            {/* With a title, the search sits on the right beside the rows picker. */}
+            {title && onSearch !== undefined ? <div className="w-full sm:w-72">{searchBox}</div> : null}
             {headerActions}
             <Select
               value={rowsPerPage}

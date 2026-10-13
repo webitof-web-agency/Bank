@@ -99,7 +99,7 @@ export function FinancialYearClosingPage() {
   const profit = profitToAppropriate(preview, includeEmployeeInterest);
   const appropriation = appropriationState(rows, profit);
   const fundOptions = useMemo(() => (preview?.funds || []).map((f) => ({ label: `${f.code} - ${f.name}`, value: f.code })), [preview]);
-  const canClose = canWrite && preview?.canClose && appropriation.balanced;
+  const canClose = canWrite && preview?.canClose && appropriation.valid;
 
   async function handleClose() {
     setBusy(true);
@@ -226,10 +226,10 @@ export function FinancialYearClosingPage() {
 
                 <div className="space-y-3">
                   <p className="text-sm font-semibold text-slate-700">
-                    {profit >= 0 ? 'Net profit' : 'Net loss'} to appropriate: <span className="text-slate-900">{formatAmount(Math.abs(profit))}</span>
+                    {profit >= 0 ? 'Net profit' : 'Net loss'} for the year: <span className="text-slate-900">{formatAmount(Math.abs(profit))}</span>
                   </p>
                   <p className="text-[12px] text-slate-500">
-                    {profit >= 0 ? 'Enter how much goes to each fund (as decided by the society). Posted as P&L A/c Dr, funds Cr.' : 'Enter a loss as negative amounts against the fund(s) that absorb it.'}
+                    Optional. {profit >= 0 ? 'Split the profit to funds as decided by the society (P&L A/c Dr, funds Cr).' : 'Charge the loss to funds as negative amounts.'} Whatever is not split stays in the Profit &amp; Loss A/c and carries into next year&apos;s balance sheet; it can be split later with a Journal Voucher, as in the old software.
                   </p>
                   {rows.map((row, index) => (
                     <div key={index} className="grid grid-cols-[minmax(0,1fr)_150px_36px] items-center gap-2">
@@ -240,8 +240,12 @@ export function FinancialYearClosingPage() {
                   ))}
                   <div className="flex items-center justify-between">
                     <Button type="button" size="sm" variant="outline" className="gap-2" onClick={() => setRows((current) => [...current, { ledgerCode: '', amount: '' }])}><Plus size={14} /> Add fund</Button>
-                    <span className={`text-sm font-medium ${appropriation.balanced ? 'text-emerald-600' : 'text-rose-600'}`}>
-                      {appropriation.duplicate ? 'A fund is listed twice' : appropriation.missingFund ? 'Choose a fund for every amount' : appropriation.balanced ? 'Fully appropriated' : `Remaining ${formatAmount(appropriation.remaining)}`}
+                    <span className={`text-sm font-medium ${!appropriation.valid ? 'text-rose-600' : appropriation.balanced ? 'text-emerald-600' : 'text-slate-600'}`}>
+                      {appropriation.duplicate ? 'A fund is listed twice'
+                        : appropriation.missingFund ? 'Choose a fund for every amount'
+                          : appropriation.exceeds ? `More than the ${profit >= 0 ? 'profit' : 'loss'} of ${formatAmount(Math.abs(profit))}`
+                            : appropriation.balanced ? 'Fully appropriated'
+                              : `Stays in P&L A/c: ${formatAmount(Math.abs(appropriation.remaining))}${appropriation.remaining < 0 ? ' (loss)' : ''}`}
                     </span>
                   </div>
                   <div className="space-y-1.5">
@@ -256,13 +260,15 @@ export function FinancialYearClosingPage() {
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-sm font-semibold text-slate-700">Interest per member ({eligibleMembers.length})</p>
-                  <Input className="max-w-xs" placeholder="Search code or name" value={memberSearch} onChange={(e) => setMemberSearch(e.target.value)} />
-                </div>
-                <Table columns={memberColumns} data={shownMembers.map((m) => ({ ...m, id: m.memberCode }))} emptyMessage="No members" />
-              </div>
+              <Table
+                title={`Interest per member (${eligibleMembers.length})`}
+                search={memberSearch}
+                onSearch={setMemberSearch}
+                searchPlaceholder="Search code or name"
+                columns={memberColumns}
+                data={shownMembers.map((m) => ({ ...m, id: m.memberCode }))}
+                emptyMessage="No members"
+              />
             </>
           )}
         </Card>
@@ -271,7 +277,7 @@ export function FinancialYearClosingPage() {
       <ConfirmDialog
         open={confirming}
         title={`Close FY ${selected}?`}
-        description={`This posts the year-end interest and the appropriation of ${formatAmount(Math.abs(profit))} on 31 March, carries every balance and the interest into the next year, and locks FY ${selected}. It can be reopened later.`}
+        description={`This posts the year-end interest${appropriation.allocated ? ` and the split of ${formatAmount(Math.abs(appropriation.allocated))} to funds` : ''} on 31 March, carries every balance and the interest into the next year${appropriation.remaining ? ` (${formatAmount(Math.abs(appropriation.remaining))} stays in the Profit & Loss A/c)` : ''}, and locks FY ${selected}. It can be reopened later.`}
         confirmLabel="Close year"
         tone="primary"
         busy={busy}

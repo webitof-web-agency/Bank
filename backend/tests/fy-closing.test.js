@@ -124,8 +124,9 @@ test('close FY 2026-27: interest posted, profit appropriated, next year opened, 
   // Profit: 10,000 bank interest + 4,488 loan interest - 6,634 CD interest.
   assert.equal(preview.profitAfterInterest, 7854);
 
-  // The appropriation must clear the profit exactly.
-  await assert.rejects(fyClosing.closeYear('2026-27', { appropriation: [{ ledgerCode: 'FC12', amount: 7000 }], now: AFTER_YEAR_END, actorUser: admin }), (e) => e.statusCode === 400 && /7854/.test(e.message));
+  // The appropriation may not exceed the profit, nor go the other way.
+  await assert.rejects(fyClosing.closeYear('2026-27', { appropriation: [{ ledgerCode: 'FC12', amount: 8000 }], now: AFTER_YEAR_END, actorUser: admin }), (e) => e.statusCode === 400 && /7854/.test(e.message));
+  await assert.rejects(fyClosing.closeYear('2026-27', { appropriation: [{ ledgerCode: 'FC12', amount: -100 }], now: AFTER_YEAR_END, actorUser: admin }), (e) => e.statusCode === 400);
 
   const closed = await fyClosing.closeYear('2026-27', { appropriation: [{ ledgerCode: 'FC12', amount: 7854 }], remarks: 'test', now: AFTER_YEAR_END, actorUser: admin });
   assert.equal(closed.status, 'CLOSED');
@@ -172,6 +173,26 @@ test('close FY 2026-27: interest posted, profit appropriated, next year opened, 
   assert.equal(left.rows[0].n, 0);
   const extra = await banking.createVoucher(jv('2027-01-15'), { actorUser: admin });
   await banking.deleteVoucher(extra.id, { actorUser: admin });
+
+  // Partly appropriated, as the old software allowed (the split was a normal
+  // voucher): the fund gets 5,000, the other 2,854 stays in the P&L A/c and
+  // opens 2027-28 there; the opening trial balance still balances.
+  await fyClosing.closeYear('2026-27', { appropriation: [{ ledgerCode: 'FC12', amount: 5000 }], now: AFTER_YEAR_END, actorUser: admin });
+  const partly = await banking.getLedgerSnapshots({ dateFrom: '2027-04-01', dateTo: '2028-03-31' });
+  assert.equal(cdOf('FC12', partly).opening, 5000);
+  const pl = partly.find((r) => r.nature === 'PRIMARY');
+  assert.equal(pl.opening, 2854);
+  assert.equal(pl.openingSide, 'CR');
+  const pdr = partly.reduce((t, r) => t + (r.openingSide === 'DR' ? r.opening : 0), 0);
+  const pcr = partly.reduce((t, r) => t + (r.openingSide === 'CR' ? r.opening : 0), 0);
+  assert.ok(Math.abs(pdr - pcr) < 0.005, `opening trial balance ${pdr} vs ${pcr}`);
+  await fyClosing.reopenYear('2026-27', { reason: 'test partial', actorUser: admin, now: AFTER_YEAR_END });
+
+  // Not appropriated at all: the whole profit stays in the P&L A/c.
+  await fyClosing.closeYear('2026-27', { now: AFTER_YEAR_END, actorUser: admin });
+  const none = await banking.getLedgerSnapshots({ dateFrom: '2027-04-01', dateTo: '2028-03-31' });
+  assert.equal(none.find((r) => r.nature === 'PRIMARY').opening, 7854);
+  await fyClosing.reopenYear('2026-27', { reason: 'test none', actorUser: admin, now: AFTER_YEAR_END });
 });
 
 test('closing a later year needs the previous one closed first', async () => {
