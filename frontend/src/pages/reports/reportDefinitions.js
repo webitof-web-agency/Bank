@@ -641,7 +641,7 @@ export function getReportConfig(reportKey = '') {
               title: 'All Members',
               description: 'Registered members and their current status.',
               headers: ['Member Code', 'Member Name', 'Branch', 'Category', 'Membership No.', 'Status'],
-              rows: rows.map((row) => [row.code, row.name, row.branchCode, row.category, row.membershipNo, row.status])
+              rows: rows.map((row) => [row.code, row.name, row.branchName || row.branchCode, row.category, row.membershipNo, row.status])
             }
           ],
           csvRows: rows,

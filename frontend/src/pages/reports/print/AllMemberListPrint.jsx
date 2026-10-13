@@ -3,7 +3,9 @@ import { th, tdText, tdCenter, table } from './printStyles';
 import { formatDMY } from './printStyles';
 
 export function AllMemberListPrint({ data, headerActions }) {
-  const rows = Array.isArray(data) ? data : [];
+  // As the old software printed it: active members only (the screen above
+  // still counts active and inactive).
+  const rows = (Array.isArray(data) ? data : []).filter((row) => String(row.status || '').toLowerCase() === 'active');
 
   return (
     <PrintShell headerActions={headerActions}>
@@ -59,7 +61,7 @@ export function AllMemberListPrint({ data, headerActions }) {
       </table>
       </div>
 
-      <p className="mt-2 text-right text-[11px] font-semibold">Total Members : {rows.length}</p>
+      <p className="mt-2 text-right text-[11px] font-semibold">Total Active Members : {rows.length}</p>
     </PrintShell>
   );
 }

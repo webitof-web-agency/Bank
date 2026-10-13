@@ -3,6 +3,7 @@ const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
+const { runDataMigrations } = require('./migrations');
 const { Client, Pool } = require('pg');
 const {
   CREATE_TABLE_SQL,
@@ -643,6 +644,9 @@ async function initializeDatabase() {
     for (const tableName of TABLES) {
       await syncTableSchema(database, tableName);
     }
+
+    // One-time data fixes, before the cache is filled so it sees them.
+    await runDataMigrations(database);
 
     await loadCache(database);
     initialized = true;

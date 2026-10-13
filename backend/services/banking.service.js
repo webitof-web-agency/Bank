@@ -4894,14 +4894,18 @@ async function buildAllMemberListReport({ branchCode = '', uptoDate = '', user =
 
   return rows.map((row) => {
     const branch = branchByCode.get(cleanUpper(row.branchCode)) || {};
+    // The legacy master row, for members whose columns are still empty.
+    const raw = row.payload?.raw || {};
     return {
       code: row.code,
       name: row.name,
-      fatherOrHusbandName: row.fatherOrHusbandName || '',
+      fatherOrHusbandName: cleanText(row.fatherOrHusbandName || raw.FathersName),
       branchCode: row.branchCode,
-      branchName: branch.label || branch.place || row.branchCode || '',
-      designation: row.designation || '',
-      caste: row.caste || '',
+      // The branch is its place (e.g. SADAR BAZAR); a branch's label is the
+      // bank's name, the same for every branch.
+      branchName: cleanText(branch.place || raw.PostedBranch || branch.label || row.branchCode),
+      designation: cleanText(row.designation || raw.Designation),
+      caste: cleanText(row.caste || raw.Caste),
       district: branch.district || '',
       category: row.category,
       membershipNo: row.membershipNo,
