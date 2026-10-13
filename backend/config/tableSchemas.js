@@ -204,9 +204,12 @@ const TABLE_SCHEMAS = {
 
   branches: schema({
     code: T.string(80),
+    // A branch is either a head office (isHeadOffice) or belongs to one
+    // (headOfficeCode = that head office's branch code; empty = none).
     headOfficeCode: T.string(40),
+    isHeadOffice: T.boolean,
+    // The branch name, which is its place (e.g. "SADAR BAZAR").
     label: T.string(191),
-    place: T.string(191),
     address: T.text,
     district: T.string(120),
     phone: T.string(40),

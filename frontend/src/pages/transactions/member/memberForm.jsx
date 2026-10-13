@@ -308,7 +308,7 @@ function DemandPickerDialog({ open, onClose, onAdd, lookups = {}, voucherDate = 
             <CustomSelect
               value={branchCode}
               onChange={setBranchCode}
-              options={[{ label: 'All branches', value: '' }, ...branches.map((branch) => ({ label: `${branch.code} - ${branch.place || branch.label || ''}`, value: branch.code }))]}
+              options={[{ label: 'All branches', value: '' }, ...branches.map((branch) => ({ label: `${branch.code} - ${branch.label || ''}`, value: branch.code }))]}
               searchable
             />
           </div>

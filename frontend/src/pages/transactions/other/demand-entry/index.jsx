@@ -165,7 +165,7 @@ export function DemandEntryPage({ detailPathBase = '/app/transactions/other/dema
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="grid gap-3 border-b border-slate-100 p-4 md:grid-cols-[1fr_260px_180px]">
           <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search list no, branch or remarks" className="h-10 rounded-[0.75rem] border border-slate-200 px-3 text-[13px] outline-none focus:border-[var(--primary)]" />
-          <Select searchable value={filterBranch} onChange={setFilterBranch} options={[{ value: '', label: 'All branches' }, ...branches.map((branch) => ({ value: branch.code, label: `${branch.code} - ${branch.place || branch.label || ''}` }))]} />
+          <Select searchable value={filterBranch} onChange={setFilterBranch} options={[{ value: '', label: 'All branches' }, ...branches.map((branch) => ({ value: branch.code, label: `${branch.code} - ${branch.label || ''}` }))]} />
           <Select value={filterMonth} onChange={setFilterMonth} options={[{ value: '', label: 'All months' }, ...MONTH_OPTIONS]} />
         </div>
         <div className="overflow-x-auto">

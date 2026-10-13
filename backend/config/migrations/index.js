@@ -40,6 +40,27 @@ const MIGRATIONS = [
       }
       return counts;
     }
+  },
+  {
+    // A branch has one name, its place ("SADAR BAZAR"). Migrated rows held
+    // the place in `place` and the bank's name ("JILA SAHAKARI KENDRIYA BANK
+    // MARYADIT, RAIPUR", the same on every branch, still in
+    // payload.raw.BranchName) in `label`. Move the place into `label`, the
+    // branch name, and drop `place`. Branches made in the app already have
+    // their name in `label` and keep it.
+    name: '2026-10-13-branch-name-is-place',
+    async run(db) {
+      const hasPlace = (await db.query(
+        "SELECT 1 FROM information_schema.columns WHERE table_name = 'branches' AND column_name = 'place'"
+      )).rowCount > 0;
+      if (!hasPlace) return { moved: 0, dropped: false };
+      const moved = (await db.query(`
+        UPDATE branches SET label = btrim(place), "updatedAt" = now()
+         WHERE coalesce(btrim(place), '') <> ''
+           AND (coalesce(btrim(label), '') = '' OR btrim(label) = btrim(payload->'raw'->>'BranchName'))`)).rowCount;
+      await db.query('ALTER TABLE branches DROP COLUMN IF EXISTS place');
+      return { moved, dropped: true };
+    }
   }
 ];
 

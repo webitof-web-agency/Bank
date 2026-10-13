@@ -88,7 +88,7 @@ export function DemandForm({ value, setValue, onSubmit, branches = [], members =
             options={[
               { value: '', label: 'Select branch' },
               ...(allowAllBranches ? [{ value: 'ALL', label: 'All branches (one list per branch)' }] : []),
-              ...branches.map((branch) => ({ value: branch.code, label: `${branch.code} - ${branch.place || branch.label || ''}` }))
+              ...branches.map((branch) => ({ value: branch.code, label: `${branch.code} - ${branch.label || ''}` }))
             ]}
           />
         </div>

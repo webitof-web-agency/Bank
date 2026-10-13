@@ -91,9 +91,8 @@ export function BranchesPage() {
 
   const columns = [
     { key: 'code', label: 'Code', sortable: true, render: (row) => <span className="font-medium text-slate-900">{row.code || '-'}</span> },
-    { key: 'headOfficeCode', label: 'Head Office', sortable: true, render: (row) => <span className="text-slate-700">{row.headOfficeCode || 'HO01'}</span> },
+    { key: 'headOfficeCode', label: 'Head Office', sortable: true, render: (row) => <span className="text-slate-700">{row.isHeadOffice ? 'Head office' : (row.headOfficeCode && row.headOfficeCode !== '0' ? row.headOfficeCode : '-')}</span> },
     { key: 'label', label: 'Branch Name', sortable: true, render: (row) => <span className="text-slate-700">{row.label || '-'}</span> },
-    { key: 'place', label: 'Place', sortable: true, render: (row) => <span className="text-slate-700">{row.place || '-'}</span> },
     { key: 'district', label: 'District', sortable: true, render: (row) => <span className="text-slate-700">{row.district || '-'}</span> },
     { key: 'phone', label: 'Phone', sortable: true, render: (row) => <span className="text-slate-700">{row.phone || '-'}</span> },
     {
@@ -150,7 +149,7 @@ export function BranchesPage() {
           { label: 'Total Branches', value: stats.total, icon: GitBranch, color: 'text-blue-500', bg: 'bg-blue-50', subLabel: 'All branch rows' },
           { label: 'Active', value: stats.active, icon: Building2, color: 'text-emerald-500', bg: 'bg-emerald-50', subLabel: 'Enabled branches' },
           { label: 'Inactive', value: stats.inactive, icon: MapPin, color: 'text-rose-500', bg: 'bg-rose-50', subLabel: 'Disabled branches' },
-          { label: 'Places', value: stats.places, icon: Phone, color: 'text-purple-500', bg: 'bg-purple-50', subLabel: 'Unique locations' }
+          { label: 'Districts', value: stats.districts, icon: Phone, color: 'text-purple-500', bg: 'bg-purple-50', subLabel: 'Unique districts' }
         ].map((item) => {
           const Icon = item.icon;
           return (

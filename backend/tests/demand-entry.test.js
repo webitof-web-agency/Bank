@@ -39,8 +39,8 @@ test('setup', async () => {
     if (removed) await restoreMainRow('ledgers', removed.id);
     else await Ledger.create({ code: `TEST-${role}`, name: role, semanticRole });
   }
-  await Branch.create({ code: BRANCH, label: 'Test Branch', place: 'TEST BRANCH' });
-  await Branch.create({ code: OTHER_BRANCH, label: 'Other Branch', place: 'OTHER BRANCH' });
+  await Branch.create({ code: BRANCH, label: 'TEST BRANCH' });
+  await Branch.create({ code: OTHER_BRANCH, label: 'OTHER BRANCH' });
   for (let n = 1; n <= 4; n += 1) await Member.create({ code: code(n), name: `Member ${n}`, branchCode: BRANCH, designation: 'CLERK' });
   await MemberDemandDefault.create({ memberCode: code(1), share: 0, compulsoryDeposit: 2000, regularLoan: 10000, loanAgainstDeposit: 3000 });
 });

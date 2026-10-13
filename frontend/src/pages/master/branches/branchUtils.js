@@ -6,16 +6,6 @@ function toUpper(value) {
   return toString(value).toUpperCase();
 }
 
-function getDefaultHeadOfficeCode(rows = []) {
-  for (const row of Array.isArray(rows) ? rows : []) {
-    const code = toUpper(row?.headOfficeCode);
-    if (code) {
-      return code;
-    }
-  }
-  return 'HO01';
-}
-
 // Plain numeric, auto-incrementing — matches the real migrated branch codes
 // (e.g. "59", "77"), which never had a "BR" prefix.
 export function buildNextBranchCode(rows = []) {
@@ -34,9 +24,9 @@ export function buildNextBranchCode(rows = []) {
 export function createEmptyBranchDraft(rows = []) {
   return {
     code: buildNextBranchCode(rows),
-    headOfficeCode: getDefaultHeadOfficeCode(rows),
+    isHeadOffice: false,
+    headOfficeCode: '',
     label: '',
-    place: '',
     address: '',
     district: '',
     phone: '',
@@ -47,9 +37,10 @@ export function createEmptyBranchDraft(rows = []) {
 export function createBranchDraftFromRecord(record = {}) {
   return {
     code: toString(record.code),
-    headOfficeCode: toString(record.headOfficeCode) || 'HO01',
+    isHeadOffice: record.isHeadOffice === true,
+    // Legacy rows hold "0" for "no head office".
+    headOfficeCode: toString(record.headOfficeCode) === '0' ? '' : toString(record.headOfficeCode),
     label: toString(record.label),
-    place: toString(record.place),
     address: toString(record.address),
     district: toString(record.district),
     phone: toString(record.phone),
@@ -60,12 +51,18 @@ export function createBranchDraftFromRecord(record = {}) {
 export function buildBranchPayload(draft = {}) {
   return {
     code: toUpper(draft.code) || undefined,
-    headOfficeCode: toUpper(draft.headOfficeCode) || undefined,
+    isHeadOffice: Boolean(draft.isHeadOffice),
+    // A head office belongs to no other head office.
+    headOfficeCode: draft.isHeadOffice ? '' : toUpper(draft.headOfficeCode),
     label: toString(draft.label),
-    place: toString(draft.place),
     address: toString(draft.address),
     district: toString(draft.district),
     phone: toString(draft.phone),
     isActive: draft.isActive !== false
   };
+}
+
+// "12 - SADAR BAZAR": a branch as shown in pickers and lists.
+export function branchDisplayName(branch = {}) {
+  return [toString(branch.code), toString(branch.label)].filter(Boolean).join(' - ');
 }

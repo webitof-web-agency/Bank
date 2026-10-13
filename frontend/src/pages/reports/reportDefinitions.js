@@ -708,7 +708,7 @@ export function getReportConfig(reportKey = '') {
               title: 'Branch Directory',
               description: 'Branches by district, as legacy lists them.',
               headers: ['District', 'Branch Code', 'Branch', 'Phone', 'Address'],
-              rows: rows.map((row) => [row.district, row.code, row.place, row.phone, row.address])
+              rows: rows.map((row) => [row.district, row.code, row.name, row.phone, row.address])
             }
           ],
           csvRows: rows,

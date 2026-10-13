@@ -887,14 +887,19 @@ const RESOURCE_DEFS = {
   },
   branches: {
     model: Branch,
-    searchFields: ['code', 'label', 'place', 'address', 'district', 'phone'],
+    searchFields: ['code', 'label', 'address', 'district', 'phone'],
     normalize(data = {}) {
       const code = cleanUpper(data.code);
-      const place = cleanText(data.place);
+      const isHeadOffice = toBool(data.isHeadOffice, false);
+      // Legacy rows hold "0" for "no head office".
+      const headOfficeCode = cleanUpper(data.headOfficeCode);
       return {
         code,
-        label: cleanText(data.label || data.name || place || code),
-        place,
+        // The branch name, which is its place ("place" accepted from old clients).
+        label: cleanText(data.label || data.name || data.place || code),
+        isHeadOffice,
+        // A head office belongs to no other head office.
+        headOfficeCode: isHeadOffice || headOfficeCode === '0' ? '' : headOfficeCode,
         address: cleanText(data.address),
         district: cleanText(data.district),
         phone: cleanText(data.phone),
@@ -1263,6 +1268,28 @@ async function assertResourceDatesOpen(resource, dates = []) {
   if (resource === 'bankTransactions') await fyLock.assertDatesOpen(dates);
 }
 
+// A branch's head office must be a branch marked as head office (not the
+// branch itself); a head office still linked to branches can't be unmarked.
+async function assertBranchHeadOffice(payload = {}, ownId = null) {
+  const ownCode = cleanUpper(payload.code);
+  if (payload.headOfficeCode) {
+    const headOffice = await Branch.findOne({ code: payload.headOfficeCode }).lean();
+    if (!headOffice || headOffice.isHeadOffice !== true || cleanUpper(headOffice.code) === ownCode) {
+      const error = new Error(`Head office ${payload.headOfficeCode} is not a branch marked as head office.`);
+      error.statusCode = 400;
+      throw error;
+    }
+  }
+  if (!payload.isHeadOffice && ownId && ownCode) {
+    const linked = (await Branch.find({ headOfficeCode: ownCode }).lean()).filter((row) => String(row._id || row.id) !== String(ownId));
+    if (linked.length) {
+      const error = new Error(`This head office still has ${linked.length} branch(es) linked to it; move them to another head office first.`);
+      error.statusCode = 400;
+      throw error;
+    }
+  }
+}
+
 async function createResource(resource, data = {}, meta = {}) {
   const def = getResourceDef(resource);
   const actorUser = meta.actorUser || {};
@@ -1278,6 +1305,7 @@ async function createResource(resource, data = {}, meta = {}) {
   }
 
   const payload = def.normalize ? def.normalize(data) : clone(data);
+  if (resource === 'branches') await assertBranchHeadOffice(payload);
   if (isBranchScopedResource(resource)) {
     payload.branchCode = resolveBranchCode(actorUser, payload.branchCode);
   }
@@ -1424,6 +1452,7 @@ async function updateResource(resource, id, data = {}, meta = {}) {
   const current = await def.model.findById(id);
   if (!current || !canAccessBranchRecord(resource, current.toObject(), actorUser)) return null;
   const payload = def.normalize ? def.normalize({ ...current.toObject(), ...data }) : clone({ ...current.toObject(), ...data });
+  if (resource === 'branches') await assertBranchHeadOffice(payload, id);
   await assertResourceDatesOpen(resource, [current.date, payload.date]);
   if (isBranchScopedResource(resource)) {
     payload.branchCode = resolveBranchCode(actorUser, current.branchCode);
@@ -2970,7 +2999,7 @@ async function buildMemberLedgerReport({ memberCode, dateFrom = '', dateTo = '',
     designation: member.designation || cleanText(memberExtras.Designation || raw.Designation),
     pfNo: member.pfNo || cleanText(raw.PFNo),
     mobileNo: cleanText(raw.MobileNo) || member.mobileNo || '',
-    postedBranch: cleanText(memberExtras.PostedBranch || raw.PostedBranch) || branch?.place || branch?.label || member.branchCode || ''
+    postedBranch: cleanText(memberExtras.PostedBranch || raw.PostedBranch) || branch?.label || member.branchCode || ''
   };
 
   return {
@@ -3079,10 +3108,10 @@ async function buildMemberAccountStatementList({ branchCode = '', search = '', d
       memberCode: row.code,
       memberName: row.name,
       branchCode: row.branchCode || '',
-      branchName: branch.label || branch.place || row.branchCode || '',
+      branchName: branch.label || row.branchCode || '',
       // Legacy's PostedBranch is the member's own free-text posting (e.g.
       // HATHBAND), not the branch master's name.
-      postedBranch: cleanText(fyRaw.PostedBranch || raw.PostedBranch) || branch.label || branch.place || '',
+      postedBranch: cleanText(fyRaw.PostedBranch || raw.PostedBranch) || branch.label || '',
       designation: row.designation || cleanText(fyRaw.Designation || raw.Designation),
       fhName: row.fatherOrHusbandName || cleanText(fyRaw.FathersName || raw.FathersName),
       share: toRupees(buckets.share.closing),
@@ -4408,7 +4437,7 @@ async function buildRecoveryDemandCandidates({ branchCode = '', month = '', year
       memberName: member.name || line.memberName || '',
       designation: member.designation || member?.payload?.raw?.Designation || '',
       branchCode: line.postedBranch,
-      branchName: branch.place || branch.label || line.postedBranch,
+      branchName: branch.label || line.postedBranch,
       compulsoryDeposit: toNumber(line.compulsoryDeposit, 0),
       specialDeposit: toNumber(line.specialDeposit, 0),
       regularLoan: toNumber(line.regularLoan, 0),
@@ -4449,7 +4478,7 @@ function demandEntrySummary(list, lines, branchByCode = new Map()) {
     demandListNo: list.demandListNo,
     demandListDate: cleanText(list.demandListDate).slice(0, 10),
     branchCode: list.branchCode,
-    branchName: branch.place || branch.label || list.branchCode,
+    branchName: branch.label || list.branchCode,
     month: period.month,
     year: period.year,
     fyCode: list?.payload?.fyCode || '',
@@ -4901,9 +4930,8 @@ async function buildAllMemberListReport({ branchCode = '', uptoDate = '', user =
       name: row.name,
       fatherOrHusbandName: cleanText(row.fatherOrHusbandName || raw.FathersName),
       branchCode: row.branchCode,
-      // The branch is its place (e.g. SADAR BAZAR); a branch's label is the
-      // bank's name, the same for every branch.
-      branchName: cleanText(branch.place || raw.PostedBranch || branch.label || row.branchCode),
+      // The branch name is its place (e.g. SADAR BAZAR).
+      branchName: cleanText(branch.label || raw.PostedBranch || row.branchCode),
       designation: cleanText(row.designation || raw.Designation),
       caste: cleanText(row.caste || raw.Caste),
       district: branch.district || '',
@@ -4968,11 +4996,11 @@ async function buildBranchListReport({ branchCode = '', user = {} } = {}) {
   const query = effectiveBranchCode ? { code: effectiveBranchCode } : {};
   const byText = (a, b) => String(a ?? '').localeCompare(String(b ?? ''), 'en', { sensitivity: 'base' });
   const rows = (await Branch.find(query).lean())
-    .sort((a, b) => byText(a.district, b.district) || byText(a.place, b.place) || compareCodesNumerically(a.code, b.code));
+    .sort((a, b) => byText(a.district, b.district) || byText(a.label, b.label) || compareCodesNumerically(a.code, b.code));
   return rows.map((row) => ({
     code: row.code,
     headOfficeCode: row.headOfficeCode || SOCIETY_SEED.code,
-    place: row.place,
+    name: row.label,
     district: row.district || '',
     phone: cleanText(row.phone),
     address: cleanText(row.address)
@@ -6014,7 +6042,7 @@ async function buildDividendReport({ mode = 'branchwise-opening', dateFrom = '',
       pfNo: cleanText(legacyRow.PFNo ?? (member.pfNo || currentRow.PFNo)),
       grade: cleanText(legacyRow.Designation ?? (member.designation || currentRow.Designation)),
       branch: branchCode,
-      branchName: branch.place || branch.label || branchCode,
+      branchName: branch.label || branchCode,
       share,
       dividendRate: rate,
       dividendAmount: Number(((share / 100) * rate).toFixed(2))

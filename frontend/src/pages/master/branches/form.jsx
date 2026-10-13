@@ -1,4 +1,10 @@
+import { useEffect, useMemo, useState } from 'react';
 import { Input, Textarea } from '../../../components/ui/Input';
+import { Select } from '../../../components/ui/Select';
+import { CheckboxLine } from '../../../components/ui/CheckboxLine';
+import { api } from '../../../api/api';
+import { useAuth } from '../../../context/AuthContext';
+import { branchDisplayName } from './branchUtils';
 
 function FieldLabel({ children, required }) {
   return (
@@ -9,86 +15,81 @@ function FieldLabel({ children, required }) {
   );
 }
 
+// A branch is either a head office or belongs to one, picked from the
+// branches marked as head office (not typed as a code).
 export function BranchForm({ value, setValue, onSubmit }) {
+  const { token } = useAuth();
+  const [branches, setBranches] = useState([]);
+
+  useEffect(() => {
+    let alive = true;
+    api.resources.list('/banking/masters/branches', token)
+      .then((response) => { if (alive) setBranches(Array.isArray(response?.data) ? response.data : []); })
+      .catch(() => { if (alive) setBranches([]); });
+    return () => { alive = false; };
+  }, [token]);
+
+  const ownCode = String(value.code || '').trim().toUpperCase();
+  const headOfficeOptions = useMemo(() => branches
+    .filter((branch) => branch.isHeadOffice === true && String(branch.code || '').toUpperCase() !== ownCode)
+    .map((branch) => ({ value: String(branch.code).toUpperCase(), label: branchDisplayName(branch) })), [branches, ownCode]);
+
+  const set = (field) => (event) => setValue((current) => ({ ...current, [field]: event.target.value }));
+
   return (
     <form id="branch-form" onSubmit={onSubmit} className="space-y-3">
-      <div className="grid gap-3 md:grid-cols-4">
+      <div className="grid gap-3 md:grid-cols-3">
         <div>
           <FieldLabel required>Branch Code</FieldLabel>
-          <Input
-            value={value.code || ''}
-            onChange={(event) => setValue((current) => ({ ...current, code: event.target.value }))}
-            placeholder="Auto-generated"
-          />
+          <Input value={value.code || ''} onChange={set('code')} placeholder="Auto-generated" />
         </div>
 
-        <div>
-          <FieldLabel required>Head Office Code</FieldLabel>
-          <Input
-            value={value.headOfficeCode || ''}
-            onChange={(event) => setValue((current) => ({ ...current, headOfficeCode: event.target.value }))}
-            placeholder="HO01"
-          />
+        <div className="md:col-span-2">
+          <FieldLabel required>Branch Name</FieldLabel>
+          <Input value={value.label || ''} onChange={set('label')} placeholder="e.g. SADAR BAZAR" />
         </div>
 
-        <div>
-          <FieldLabel required>Branch Place</FieldLabel>
-          <Input
-            value={value.label || ''}
-            onChange={(event) => setValue((current) => ({ ...current, label: event.target.value }))}
-            placeholder="Main Branch"
-          />
-        </div>
+        <CheckboxLine
+          className="md:col-span-3"
+          checked={value.isHeadOffice}
+          onChange={(checked) => setValue((current) => ({ ...current, isHeadOffice: checked, headOfficeCode: checked ? '' : current.headOfficeCode }))}
+        >
+          This branch is a head office
+        </CheckboxLine>
 
-        <div>
-          <FieldLabel>Place</FieldLabel>
-          <Input
-            value={value.place || ''}
-            onChange={(event) => setValue((current) => ({ ...current, place: event.target.value }))}
-            placeholder="Raipur"
-          />
-        </div>
+        {!value.isHeadOffice ? (
+          <div className="md:col-span-3">
+            <FieldLabel>Head Office</FieldLabel>
+            <Select
+              searchable
+              value={value.headOfficeCode || ''}
+              onChange={(next) => setValue((current) => ({ ...current, headOfficeCode: next || '' }))}
+              options={[{ value: '', label: 'None' }, ...headOfficeOptions]}
+              placeholder={headOfficeOptions.length ? 'Select head office' : 'No branch is marked as head office yet'}
+            />
+          </div>
+        ) : null}
 
         <div>
           <FieldLabel>District</FieldLabel>
-          <Input
-            value={value.district || ''}
-            onChange={(event) => setValue((current) => ({ ...current, district: event.target.value }))}
-            placeholder="Raipur"
-          />
+          <Input value={value.district || ''} onChange={set('district')} placeholder="Raipur" />
         </div>
 
         <div>
           <FieldLabel>Phone No</FieldLabel>
-          <Input
-            value={value.phone || ''}
-            onChange={(event) => setValue((current) => ({ ...current, phone: event.target.value }))}
-            placeholder="0771-2234011"
-          />
+          <Input value={value.phone || ''} onChange={set('phone')} placeholder="0771-2234011" />
         </div>
 
         <div>
           <FieldLabel>Status</FieldLabel>
-          <label className="flex items-center gap-2 text-sm text-slate-700">
-            <input
-              type="checkbox"
-              checked={Boolean(value.isActive)}
-              onChange={(event) => setValue((current) => ({ ...current, isActive: event.target.checked }))}
-              className="h-4 w-4 rounded border-slate-300 focus:ring-[var(--primary,#1661F6)]"
-              style={{ accentColor: 'var(--primary,#1661F6)' }}
-            />
+          <CheckboxLine checked={value.isActive} onChange={(checked) => setValue((current) => ({ ...current, isActive: checked }))}>
             Active Branch
-          </label>
+          </CheckboxLine>
         </div>
 
-        <div className="md:col-span-2">
+        <div className="md:col-span-3">
           <FieldLabel>Address</FieldLabel>
-          <Textarea
-            rows={4}
-            value={value.address || ''}
-            onChange={(event) => setValue((current) => ({ ...current, address: event.target.value }))}
-            placeholder="Branch address"
-          />
+          <Textarea rows={3} value={value.address || ''} onChange={set('address')} placeholder="Branch address" />
         </div>
       </div>
     </form>

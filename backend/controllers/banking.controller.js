@@ -45,7 +45,7 @@ const RESOURCE_SUMMARIES = {
   branches: (rows) => ({
     active: rows.filter((row) => row.isActive !== false).length,
     inactive: rows.filter((row) => row.isActive === false).length,
-    places: new Set(rows.map((row) => String(row.place || '').trim()).filter(Boolean)).size
+    districts: new Set(rows.map((row) => String(row.district || '').trim().toUpperCase()).filter(Boolean)).size
   }),
   noInterestMembers: (rows) => ({
     active: rows.filter((row) => lower(row.status, 'active') !== 'inactive').length,

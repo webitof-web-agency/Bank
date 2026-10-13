@@ -59,7 +59,7 @@ export function buildNextMembershipNo(rows = []) {
 
 export function formatBranchLabel(branch = {}) {
   const code = String(branch.code || '').trim();
-  const label = String(branch.label || branch.place || '').trim();
+  const label = String(branch.label || '').trim();
 
   if (!code && !label) return '';
   if (!code) return label;

@@ -502,7 +502,7 @@ export function ReportViewerPage() {
             onChange={(value) => setFilters((current) => ({ ...current, branchCode: value }))}
             options={[
               { label: 'All branches', value: '' },
-              ...branches.map((branch) => ({ label: `${branch.code} - ${branch.label || branch.place || ''}`, value: branch.code }))
+              ...branches.map((branch) => ({ label: `${branch.code} - ${branch.label || ''}`, value: branch.code }))
             ]}
           />
         </div>
@@ -528,7 +528,7 @@ export function ReportViewerPage() {
               onChange={(value) => setFilters((current) => ({ ...current, branchCode: value }))}
               options={[
                 { label: 'All branches', value: '' },
-                ...branches.map((branch) => ({ label: `${branch.code} - ${branch.label || branch.place || ''}`, value: branch.code }))
+                ...branches.map((branch) => ({ label: `${branch.code} - ${branch.label || ''}`, value: branch.code }))
               ]}
             />
           </div>
@@ -634,7 +634,7 @@ export function ReportViewerPage() {
               onChange={(value) => setFilters((current) => ({ ...current, branchCode: value }))}
               options={[
                 { label: 'All branches', value: '' },
-                ...branches.map((branch) => ({ label: `${branch.code} - ${branch.label || branch.place || ''}`, value: branch.code }))
+                ...branches.map((branch) => ({ label: `${branch.code} - ${branch.label || ''}`, value: branch.code }))
               ]}
             />
           </div>
@@ -674,7 +674,7 @@ export function ReportViewerPage() {
               onChange={(value) => setFilters((current) => ({ ...current, branchCode: value }))}
               options={[
                 { label: 'All branches', value: '' },
-                ...branches.map((branch) => ({ label: `${branch.code} - ${branch.label || branch.place || ''}`, value: branch.code }))
+                ...branches.map((branch) => ({ label: `${branch.code} - ${branch.label || ''}`, value: branch.code }))
               ]}
             />
           </div>

@@ -120,7 +120,8 @@ export function BranchDetailPage() {
   }
 
   const branchCode = branch.code || '-';
-  const headOfficeCode = branch.headOfficeCode || 'HO01';
+  // "Head office" for a head office; else the head office it belongs to.
+  const headOfficeCode = branch.isHeadOffice ? 'This branch is a head office' : (branch.headOfficeCode && branch.headOfficeCode !== '0' ? branch.headOfficeCode : '-');
 
   return (
     <div className="space-y-6">
@@ -146,10 +147,10 @@ export function BranchDetailPage() {
                   <CheckCircle2 size={14} />
                   {branch.isActive !== false ? 'Active' : 'Inactive'}
                 </span>
-                {branch.place ? (
+                {branch.isHeadOffice ? (
                   <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[12px] font-semibold text-slate-600">
                     <MapPin size={14} />
-                    {branch.place}
+                    Head office
                   </span>
                 ) : null}
               </div>
@@ -209,9 +210,8 @@ export function BranchDetailPage() {
               <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
                 <div className="divide-y divide-slate-100 px-6">
                   <DetailRow label="Branch Code" value={branchCode} />
-                  <DetailRow label="Head Office Code" value={headOfficeCode} />
+                  <DetailRow label="Head Office" value={headOfficeCode} />
                   <DetailRow label="Branch Name" value={branch.label} />
-                  <DetailRow label="Place" value={branch.place} />
                   <DetailRow label="District" value={branch.district} />
                   <DetailRow label="Phone" value={branch.phone} />
                   <DetailRow label="Status" value={branch.isActive !== false ? 'Active' : 'Inactive'} />
@@ -223,7 +223,6 @@ export function BranchDetailPage() {
               <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
                 <div className="divide-y divide-slate-100 px-6">
                   <DetailRow label="Address" value={branch.address} />
-                  <DetailRow label="Location" value={branch.place} />
                   <DetailRow label="Contact" value={branch.phone} />
                   <DetailRow label="Branch Status" value={branch.isActive !== false ? 'Operational' : 'Closed'} />
                 </div>

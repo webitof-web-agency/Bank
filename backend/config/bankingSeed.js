@@ -15,10 +15,10 @@ const SOCIETY_SEED = {
 };
 
 const BRANCH_SEEDS = [
-  { code: '0', headOfficeCode: '0', label: 'Main Branch - Raipur', place: 'Raipur', address: 'Civil Lines, Raipur', district: 'Raipur', phone: '0771-2234011' },
-  { code: '1', headOfficeCode: '0', label: 'Bhilai Branch', place: 'Bhilai', address: 'Sector 6, Bhilai', district: 'Durg', phone: '0788-2245022' },
-  { code: '2', headOfficeCode: '0', label: 'Durg Branch', place: 'Durg', address: 'Station Road, Durg', district: 'Durg', phone: '0788-2311033' },
-  { code: '3', headOfficeCode: '0', label: 'Bilaspur Branch', place: 'Bilaspur', address: 'Link Road, Bilaspur', district: 'Bilaspur', phone: '07752-401044' }
+  { code: '0', headOfficeCode: '0', label: 'Main Branch - Raipur', address: 'Civil Lines, Raipur', district: 'Raipur', phone: '0771-2234011' },
+  { code: '1', headOfficeCode: '0', label: 'Bhilai Branch', address: 'Sector 6, Bhilai', district: 'Durg', phone: '0788-2245022' },
+  { code: '2', headOfficeCode: '0', label: 'Durg Branch', address: 'Station Road, Durg', district: 'Durg', phone: '0788-2311033' },
+  { code: '3', headOfficeCode: '0', label: 'Bilaspur Branch', address: 'Link Road, Bilaspur', district: 'Bilaspur', phone: '07752-401044' }
 ];
 
 const MEMBER_SEEDS = [

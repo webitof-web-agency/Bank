@@ -73,7 +73,7 @@ function DistrictGroup({ group, first }) {
         <tr key={row.code}>
           <td className={cell}>{group.firstSerial + i}</td>
           <td className={cell}>{row.code}</td>
-          <td className={cell}>{row.place}</td>
+          <td className={cell}>{row.name}</td>
           <td className={cell}>{row.phone}</td>
           <td className={cell}>{row.address}</td>
         </tr>
