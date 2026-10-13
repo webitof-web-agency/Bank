@@ -930,8 +930,25 @@ function getDumpConnection() {
   return { host, port, user, password, database, ssl: Boolean(ssl) };
 }
 
+// For the status page: is the database answering, how fast, how big.
+async function pingDatabase() {
+  const database = await initializeDatabase();
+  const started = Date.now();
+  const result = await database.query('SELECT pg_database_size(current_database())::bigint AS size');
+  return { latencyMs: Date.now() - started, sizeBytes: Number(result.rows[0]?.size || 0) };
+}
+
+// For the status page: what the in-memory table cache holds.
+function getCacheStats() {
+  let rows = 0;
+  for (const value of tableCache.values()) rows += Array.isArray(value) ? value.length : 0;
+  return { tables: tableCache.size, rows };
+}
+
 module.exports = {
   closeDatabase,
+  getCacheStats,
+  pingDatabase,
   getDatabaseUrl,
   getDumpConnection,
   deleteMainRow,

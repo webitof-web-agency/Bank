@@ -1,3 +1,5 @@
+const { recordServerError } = require('../utils/errorStats');
+
 function errorHandler(error, req, res, next) {
   // Errors without a status (or 5xx) are internal: database, network, bugs.
   // Their text can name tables, hosts or paths, so in production the client
@@ -9,6 +11,7 @@ function errorHandler(error, req, res, next) {
   const isProduction = process.env.NODE_ENV === 'production';
 
   if (statusCode >= 500) {
+    recordServerError(error, req);
     console.error(`[error] ${req.method} ${req.baseUrl || ''}${req.path || ''}:`, error);
   }
 

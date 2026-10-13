@@ -51,5 +51,13 @@ router.use('/sms', require('./sms.routes'));
 router.use('/google-drive', require('./googleDrive.routes'));
 router.use('/backup', require('./backup.routes'));
 router.use('/fy-closing', require('./fyClosing.routes'));
+// The status report with error messages (the public one at "/" has none).
+router.get('/system/status', require('../middlewares/auth').requirePermission('settings.read'), async (_req, res, next) => {
+  try {
+    res.set('Cache-Control', 'no-store').json({ success: true, data: await require('../services/systemStatus.service').getSystemStatus() });
+  } catch (error) {
+    next(error);
+  }
+});
 
 module.exports = router;

@@ -12,6 +12,8 @@ const errorHandler = require('./middlewares/errorHandler');
 const { requireAuth } = require('./middlewares/auth');
 const { apiRateLimit } = require('./middlewares/rateLimit');
 const { rejectUnsafeKeys } = require('./middlewares/inputSafety');
+const { getSystemStatus, toPublicStatus } = require('./services/systemStatus.service');
+const { renderStatusPage } = require('./utils/statusPage');
 const { ensureDatabase } = require('./config/initDb');
 const { closeDatabase } = require('./config/postgres');
 const { buildCorsOptions, validateSecurityConfig } = require('./config/security');
@@ -66,12 +68,18 @@ app.use('/uploads', requireAuth, express.static(UPLOAD_ROOT, {
   }
 }));
 
-app.get('/', (_req, res) => {
-  res.json({
-    success: true,
-    message: 'Bank backend is running',
-    apiPrefix: API_PREFIX
-  });
+// Status page: connections, server errors, memory / disk / cache. Public,
+// so it shows states and numbers only (details: GET /api/system/status).
+// HTTP 503 while the database is down, for uptime monitors.
+app.get('/', async (req, res, next) => {
+  try {
+    const report = toPublicStatus(await getSystemStatus());
+    res.status(report.status === 'down' ? 503 : 200).set('Cache-Control', 'no-store');
+    if (req.accepts(['json', 'html']) === 'html') return res.type('html').send(renderStatusPage(report));
+    return res.json({ success: report.status !== 'down', ...report });
+  } catch (error) {
+    return next(error);
+  }
 });
 
 app.use(API_PREFIX, apiRateLimit, apiRoutes);
