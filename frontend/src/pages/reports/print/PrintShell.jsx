@@ -280,9 +280,10 @@ function withTimeout(promise, ms) {
 
 export function PrintLetterhead({ title, meta }) {
   const society = useSociety();
-  const pageCount = useContext(PageCountContext);
   const logoSrc = society.logoUrl ? getImageUrl(society.logoUrl) : placeholderLogo;
-  const metaText = typeof meta === 'string' ? meta.replace(/Page 1 of 1/, `Page 1 of ${pageCount}`) : meta;
+  // A page number here only repeats the footer's ("Page X of N" on every
+  // sheet), so letterheads show other meta only (e.g. a date).
+  const metaText = typeof meta === 'string' && /^\s*Page\s+\d+\s+of\s+\d+\s*$/i.test(meta) ? '' : meta;
 
   return (
     <div className="mb-2">
@@ -293,10 +294,13 @@ export function PrintLetterhead({ title, meta }) {
           {society.address ? <p className="text-[12px] font-semibold text-black">{society.address}</p> : null}
         </div>
       </div>
-      <div className="mt-2 grid grid-cols-[1fr_auto_1fr] items-end gap-3 border-b-2 border-black pb-1">
-        <span />
-        <h2 className="whitespace-nowrap text-center text-[13px] font-bold uppercase text-black">{title}</h2>
-        <span className="text-right text-[11px] text-black">{metaText}</span>
+      {/* Title centred; the meta (page / date) on the right never wraps. An
+          invisible copy of the meta on the left keeps the title in the
+          middle, and a long title wraps instead of squeezing the meta. */}
+      <div className="mt-2 grid grid-cols-[auto_minmax(0,1fr)_auto] items-end gap-3 border-b-2 border-black pb-1">
+        <span aria-hidden="true" className="invisible whitespace-nowrap text-[11px]">{metaText}</span>
+        <h2 className="text-balance text-center text-[13px] font-bold uppercase text-black">{title}</h2>
+        <span className="whitespace-nowrap text-right text-[11px] text-black">{metaText}</span>
       </div>
     </div>
   );

@@ -4,10 +4,19 @@ import { ShadowBox, dottedRow } from './LegacyBookParts';
 
 // Legacy CrDayBook.rpt look — same family as the Cash Book: INCOME / EXPENSES
 // shadow labels over the Credit / Debit columns, one dotted-separated row per
-// voucher (Vch.No | Particulars: bold transaction heading when it changes,
+// voucher (Vch.No | Date | Particulars: bold transaction heading when it changes,
 // then cheque line / account / narration | Credit | Debit), column totals,
 // then the boxed Total Income + B/F Cash-In-Hand = Grand Total against Total
 // Expenses + C/F Cash-In-Hand = Grand Total.
+// "08-04-2026" against the voucher's own date (ISO or dd-mm-yyyy).
+function isSameDateLine(line, date) {
+  const text = String(line || '').trim();
+  if (!/^\d{2}-\d{2}-\d{4}$/.test(text) || !date) return false;
+  const iso = String(date).slice(0, 10);
+  const asDmy = /^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso.split('-').reverse().join('-') : iso;
+  return text === asDmy;
+}
+
 export function DayBookPrint({ data, filters, headerActions }) {
   const vouchers = (Array.isArray(data?.vouchers) ? data.vouchers : [])
     .filter((voucher) => hasAmount(voucher.credit, voucher.debit));
@@ -26,8 +35,8 @@ export function DayBookPrint({ data, filters, headerActions }) {
     <PrintShell headerActions={headerActions}>
       <PrintLetterhead title={`DAYBOOK AS ON ${formatDMY(filters?.date) || formatDMY(new Date())}`} meta="" />
 
-      <div className="mb-1 grid grid-cols-[4.5rem_1fr_8rem_8rem] items-end gap-x-1">
-        <span className="col-span-2 pl-6 text-[11px]">Page 1 of 1</span>
+      <div className="mb-1 grid grid-cols-[4.5rem_5.5rem_1fr_8rem_8rem] items-end gap-x-1">
+        <span className="col-span-3" />
         <ShadowBox>Income</ShadowBox>
         <ShadowBox>Expenses</ShadowBox>
       </div>
@@ -36,6 +45,7 @@ export function DayBookPrint({ data, filters, headerActions }) {
         <table className="w-full border-collapse border border-black">
           <colgroup>
             <col className="w-[4.5rem]" />
+            <col className="w-[5.5rem]" />
             <col />
             <col className="w-[8rem]" />
             <col className="w-[8rem]" />
@@ -43,6 +53,7 @@ export function DayBookPrint({ data, filters, headerActions }) {
           <thead>
             <tr className="border-b border-black bg-slate-50">
               <th className={head}>Vch.No.</th>
+              <th className={`${head} ${divider}`}>Date</th>
               <th className={`${head} ${divider} text-left`}>Particulars</th>
               <th className={`${head} ${divider}`}>Credit</th>
               <th className={`${head} ${divider}`}>Debit</th>
@@ -52,9 +63,12 @@ export function DayBookPrint({ data, filters, headerActions }) {
             {vouchers.map((voucher, i) => (
               <tr key={`${voucher.voucherNo}-${i}`} className={dottedRow}>
                 <td className="px-2 py-0.5 text-center align-middle text-[11px] font-bold">{voucher.voucherNo}</td>
+                <td className={`${divider} whitespace-nowrap px-2 py-0.5 text-center align-middle text-[11px]`}>{formatDMY(voucher.date)}</td>
                 <td className={`${divider} px-2 py-0.5 text-left text-[11px] leading-snug`}>
                   {voucher.heading ? <div className="font-bold">{voucher.heading}</div> : null}
-                  {(voucher.lines || []).map((line, j) => <div key={j}>{line}</div>)}
+                  {/* The date has its own column: a line that is only that
+                      date (an instrument dated the same day) is left out. */}
+                  {(voucher.lines || []).filter((line) => !isSameDateLine(line, voucher.date)).map((line, j) => <div key={j}>{line}</div>)}
                 </td>
                 <td className={`${num} ${divider}`}>{amount(voucher.credit)}</td>
                 <td className={`${num} ${divider}`}>{amount(voucher.debit)}</td>
@@ -62,7 +76,7 @@ export function DayBookPrint({ data, filters, headerActions }) {
             ))}
             {vouchers.length === 0 && (
               <tr className={dottedRow}>
-                <td colSpan={4} className="p-3 text-center text-[11px]">&nbsp;</td>
+                <td colSpan={5} className="p-3 text-center text-[11px]">&nbsp;</td>
               </tr>
             )}
           </tbody>

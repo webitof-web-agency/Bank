@@ -7,6 +7,10 @@ import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 
+// The location line under the society name on every report letterhead;
+// kept short enough to fit on one line (same limit on the server).
+const SOCIETY_LOCATION_MAX = 90;
+
 const EMPTY_FORM = {
   name: '',
   prefix: '',
@@ -243,8 +247,14 @@ export function SocietyDetailsPage() {
             <Field label="GST No." icon={FileImage}>
               <Input value={draft.gstNo} onChange={(event) => setDraft((current) => ({ ...current, gstNo: event.target.value }))} />
             </Field>
-            <Field label="Address">
-              <Input value={draft.address} onChange={(event) => setDraft((current) => ({ ...current, address: event.target.value }))} placeholder="Printed under the society name on report letterheads" />
+            <Field label="Location (printed on reports)">
+              <Input
+                value={draft.address}
+                maxLength={SOCIETY_LOCATION_MAX}
+                onChange={(event) => setDraft((current) => ({ ...current, address: event.target.value.slice(0, SOCIETY_LOCATION_MAX) }))}
+                placeholder="e.g. G.E. Road, Raipur (C.G.)"
+              />
+              <p className="mt-1 text-right text-[11px] text-slate-500">{(draft.address || '').length} / {SOCIETY_LOCATION_MAX}</p>
             </Field>
             <Field label="Footer Text">
               <Input value={draft.footerText} onChange={(event) => setDraft((current) => ({ ...current, footerText: event.target.value }))} />

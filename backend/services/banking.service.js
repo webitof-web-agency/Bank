@@ -876,7 +876,9 @@ const RESOURCE_DEFS = {
         phone: cleanText(data.phone, ''),
         // No fallback: an empty address prints nothing on the letterhead
         // (the seed's sample address must never come back on its own).
-        address: cleanText(data.address),
+        // The location line on report letterheads: at most 90 characters,
+        // as the Society Details form allows.
+        address: cleanText(data.address).slice(0, 90),
         branchCode: cleanUpper(data.branchCode, SOCIETY_SEED.branchCode),
         logoUrl: cleanText(data.logoUrl, ''),
         logoFileId: cleanText(data.logoFileId, ''),

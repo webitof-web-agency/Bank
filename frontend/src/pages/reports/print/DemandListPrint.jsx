@@ -1,6 +1,9 @@
 import { PrintShell, PrintLetterhead } from './PrintShell';
 import { formatMoney, hasAmount, th, td, tdText, tdCenter, table } from './printStyles';
 
+// Amount cells: one line, never spilling over the cell border.
+const money = `${td} whitespace-nowrap`;
+
 export function DemandListPrint({ data, filters, branches = [], headerActions }) {
   const rows = (Array.isArray(data) ? data : [])
     .filter((row) => hasAmount(row.cd, row.ssa, row.regularLoan, row.loanAgainstDeposit, row.other, row.total));
@@ -27,7 +30,9 @@ export function DemandListPrint({ data, filters, branches = [], headerActions })
   );
 
   return (
-    <PrintShell headerActions={headerActions}>
+    // Landscape, as twelve columns don't fit a portrait sheet: name and
+    // designation get room, amounts stay on one line (like the old list).
+    <PrintShell headerActions={headerActions} landscape>
       <PrintLetterhead title={`DEMAND LIST FOR THE MONTH ${monthName.toUpperCase()}`} />
 
       <div className="mb-3 text-[12px]">
@@ -39,20 +44,27 @@ export function DemandListPrint({ data, filters, branches = [], headerActions })
 
       <div className="overflow-x-auto">
       <table className={table}>
+        <colgroup>
+          <col style={{ width: '4%' }} />
+          <col style={{ width: '5%' }} />
+          <col style={{ width: '19%' }} />
+          <col style={{ width: '12%' }} />
+          {Array.from({ length: 8 }, (_, i) => <col key={i} style={{ width: '7.5%' }} />)}
+        </colgroup>
         <thead>
           <tr>
-            <th className={th}>SNo</th>
-            <th className={th}>Code</th>
+            <th className={`${th} whitespace-nowrap`}>SNo</th>
+            <th className={`${th} whitespace-nowrap`}>Code</th>
             <th className={`${th} text-left`}>Member's Name</th>
-            <th className={th}>Designation</th>
-            <th className={th}>Contribution</th>
-            <th className={th}>SSA</th>
-            <th className={th}>Loan</th>
-            <th className={th}>D.Loan</th>
-            <th className={th}>Other</th>
-            <th className={th}>Total</th>
-            <th className={th}>Recovered</th>
-            <th className={th}>Pending</th>
+            <th className={`${th} whitespace-nowrap`}>Designation</th>
+            <th className={`${th} whitespace-nowrap`}>Contribution</th>
+            <th className={`${th} whitespace-nowrap`}>SSA</th>
+            <th className={`${th} whitespace-nowrap`}>Loan</th>
+            <th className={`${th} whitespace-nowrap`}>D.Loan</th>
+            <th className={`${th} whitespace-nowrap`}>Other</th>
+            <th className={`${th} whitespace-nowrap`}>Total</th>
+            <th className={`${th} whitespace-nowrap`}>Recovered</th>
+            <th className={`${th} whitespace-nowrap`}>Pending</th>
           </tr>
         </thead>
         <tbody>
@@ -62,14 +74,14 @@ export function DemandListPrint({ data, filters, branches = [], headerActions })
               <td className={tdCenter}>{row.memberCode}</td>
               <td className={tdText}>{row.memberName}</td>
               <td className={tdText}>{row.designation}</td>
-              <td className={td}>{formatMoney(row.cd)}</td>
-              <td className={td}>{formatMoney(row.ssa)}</td>
-              <td className={td}>{formatMoney(row.regularLoan)}</td>
-              <td className={td}>{formatMoney(row.loanAgainstDeposit)}</td>
-              <td className={td}>{formatMoney(row.other)}</td>
-              <td className={td}>{formatMoney(row.total)}</td>
-              <td className={td}>{formatMoney(row.recovered)}</td>
-              <td className={`${td} ${Number(row.pending) > 0 ? 'font-bold text-red-700' : ''}`}>{formatMoney(row.pending)}</td>
+              <td className={money}>{formatMoney(row.cd)}</td>
+              <td className={money}>{formatMoney(row.ssa)}</td>
+              <td className={money}>{formatMoney(row.regularLoan)}</td>
+              <td className={money}>{formatMoney(row.loanAgainstDeposit)}</td>
+              <td className={money}>{formatMoney(row.other)}</td>
+              <td className={money}>{formatMoney(row.total)}</td>
+              <td className={money}>{formatMoney(row.recovered)}</td>
+              <td className={`${money} ${Number(row.pending) > 0 ? 'font-bold text-red-700' : ''}`}>{formatMoney(row.pending)}</td>
             </tr>
           ))}
           {rows.length === 0 && (
@@ -82,14 +94,14 @@ export function DemandListPrint({ data, filters, branches = [], headerActions })
           <tfoot>
             <tr className="font-bold">
               <td className={tdText} colSpan={4}>Total</td>
-              <td className={td}>{formatMoney(totals.cd)}</td>
-              <td className={td}>{formatMoney(totals.ssa)}</td>
-              <td className={td}>{formatMoney(totals.regularLoan)}</td>
-              <td className={td}>{formatMoney(totals.loanAgainstDeposit)}</td>
-              <td className={td}>{formatMoney(totals.other)}</td>
-              <td className={td}>{formatMoney(totals.total)}</td>
-              <td className={td}>{formatMoney(totals.recovered)}</td>
-              <td className={td}>{formatMoney(totals.pending)}</td>
+              <td className={money}>{formatMoney(totals.cd)}</td>
+              <td className={money}>{formatMoney(totals.ssa)}</td>
+              <td className={money}>{formatMoney(totals.regularLoan)}</td>
+              <td className={money}>{formatMoney(totals.loanAgainstDeposit)}</td>
+              <td className={money}>{formatMoney(totals.other)}</td>
+              <td className={money}>{formatMoney(totals.total)}</td>
+              <td className={money}>{formatMoney(totals.recovered)}</td>
+              <td className={money}>{formatMoney(totals.pending)}</td>
             </tr>
           </tfoot>
         )}

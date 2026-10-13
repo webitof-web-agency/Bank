@@ -8,25 +8,35 @@ export function AllMemberListPrint({ data, headerActions }) {
   const rows = (Array.isArray(data) ? data : []).filter((row) => String(row.status || '').toLowerCase() === 'active');
 
   return (
-    <PrintShell headerActions={headerActions}>
+    // Landscape, one column per field, each with its own heading.
+    <PrintShell headerActions={headerActions} landscape>
       <PrintLetterhead title="ALL MEMBER'S LIST" />
 
-      <div className="overflow-x-auto">
       <table className={table}>
+        <colgroup>
+          <col style={{ width: '4%' }} />
+          <col style={{ width: '5%' }} />
+          <col style={{ width: '15%' }} />
+          <col style={{ width: '15%' }} />
+          <col style={{ width: '11%' }} />
+          <col style={{ width: '11%' }} />
+          <col style={{ width: '7%' }} />
+          <col style={{ width: '12%' }} />
+          <col style={{ width: '9%' }} />
+          <col style={{ width: '11%' }} />
+        </colgroup>
         <thead>
           <tr>
-            <th className={th} rowSpan={2}>SN.</th>
-            <th className={th} rowSpan={2}>CODE</th>
+            <th className={th}>SN.</th>
+            <th className={th}>CODE</th>
             <th className={th}>MEMBER'S NAME</th>
+            <th className={th}>FATHER'S / HUSBAND'S NAME</th>
             <th className={th}>DESIGNATION</th>
-            <th className={th}>CASTE</th>
-            <th className={th}>MEMBERSHIP</th>
-          </tr>
-          <tr>
-            <th className={th}>FATHER'S/HUSBAND NAME</th>
             <th className={th}>BRANCH</th>
+            <th className={th}>CASTE</th>
             <th className={th}>DISTRICT</th>
-            <th className={th}>NO. / DATE</th>
+            <th className={`${th} text-[10px]`}>MEMBERSHIP NO.</th>
+            <th className={`${th} text-[10px]`}>MEMBERSHIP DATE</th>
           </tr>
         </thead>
         <tbody>
@@ -34,32 +44,23 @@ export function AllMemberListPrint({ data, headerActions }) {
             <tr key={row.code || i}>
               <td className={tdCenter}>{i + 1}</td>
               <td className={tdCenter}>{row.code}</td>
-              <td className={tdText}>
-                <div>{row.name}</div>
-                <div className="text-slate-500">{row.fatherOrHusbandName}</div>
-              </td>
-              <td className={tdText}>
-                <div>{row.designation}</div>
-                <div className="text-slate-500">{row.branchName || row.branchCode}</div>
-              </td>
-              <td className={tdText}>
-                <div>{row.caste}</div>
-                <div className="text-slate-500">{row.district}</div>
-              </td>
-              <td className={tdText}>
-                <div>{row.membershipNo}</div>
-                <div className="text-slate-500">{formatDMY(row.membershipDate)}</div>
-              </td>
+              <td className={tdText}>{row.name}</td>
+              <td className={tdText}>{row.fatherOrHusbandName}</td>
+              <td className={tdText}>{row.designation}</td>
+              <td className={tdText}>{row.branchName || row.branchCode}</td>
+              <td className={tdText}>{row.caste}</td>
+              <td className={tdText}>{row.district}</td>
+              <td className={tdCenter}>{row.membershipNo}</td>
+              <td className={`${tdCenter} whitespace-nowrap`}>{formatDMY(row.membershipDate)}</td>
             </tr>
           ))}
           {rows.length === 0 && (
             <tr>
-              <td colSpan={6} className="border border-black p-4 text-center text-[12px]">No members found.</td>
+              <td colSpan={10} className="border border-black p-4 text-center text-[12px]">No members found.</td>
             </tr>
           )}
         </tbody>
       </table>
-      </div>
 
       <p className="mt-2 text-right text-[11px] font-semibold">Total Active Members : {rows.length}</p>
     </PrintShell>
