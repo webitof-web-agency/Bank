@@ -151,7 +151,8 @@ test('transfer voucher editor uses one scroll area with a fixed footer', async (
   ]) {
     const source = await readFile(file, 'utf8');
     assert.match(source, /<Modal[\s\S]*?footer=\{/, file);
-    assert.match(source, /width="min\(860px, 96vw\)"/, file);
+    // The standard form-dialog width (Modal default), not a size of its own.
+    assert.doesNotMatch(source, /<Modal[^>]*width=/, file);
     assert.doesNotMatch(source, /max-h-\[80vh\] overflow-y-auto/, file);
   }
 });
