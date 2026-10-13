@@ -88,7 +88,7 @@ function createAuthUrl(user = {}) {
 
 function verifyState(state) {
   try {
-    const payload = jwt.verify(String(state || ''), process.env.JWT_SECRET);
+    const payload = jwt.verify(String(state || ''), process.env.JWT_SECRET, { algorithms: ['HS256'] });
     if (payload?.purpose !== STATE_PURPOSE) throw new Error('wrong purpose');
     return payload;
   } catch (_error) {

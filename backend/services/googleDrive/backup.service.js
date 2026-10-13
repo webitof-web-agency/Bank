@@ -99,20 +99,37 @@ async function getBackupStatus() {
       ? { enabled: true, hourIst: config.backupHourIst, label: `Daily at ${String(config.backupHourIst).padStart(2, '0')}:00 IST` }
       : { enabled: false, hourIst: null, label: 'Manual only' },
     last: status.last || null,
-    lastSuccess: status.lastSuccess || null
+    lastSuccess: status.lastSuccess || null,
+    // "Back up now" (a test of the Drive backup) is offered only outside
+    // production; the daily schedule runs everywhere.
+    manualAllowed: process.env.NODE_ENV !== 'production'
   };
 }
 
 // ---------------------------------------------------------------------------
 // Backup
 
-function backupName(database, date = new Date()) {
-  return `bank-backup-${String(database).replace(/[^A-Za-z0-9_-]/g, '_')}-${istParts(date).stamp}-IST.dump`;
+function backupPrefix(database) {
+  return `bank-backup-${String(database).replace(/[^A-Za-z0-9_-]/g, '_')}-`;
 }
 
-// Deletes all but the newest `keep` backups (only our own files).
+function backupName(database, date = new Date()) {
+  return `${backupPrefix(database)}${istParts(date).stamp}-IST.dump`;
+}
+
+// This server's backups in the folder: only its own database's files. A
+// dev or test server connected to the same Drive writes other names, and
+// must never count toward (or be pruned by) the live server's newest N.
+function ownBackups(files, database = getDumpConnection().database) {
+  const prefix = backupPrefix(database);
+  return files.filter((file) => FILE_RE.test(file.name || '') && String(file.name).startsWith(prefix)
+    // "bank_app" must not also match "bank_app_test-...": the stamp follows.
+    && /^\d{4}-\d{2}-\d{2}_/.test(String(file.name).slice(prefix.length)));
+}
+
+// Deletes all but the newest `keep` backups of this database (only our own files).
 async function applyRetention(client, folderId, keep) {
-  const files = (await client.listFiles(folderId)).filter((file) => FILE_RE.test(file.name || ''));
+  const files = ownBackups(await client.listFiles(folderId));
   files.sort((a, b) => String(b.createdTime).localeCompare(String(a.createdTime)));
   const removed = [];
   for (const file of files.slice(keep)) {
@@ -242,7 +259,7 @@ async function listBackups() {
   const state = await connection.readState();
   if (!state.encryptedRefreshToken || !state.backupFolderId) return [];
   const client = await connection.getClient();
-  const files = (await client.listFiles(state.backupFolderId)).filter((file) => FILE_RE.test(file.name || ''));
+  const files = ownBackups(await client.listFiles(state.backupFolderId));
   return files.map((file) => ({ id: file.id, name: file.name, size: Number(file.size || 0), createdTime: file.createdTime }));
 }
 
@@ -262,6 +279,7 @@ module.exports = {
   FILE_RE,
   applyRetention,
   backupName,
+  ownBackups,
   getBackupStatus,
   istParts,
   listBackups,

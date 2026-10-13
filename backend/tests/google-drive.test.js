@@ -587,3 +587,15 @@ test('GDRIVE_PARENT_FOLDER_ID: both folders live in the main folder (link or id)
     await resetState();
   }
 });
+
+test('backups: a server lists and prunes only its own database, never another server sharing the Drive folder', () => {
+  const files = [
+    'bank-backup-jilabank_prod-2026-10-11_02-00-01-IST.dump',
+    'bank-backup-bank_app-2026-10-13_10-32-19-IST.dump',
+    'bank-backup-bank_app_test-2026-10-11_02-00-01-IST.dump',
+    'bank-backup-postgres-2026-10-12_13-31-20-IST.dump',
+    'notes.txt'
+  ].map((name) => ({ name }));
+  assert.deepEqual(backups.ownBackups(files, 'jilabank_prod').map((file) => file.name), ['bank-backup-jilabank_prod-2026-10-11_02-00-01-IST.dump']);
+  assert.deepEqual(backups.ownBackups(files, 'bank_app').map((file) => file.name), ['bank-backup-bank_app-2026-10-13_10-32-19-IST.dump']);
+});

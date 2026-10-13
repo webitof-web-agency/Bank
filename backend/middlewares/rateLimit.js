@@ -72,7 +72,17 @@ const authRateLimit = createRateLimiter({
   message: 'Too many authentication attempts. Please try again later.'
 });
 
+// Per account, whatever the client IP: slows password guessing spread over
+// many addresses. Keyed on the login name/email typed.
+const accountRateLimit = createRateLimiter({
+  windowMs: Number(process.env.ACCOUNT_RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000),
+  max: Number(process.env.ACCOUNT_RATE_LIMIT_MAX || 10),
+  keyGenerator: (req) => `account:${req.originalUrl}:${String(req.body?.identifier || '').trim().toLowerCase().slice(0, 200)}`,
+  message: 'Too many attempts for this account. Please try again later.'
+});
+
 module.exports = {
+  accountRateLimit,
   apiRateLimit,
   authRateLimit,
   createRateLimiter

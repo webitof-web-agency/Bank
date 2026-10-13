@@ -2,12 +2,39 @@ const jwt = require('jsonwebtoken');
 const { buildAccessProfile } = require('../services/auth.service');
 const { expandPermissionCodes } = require('../config/permissionCatalog');
 const { runWithActor } = require('../utils/requestContext');
+const { isSessionRevoked } = require('../services/session.service');
 
 function getJwtSecret() {
   if (!process.env.JWT_SECRET) {
     throw new Error('JWT_SECRET is missing in environment configuration.');
   }
   return process.env.JWT_SECRET;
+}
+
+// A login session token: HS256, not one of the app's other signed tokens
+// (file-view links carry `scope`, the Drive OAuth state `purpose`), with a
+// session id (jti) that has not been logged out, and not issued before the
+// user's last password change. Tokens from before session ids existed have
+// no jti and are refused: those users sign in once more.
+function verifySessionToken(token) {
+  const decoded = jwt.verify(token, getJwtSecret(), { algorithms: ['HS256'] });
+  if (!decoded || typeof decoded !== 'object' || decoded.scope || decoded.purpose || !decoded.jti) return null;
+  const userId = decoded.sub || decoded.uid || decoded.userId;
+  return userId ? { decoded, userId: String(userId) } : null;
+}
+
+function isSessionCurrent(user, decoded) {
+  if (!user || !user.isActive) return false;
+  const changedAt = user.passwordChangedAt ? new Date(user.passwordChangedAt).getTime() : 0;
+  // iat is in whole seconds; allow the second the password was changed in.
+  return !changedAt || Number(decoded.iat || 0) * 1000 >= changedAt - 1000;
+}
+
+async function resolveSessionUser(token) {
+  const session = verifySessionToken(token);
+  if (!session || await isSessionRevoked(session.decoded.jti)) return null;
+  const user = await buildAccessProfile(session.userId);
+  return isSessionCurrent(user, session.decoded) ? { user, decoded: session.decoded } : null;
 }
 
 function extractBearerToken(req) {
@@ -23,16 +50,11 @@ async function requireAuth(req, res, next) {
       return res.status(401).json({ success: false, message: 'Authentication token is required' });
     }
 
-    const decoded = jwt.verify(token, getJwtSecret());
-    const userId = decoded.sub || decoded.uid || decoded.userId;
-    if (!userId) {
-      return res.status(401).json({ success: false, message: 'Invalid token payload' });
-    }
-
-    const user = await buildAccessProfile(userId);
-    if (!user || !user.isActive) {
+    const session = await resolveSessionUser(token);
+    if (!session) {
       return res.status(401).json({ success: false, message: 'User session is invalid or inactive' });
     }
+    const { user, decoded } = session;
 
     req.user = user;
     req.auth = decoded;
@@ -78,5 +100,8 @@ function requirePermission(...permissions) {
 module.exports = {
   hasPermission,
   requireAuth,
-  requirePermission
+  isSessionCurrent,
+  requirePermission,
+  resolveSessionUser,
+  verifySessionToken
 };

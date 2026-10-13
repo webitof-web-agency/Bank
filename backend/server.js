@@ -11,6 +11,7 @@ const notFound = require('./middlewares/notFound');
 const errorHandler = require('./middlewares/errorHandler');
 const { requireAuth } = require('./middlewares/auth');
 const { apiRateLimit } = require('./middlewares/rateLimit');
+const { rejectUnsafeKeys } = require('./middlewares/inputSafety');
 const { ensureDatabase } = require('./config/initDb');
 const { closeDatabase } = require('./config/postgres');
 const { buildCorsOptions, validateSecurityConfig } = require('./config/security');
@@ -26,10 +27,31 @@ const API_PREFIX = process.env.API_PREFIX || '/api';
 const UPLOAD_ROOT = path.join(__dirname, 'uploads');
 
 app.disable('x-powered-by');
+// Behind a reverse proxy (nginx, a load balancer) set TRUST_PROXY to the
+// number of proxy hops (usually 1), so req.ip is the client's address and
+// rate limits apply per client rather than to everyone at once.
+if (process.env.TRUST_PROXY) {
+  const hops = Number(process.env.TRUST_PROXY);
+  app.set('trust proxy', Number.isInteger(hops) ? hops : process.env.TRUST_PROXY);
+}
 app.use(helmet());
 app.use(cors(buildCorsOptions()));
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: false, limit: '1mb' }));
+app.use(rejectUnsafeKeys);
+// Request log without secrets: signed file links, OAuth codes and the like
+// carry them in the query string.
+const SECRET_QUERY_PARAMS = /^(token|access_token|refresh_token|id_token|code|state|password|secret|key|sig|signature)$/i;
+morgan.token('url', (req) => {
+  const raw = req.originalUrl || req.url;
+  const queryAt = raw.indexOf('?');
+  if (queryAt === -1) return raw;
+  const params = new URLSearchParams(raw.slice(queryAt + 1));
+  for (const name of [...params.keys()]) {
+    if (SECRET_QUERY_PARAMS.test(name)) params.set(name, '[redacted]');
+  }
+  return `${raw.slice(0, queryAt)}?${params.toString()}`;
+});
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
 app.use('/uploads', requireAuth, express.static(UPLOAD_ROOT, {
@@ -40,6 +62,7 @@ app.use('/uploads', requireAuth, express.static(UPLOAD_ROOT, {
   setHeaders(res) {
     res.setHeader('Cache-Control', 'private, no-store, max-age=0, must-revalidate');
     res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self' data:; sandbox");
   }
 }));
 

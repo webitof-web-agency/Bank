@@ -93,6 +93,21 @@ function validateSecurityConfig() {
     console.warn(`[security] ${message}`);
   }
 
+  if (process.env.NODE_ENV === 'production') {
+    // A production server must name its own frontend: the localhost defaults
+    // would let any page served from the server's machine call the API.
+    if (!splitList(process.env.CORS_ORIGINS || process.env.FRONTEND_URL).length) {
+      throw new Error('Set CORS_ORIGINS (or FRONTEND_URL) to the frontend address, e.g. https://bank.example.com, in production.');
+    }
+    // Stored secrets (SMTP password, Drive token, storage keys) are encrypted with it.
+    if (!cleanText(process.env.SETTINGS_ENCRYPTION_KEY)) {
+      throw new Error('Set SETTINGS_ENCRYPTION_KEY (openssl rand -hex 32) in production.');
+    }
+    if (!process.env.TRUST_PROXY) {
+      console.warn('[security] TRUST_PROXY is not set: behind a reverse proxy every client shares one rate limit. Set TRUST_PROXY=1 when behind nginx/a load balancer.');
+    }
+  }
+
   return {
     corsOrigins: getCorsOrigins(),
     fileViewTokenExpiresIn: getFileViewTokenExpiry(),

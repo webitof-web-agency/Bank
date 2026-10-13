@@ -4,7 +4,8 @@ const multer = require('multer');
 const { requirePermission } = require('../middlewares/auth');
 const recoveryImportController = require('../controllers/recoveryImport.controller');
 
-const upload = multer({ storage: multer.memoryStorage() });
+// One spreadsheet, at most 10 MB (held in memory while it is read).
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024, files: 1 } });
 
 // Imports post Recovery From Member vouchers: the Member transactions page.
 const view = requirePermission('transactions.member.view');

@@ -42,7 +42,7 @@ function buildFileViewUrl(fileIdOrUrl) {
 
 function verifyFileViewToken(token) {
   if (!cleanText(token)) return null;
-  const decoded = jwt.verify(token, getJwtSecret());
+  const decoded = jwt.verify(token, getJwtSecret(), { algorithms: ['HS256'] });
   if (decoded?.scope !== 'file-view' || !decoded?.fid) {
     const error = new Error('Invalid file access token');
     error.statusCode = 401;

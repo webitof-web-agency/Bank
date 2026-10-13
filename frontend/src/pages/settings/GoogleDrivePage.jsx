@@ -22,6 +22,7 @@ export function GoogleDrivePanel({ onStatus }) {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
+  const [startingBackup, setStartingBackup] = useState(false);
   const pollRef = useRef(null);
 
   const load = useCallback(async () => {
@@ -86,6 +87,19 @@ export function GoogleDrivePanel({ onStatus }) {
     }
   }
 
+  async function handleBackupNow() {
+    setStartingBackup(true);
+    try {
+      await api.googleDrive.runBackup(token);
+      toast.message('Backup started. This page updates when it finishes.');
+      await load();
+    } catch (error) {
+      toast.error(error.message || 'Unable to start the backup');
+    } finally {
+      setStartingBackup(false);
+    }
+  }
+
   async function handleDownload(row) {
     try {
       const blob = await api.googleDrive.downloadBackup(token, row.id);
@@ -121,8 +135,10 @@ export function GoogleDrivePanel({ onStatus }) {
             backups={backups}
             connected={Boolean(drive?.connected && !drive?.needsReconnect)}
             canWrite={canWrite}
+            starting={startingBackup}
             onDownload={handleDownload}
             onRefresh={load}
+            onBackupNow={handleBackupNow}
           />
         </>
       )}

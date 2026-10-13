@@ -1,4 +1,4 @@
-import { CheckCircle2, CircleAlert, Download, ExternalLink, FolderOpen, Link2, Link2Off, RefreshCw, XCircle } from 'lucide-react';
+import { CheckCircle2, CircleAlert, CloudUpload, Download, ExternalLink, FolderOpen, Link2, Link2Off, RefreshCw, XCircle } from 'lucide-react';
 import { Card } from '../../../components/ui/Card';
 import { Button } from '../../../components/ui/Button';
 import { Table } from '../../../components/ui/Table';
@@ -92,7 +92,7 @@ export function DriveConnectionCard({ drive, canWrite = false, busy = false, use
   );
 }
 
-export function DriveBackupsCard({ backup, backups = [], connected = false, canWrite = false, onDownload, onRefresh }) {
+export function DriveBackupsCard({ backup, backups = [], connected = false, canWrite = false, starting = false, onDownload, onRefresh, onBackupNow }) {
   const last = describeLastBackup(backup?.last);
   const running = Boolean(backup?.running);
   const columns = [
@@ -115,6 +115,12 @@ export function DriveBackupsCard({ backup, backups = [], connected = false, canW
           </p>
         </div>
         <div className="flex gap-2">
+          {/* Test button: the server offers it only outside production. */}
+          {backup?.manualAllowed && canWrite ? (
+            <Button type="button" onClick={onBackupNow} disabled={!connected || running || starting} title={connected ? 'Back up the database to Drive now' : 'Connect Google Drive first'}>
+              <CloudUpload size={16} /> {running || starting ? 'Backing up…' : 'Back up now'}
+            </Button>
+          ) : null}
           <Button type="button" variant="outline" onClick={onRefresh}><RefreshCw size={16} className={running ? 'animate-spin' : ''} /> Refresh</Button>
         </div>
       </div>

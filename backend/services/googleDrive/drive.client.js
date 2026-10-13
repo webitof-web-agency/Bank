@@ -17,6 +17,8 @@ class DriveError extends Error {
   constructor(message, { status = null, code = '' } = {}) {
     super(message);
     this.name = 'DriveError';
+    // The text is Google's reason or our own: safe to show the user.
+    this.expose = true;
     this.status = status;
     this.code = code;
   }
@@ -52,12 +54,42 @@ function errorFrom(response, data, action) {
   return new DriveError(`Google Drive ${action} failed: ${String(reason).slice(0, 200)}`, { status: response.status, code });
 }
 
+// Failures before the request reached Google (the body was never sent), so
+// a retry is safe. Seen in practice: a brief ETIMEDOUT when the IPv6 and IPv4
+// connect attempts both stall.
+const CONNECT_ERRORS = new Set(['ETIMEDOUT', 'ECONNREFUSED', 'ENETUNREACH', 'EHOSTUNREACH', 'EAI_AGAIN', 'ENOTFOUND', 'UND_ERR_CONNECT_TIMEOUT']);
+const RETRY_DELAYS_MS = [400, 1200];
+
+function connectErrorCode(error) {
+  const cause = error?.cause;
+  const code = cause?.code || cause?.errors?.find((item) => item?.code)?.code || error?.code || '';
+  return CONNECT_ERRORS.has(code) ? code : '';
+}
+
+// fetch with retries on connect failures; a network failure that remains
+// becomes a DriveError (503) rather than undici's bare "fetch failed".
+async function send(fetchImpl, url, options, action) {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await fetchImpl(url, options);
+    } catch (error) {
+      if (error instanceof DriveError) throw error;
+      const code = connectErrorCode(error);
+      if (code && attempt < RETRY_DELAYS_MS.length) {
+        await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[attempt]));
+        continue;
+      }
+      throw new DriveError(`Google Drive ${action} failed: Google could not be reached (${code || 'network error'}). Check the internet connection and try again.`, { status: 503, code: code || 'NETWORK' });
+    }
+  }
+}
+
 async function tokenRequest(fetchImpl, form) {
-  const response = await fetchImpl(TOKEN_URL, {
+  const response = await send(fetchImpl, TOKEN_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams(form).toString()
-  });
+  }, 'sign-in');
   const data = await readJson(response);
   if (!response.ok || !data?.access_token) throw errorFrom(response, data, 'sign-in');
   return data;
@@ -110,7 +142,7 @@ class DriveClient {
   async request(url, options = {}, action = 'request') {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const token = await this.getAccessToken(attempt > 0);
-      const response = await this.fetchImpl(url, { ...options, headers: { ...(options.headers || {}), Authorization: `Bearer ${token}` } });
+      const response = await send(this.fetchImpl, url, { ...options, headers: { ...(options.headers || {}), Authorization: `Bearer ${token}` } }, action);
       if (response.status === 401 && attempt === 0) continue;
       if (!response.ok) throw errorFrom(response, await readJson(response), action);
       return response;
@@ -160,11 +192,11 @@ class DriveClient {
     const location = start.headers.get('location');
     if (!location) throw new DriveError('Google Drive upload failed: no upload session', { code: 'NO_SESSION' });
     const token = await this.getAccessToken();
-    const response = await this.fetchImpl(location, {
+    const response = await send(this.fetchImpl, location, {
       method: 'PUT',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': mimeType, 'Content-Length': String(buffer.length) },
       body: buffer
-    });
+    }, 'upload');
     const data = await readJson(response);
     if (!response.ok || !data?.id) throw errorFrom(response, data, 'upload');
     return data;

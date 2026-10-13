@@ -10,6 +10,7 @@ router.get('/status', requirePermission('settings.read'), controller.statusContr
 router.post('/connect', requirePermission('settings.write'), controller.connectController);
 router.post('/disconnect', requirePermission('settings.write'), controller.disconnectController);
 router.get('/backups', requirePermission('settings.read'), controller.listBackupsController);
+router.post('/backups/run', requirePermission('settings.write'), controller.runBackupController);
 // A backup holds the whole database: settings.write only.
 router.get('/backups/:fileId/download', requirePermission('settings.write'), controller.downloadBackupController);
 

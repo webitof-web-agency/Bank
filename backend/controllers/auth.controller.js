@@ -1,6 +1,11 @@
 const { createPasswordResetRequest, login, resetPasswordWithOtp, buildAccessProfile, changePassword, updateUser } = require('../services/auth.service');
 const User = require('../models/user.model');
-const { deleteFileById } = require('../services/file.service');
+const { deleteFileById, getFileById } = require('../services/file.service');
+const { purgeExpiredSessions, revokeSession } = require('../services/session.service');
+
+// The only fields a user may change on their own profile. Roles, branch,
+// status, login names, password and HR fields are set by an administrator.
+const SELF_PROFILE_FIELDS = ['fullName', 'name', 'mobileNo', 'gender', 'address'];
 
 async function loginController(req, res, next) {
   try {
@@ -10,6 +15,18 @@ async function loginController(req, res, next) {
     }
     const result = await login({ identifier, password });
     res.json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// Ends this session on the server: the token stops working at once, even
+// if a copy of it was kept somewhere.
+async function logoutController(req, res, next) {
+  try {
+    await revokeSession({ jti: req.auth?.jti, userId: req.user?.id, exp: req.auth?.exp });
+    purgeExpiredSessions().catch((error) => console.error('[auth] purge of expired sessions failed:', error.message));
+    res.json({ success: true, data: { message: 'Logged out' } });
   } catch (error) {
     next(error);
   }
@@ -74,7 +91,23 @@ async function updateProfileController(req, res, next) {
       return res.status(401).json({ success: false, message: 'Authentication required' });
     }
 
-    const profile = await updateUser(userId, req.body || {});
+    const body = req.body || {};
+    const patch = {};
+    for (const field of SELF_PROFILE_FIELDS) {
+      if (body[field] !== undefined) patch[field] = String(body[field] ?? '');
+    }
+    // A new avatar must be a file this user uploaded, so a profile can't be
+    // pointed at someone else's document (and later delete it on change).
+    if (body.avatarFileId) {
+      const file = await getFileById(String(body.avatarFileId));
+      if (!file || String(file.createdBy || '') !== String(userId) || !/^image\//i.test(String(file.mimeType || ''))) {
+        return res.status(400).json({ success: false, message: 'Invalid avatar file' });
+      }
+      patch.avatarFileId = file.id;
+      patch.avatarUrl = '';
+    }
+
+    const profile = await updateUser(userId, patch, { actorUser: req.user });
     if (!profile) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
@@ -140,6 +173,7 @@ module.exports = {
   deleteAvatarController,
   forgotPasswordController,
   loginController,
+  logoutController,
   meController,
   resetPasswordController,
   updateProfileController

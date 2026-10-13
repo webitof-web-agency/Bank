@@ -268,7 +268,7 @@ function SmtpEmailTab({ smtp, setField, onSave, saving }) {
           </div>
           <div>
             <label className="mb-2 block text-[13px] font-semibold text-slate-700">Password</label>
-            <Input type="password" placeholder="••••••••" value={smtp?.password || ''} onChange={(e) => setField('smtp.password', e.target.value)} />
+            <Input type="password" placeholder={smtp?.passwordSet ? 'Saved (leave empty to keep)' : '••••••••'} value={smtp?.password || ''} onChange={(e) => setField('smtp.password', e.target.value)} />
           </div>
           <div>
             <label className="mb-2 block text-[13px] font-semibold text-slate-700">From Email Address</label>

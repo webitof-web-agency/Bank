@@ -1,4 +1,5 @@
 const bcrypt = require('bcryptjs');
+const { randomBytes } = require('crypto');
 const { ACCOUNTING_ROLES } = require('../config/accountingConstants');
 const {
   BANK_ACCOUNT_SEEDS,
@@ -590,7 +591,9 @@ function buildBankTransactionNotificationPayload(action, transaction = {}, meta 
 
 
 function getEmployeePasswordHash(data = {}) {
-  const password = String(data.password || process.env.EMPLOYEE_DEFAULT_PASSWORD || 'Employee@12345').trim();
+  // No shared default: without a password the login gets a random one
+  // (set a real one from Employees or with "Forgot password").
+  const password = String(data.password || process.env.EMPLOYEE_DEFAULT_PASSWORD || randomBytes(18).toString('base64url')).trim();
   return bcrypt.hashSync(password, 10);
 }
 
@@ -1368,7 +1371,7 @@ async function updateResource(resource, id, data = {}, meta = {}) {
   if (resource === 'employees') {
     const current = await User.findById(id).lean();
     if (!current || !canAccessBranchRecord(resource, current, actorUser)) return null;
-    return authService.updateUser(id, { ...data, branchCode: resolveBranchCode(actorUser, data.branchCode || current.branchCode) });
+    return authService.updateUser(id, { ...data, branchCode: resolveBranchCode(actorUser, data.branchCode || current.branchCode) }, { actorUser });
   }
 
   if (resource === 'members') {
@@ -1456,7 +1459,7 @@ async function deleteResource(resource, id, meta = {}) {
     if (!record || !canAccessBranchRecord(resource, record, actorUser)) {
       return false;
     }
-    return authService.deleteUser(id);
+    return authService.deleteUser(id, { actorUser });
   }
 
   const current = await def.model.findById(id).lean();

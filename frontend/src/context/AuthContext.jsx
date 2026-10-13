@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { api } from '../api/api';
+import { api, clearApiCache } from '../api/api';
 import { toast } from 'sonner';
 import { applyBranding, extractBranding } from '../lib/branding';
 import { expandPermissionCodes } from '../lib/rbac';
@@ -158,6 +158,10 @@ export function AuthProvider({ children }) {
         return response.data.user;
       },
       logout: () => {
+        // Revoke the session on the server too; the local sign-out below
+        // happens at once either way (an already expired token just fails).
+        if (token) api.auth.logout(token).catch(() => {});
+        clearApiCache();
         window.localStorage.removeItem(TOKEN_KEY);
         window.localStorage.removeItem(LEGACY_TOKEN_KEY);
         writeUser(null);

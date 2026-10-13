@@ -47,3 +47,6 @@ Thumbs.db
 !/backend/
 !/.gitignore
 backend/ledgers_backup_before_group_update_2026-09-28.csv
+
+# Local databases and their passwords (embedded Postgres, old SQLite): never commit.
+backend/data/

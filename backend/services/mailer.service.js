@@ -1,8 +1,12 @@
 const nodemailer = require('nodemailer');
-const { getSettings } = require('./settings.service');
+const { getSettings, readSmtpPassword } = require('./settings.service');
 
 let cachedTransporterKey = '';
 let cachedTransporter = null;
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+}
 
 function renderTemplate(template, values = {}) {
   return String(template || '').replace(/\{\{(\w+)\}\}/g, (_, key) => {
@@ -17,7 +21,7 @@ async function resolveSmtpConfig() {
   const host = String(smtp.host || process.env.SMTP_HOST || '').trim();
   const port = Number(smtp.port || process.env.SMTP_PORT || 587);
   const username = String(smtp.username || process.env.SMTP_USER || process.env.SMTP_USERNAME || '').trim();
-  const password = String(smtp.password || process.env.SMTP_PASSWORD || '').trim();
+  const password = String(readSmtpPassword(smtp) || process.env.SMTP_PASSWORD || '').trim();
   const fromEmail = String(smtp.fromEmail || process.env.SMTP_FROM_EMAIL || username || '').trim();
   const fromName = String(smtp.fromName || process.env.SMTP_FROM_NAME || settings?.appName || 'Bank').trim();
   const secure = Boolean(smtp.secure ?? (Number(port) === 465));
@@ -108,13 +112,14 @@ async function sendPasswordResetOtpEmail({ name, otp, minutes, to }) {
   const fallback = buildPasswordResetEmail({ name, otp, minutes });
   const subject = renderTemplate(template.subject || fallback.subject, { name, otp, minutes });
   const text = renderTemplate(template.text || fallback.text, { name, otp, minutes });
-  const html = renderTemplate(template.html || fallback.html, { name, otp, minutes });
+  const html = renderTemplate(template.html || fallback.html, { name: escapeHtml(name), otp: escapeHtml(otp), minutes: escapeHtml(minutes) });
   return sendMail({ to, subject, text, html });
 }
 
 module.exports = {
   buildPasswordResetEmail,
   resolveSmtpConfig,
+  escapeHtml,
   renderTemplate,
   sendMail,
   sendPasswordResetOtpEmail

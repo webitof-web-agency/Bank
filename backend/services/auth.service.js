@@ -1,6 +1,6 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { randomInt } = require('crypto');
+const { randomInt, randomUUID } = require('crypto');
 const User = require('../models/user.model');
 const Role = require('../models/role.model');
 const { Employee } = require('../models/banking.models');
@@ -85,9 +85,12 @@ function getJwtSecret() {
   return process.env.JWT_SECRET;
 }
 
+// Each login token has its own id (jti), so logging out can revoke exactly
+// that session (services/session.service.js).
 function signToken(payload) {
   return jwt.sign(payload, getJwtSecret(), {
-    expiresIn: process.env.JWT_EXPIRES_IN || '12h'
+    expiresIn: process.env.JWT_EXPIRES_IN || '12h',
+    jwtid: randomUUID()
   });
 }
 
@@ -433,6 +436,8 @@ async function buildAccessProfile(userDoc) {
     documents: user.documents || {},
     isActive: user.isActive !== false,
     lastLoginAt: user.lastLoginAt || null,
+    // Sessions issued before this are no longer accepted (middlewares/auth.js).
+    passwordChangedAt: user.passwordChangedAt || null,
     employeeCode: user.employeeCode || '',
     hasLogin: true,
     payload: user.payload || {},
@@ -465,17 +470,16 @@ async function findUserByLogin(identifier) {
   });
 }
 
+// A real bcrypt hash compared when the login name is unknown, so the reply
+// takes as long as for a real account (no user enumeration by timing).
+const DUMMY_PASSWORD_HASH = bcrypt.hashSync('not-a-real-password', 10);
+
 async function login({ identifier, password }) {
   const user = await findUserByLogin(identifier);
   if (!user) {
+    await comparePassword(password, DUMMY_PASSWORD_HASH);
     const error = new Error('Invalid credentials');
     error.statusCode = 401;
-    throw error;
-  }
-
-  if (user.isActive === false) {
-    const error = new Error('User account is disabled');
-    error.statusCode = 403;
     throw error;
   }
 
@@ -483,6 +487,14 @@ async function login({ identifier, password }) {
   if (!valid) {
     const error = new Error('Invalid credentials');
     error.statusCode = 401;
+    throw error;
+  }
+
+  // Only after the password is right, so the message doesn't reveal which
+  // accounts exist or are disabled.
+  if (user.isActive === false) {
+    const error = new Error('User account is disabled');
+    error.statusCode = 403;
     throw error;
   }
 
@@ -594,6 +606,7 @@ async function resetPasswordWithOtp({ identifier, otp, password }) {
   }
 
   user.passwordHash = await hashPassword(password);
+  user.passwordChangedAt = new Date();
   user.passwordReset = {};
   await user.save();
 
@@ -641,6 +654,7 @@ async function changePassword(userId, currentPassword, newPassword) {
   }
 
   user.passwordHash = await hashPassword(newPassword);
+  user.passwordChangedAt = new Date();
   await user.save();
 
   await notifySafely({
@@ -757,11 +771,11 @@ async function getStaffProfile(code) {
   return employee ? buildStaffProfile(employee) : null;
 }
 
-async function updateStaff(code, data = {}) {
+async function updateStaff(code, data = {}, options = {}) {
   const employee = await Employee.findOne({ code }).lean();
   if (!employee) return null;
   const linkedUser = await User.findOne({ employeeCode: code });
-  if (linkedUser) return updateUser(String(linkedUser._id), data);
+  if (linkedUser) return updateUser(String(linkedUser._id), data, options);
 
   const wantsLogin = ['username', 'email', 'password'].some((key) => String(data[key] || '').trim());
   if (wantsLogin) return createUser({ ...data, code });
@@ -1027,9 +1041,22 @@ async function createUser(data = {}) {
   return buildAccessProfile(user);
 }
 
-async function updateUser(userId, data = {}) {
+// Only a super admin may change or delete a super admin's login (password,
+// roles, status...). Without an actor (internal calls) nothing is checked.
+async function assertMayManageUser(user, actorUser) {
+  if (!actorUser || actorUser.isSuperAdmin || String(actorUser.id || '') === String(user._id)) return;
+  const hidden = await Role.findOne({ code: HIDDEN_ROLE_CODE }).select('_id').lean();
+  if (hidden && (user.roles || []).some((id) => String(id?._id || id) === String(hidden._id))) {
+    const error = new Error('Only an administrator can change this account');
+    error.statusCode = 403;
+    throw error;
+  }
+}
+
+async function updateUser(userId, data = {}, { actorUser = null } = {}) {
   const user = await User.findById(userId);
   if (!user) return null;
+  await assertMayManageUser(user, actorUser);
 
   const previousAvatarFileId = user.avatarFileId ? String(user.avatarFileId) : '';
 
@@ -1059,7 +1086,13 @@ async function updateUser(userId, data = {}) {
     user.roles = hadHidden ? [hidden._id, ...next] : next;
   }
   if (data.password) {
+    if (String(data.password).trim().length < 8) {
+      const error = new Error('Password must be at least 8 characters long');
+      error.statusCode = 400;
+      throw error;
+    }
     user.passwordHash = await hashPassword(data.password);
+    user.passwordChangedAt = new Date();
   }
 
   const linkedEmployeeCode = await syncLinkedEmployee(user.employeeCode || null, data);
@@ -1092,9 +1125,10 @@ async function updateUser(userId, data = {}) {
   return buildAccessProfile(user);
 }
 
-async function deleteUser(userId) {
+async function deleteUser(userId, { actorUser = null } = {}) {
   const user = await User.findById(userId);
   if (!user) return false;
+  await assertMayManageUser(user, actorUser);
 
   await deleteDocumentFiles(user.documents || {});
   if (user.avatarFileId) {
@@ -1297,7 +1331,7 @@ function withoutBootstrapAdmin(rows = []) {
 async function seedBootstrapAdmin() {
   const bootstrapEmail = normalizeEmail(process.env.BOOTSTRAP_ADMIN_EMAIL || 'admin@bank.local');
   const bootstrapUsername = getBootstrapAdminUsername();
-  const bootstrapPassword = String(process.env.BOOTSTRAP_ADMIN_PASSWORD || 'Admin@12345').trim();
+  const bootstrapPassword = String(process.env.BOOTSTRAP_ADMIN_PASSWORD || (process.env.NODE_ENV === 'production' ? '' : 'Admin@12345')).trim();
   const bootstrapName = String(process.env.BOOTSTRAP_ADMIN_NAME || 'System Admin').trim() || 'System Admin';
   const bootstrapCode = normalizeUpper(process.env.BOOTSTRAP_ADMIN_CODE || 'EMP-1000');
   const bootstrapMobileNo = String(process.env.BOOTSTRAP_ADMIN_MOBILE_NO || '').trim();
@@ -1311,6 +1345,16 @@ async function seedBootstrapAdmin() {
 
   const adminRole = await Role.findOne({ code: 'admin' }).select('_id');
   if (!adminRole) return null;
+
+  // Created once. An existing account is left as it is, so a password
+  // changed in the app is not reset to the .env value on every restart.
+  const existing = await User.findOne({ $or: [{ email: bootstrapEmail }, { username: bootstrapUsername }] });
+  if (existing) {
+    return { fullName: existing.fullName, username: existing.username, email: existing.email, roleCodes: ['admin'] };
+  }
+  if (process.env.NODE_ENV === 'production' && (bootstrapPassword === 'Admin@12345' || bootstrapPassword.length < 12)) {
+    throw new Error('BOOTSTRAP_ADMIN_PASSWORD must be set to a strong password (12+ characters) to create the first admin in production.');
+  }
 
   const profile = await seedUserDefinition({
     code: bootstrapCode,
@@ -1330,8 +1374,7 @@ async function seedBootstrapAdmin() {
         fullName: profile.fullName,
         username: profile.username,
         email: profile.email,
-        roleCodes: ['admin'],
-        password: bootstrapPassword
+        roleCodes: ['admin']
       }
     : null;
 }

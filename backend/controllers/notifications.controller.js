@@ -1,5 +1,4 @@
-const jwt = require('jsonwebtoken');
-const { buildAccessProfile } = require('../services/auth.service');
+const { resolveSessionUser } = require('../middlewares/auth');
 const {
   createNotification,
   deleteNotification,
@@ -11,21 +10,10 @@ const {
 } = require('../services/notification.service');
 const { registerNotificationStream } = require('../services/notificationHub');
 
-function getJwtSecret() {
-  if (!process.env.JWT_SECRET) {
-    throw new Error('JWT_SECRET is missing in environment configuration.');
-  }
-  return process.env.JWT_SECRET;
-}
-
 async function resolveStreamUser(token) {
   if (!token) return null;
-  const decoded = jwt.verify(token, getJwtSecret());
-  const userId = decoded.sub || decoded.uid || decoded.userId;
-  if (!userId) return null;
-  const user = await buildAccessProfile(userId);
-  if (!user || !user.isActive) return null;
-  return user;
+  const session = await resolveSessionUser(token);
+  return session ? session.user : null;
 }
 
 async function listController(req, res, next) {
@@ -123,7 +111,7 @@ async function streamController(req, res) {
     registerNotificationStream(user.id, res);
     return undefined;
   } catch (error) {
-    return res.status(401).json({ success: false, message: error.message || 'Authentication failed' });
+    return res.status(401).json({ success: false, message: 'Authentication failed' });
   }
 }
 

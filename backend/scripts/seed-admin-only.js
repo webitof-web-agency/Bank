@@ -41,7 +41,7 @@ async function main() {
       console.log(`  Name     : ${admin.fullName}`);
       console.log(`  Email    : ${admin.email}`);
       console.log(`  Username : ${admin.username}`);
-      console.log(`  Password : ${admin.password}`);
+      console.log('  Password : (BOOTSTRAP_ADMIN_PASSWORD from .env, unless changed in the app)');
       console.log(`  Roles    : ${admin.roleCodes.join(', ')}`);
       console.log('--------------------------------------------------');
     } else {

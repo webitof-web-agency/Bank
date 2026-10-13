@@ -24,6 +24,34 @@ function ensureSafeName(name = '') {
     .slice(0, 120) || 'file';
 }
 
+// File types that may be uploaded, and the type each is stored and served
+// as. The browser's own Content-Type is not trusted: an uploaded .html or
+// .svg served as such would run script in the app's origin.
+const UPLOAD_TYPES = {
+  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif',
+  '.webp': 'image/webp', '.bmp': 'image/bmp', '.heic': 'image/heic', '.heif': 'image/heif',
+  '.tif': 'image/tiff', '.tiff': 'image/tiff',
+  '.pdf': 'application/pdf',
+  '.txt': 'text/plain', '.csv': 'text/csv', '.rtf': 'application/rtf',
+  '.doc': 'application/msword',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.xls': 'application/vnd.ms-excel',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.ppt': 'application/vnd.ms-powerpoint',
+  '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  '.odt': 'application/vnd.oasis.opendocument.text',
+  '.ods': 'application/vnd.oasis.opendocument.spreadsheet',
+  '.zip': 'application/zip'
+};
+
+function uploadMimeType(ext = '') {
+  return UPLOAD_TYPES[String(ext || '').toLowerCase()] || '';
+}
+
+function escapeRegex(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function splitExt(filename = '') {
   const ext = path.extname(filename || '');
   const base = path.basename(filename || '', ext);
@@ -235,7 +263,7 @@ async function listFiles({ folderId = null, moduleName = '', entityId = '', sear
   }
   if (moduleName) query.moduleName = moduleName;
   if (entityId) query.entityId = entityId;
-  if (search) query.originalName = { $regex: search, $options: 'i' };
+  if (search) query.originalName = { $regex: escapeRegex(String(search).slice(0, 200)), $options: 'i' };
 
   const files = await FileAsset.find(query).sort({ createdAt: -1 }).lean();
   return files.map((file) => ({
@@ -343,7 +371,14 @@ async function saveUploads(files = [], { folderId = null, moduleName = 'general'
       throw error;
     }
 
-    const { base, ext } = splitExt(file.originalname);
+    const { base, ext: rawExt } = splitExt(file.originalname);
+    const ext = rawExt.toLowerCase();
+    const mimeType = uploadMimeType(ext);
+    if (!mimeType) {
+      const error = new Error(`File type not allowed: ${ext || '(none)'}. Allowed: ${Object.keys(UPLOAD_TYPES).join(' ')}`);
+      error.statusCode = 400;
+      throw error;
+    }
 
     const modDir = String(moduleName || 'general').trim() || 'general';
     const entDir = String(entityId || '').trim();
@@ -351,7 +386,7 @@ async function saveUploads(files = [], { folderId = null, moduleName = 'general'
     const storedName = `${base.replace(/\s+/g, '-')}-${Date.now().toString(36)}${randomUUID().slice(0, 4)}${ext}`;
     const storageKey = buildStorageKey({ moduleName: modDir, voucherKey, code, storedName });
 
-    const locator = await StorageService.upload(file.buffer, storageKey, { mimeType: file.mimetype });
+    const locator = await StorageService.upload(file.buffer, storageKey, { mimeType });
 
     const doc = await FileAsset.create({
       folderId: folderId || null,
@@ -360,7 +395,7 @@ async function saveUploads(files = [], { folderId = null, moduleName = 'general'
       originalName: `${base}${ext}`,
       storedName,
       documentType: String(documentType || '').trim(),
-      mimeType: file.mimetype || 'application/octet-stream',
+      mimeType,
       sizeBytes: file.size || file.buffer?.length || 0,
       localPath: locator.storageProvider === 'local' ? path.join(folderPath, storedName) : null,
       storageProvider: locator.storageProvider,

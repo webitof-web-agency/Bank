@@ -37,10 +37,24 @@ function formatEmailText(notification, appName = 'Bank') {
   return lines.filter((line) => line !== undefined).join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+}
+
+// A notification link: an app path ("/app/...") or an http(s) address.
+// Anything else (javascript:, data:, //host) is dropped.
+function safeActionUrl(value) {
+  const url = cleanText(value);
+  if (!url) return '';
+  if (url.startsWith('/') && !url.startsWith('//') && !url.startsWith('/\\')) return url;
+  return /^https?:\/\/[^\s]+$/i.test(url) ? url : '';
+}
+
 function formatEmailHtml(notification, appName = 'Bank') {
-  const safeTitle = cleanText(notification.title, 'Notification');
-  const safeMessage = cleanText(notification.message, '');
-  const safeUrl = cleanText(notification.actionUrl, '');
+  const safeTitle = escapeHtml(cleanText(notification.title, 'Notification'));
+  const safeMessage = escapeHtml(cleanText(notification.message, ''));
+  const safeUrl = escapeHtml(safeActionUrl(notification.actionUrl));
+  appName = escapeHtml(appName);
 
   return `
     <div style="font-family:Arial,sans-serif;line-height:1.6;color:#111827">
@@ -222,7 +236,7 @@ async function createNotification({
     severity: cleanText(severity, 'medium'),
     module: cleanText(module, 'system'),
     action: cleanText(action),
-    actionUrl: cleanText(actionUrl),
+    actionUrl: safeActionUrl(actionUrl),
     entityType: cleanText(entityType),
     entityId: cleanText(entityId),
     entityCode: cleanText(entityCode),
@@ -404,6 +418,7 @@ async function purgeOldNotifications(now = new Date()) {
 }
 
 module.exports = {
+  safeActionUrl,
   createNotification,
   purgeOldNotifications,
   deleteNotification,

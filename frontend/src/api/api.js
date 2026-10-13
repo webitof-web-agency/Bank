@@ -179,6 +179,7 @@ function buildQuery(query = {}) {
 export const api = {
   auth: {
     login: (payload) => request('/auth/login', { method: 'POST', body: payload }),
+    logout: (token) => request('/auth/logout', { method: 'POST', token }),
     me: (token) => request('/auth/me', { token, skipCache: true }),
     forgotPassword: (payload) => request('/auth/forgot-password', { method: 'POST', body: payload }),
     resetPassword: (payload) => request('/auth/reset-password', { method: 'POST', body: payload }),
@@ -295,6 +296,8 @@ export const api = {
     connect: (token) => request('/google-drive/connect', { method: 'POST', token, body: {} }),
     disconnect: (token) => request('/google-drive/disconnect', { method: 'POST', token, body: {} }),
     listBackups: (token) => request('/google-drive/backups', { token, skipCache: true }),
+    // "Back up now" (not offered in production): starts a backup to Drive.
+    runBackup: (token) => request('/google-drive/backups/run', { method: 'POST', token, body: {} }),
     // The file itself (not JSON): fetched with the session token, saved by the page.
     downloadBackup: async (token, fileId) => {
       const response = await fetch(`${API_BASE_URL}/google-drive/backups/${encodeURIComponent(fileId)}/download`, {
@@ -367,6 +370,13 @@ export const api = {
 };
 
 export { API_BASE_URL };
+
+// Drops every cached API response (member lists, ledgers...), e.g. at logout,
+// so nothing of the last user's data stays in this browser tab.
+export function clearApiCache() {
+  memoryCache.clear();
+  invalidateStoredCache('');
+}
 
 export function getImageUrl(url) {
   if (!url) return '';

@@ -52,6 +52,26 @@ async function disconnectController(_req, res, next) {
   }
 }
 
+// "Back up now": starts a Drive backup and answers at once; the page polls
+// the status until it ends. Not available when NODE_ENV=production.
+async function runBackupController(req, res, next) {
+  try {
+    if (process.env.NODE_ENV === 'production') {
+      return res.status(403).json({ success: false, message: 'Manual Drive backups are turned off in production; the daily backup still runs.' });
+    }
+    const status = await driveConnection.getStatus();
+    if (!status.connected || status.needsReconnect) {
+      return res.status(400).json({ success: false, message: 'Connect Google Drive first.' });
+    }
+    // runBackup marks itself running before its first await, so the status
+    // the page reads next already shows "Backing up…".
+    void backups.runBackup({ trigger: 'manual', userId: req.user?.id || null });
+    res.status(202).json({ success: true, data: { started: true } });
+  } catch (error) {
+    next(error);
+  }
+}
+
 async function listBackupsController(_req, res, next) {
   try {
     res.json({ success: true, data: await backups.listBackups() });
@@ -98,6 +118,7 @@ module.exports = {
   downloadBackupController,
   downloadLocalBackupController,
   listBackupsController,
+  runBackupController,
   oauthCallbackController,
   statusController
 };

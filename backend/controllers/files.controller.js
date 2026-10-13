@@ -17,9 +17,12 @@ const {
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: Number(process.env.UPLOAD_MAX_SIZE_BYTES || 25 * 1024 * 1024)
+    fileSize: Number(process.env.UPLOAD_MAX_SIZE_BYTES || 25 * 1024 * 1024),
+    files: 20
   }
 });
+
+const INLINE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'application/pdf']);
 
 async function list(req, res, next) {
   try {
@@ -92,7 +95,16 @@ async function viewFile(req, res, next) {
       return res.status(404).send('File stream could not be created');
     }
 
-    res.setHeader('Content-Type', result.mimeType || 'application/octet-stream');
+    // Images and PDFs open in the browser; anything else (including files
+    // stored before the upload type list, whatever type they claimed) is a
+    // download, and a sandbox CSP stops any script in a served file.
+    const mimeType = String(result.mimeType || '').toLowerCase();
+    const inline = INLINE_TYPES.has(mimeType);
+    const fileName = String(result.originalName || result.storedName || 'file').replace(/[^\w.\- ]+/g, '_').slice(0, 150);
+    res.setHeader('Content-Type', inline ? mimeType : 'application/octet-stream');
+    res.setHeader('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename="${fileName}"`);
+    // (Not on PDFs: Chrome won't open its PDF viewer in a sandboxed page.)
+    if (mimeType !== 'application/pdf') res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox");
     res.setHeader('Cache-Control', 'private, no-store, max-age=0, must-revalidate');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('X-Content-Type-Options', 'nosniff');

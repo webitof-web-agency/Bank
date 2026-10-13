@@ -84,8 +84,8 @@ async function updateController(req, res, next) {
   try {
     const staffCode = staffCodeFromId(req.params.id);
     const result = staffCode
-      ? await updateStaff(staffCode, req.body || {})
-      : await updateUser(req.params.id, req.body || {});
+      ? await updateStaff(staffCode, req.body || {}, { actorUser: req.user })
+      : await updateUser(req.params.id, req.body || {}, { actorUser: req.user });
     if (!result) {
       return res.status(404).json({ success: false, message: 'Employee not found' });
     }
@@ -100,7 +100,7 @@ async function deleteController(req, res, next) {
     if (staffCodeFromId(req.params.id)) {
       return res.status(400).json({ success: false, message: 'This employee has no login to delete.' });
     }
-    const ok = await deleteUser(req.params.id);
+    const ok = await deleteUser(req.params.id, { actorUser: req.user });
     if (!ok) {
       return res.status(404).json({ success: false, message: 'Employee not found' });
     }

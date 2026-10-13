@@ -37,6 +37,7 @@ const TABLE_SCHEMAS = {
     documentsFolderId: T.string(40),
     documents: T.json,
     passwordReset: T.json,
+    passwordChangedAt: T.date,
     isActive: T.boolean,
     lastLoginAt: T.date,
     // Optional link to a real HR record (employees.code) — set only when this

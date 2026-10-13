@@ -1,10 +1,10 @@
-const { getSettings, updateSettings } = require('../services/settings.service');
+const { getSettings, toClientSettings, updateSettings } = require('../services/settings.service');
 const { createNotification } = require('../services/notification.service');
 
 async function getController(_req, res, next) {
   try {
     const settings = await getSettings();
-    res.json({ success: true, data: settings });
+    res.json({ success: true, data: toClientSettings(settings) });
   } catch (error) {
     next(error);
   }
@@ -43,7 +43,7 @@ async function updateController(req, res, next) {
     }).catch((error) => {
       console.error('[notification] Failed to create settings notification:', error.message);
     });
-    res.json({ success: true, data: settings });
+    res.json({ success: true, data: toClientSettings(settings) });
   } catch (error) {
     next(error);
   }
