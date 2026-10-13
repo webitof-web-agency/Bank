@@ -47,6 +47,9 @@ test('status page: values are escaped, statuses labelled', () => {
   assert.match(html, /Needs attention/);
   assert.match(html, /300 MB of 768 MB \(39%\)/);
   assert.match(html, /up 1h 2m/);
+  // Reloads itself, without any script.
+  assert.match(html, /<meta http-equiv="refresh" content="30">/);
+  assert.doesNotMatch(html, /<script/);
 });
 
 test('server errors are counted, newest first, at most 10 kept', () => {

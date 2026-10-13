@@ -1,5 +1,8 @@
 // The status report as a small self-contained HTML page (no scripts, no
 // external files), for opening the backend address in a browser.
+// The page reloads itself this often (no script needed: a meta refresh).
+const REFRESH_SECONDS = 30;
+
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 }
@@ -52,6 +55,7 @@ function renderStatusPage(report) {
 
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="${REFRESH_SECONDS}">
 <title>Backend status</title>
 <style>
   :root { color-scheme: light dark; --bg:#f8fafc; --card:#fff; --text:#0f172a; --muted:#64748b; --line:#e2e8f0; }
@@ -72,7 +76,7 @@ function renderStatusPage(report) {
 </style></head>
 <body><main>
   <h1>Backend status ${badge(report.status)}</h1>
-  <div class="muted">Checked ${time(report.checkedAt)} · up ${escapeHtml(duration(report.uptime.seconds))} · refreshes every 10 s on reload</div>
+  <div class="muted">Checked ${time(report.checkedAt)} · up ${escapeHtml(duration(report.uptime.seconds))} · updates by itself every ${REFRESH_SECONDS} s</div>
   ${report.warnings.length ? `<div class="warn">${report.warnings.map(escapeHtml).join('<br>')}</div>` : ''}
   <h2>Connections</h2><section><table>${checkRows}</table></section>
   <h2>Resources</h2><section><table>${resourceRows}</table></section>
