@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Download, Minus, Plus, Printer, RotateCcw } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '../../../components/ui/Button';
 import { getImageUrl } from '../../../api/api';
 import { useSociety } from './useSociety';
@@ -265,6 +266,18 @@ function ZoomStage({ zoom, children }) {
   );
 }
 
+// The longest a PDF export may take before it is abandoned (large reports
+// take a few seconds; this only catches a stuck export).
+const PDF_TIMEOUT_MS = 120 * 1000;
+
+function withTimeout(promise, ms) {
+  let timer;
+  return Promise.race([
+    Promise.resolve(promise),
+    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`PDF export took longer than ${ms / 1000}s`)), ms); })
+  ]).finally(() => clearTimeout(timer));
+}
+
 export function PrintLetterhead({ title, meta }) {
   const society = useSociety();
   const pageCount = useContext(PageCountContext);
@@ -375,7 +388,9 @@ export function PrintShell({ headerActions, landscape = false, children }) {
     try {
       const { default: html2pdf } = await import('html2pdf.js');
       const filenameBase = (document.title || 'report').trim().replace(/[^a-z0-9-_]+/gi, '-').toLowerCase() || 'report';
-      await html2pdf()
+      // html2pdf's chain does not always pass a failure on, which left the
+      // button on "Preparing PDF..." for good: give up after a time limit.
+      await withTimeout(html2pdf()
         .set({
           margin: MARGIN_MM,
           filename: `${filenameBase}.pdf`,
@@ -398,8 +413,14 @@ export function PrintShell({ headerActions, landscape = false, children }) {
             pdf.text(`Page ${i} of ${total}`, width - MARGIN_MM, height - MARGIN_MM / 3, { align: 'right' });
           }
         })
-        .save();
+        .save(), PDF_TIMEOUT_MS);
+    } catch (error) {
+      console.error('[pdf] export failed:', error);
+      toast.error('The PDF could not be created. Try Print, then "Save as PDF".');
     } finally {
+      // html2pdf covers the page with its working overlay and leaves it
+      // there when it fails, which froze the page: always remove it.
+      document.querySelectorAll('.html2pdf__overlay, .html2pdf__container').forEach((node) => node.remove());
       suspendedRef.current = false;
       setZoom(previousZoom);
       setExporting(false);
@@ -409,14 +430,16 @@ export function PrintShell({ headerActions, landscape = false, children }) {
   return (
     <PageCountContext.Provider value={layout.pages}>
       <div className="w-full text-black">
+        {/* One toolbar for every report: all controls 36px high with the same
+            border and corners as the buttons. */}
         <div className="print:hidden mb-4 flex flex-wrap items-center justify-end gap-2">
           {headerActions}
-          <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1">
+          <div className="flex h-9 items-center gap-0.5 rounded-[var(--radius-button,1rem)] border border-slate-200 bg-white px-1 shadow-sm">
             <Button
               type="button"
               variant="ghost"
               size="icon"
-              className="h-7 w-7"
+              className="h-7 w-7 rounded-full"
               onClick={() => setZoom((z) => Math.max(ZOOM_MIN, Number((z - ZOOM_STEP).toFixed(2))))}
               title="Zoom out"
             >
@@ -427,7 +450,7 @@ export function PrintShell({ headerActions, landscape = false, children }) {
               type="button"
               variant="ghost"
               size="icon"
-              className="h-7 w-7"
+              className="h-7 w-7 rounded-full"
               onClick={() => setZoom((z) => Math.min(ZOOM_MAX, Number((z + ZOOM_STEP).toFixed(2))))}
               title="Zoom in"
             >
@@ -437,18 +460,18 @@ export function PrintShell({ headerActions, landscape = false, children }) {
               type="button"
               variant="ghost"
               size="icon"
-              className="h-7 w-7"
+              className="h-7 w-7 rounded-full"
               onClick={() => setZoom(1)}
               title="Reset zoom"
             >
               <RotateCcw size={13} />
             </Button>
           </div>
-          <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1">
-            <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => goToPage(0)} disabled={shownPage === 0} title="First page">
+          <div className="flex h-9 items-center gap-0.5 rounded-[var(--radius-button,1rem)] border border-slate-200 bg-white px-1 shadow-sm">
+            <Button type="button" variant="ghost" size="icon" className="h-7 w-7 rounded-full" onClick={() => goToPage(0)} disabled={shownPage === 0} title="First page">
               <ChevronsLeft size={14} />
             </Button>
-            <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => goToPage(shownPage - 1)} disabled={shownPage === 0} title="Previous page">
+            <Button type="button" variant="ghost" size="icon" className="h-7 w-7 rounded-full" onClick={() => goToPage(shownPage - 1)} disabled={shownPage === 0} title="Previous page">
               <ChevronLeft size={14} />
             </Button>
             <form
@@ -463,20 +486,20 @@ export function PrintShell({ headerActions, landscape = false, children }) {
                 value={pageInput}
                 onChange={(event) => setPageInput(event.target.value)}
                 onBlur={jumpToTypedPage}
-                className="h-7 w-12 rounded-md border border-slate-200 px-1 text-center text-[12px] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                className="h-7 w-12 rounded-full border border-slate-200 px-1 text-center text-[12px] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                 aria-label="Go to page"
                 title="Type a page number and press Enter"
               />
               <span>of {layout.pages}</span>
             </form>
-            <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => goToPage(shownPage + 1)} disabled={shownPage >= lastPage} title="Next page">
+            <Button type="button" variant="ghost" size="icon" className="h-7 w-7 rounded-full" onClick={() => goToPage(shownPage + 1)} disabled={shownPage >= lastPage} title="Next page">
               <ChevronRight size={14} />
             </Button>
-            <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => goToPage(lastPage)} disabled={shownPage >= lastPage} title="Last page">
+            <Button type="button" variant="ghost" size="icon" className="h-7 w-7 rounded-full" onClick={() => goToPage(lastPage)} disabled={shownPage >= lastPage} title="Last page">
               <ChevronsRight size={14} />
             </Button>
           </div>
-          <span className="text-[12px] font-semibold text-slate-500">
+          <span className="flex h-9 items-center rounded-[var(--radius-button,1rem)] border border-slate-200 bg-slate-50 px-3 text-[12px] font-semibold text-slate-500">
             A4 {landscape ? 'landscape' : 'portrait'}
           </span>
           {canPrint ? (
