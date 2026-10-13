@@ -282,7 +282,6 @@ export function LedgerDetailPage() {
         open={editorOpen}
         title="Edit Ledger"
         onClose={closeEditor}
-        width="min(960px, 96vw)"
         footer={
           <div className="flex justify-end gap-3 w-full">
             <Button variant="outline" type="button" onClick={closeEditor}>Cancel</Button>

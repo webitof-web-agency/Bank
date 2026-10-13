@@ -286,7 +286,6 @@ export function BranchDetailPage() {
         open={editorOpen}
         title="Edit Branch"
         onClose={closeEditor}
-        width="min(980px, 96vw)"
         footer={
           <div className="flex justify-end gap-3 w-full">
             <Button variant="outline" type="button" onClick={closeEditor}>Cancel</Button>

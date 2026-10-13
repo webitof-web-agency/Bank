@@ -150,6 +150,7 @@ export default function UploadModal({ isOpen, onClose, onUploadSuccess, token })
     <Modal
       open={isOpen}
       onClose={resetAndClose}
+      wide
       title="Import Recovery Excel / CSV"
       footer={
         <div className="flex justify-end gap-2 w-full">

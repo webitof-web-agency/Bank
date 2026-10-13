@@ -7,6 +7,7 @@ import { Select as CustomSelect } from '../../../components/ui/Select';
 import { DocumentSection } from '../../../components/master/DocumentSection';
 import { getEmployeeDocumentDefinitions } from './employeeDocumentUtils';
 import { getEmployeeComponentTotal } from './transactionUtils';
+import { useInDialog } from '../../../components/ui/dialogContext';
 
 function deepClone(value) {
   return JSON.parse(JSON.stringify(value ?? {}));
@@ -115,6 +116,8 @@ function getModeLabel(activeKey = '') {
 }
 
 export function EmployeeTransactionForm({ section, itemKey, lookups = {}, value, setValue, onSubmit, onDocumentRemove }) {
+  // Inside a dialog its title already names the voucher type.
+  const inDialog = useInDialog();
   const items = useMemo(() => (section?.items || []).filter((item) => !itemKey || item.key === itemKey), [section, itemKey]);
   const activeKey = itemKey || value?.details?.key || items[0]?.key || '';
   const activeItem = items.find((item) => item.key === activeKey) || items[0] || null;
@@ -194,15 +197,17 @@ export function EmployeeTransactionForm({ section, itemKey, lookups = {}, value,
       </Card>
 
       <Card className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-blue-500">Employee Transactions</p>
-            <h3 className="mt-1 text-lg font-semibold text-slate-900">{activeItem?.label || 'Employee Transaction'}</h3>
+        {!inDialog && (
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-blue-500">Employee Transactions</p>
+              <h3 className="mt-1 text-lg font-semibold text-slate-900">{activeItem?.label || 'Employee Transaction'}</h3>
+            </div>
+            <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+              Employee
+            </div>
           </div>
-          <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
-            Employee
-          </div>
-        </div>
+        )}
 
         <div className="grid gap-3 md:grid-cols-4">
           <div className="md:col-span-2">

@@ -227,7 +227,6 @@ export function NoInterestMemberDetailPage({ basePath = '/app/master/no-interest
         open={editorOpen}
         title="Edit Record"
         onClose={closeEditor}
-        width="min(980px, 96vw)"
         footer={
           <div className="flex justify-end gap-3 w-full">
             <Button variant="outline" type="button" onClick={closeEditor}>Cancel</Button>

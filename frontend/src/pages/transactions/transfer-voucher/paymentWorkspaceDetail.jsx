@@ -347,7 +347,7 @@ export function TransferVoucherPaymentWorkspaceDetailPage({ sectionKey, itemKey,
         </div>
       </div>
 
-      <Modal open={editorOpen} onClose={closeEditor} title="Edit Transfer Voucher Payment" width="min(860px, 96vw)" footer={<div className="flex w-full justify-end gap-3">
+      <Modal open={editorOpen} onClose={closeEditor} title="Edit Transfer Voucher Payment" footer={<div className="flex w-full justify-end gap-3">
           <Button type="button" variant="outline" onClick={closeEditor} disabled={saving}>Cancel</Button>
           <Button type="submit" form="transaction-voucher-form" className="bg-[var(--primary,#1661F6)] text-white hover:opacity-90" disabled={saving}> {saving ? 'Saving...' : 'Save'} </Button>
         </div>}>

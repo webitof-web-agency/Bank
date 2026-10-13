@@ -1,6 +1,18 @@
 import { cn } from '../../lib/cn';
+import { useInDialog } from './dialogContext';
+
+// The frame classes a card adds (border, corners, shadow, background,
+// padding, ring), at any breakpoint. Inside a dialog these are dropped.
+const FRAME_CLASS = /^(?:[a-z0-9]+:)*(?:border(?:-|$)|rounded|shadow|bg-|ring|p[xytblr]?-)/;
 
 export function Card({ className = '', ...props }) {
+  const inDialog = useInDialog();
+  if (inDialog) {
+    // The dialog is already the card: keep the layout (grid, spacing...),
+    // drop the frame, so the fields sit directly in the dialog.
+    const layout = String(className).split(/\s+/).filter((token) => token && !FRAME_CLASS.test(token)).join(' ');
+    return <section className={layout} {...props} />;
+  }
   return <section className={cn('rounded-[var(--radius-card,1.75rem)] border border-border bg-surface p-5 shadow-custom', className)} {...props} />;
 }
 

@@ -45,7 +45,6 @@ export function FilterSettingsModal({ open, onClose, value, onApply, onReset }) 
       open={open}
       onClose={onClose}
       title="Filter Settings"
-      width="min(760px, 96vw)"
       overflowVisible={true}
       footer={(
         <div className="flex items-center justify-between gap-3">

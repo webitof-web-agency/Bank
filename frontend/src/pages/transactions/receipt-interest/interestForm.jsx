@@ -7,6 +7,7 @@ import { Select as CustomSelect } from '../../../components/ui/Select';
 import { DocumentSection } from '../../../components/master/DocumentSection';
 import { getReceiptInterestDocumentDefinitions } from './receiptInterestDocumentUtils';
 import { formatTransactionAmount, toneClassName } from './transactionUtils';
+import { useInDialog } from '../../../components/ui/dialogContext';
 
 function FieldLabel({ children, required = false }) {
   return (
@@ -32,6 +33,8 @@ function LookupSelect({ label, value, onChange, options = [], placeholder = 'Sel
 }
 
 export function InterestVoucherForm({ section, lookups = {}, value, setValue, onSubmit, onDocumentRemove }) {
+  // Inside a dialog its title already names the voucher type.
+  const inDialog = useInDialog();
   const activeItem = useMemo(() => (section?.items || []).find((item) => item.key === value?.details?.key) || section?.items?.[0] || null, [section, value]);
   const isEmployee = activeItem?.key === 'interest-recv-employee';
 
@@ -73,11 +76,13 @@ export function InterestVoucherForm({ section, lookups = {}, value, setValue, on
   return (
     <form id="transaction-voucher-form" className="mx-auto w-full space-y-3" onSubmit={onSubmit}>
       <Card className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="mb-5 border-b border-slate-100 pb-4">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-rose-500">Interest Payment</p>
-          <h3 className="mt-1 text-2xl font-bold text-slate-900">{activeItem?.label || 'Interest Paid to Member'}</h3>
-          <p className="mt-1 text-sm text-slate-500">Member interest posting with account head, amount, and narration.</p>
-        </div>
+        {!inDialog && (
+          <div className="mb-5 border-b border-slate-100 pb-4">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-rose-500">Interest Payment</p>
+            <h3 className="mt-1 text-2xl font-bold text-slate-900">{activeItem?.label || 'Interest Paid to Member'}</h3>
+            <p className="mt-1 text-sm text-slate-500">Member interest posting with account head, amount, and narration.</p>
+          </div>
+        )}
 
         <div className="grid gap-3 md:grid-cols-4">
           <div className="space-y-1.5">

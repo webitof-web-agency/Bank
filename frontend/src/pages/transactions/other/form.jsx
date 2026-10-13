@@ -28,6 +28,7 @@ import {
   getTransactionPartyLabel
 } from './transactionUtils';
 import { toneClassName } from './transactionUtils';
+import { useInDialog } from '../../../components/ui/dialogContext';
 
 function deepClone(value) {
   return JSON.parse(JSON.stringify(value ?? {}));
@@ -333,6 +334,8 @@ function getPartyGroupsForSelection(partyType, lookups) {
 }
 
 export function OtherTransactionForm({ section, lookups = {}, value, setValue, onSubmit, onDocumentRemove }) {
+  // Inside a dialog its title already names the voucher type.
+  const inDialog = useInDialog();
   const editableItems = useMemo(() => (section?.items || []).filter((item) => !item.route), [section]);
   const activeKey = value?.details?.key || editableItems[0]?.key || '';
   const activeItem = editableItems.find((item) => item.key === activeKey) || editableItems[0] || null;
@@ -371,14 +374,16 @@ export function OtherTransactionForm({ section, lookups = {}, value, setValue, o
   if (activeKey === 'payment-voucher' || activeKey === 'receipt-voucher') {
     return (
       <form id="transaction-voucher-form" className="mx-auto w-full max-w-4xl space-y-4" onSubmit={onSubmit}>
-        <div className="mb-2 flex items-center justify-between gap-3 px-1">
-          <div>
-            <h3 className="text-xl font-semibold text-slate-900">{activeItem?.label || 'Transaction'}</h3>
+        {!inDialog && (
+          <div className="mb-2 flex items-center justify-between gap-3 px-1">
+            <div>
+              <h3 className="text-xl font-semibold text-slate-900">{activeItem?.label || 'Transaction'}</h3>
+            </div>
+            <div className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] ${toneClassName(activeItem?.accent || 'slate')}`}>
+              {activeKey === 'payment-voucher' ? 'Payment' : 'Receipt'}
+            </div>
           </div>
-          <div className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] ${toneClassName(activeItem?.accent || 'slate')}`}>
-            {activeKey === 'payment-voucher' ? 'Payment' : 'Receipt'}
-          </div>
-        </div>
+        )}
         
         <Card className="rounded-[var(--radius-card,1.75rem)] border border-slate-200 bg-white p-6 md:p-8 shadow-sm">
           <div className="grid gap-6 md:grid-cols-2">

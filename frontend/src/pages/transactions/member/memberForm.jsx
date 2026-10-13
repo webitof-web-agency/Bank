@@ -176,7 +176,7 @@ function RecoveryMemberDialog({ state, onClose, onSave, memberGroups = [], looku
       open
       title={editing ? `Edit Recovery — ${member}` : 'Add Recovery Record'}
       onClose={onClose}
-      width="min(820px, 96vw)"
+      wide
       footer={(
         <div className="flex w-full items-center justify-between gap-3">
           <span className="text-sm font-semibold text-slate-700">Member total: {formatHead(total)}</span>
@@ -287,7 +287,7 @@ function DemandPickerDialog({ open, onClose, onAdd, lookups = {}, voucherDate = 
       title="Add From Demand List"
       subtitle="Pending demand of one branch and month. Copied lines can be corrected before Save."
       onClose={onClose}
-      width="min(1200px, 97vw)"
+      wide
       footer={(
         <div className="flex w-full items-center justify-between gap-3">
           <span className="text-sm text-slate-600">{selected.size} selected</span>

@@ -325,7 +325,7 @@ export function BankTransactionWorkspaceDetailPage({ sectionKey, itemKey = '', d
         </div>
       </div>
 
-      <Modal open={editorOpen} title={`Edit ${draft?.voucherCategory || activeItem?.label || 'Transaction'}`} onClose={closeEditor} width="min(1100px, 96vw)" footer={<div className="flex w-full justify-end gap-3"><Button variant="outline" type="button" onClick={closeEditor}>Cancel</Button><Button type="submit" form="transaction-voucher-form" disabled={saving} className="bg-[#1661F6] text-white hover:bg-blue-700">{saving ? 'Saving...' : 'Save Changes'}</Button></div>}>
+      <Modal open={editorOpen} title={`Edit ${draft?.voucherCategory || activeItem?.label || 'Transaction'}`} onClose={closeEditor} footer={<div className="flex w-full justify-end gap-3"><Button variant="outline" type="button" onClick={closeEditor}>Cancel</Button><Button type="submit" form="transaction-voucher-form" disabled={saving} className="bg-[#1661F6] text-white hover:bg-blue-700">{saving ? 'Saving...' : 'Save Changes'}</Button></div>}>
         <BankTransactionForm section={{ ...(section || { items: sectionItems }) }} lookups={lookups} value={draft} setValue={setDraft} onSubmit={saveVoucher} onDocumentRemove={handleDocumentRemove} />
       </Modal>
 

@@ -209,7 +209,6 @@ export function SmsSettingsPage() {
         title={`Edit SMS template: ${editing?.label || editing?.eventCode || ''}`}
         subtitle="Changes apply to the next SMS sent for this event."
         onClose={closeEditor}
-        width="min(760px, 96vw)"
         footer={(
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={closeEditor} disabled={saving}>Cancel</Button>

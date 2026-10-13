@@ -226,7 +226,6 @@ export function RateDetailPage() {
         title="Edit Rate"
         subtitle="Update rate code, linked ledger, and value."
         onClose={closeEditor}
-        width="min(980px, 96vw)"
         footer={
           <div className="flex justify-end gap-3 w-full">
             <Button variant="outline" type="button" onClick={closeEditor}>Cancel</Button>

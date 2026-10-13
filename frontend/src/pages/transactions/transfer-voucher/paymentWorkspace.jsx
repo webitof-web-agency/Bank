@@ -289,7 +289,7 @@ export function TransferVoucherPaymentWorkspacePage({ sectionKey, itemKey, detai
         <Table loading={loading} columns={columns} data={visibleRows} emptyMessage="No transfer voucher payment entries found." />
       </Card>
 
-      <Modal open={editorOpen} onClose={closeEditor} title={activeRecord ? 'Edit Transfer Voucher Payment' : 'Create Transfer Voucher Payment'} width="min(860px, 96vw)" footer={<div className="flex w-full justify-end gap-3">
+      <Modal open={editorOpen} onClose={closeEditor} title={activeRecord ? 'Edit Transfer Voucher Payment' : 'Create Transfer Voucher Payment'} footer={<div className="flex w-full justify-end gap-3">
           <Button type="button" variant="outline" onClick={closeEditor} disabled={saving}>Cancel</Button>
           <Button type="submit" form="transaction-voucher-form" className="bg-[var(--primary,#1661F6)] text-white hover:opacity-90" disabled={saving || !activeItem}>
             {saving ? 'Saving...' : activeRecord ? 'Update' : 'Save'}

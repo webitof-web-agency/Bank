@@ -59,7 +59,6 @@ export function CreateNotificationModal({ open, onClose, onCreate, saving }) {
       onClose={onClose}
       title="Create Notification"
       subtitle="Manual notification bhejo selected recipients ko."
-      width="min(880px, 96vw)"
       footer={(
         <div className="flex items-center justify-end gap-3">
           <Button type="button" variant="outline" onClick={onClose} disabled={saving}>

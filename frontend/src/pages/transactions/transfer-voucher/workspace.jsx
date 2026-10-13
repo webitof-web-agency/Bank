@@ -294,7 +294,7 @@ export function TransferVoucherTransactionWorkspacePage({ sectionKey, itemKey, d
         <Table columns={columns} data={visibleRows} serverPagination={list.serverPagination} emptyMessage="No transfer voucher entries found." />
       </Card>
 
-      <Modal open={editorOpen} onClose={closeEditor} title={`${activeRecord ? 'Edit' : 'Create'} ${transactionLabel}`} width="min(860px, 96vw)" footer={<div className="flex w-full justify-end gap-3">
+      <Modal open={editorOpen} onClose={closeEditor} title={`${activeRecord ? 'Edit' : 'Create'} ${transactionLabel}`} footer={<div className="flex w-full justify-end gap-3">
           <Button type="button" variant="outline" onClick={closeEditor} disabled={saving}>Cancel</Button>
           <Button type="submit" form="transaction-voucher-form" className="bg-[var(--primary,#1661F6)] text-white hover:opacity-90" disabled={saving || !activeItem}>
             {saving ? 'Saving...' : activeRecord ? 'Update' : 'Save'}

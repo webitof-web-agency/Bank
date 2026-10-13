@@ -1005,7 +1005,6 @@ export function CalendarPage() {
           void closeModal();
         }}
         title={editingId ? 'Edit event' : 'Add event'}
-        width="min(760px, 96vw)"
         footer={(
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">

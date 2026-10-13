@@ -367,7 +367,6 @@ export function EmployeeTransactionWorkspacePage({ sectionKey, itemKey, detailPa
         open={editorOpen}
         title={activeRecord ? `Edit ${activeItem?.label || 'Employee Transaction'}` : `Create ${activeItem?.label || 'Employee Transaction'}`}
         onClose={closeEditor}
-        width="min(1100px, 96vw)"
         footer={
           <div className="flex w-full justify-end gap-3">
             <Button variant="outline" type="button" onClick={closeEditor}>Cancel</Button>

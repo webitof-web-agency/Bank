@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { FileText, Plus } from 'lucide-react';
+import { useInDialog } from '../../../components/ui/dialogContext';
 import { Card } from '../../../components/ui/Card';
 import { Input, Textarea } from '../../../components/ui/Input';
 import { Select as CustomSelect } from '../../../components/ui/Select';
@@ -96,6 +97,8 @@ function toNumber(value) {
 }
 
 export function TransferVoucherTransactionForm({ section, itemKey, lookups = {}, value, setValue, onSubmit, onDocumentRemove }) {
+  // Inside a dialog its title already names the voucher type.
+  const inDialog = useInDialog();
   const items = useMemo(() => (section?.items || []).filter((item) => !itemKey || item.key === itemKey), [section, itemKey]);
   const activeKey = itemKey || value?.details?.key || items[0]?.key || '';
   const activeItem = items.find((item) => item.key === activeKey) || items[0] || null;
@@ -161,14 +164,16 @@ export function TransferVoucherTransactionForm({ section, itemKey, lookups = {},
   if (activeKey === 'transfer-voucher-payment' || activeKey === 'transfer-voucher-receipt') {
     return (
       <form id="transaction-voucher-form" className="mx-auto w-full max-w-4xl space-y-4" onSubmit={onSubmit}>
-        <div className="mb-2 flex items-center justify-between gap-3 px-1">
-          <div>
-            <h3 className="text-xl font-semibold text-slate-900">{activeItem?.label || 'Transfer Voucher'}</h3>
+        {!inDialog && (
+          <div className="mb-2 flex items-center justify-between gap-3 px-1">
+            <div>
+              <h3 className="text-xl font-semibold text-slate-900">{activeItem?.label || 'Transfer Voucher'}</h3>
+            </div>
+            <div className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] ${toneClassName(activeItem?.accent || 'violet')}`}>
+              {activeKey === 'transfer-voucher-payment' ? 'Payment' : 'Receipt'}
+            </div>
           </div>
-          <div className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] ${toneClassName(activeItem?.accent || 'violet')}`}>
-            {activeKey === 'transfer-voucher-payment' ? 'Payment' : 'Receipt'}
-          </div>
-        </div>
+        )}
         
         <Card className="rounded-[var(--radius-card,1.75rem)] border border-slate-200 bg-white p-6 md:p-8 shadow-sm">
           <div className="grid gap-6 md:grid-cols-2">
@@ -281,15 +286,17 @@ export function TransferVoucherTransactionForm({ section, itemKey, lookups = {},
       </Card>
 
       <Card className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-violet-500">Member Transactions</p>
-            <h3 className="mt-1 text-lg font-semibold text-slate-900">{activeItem?.label || 'Transfer Voucher'}</h3>
+        {!inDialog && (
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-violet-500">Member Transactions</p>
+              <h3 className="mt-1 text-lg font-semibold text-slate-900">{activeItem?.label || 'Transfer Voucher'}</h3>
+            </div>
+            <div className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] ${toneClassName(activeItem?.accent || 'violet')}`}>
+              Transfer Voucher
+            </div>
           </div>
-          <div className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] ${toneClassName(activeItem?.accent || 'violet')}`}>
-            Transfer Voucher
-          </div>
-        </div>
+        )}
 
         <div className="grid gap-3 md:grid-cols-4">
           <div className="md:col-span-2">

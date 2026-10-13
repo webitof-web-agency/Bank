@@ -576,7 +576,6 @@ export function TransferVoucherTransactionDetailPage({ sectionKey }) {
         title="Edit Transaction"
         subtitle={section?.description || 'Update transaction voucher details.'}
         onClose={closeEditor}
-        width="min(1100px, 96vw)"
         footer={
           <div className="flex w-full justify-end gap-3">
             <Button variant="outline" type="button" onClick={closeEditor}>Cancel</Button>

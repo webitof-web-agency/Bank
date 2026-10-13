@@ -1,8 +1,17 @@
 import { useRef } from 'react';
 import { X } from 'lucide-react';
 import { Button } from './Button';
+import { DialogContext } from './dialogContext';
 
-export function Modal({ open, title, subtitle, children, onClose, footer, width = 'min(980px, 96vw)', hideHeader = false, overflowVisible = false }) {
+// Dialog widths: forms use the default (720px; inside it, form grids are
+// capped at 3 columns, 2 on tablets: see [data-dialog] in styles.css).
+// `wide` is for the few dialogs built around a wide member table (recovery,
+// demand lists): wider, and their grids are left as they are. `width` can
+// still make a dialog narrower (confirmations, small pickers).
+const DEFAULT_WIDTH = 'min(720px, 94vw)';
+const WIDE_WIDTH = 'min(1200px, 97vw)';
+
+export function Modal({ open, title, subtitle, children, onClose, footer, width, wide = false, hideHeader = false, overflowVisible = false }) {
   const modalRef = useRef();
 
   if (!open) return null;
@@ -20,8 +29,9 @@ export function Modal({ open, title, subtitle, children, onClose, footer, width 
         <div
           ref={modalRef}
           className="relative w-full rounded-2xl border border-slate-200 bg-white shadow-lg flex flex-col"
-          style={{ maxWidth: width, maxHeight: 'min(85vh, 800px)' }}
+          style={{ maxWidth: width || (wide ? WIDE_WIDTH : DEFAULT_WIDTH), maxHeight: 'min(85vh, 800px)' }}
           role="dialog"
+          data-dialog={wide ? 'wide' : 'form'}
           aria-modal="true"
           aria-label={title}
         >
@@ -42,7 +52,7 @@ export function Modal({ open, title, subtitle, children, onClose, footer, width 
               </Button>
             </div>
           )}
-          <div className={hideHeader ? `px-5 pb-5 pt-2 ${overflowVisible ? 'overflow-visible' : 'overflow-y-auto'}` : `px-5 py-4 ${overflowVisible ? 'overflow-visible' : 'overflow-y-auto'}`}>{children}</div>
+          <div className={hideHeader ? `px-5 pb-5 pt-2 ${overflowVisible ? 'overflow-visible' : 'overflow-y-auto'}` : `px-5 py-4 ${overflowVisible ? 'overflow-visible' : 'overflow-y-auto'}`}><DialogContext.Provider value>{children}</DialogContext.Provider></div>
           {footer ? <div className="rounded-b-2xl border-t border-slate-200 px-5 py-3 bg-slate-50 shrink-0">{footer}</div> : null}
         </div>
       </div>

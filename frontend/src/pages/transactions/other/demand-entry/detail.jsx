@@ -132,7 +132,7 @@ export function DemandEntryDetailPage({ basePath = '/app/transactions/other/dema
         open={Boolean(draft)}
         title={`Edit Demand List ${entry.demandListNo}`}
         onClose={() => setDraft(null)}
-        width="min(1200px, 97vw)"
+        wide
         footer={(
           <div className="flex w-full justify-end gap-3">
             <Button variant="outline" type="button" onClick={() => setDraft(null)}>Cancel</Button>

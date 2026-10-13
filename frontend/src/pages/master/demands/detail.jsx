@@ -254,7 +254,7 @@ export function DemandDetailPage() {
         open={editorOpen}
         title="Edit Demand"
         onClose={closeEditor}
-        width="min(1000px, 96vw)"
+        wide
         footer={
           <div className="flex justify-end gap-3 w-full">
             <Button variant="outline" type="button" onClick={closeEditor}>Cancel</Button>

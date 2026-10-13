@@ -7,6 +7,7 @@ import { DocumentSection } from '../../../components/master/DocumentSection';
 import { buildPaidFromOptions } from './paymentAccountOptions';
 import { getTransferVoucherDocumentDefinitions } from './transferVoucherDocumentUtils';
 import { getTransactionLedgerLabel, toneClassName } from './transactionUtils';
+import { useInDialog } from '../../../components/ui/dialogContext';
 
 function deepClone(value) {
   return JSON.parse(JSON.stringify(value ?? {}));
@@ -89,6 +90,8 @@ function toNumber(value) {
 }
 
 export function TransferVoucherPaymentForm({ section, itemKey, lookups = {}, value, setValue, onSubmit, onDocumentRemove }) {
+  // Inside a dialog its title already names the voucher type.
+  const inDialog = useInDialog();
   const items = useMemo(() => (section?.items || []).filter((item) => !itemKey || item.key === itemKey), [section, itemKey]);
   const activeKey = itemKey || value?.details?.key || items[0]?.key || '';
   const activeItem = items.find((item) => item.key === activeKey) || items[0] || null;
@@ -147,15 +150,17 @@ export function TransferVoucherPaymentForm({ section, itemKey, lookups = {}, val
       </Card>
 
       <Card className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-rose-500">Transfer Voucher</p>
-            <h3 className="mt-1 text-lg font-semibold text-slate-900">{activeItem?.label || 'Payment'}</h3>
+        {!inDialog && (
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-rose-500">Transfer Voucher</p>
+              <h3 className="mt-1 text-lg font-semibold text-slate-900">{activeItem?.label || 'Payment'}</h3>
+            </div>
+            <div className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] ${toneClassName('pink')}`}>
+              Payment
+            </div>
           </div>
-          <div className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] ${toneClassName('pink')}`}>
-            Payment
-          </div>
-        </div>
+        )}
 
         <div className="grid gap-3 md:grid-cols-4">
           <div className="md:col-span-2">

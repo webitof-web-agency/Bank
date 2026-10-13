@@ -252,7 +252,7 @@ export function DemandsPage() {
         open={editorOpen}
         title={activeRecord ? 'Edit Demand' : 'Add Demand'}
         onClose={closeEditor}
-        width="min(1000px, 96vw)"
+        wide
         footer={
           <div className="flex justify-end gap-3 w-full">
             <Button variant="outline" type="button" onClick={closeEditor}>Cancel</Button>
