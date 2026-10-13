@@ -8,6 +8,7 @@ import { buildPaidFromOptions } from './paymentAccountOptions';
 import { getTransferVoucherDocumentDefinitions } from './transferVoucherDocumentUtils';
 import { getTransactionLedgerLabel, toneClassName } from './transactionUtils';
 import { useInDialog } from '../../../components/ui/dialogContext';
+import { FormSectionTitle, FormSubheading, HideInDialog, OnlyInDialog } from '../../../components/ui/FormSectionTitle';
 
 function deepClone(value) {
   return JSON.parse(JSON.stringify(value ?? {}));
@@ -131,6 +132,7 @@ export function TransferVoucherPaymentForm({ section, itemKey, lookups = {}, val
 
   return (
     <form id="transaction-voucher-form" className="mx-auto w-full space-y-3" onSubmit={onSubmit}>
+      {inDialog && <div className="mb-3"><FormSectionTitle>Voucher</FormSectionTitle></div>}
       <Card className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="grid gap-3 md:grid-cols-4">
           <div className="space-y-1.5">
@@ -161,6 +163,7 @@ export function TransferVoucherPaymentForm({ section, itemKey, lookups = {}, val
             </div>
           </div>
         )}
+        {inDialog && <div className="mb-3"><FormSectionTitle>Payment</FormSectionTitle></div>}
 
         <div className="grid gap-3 md:grid-cols-4">
           <div className="md:col-span-2">
@@ -244,10 +247,12 @@ export function TransferVoucherPaymentForm({ section, itemKey, lookups = {}, val
 
       {documentDefs.length ? (
         <Card className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-900">
-            <FileText size={16} />
-            Attachments
-          </div>
+          <HideInDialog>
+            <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-900">
+              <FileText size={16} />
+              Attachments
+            </div>
+          </HideInDialog>
           <DocumentSection
             title=""
             description=""

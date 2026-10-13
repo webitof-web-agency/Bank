@@ -12,6 +12,9 @@ import {
 } from './transactionUtils';
 import { toneClassName } from './transactionUtils';
 import { getBankDocumentDefinitions } from './bankDocumentUtils';
+import { FormSectionTitle, HideInDialog, OnlyInDialog } from '../../../components/ui/FormSectionTitle';
+import { useInDialog } from '../../../components/ui/dialogContext';
+import { CheckboxLine } from '../../../components/ui/CheckboxLine';
 
 function deepClone(value) {
   return JSON.parse(JSON.stringify(value ?? {}));
@@ -116,7 +119,11 @@ function OptionCard({ title, description, active = false, onClick, badge, tone =
   );
 }
 
-function SectionHeader({ title, description, icon: Icon }) {
+// In a dialog: the small section label every dialog form uses, and the
+// top section reads `dialogTitle` (e.g. "Voucher"), not the dialog's title.
+function SectionHeader({ title, description, icon: Icon, dialogTitle, hideInDialog = false }) {
+  const inDialog = useInDialog();
+  if (inDialog) return hideInDialog ? null : <FormSectionTitle>{dialogTitle || title}</FormSectionTitle>;
   return (
     <div className="flex items-start gap-3">
       {Icon ? (
@@ -209,10 +216,13 @@ function ArrayRowsEditor({
 
   return (
     <Card className="rounded-[var(--radius-card,1.75rem)] border border-slate-200 bg-white p-6 shadow-sm">
-      <div className="mb-4">
-        <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
-        {description ? <p className="text-sm text-slate-500">{description}</p> : null}
-      </div>
+      <HideInDialog>
+        <div className="mb-4">
+          <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
+          {description ? <p className="text-sm text-slate-500">{description}</p> : null}
+        </div>
+      </HideInDialog>
+      <OnlyInDialog><div className="mb-3"><FormSectionTitle>{title}</FormSectionTitle></div></OnlyInDialog>
 
       <div className="mt-5 space-y-3">
         {safeRows.length ? safeRows.map((row, index) => (
@@ -420,6 +430,7 @@ export function BankTransactionForm({ section, lookups = {}, value, setValue, on
     return (
       <Card className="rounded-[var(--radius-card,1.75rem)] border border-slate-200 bg-white p-6 shadow-sm">
         <SectionHeader
+          dialogTitle="Voucher"
           title={activeItem?.label || 'Bank Transaction'}
           description={activeItem?.description || 'Bank voucher entry'}
           icon={Landmark}
@@ -533,24 +544,19 @@ export function BankTransactionForm({ section, lookups = {}, value, setValue, on
       <Card className="rounded-[var(--radius-card,1.75rem)] border border-slate-200 bg-white p-6 shadow-sm">
         <div className="grid gap-3 md:grid-cols-4">
           {renderAmountInput()}
-          <div className="space-y-1.5 md:col-span-1">
+          <div className="space-y-1.5">
             <FieldLabel>Total Amount</FieldLabel>
             <Input value={draft.amount ? Number(draft.amount).toLocaleString('en-IN') : '0.00'} disabled className="bg-slate-50 cursor-not-allowed text-slate-700 font-medium" />
           </div>
-          <div className="space-y-1.5 md:col-span-2">
-            <label className="flex h-full items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-              <input type="checkbox" checked={!!draft.details?.selfUse} onChange={(event) => updateDetails('selfUse', event.target.checked)} />
-              Withdrawal for self use
-            </label>
-          </div>
-          <div className="space-y-1.5 md:col-span-2">
+          <div className="space-y-1.5">
             <FieldLabel>Cheque No.</FieldLabel>
             <Input value={draft.instrumentNo || ''} onChange={(event) => setRootValue(setValue, 'instrumentNo', event.target.value)} placeholder="Cheque number" />
           </div>
-          <div className="space-y-1.5 md:col-span-2">
+          <div className="space-y-1.5">
             <FieldLabel>Cheque Date</FieldLabel>
             <Input type="date" value={draft.instrumentDate || ''} onChange={(event) => setRootValue(setValue, 'instrumentDate', event.target.value)} />
           </div>
+          <CheckboxLine className="md:col-span-4" checked={draft.details?.selfUse} onChange={(checked) => updateDetails('selfUse', checked)}>Withdrawal for self use</CheckboxLine>
           {renderCommonNarration()}
         </div>
       </Card>
@@ -617,7 +623,7 @@ export function BankTransactionForm({ section, lookups = {}, value, setValue, on
       {renderActiveForm()}
       {documentDefs.length ? (
         <Card className="rounded-[var(--radius-card,1.75rem)] border border-slate-200 bg-white p-6 shadow-sm">
-          <SectionHeader title="Attachments" description="Upload voucher-specific bank documents." icon={FileText} />
+          <SectionHeader hideInDialog title="Attachments" description="Upload voucher-specific bank documents." icon={FileText} />
           <div className="mt-5">
             <DocumentSection
               title=""

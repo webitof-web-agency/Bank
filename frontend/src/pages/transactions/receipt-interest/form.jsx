@@ -12,6 +12,8 @@ import {
   getTransactionPartyLabel
 } from './transactionUtils';
 import { toneClassName } from './transactionUtils';
+import { FormSectionTitle, HideInDialog, OnlyInDialog } from '../../../components/ui/FormSectionTitle';
+import { useInDialog } from '../../../components/ui/dialogContext';
 
 function deepClone(value) {
   return JSON.parse(JSON.stringify(value ?? {}));
@@ -116,7 +118,11 @@ function OptionCard({ title, description, active = false, onClick, badge, tone =
   );
 }
 
-function SectionHeader({ title, description, icon: Icon }) {
+// In a dialog: the small section label every dialog form uses, and the
+// top section reads `dialogTitle` (e.g. "Voucher"), not the dialog's title.
+function SectionHeader({ title, description, icon: Icon, dialogTitle, hideInDialog = false }) {
+  const inDialog = useInDialog();
+  if (inDialog) return hideInDialog ? null : <FormSectionTitle>{dialogTitle || title}</FormSectionTitle>;
   return (
     <div className="flex items-start gap-3">
       {Icon ? (
@@ -209,10 +215,13 @@ function ArrayRowsEditor({
 
   return (
     <Card className="rounded-[var(--radius-card,1.75rem)] border border-slate-200 bg-white p-6 shadow-sm">
-      <div className="mb-4">
-        <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
-        {description ? <p className="text-sm text-slate-500">{description}</p> : null}
-      </div>
+      <HideInDialog>
+        <div className="mb-4">
+          <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
+          {description ? <p className="text-sm text-slate-500">{description}</p> : null}
+        </div>
+      </HideInDialog>
+      <OnlyInDialog><div className="mb-3"><FormSectionTitle>{title}</FormSectionTitle></div></OnlyInDialog>
 
       <div className="mt-5 space-y-3">
         {safeRows.length ? safeRows.map((row, index) => (
@@ -649,14 +658,16 @@ export function ReceiptInterestTransactionForm({ section, lookups = {}, value, s
       ) : null}
 
       <Card className="rounded-[var(--radius-card,1.75rem)] border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="mb-4">
-          <h3 className="text-sm font-semibold text-slate-900">Attachments</h3>
-          <p className="text-sm text-slate-500">
-            {activeKey === 'receipt-voucher'
-              ? 'Receipt voucher copy, cash receipt, and bank receipt.'
-              : 'Interest worksheet, sanction note, bank advice, and receipt copy.'}
-          </p>
-        </div>
+        <HideInDialog>
+          <div className="mb-4">
+            <h3 className="text-sm font-semibold text-slate-900">Attachments</h3>
+            <p className="text-sm text-slate-500">
+              {activeKey === 'receipt-voucher'
+                ? 'Receipt voucher copy, cash receipt, and bank receipt.'
+                : 'Interest worksheet, sanction note, bank advice, and receipt copy.'}
+            </p>
+          </div>
+        </HideInDialog>
         <DocumentSection
           title=""
           description=""

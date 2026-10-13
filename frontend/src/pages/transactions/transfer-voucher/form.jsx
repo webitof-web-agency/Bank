@@ -6,6 +6,8 @@ import { Input, Textarea } from '../../../components/ui/Input';
 import { Select as CustomSelect } from '../../../components/ui/Select';
 import { DocumentSection } from '../../../components/master/DocumentSection';
 import { getTransferVoucherDocumentDefinitions } from './transferVoucherDocumentUtils';
+import { FormSectionTitle, FormSubheading, HideInDialog, OnlyInDialog } from '../../../components/ui/FormSectionTitle';
+import { SmsCheckbox } from '../../../components/ui/CheckboxLine';
 import {  getTransferVoucherAllocationRows,
   getTransferVoucherAllocationTotal,  toneClassName
 } from './transactionUtils';
@@ -174,6 +176,7 @@ export function TransferVoucherTransactionForm({ section, itemKey, lookups = {},
             </div>
           </div>
         )}
+        {inDialog && <div className="mb-3"><FormSectionTitle>Voucher</FormSectionTitle></div>}
         
         <Card className="rounded-[var(--radius-card,1.75rem)] border border-slate-200 bg-white p-6 md:p-8 shadow-sm">
           <div className="grid gap-6 md:grid-cols-2">
@@ -267,6 +270,7 @@ export function TransferVoucherTransactionForm({ section, itemKey, lookups = {},
 
   return (
     <form id="transaction-voucher-form" className="mx-auto w-full space-y-3" onSubmit={onSubmit}>
+      {inDialog && <div className="mb-3"><FormSectionTitle>Voucher</FormSectionTitle></div>}
       <Card className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="grid gap-3 md:grid-cols-4">
           <div className="space-y-1.5">
@@ -297,6 +301,7 @@ export function TransferVoucherTransactionForm({ section, itemKey, lookups = {},
             </div>
           </div>
         )}
+        {inDialog && <div className="mb-3"><FormSectionTitle>Member</FormSectionTitle></div>}
 
         <div className="grid gap-3 md:grid-cols-4">
           <div className="md:col-span-2">
@@ -324,10 +329,7 @@ export function TransferVoucherTransactionForm({ section, itemKey, lookups = {},
       </Card>
 
       <Card className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-900">
-          <Plus size={16} />
-          Allocation
-        </div>
+        <FormSubheading label="Allocation" icon={Plus} />
 
         {/* One compact row per head: label, then amount and DR/CR side. */}
         <div data-transfer-voucher-section="allocation" className="divide-y divide-slate-100 rounded-xl border border-slate-200">
@@ -360,7 +362,7 @@ export function TransferVoucherTransactionForm({ section, itemKey, lookups = {},
       </Card>
 
       <Card className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="grid gap-3 md:grid-cols-[1fr_260px] md:items-start">
+        <div className="grid gap-3">
           <div className="space-y-1.5">
             <FieldLabel>Narration</FieldLabel>
             <Textarea
@@ -371,29 +373,18 @@ export function TransferVoucherTransactionForm({ section, itemKey, lookups = {},
             />
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-            <label className="flex items-start gap-3 text-sm text-slate-700">
-              <input
-                type="checkbox"
-                checked={Boolean(value.details?.sendSmsToMember)}
-                onChange={(event) => updateDetails('sendSmsToMember', event.target.checked)}
-                className="mt-1 h-4 w-4 rounded border-slate-300 text-[var(--primary)]"
-              />
-              <span>
-                <span className="block font-semibold text-slate-900">Send SMS to member</span>
-                <span className="mt-1 block text-[12px] text-slate-500">Optional notification for transfer voucher posting.</span>
-              </span>
-            </label>
-          </div>
+          <SmsCheckbox checked={value.details?.sendSmsToMember} onChange={(checked) => updateDetails('sendSmsToMember', checked)} />
         </div>
       </Card>
 
       {documentDefs.length ? (
         <Card className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-900">
-            <FileText size={16} />
-            Attachments
-          </div>
+          <HideInDialog>
+            <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-900">
+              <FileText size={16} />
+              Attachments
+            </div>
+          </HideInDialog>
           <DocumentSection
             title=""
             description=""

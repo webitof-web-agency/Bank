@@ -6,9 +6,12 @@ import { Input, Textarea } from '../../../components/ui/Input';
 import { Select as CustomSelect } from '../../../components/ui/Select';
 import { getMemberDocumentDefinitions } from './memberDocumentUtils';
 import { Modal } from '../../../components/ui/Modal';
+import { Button } from '../../../components/ui/Button';
+import { useInDialog } from '../../../components/ui/dialogContext';
 import { useFY } from '../../../context/FYContext';
 import UploadModal from './recovery-import/UploadModal';
 import { toast } from 'sonner';
+import { SmsCheckbox } from '../../../components/ui/CheckboxLine';
 import {
   RECOVERY_HEADS, addDemandLines, applyExcelHeads, draftTotals, emptyHeads, isUnresolved, lineTotal, manualLine,
   mergeImportRows, normalizeDraftLines, removeLine, setLineConfirmed, unresolvedCount, updateLineHeads, withWarnings
@@ -423,16 +426,14 @@ function RecoveryLinesEditor({ rows = [], onChange, memberGroups = [], lookups =
     }
   }
 
-  const toolbarButton = 'rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50';
-
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <SectionTitle subtitle="1. Load the demand  2. Import the Excel to compare  3. Fix or confirm every warning, then Save.">Member Recovery</SectionTitle>
         <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={() => setDemandOpen(true)} className={toolbarButton}>1. Load Demand</button>
-          <button type="button" onClick={() => setUploadOpen(true)} className={toolbarButton} title={hasDemand ? '' : 'Load the demand first to compare against it'}>2. Import Excel</button>
-          <button type="button" onClick={() => setMemberDialog({ index: null, heads: emptyHeads() })} className="rounded-lg bg-[var(--primary,#2563eb)] px-4 py-2 text-sm font-medium text-white">+ Add Record</button>
+          <Button type="button" variant="outline" size="sm" onClick={() => setDemandOpen(true)}>1. Load Demand</Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => setUploadOpen(true)} title={hasDemand ? '' : 'Load the demand first to compare against it'}>2. Import Excel</Button>
+          <Button type="button" size="sm" onClick={() => setMemberDialog({ index: null, heads: emptyHeads() })}>+ Add Record</Button>
         </div>
       </div>
       {notice ? <p className="rounded-lg bg-slate-50 px-3 py-2 text-[13px] text-slate-700">{notice}</p> : null}
@@ -576,13 +577,13 @@ function SimpleDocumentList({ definitions = [], documents = {}, onPickFile, onCl
                   className="hidden"
                   onChange={(event) => handlePick(definition.key, event)}
                 />
-                <button type="button" onClick={() => triggerPicker(definition.key)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                <Button type="button" variant="outline" size="sm" onClick={() => triggerPicker(definition.key)}>
                   {document ? 'Replace file' : 'Select file'}
-                </button>
+                </Button>
                 {document ? (
-                  <button type="button" onClick={() => onClearFile?.(definition.key, document)} className="rounded-lg border border-rose-200 px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50">
+                  <Button type="button" variant="outline" size="sm" className="border-rose-200 text-rose-600 hover:bg-rose-50" onClick={() => onClearFile?.(definition.key, document)}>
                     Remove
-                  </button>
+                  </Button>
                 ) : null}
               </div>
             </div>
@@ -594,6 +595,8 @@ function SimpleDocumentList({ definitions = [], documents = {}, onPickFile, onCl
 }
 
 export function MemberTransactionForm({ section, lookups = {}, value, setValue, onSubmit, onDocumentRemove, activeKey: forcedActiveKey = '' }) {
+  // In a dialog the form fills it, lined up with the title and the buttons.
+  const inDialog = useInDialog();
   const { token } = useAuth();
   const draft = value || {};
 
@@ -799,10 +802,7 @@ export function MemberTransactionForm({ section, lookups = {}, value, setValue, 
             <FieldLabel>Total Amount</FieldLabel>
             <Input value={amountValue || ''} readOnly />
           </div>
-          <label className="flex items-center gap-2 text-sm text-slate-700 md:col-span-3">
-            <input type="checkbox" checked={!!draft.details?.sms} onChange={(event) => updateDetails('sms', event.target.checked)} />
-            Send SMS to member
-          </label>
+          <SmsCheckbox className="md:col-span-3" checked={draft.details?.sms} onChange={(checked) => updateDetails('sms', checked)} />
           <div className="space-y-1.5 md:col-span-3">
             <FieldLabel>Narration</FieldLabel>
             <Textarea rows={3} value={draft.narration || ''} onChange={(event) => setRootValue(setValue, 'narration', event.target.value)} placeholder="Loan disbursement remarks" />
@@ -841,10 +841,7 @@ export function MemberTransactionForm({ section, lookups = {}, value, setValue, 
             <FieldLabel>Total Amount</FieldLabel>
             <Input value={amountValue || ''} readOnly />
           </div>
-          <label className="flex items-center gap-2 text-sm text-slate-700 md:col-span-3">
-            <input type="checkbox" checked={!!draft.details?.sms} onChange={(event) => updateDetails('sms', event.target.checked)} />
-            Send SMS to member
-          </label>
+          <SmsCheckbox className="md:col-span-3" checked={draft.details?.sms} onChange={(checked) => updateDetails('sms', checked)} />
           <div className="space-y-1.5 md:col-span-3">
             <FieldLabel>Narration</FieldLabel>
             <Textarea rows={3} value={draft.narration || ''} onChange={(event) => setRootValue(setValue, 'narration', event.target.value)} placeholder="Deposit payout remarks" />
@@ -883,10 +880,7 @@ export function MemberTransactionForm({ section, lookups = {}, value, setValue, 
             <FieldLabel>Total Amount</FieldLabel>
             <Input value={amountValue || ''} readOnly />
           </div>
-          <label className="flex items-center gap-2 text-sm text-slate-700 md:col-span-3">
-            <input type="checkbox" checked={!!draft.details?.sms} onChange={(event) => updateDetails('sms', event.target.checked)} />
-            Send SMS to member
-          </label>
+          <SmsCheckbox className="md:col-span-3" checked={draft.details?.sms} onChange={(checked) => updateDetails('sms', checked)} />
           <div className="space-y-1.5 md:col-span-3">
             <FieldLabel>Narration</FieldLabel>
             <Textarea rows={3} value={draft.narration || ''} onChange={(event) => setRootValue(setValue, 'narration', event.target.value)} placeholder="Insurance payout remarks" />
@@ -921,10 +915,7 @@ export function MemberTransactionForm({ section, lookups = {}, value, setValue, 
             <FieldLabel>Total Amount</FieldLabel>
             <Input value={amountValue || ''} readOnly />
           </div>
-          <label className="flex items-center gap-2 text-sm text-slate-700 md:col-span-3">
-            <input type="checkbox" checked={!!draft.details?.sms} onChange={(event) => updateDetails('sms', event.target.checked)} />
-            Send SMS to member
-          </label>
+          <SmsCheckbox className="md:col-span-3" checked={draft.details?.sms} onChange={(checked) => updateDetails('sms', checked)} />
           <div className="space-y-1.5 md:col-span-3">
             <FieldLabel>Narration</FieldLabel>
             <Textarea rows={3} value={draft.narration || ''} onChange={(event) => setRootValue(setValue, 'narration', event.target.value)} placeholder="SSA payment remarks" />
@@ -939,7 +930,7 @@ export function MemberTransactionForm({ section, lookups = {}, value, setValue, 
       <section className="space-y-3">
         <div className="space-y-3">
           <SectionTitle>Voucher</SectionTitle>
-          <div className="grid gap-3 md:grid-cols-4">
+          <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-5">
             <div className="space-y-1.5">
               <FieldLabel>Voucher No.</FieldLabel>
               <Input value={draft.voucherNo || ''} readOnly placeholder="Generating..." />
@@ -948,7 +939,7 @@ export function MemberTransactionForm({ section, lookups = {}, value, setValue, 
               <FieldLabel required>Date</FieldLabel>
               <Input type="date" value={draft.date || ''} onChange={(event) => setRootValue(setValue, 'date', event.target.value)} />
             </div>
-            <div className="space-y-1.5 md:col-span-2 lg:col-span-1">
+            <div className="space-y-1.5">
               <FieldLabel required>Mode</FieldLabel>
               <CustomSelect value={draft.mode || ''} onChange={(next) => setRootValue(setValue, 'mode', next)} options={paymentOptions} placeholder="Select mode" searchable={false} />
             </div>
@@ -975,12 +966,12 @@ export function MemberTransactionForm({ section, lookups = {}, value, setValue, 
             {/* SMS is not configured (no provider yet): the button is shown
                 disabled and does nothing. Save never depends on it. */}
             <div className="flex items-end gap-3 md:col-span-2">
-              <button type="button" disabled title="SMS is not configured" className="h-10 cursor-not-allowed rounded-lg border border-slate-200 px-4 text-sm font-medium text-slate-400">
+              <Button type="button" variant="outline" disabled title="SMS is not configured" className="cursor-not-allowed text-slate-400">
                 Send SMS — not configured
-              </button>
+              </Button>
             </div>
-            <div className="space-y-1.5 md:col-span-3">
-            <FieldLabel>Narration</FieldLabel>
+            <div className="space-y-1.5 md:col-span-4">
+              <FieldLabel>Narration</FieldLabel>
               <Textarea rows={3} value={draft.narration || ''} onChange={(event) => setRootValue(setValue, 'narration', event.target.value)} placeholder="Recovery remarks" />
             </div>
           </div>
@@ -990,7 +981,7 @@ export function MemberTransactionForm({ section, lookups = {}, value, setValue, 
   }
 
   return (
-    <form id="transaction-voucher-form" className="mx-auto w-full max-w-5xl space-y-3" onSubmit={handleSubmit}>
+    <form id="transaction-voucher-form" className={inDialog ? 'w-full space-y-3' : 'mx-auto w-full max-w-5xl space-y-3'} onSubmit={handleSubmit}>
       {!isRecovery && renderCommonHeader()}
       {isLoan ? renderLoanForm() : null}
       {isDeposit ? renderDepositForm() : null}

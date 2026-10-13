@@ -8,6 +8,7 @@ import { DocumentSection } from '../../../components/master/DocumentSection';
 import { getEmployeeDocumentDefinitions } from './employeeDocumentUtils';
 import { getEmployeeComponentTotal } from './transactionUtils';
 import { useInDialog } from '../../../components/ui/dialogContext';
+import { FormSectionTitle, FormSubheading, HideInDialog, OnlyInDialog } from '../../../components/ui/FormSectionTitle';
 
 function deepClone(value) {
   return JSON.parse(JSON.stringify(value ?? {}));
@@ -178,6 +179,7 @@ export function EmployeeTransactionForm({ section, itemKey, lookups = {}, value,
 
   return (
     <form id="transaction-voucher-form" className="mx-auto w-full space-y-3" onSubmit={onSubmit}>
+      {inDialog && <div className="mb-3"><FormSectionTitle>Voucher</FormSectionTitle></div>}
       <Card className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="grid gap-3 md:grid-cols-4">
           <div className="space-y-1.5">
@@ -208,6 +210,7 @@ export function EmployeeTransactionForm({ section, itemKey, lookups = {}, value,
             </div>
           </div>
         )}
+        {inDialog && <div className="mb-3"><FormSectionTitle>Employee</FormSectionTitle></div>}
 
         <div className="grid gap-3 md:grid-cols-4">
           <div className="md:col-span-2">
@@ -240,10 +243,7 @@ export function EmployeeTransactionForm({ section, itemKey, lookups = {}, value,
       </Card>
 
       <Card className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-900">
-          <Plus size={16} />
-          Advance Heads
-        </div>
+        <FormSubheading label="Advance Heads" icon={Plus} />
         <div className="grid gap-3 md:grid-cols-4">
           <div className="space-y-1.5">
             <FieldLabel>House Loan</FieldLabel>
@@ -265,7 +265,7 @@ export function EmployeeTransactionForm({ section, itemKey, lookups = {}, value,
       </Card>
 
       <Card className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="mb-4 text-sm font-semibold text-slate-900">{getModeLabel(activeKey)}</div>
+        <FormSubheading label={getModeLabel(activeKey)} className="mb-4 text-sm font-semibold text-slate-900" />
         <div className="grid gap-3 md:grid-cols-4">
           <div className="space-y-1.5">
             <FieldLabel required>{getModeLabel(activeKey)}</FieldLabel>
@@ -309,10 +309,12 @@ export function EmployeeTransactionForm({ section, itemKey, lookups = {}, value,
       </Card>
 
       <Card className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="mb-4">
-          <h3 className="text-sm font-semibold text-slate-900">Attachments</h3>
-          <p className="text-sm text-slate-500">Upload supporting employee documents.</p>
-        </div>
+        <HideInDialog>
+          <div className="mb-4">
+            <h3 className="text-sm font-semibold text-slate-900">Attachments</h3>
+            <p className="text-sm text-slate-500">Upload supporting employee documents.</p>
+          </div>
+        </HideInDialog>
         <DocumentSection
           title=""
           description=""

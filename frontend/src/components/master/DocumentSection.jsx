@@ -3,6 +3,8 @@ import { Eye, Paperclip, Trash2, Upload } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { cn } from '../../lib/cn';
 import { getDocumentFileName, getDocumentFileUrl, isPendingDocument } from './documentUtils';
+import { useInDialog } from '../ui/dialogContext';
+import { FormSectionTitle } from '../ui/FormSectionTitle';
 import { useEffect, useState } from 'react';
 
 function DocumentPreview({ document }) {
@@ -59,6 +61,7 @@ export function DocumentSection({
   className
 }) {
   const inputRefs = useRef({});
+  const inDialog = useInDialog();
 
   function triggerPicker(key) {
     inputRefs.current[key]?.click();
@@ -69,6 +72,59 @@ export function DocumentSection({
     event.target.value = '';
     if (!file || !onPickFile) return;
     onPickFile(key, file);
+  }
+
+  // In a dialog: the same compact list every dialog form uses (label, one
+  // row per document, buttons on the right), headed "Attachments".
+  if (inDialog) {
+    return (
+      <div className={cn('space-y-3', className)}>
+        <FormSectionTitle>Attachments</FormSectionTitle>
+        {definitions.map((definition) => {
+          const document = documents?.[definition.key] || null;
+          const fileName = getDocumentFileName(document);
+          const fileUrl = getDocumentFileUrl(document);
+          const pending = isPendingDocument(document);
+          return (
+            <div key={definition.key} className="rounded-xl border border-slate-200 bg-white p-3">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-slate-900">{definition.label}</p>
+                  {definition.description ? <p className="text-xs text-slate-500">{definition.description}</p> : null}
+                  <p className="mt-1 truncate text-xs text-slate-700">{document && fileName ? `${fileName}${pending ? ' (to upload)' : ''}` : 'No file selected'}</p>
+                </div>
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  {document && !pending && fileUrl ? (
+                    <Button type="button" variant="outline" size="sm" onClick={() => window.open(fileUrl, '_blank', 'noopener,noreferrer')}>View</Button>
+                  ) : null}
+                  {editable ? (
+                    <>
+                      <input
+                        ref={(node) => {
+                          inputRefs.current[definition.key] = node;
+                        }}
+                        type="file"
+                        accept="image/*,.pdf"
+                        className="hidden"
+                        onChange={(event) => handlePick(definition.key, event)}
+                      />
+                      <Button type="button" variant="outline" size="sm" onClick={() => triggerPicker(definition.key)}>
+                        {document ? 'Replace file' : 'Select file'}
+                      </Button>
+                      {document ? (
+                        <Button type="button" variant="outline" size="sm" className="border-rose-200 text-rose-600 hover:bg-rose-50" onClick={() => onClearFile?.(definition.key, document)}>Remove</Button>
+                      ) : null}
+                    </>
+                  ) : onDeleteFile && document ? (
+                    <Button type="button" variant="outline" size="sm" className="border-rose-200 text-rose-600 hover:bg-rose-50" onClick={() => onDeleteFile(definition.key, document)}>Remove</Button>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
   }
 
   return (

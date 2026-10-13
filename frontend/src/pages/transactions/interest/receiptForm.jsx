@@ -8,6 +8,7 @@ import { DocumentSection } from '../../../components/master/DocumentSection';
 import { getReceiptInterestDocumentDefinitions } from './receiptInterestDocumentUtils';
 import { formatTransactionAmount, getTransactionLedgerLabel, toneClassName } from './transactionUtils';
 import { useInDialog } from '../../../components/ui/dialogContext';
+import { FormSectionTitle, HideInDialog, OnlyInDialog } from '../../../components/ui/FormSectionTitle';
 
 function FieldLabel({ children, required = false }) {
   return (
@@ -62,6 +63,7 @@ export function ReceiptVoucherForm({ section, lookups = {}, value, setValue, onS
             <p className="mt-1 text-sm text-slate-500">Voucher entry for receipt by, receipt to, amount, and narration.</p>
           </div>
         )}
+        {inDialog && <div className="mb-3"><FormSectionTitle>Voucher</FormSectionTitle></div>}
 
         <div className="grid gap-3 md:grid-cols-4">
           <div className="space-y-1.5">
@@ -131,15 +133,17 @@ export function ReceiptVoucherForm({ section, lookups = {}, value, setValue, onS
       </Card>
 
       <Card className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="mb-4 flex items-center gap-3">
-          <div className={`flex h-10 w-10 items-center justify-center rounded-xl border ${toneClassName('emerald')}`}>
-            <FileText size={18} strokeWidth={1.9} />
+        <HideInDialog>
+          <div className="mb-4 flex items-center gap-3">
+            <div className={`flex h-10 w-10 items-center justify-center rounded-xl border ${toneClassName('emerald')}`}>
+              <FileText size={18} strokeWidth={1.9} />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-slate-900">Attachments</h3>
+              <p className="text-sm text-slate-500">Receipt voucher copy, cash receipt, and bank receipt.</p>
+            </div>
           </div>
-          <div>
-            <h3 className="text-sm font-semibold text-slate-900">Attachments</h3>
-            <p className="text-sm text-slate-500">Receipt voucher copy, cash receipt, and bank receipt.</p>
-          </div>
-        </div>
+        </HideInDialog>
         <DocumentSection
           title=""
           description=""

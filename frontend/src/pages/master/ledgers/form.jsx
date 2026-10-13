@@ -89,7 +89,7 @@ export function LedgerForm({ value, setValue, onSubmit, isEdit = false }) {
       </div>
 
       <div className="flex flex-wrap gap-3">
-        <label className="flex items-center gap-2 rounded-[var(--radius-input,0.75rem)] border border-slate-200 bg-slate-50 px-4 py-3 text-[13px] font-medium text-slate-700">
+        <label className="flex items-center gap-2 text-sm text-slate-700">
           <input
             type="checkbox"
             checked={Boolean(value.isActive)}
