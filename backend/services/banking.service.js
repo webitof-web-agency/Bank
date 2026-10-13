@@ -1,5 +1,6 @@
 const bcrypt = require('bcryptjs');
 const { randomBytes } = require('crypto');
+const { normalizeSocialCategory } = require('../utils/socialCategory');
 const { ACCOUNTING_ROLES } = require('../config/accountingConstants');
 const {
   BANK_ACCOUNT_SEEDS,
@@ -873,7 +874,9 @@ const RESOURCE_DEFS = {
         gstNo: cleanText(data.gstNo, ''),
         email: cleanText(data.email, SOCIETY_SEED.email),
         phone: cleanText(data.phone, ''),
-        address: cleanText(data.address, SOCIETY_SEED.address),
+        // No fallback: an empty address prints nothing on the letterhead
+        // (the seed's sample address must never come back on its own).
+        address: cleanText(data.address),
         branchCode: cleanUpper(data.branchCode, SOCIETY_SEED.branchCode),
         logoUrl: cleanText(data.logoUrl, ''),
         logoFileId: cleanText(data.logoFileId, ''),
@@ -944,7 +947,7 @@ const RESOURCE_DEFS = {
         name: cleanText(data.name),
         fatherOrHusbandName: cleanText(data.fatherOrHusbandName),
         branchCode: cleanUpper(data.branchCode),
-        category: cleanText(data.category),
+        category: normalizeSocialCategory(data.category),
         caste: cleanText(data.caste),
         designation: cleanText(data.designation),
         serviceName1: cleanText(data.serviceName1),

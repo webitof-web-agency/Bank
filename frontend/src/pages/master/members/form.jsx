@@ -3,6 +3,7 @@ import { Camera, Trash2, Upload, User, Briefcase, FileText, Wallet } from 'lucid
 import PhoneInput from 'react-phone-input-2';
 import { Input, Textarea } from '../../../components/ui/Input';
 import { Select } from '../../../components/ui/Select';
+import { normalizeSocialCategory, socialCategoryOptions } from '../../../lib/socialCategory';
 import { UserAvatar } from '../../../components/ui/UserAvatar';
 import { DocumentSection } from '../../../components/master/DocumentSection';
 import { MEMBER_DOCUMENT_DEFS } from '../../../components/master/documentUtils';
@@ -232,7 +233,13 @@ export function MemberForm({
 
             <div className="space-y-1.5">
               <label className="text-[13px] font-semibold text-slate-700">Category</label>
-              <Input placeholder="e.g. General, SC, ST" value={value.category || ''} onChange={(e) => setValue({ ...value, category: e.target.value })} />
+              <Select
+                value={normalizeSocialCategory(value.category)}
+                onChange={(next) => setValue({ ...value, category: next || '' })}
+                options={socialCategoryOptions(value.category)}
+                placeholder="Select category"
+                searchable={false}
+              />
             </div>
 
             <div className="space-y-1.5">

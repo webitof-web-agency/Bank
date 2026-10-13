@@ -17,6 +17,7 @@ const EMPTY_FORM = {
   watermarkEnabled: false,
   watermarkUrl: '',
   watermarkFileId: '',
+  address: '',
   footerText: ''
 };
 
@@ -112,6 +113,7 @@ export function SocietyDetailsPage() {
           watermarkEnabled: Boolean(record.watermarkEnabled),
           watermarkUrl: record.watermarkUrl || '',
           watermarkFileId: record.watermarkFileId || '',
+          address: record.address || '',
           footerText: record.footerText || ''
         });
         setLogoPreview(record.logoUrl ? getImageUrl(record.logoUrl) : '');
@@ -241,10 +243,12 @@ export function SocietyDetailsPage() {
             <Field label="GST No." icon={FileImage}>
               <Input value={draft.gstNo} onChange={(event) => setDraft((current) => ({ ...current, gstNo: event.target.value }))} />
             </Field>
+            <Field label="Address">
+              <Input value={draft.address} onChange={(event) => setDraft((current) => ({ ...current, address: event.target.value }))} placeholder="Printed under the society name on report letterheads" />
+            </Field>
             <Field label="Footer Text">
               <Input value={draft.footerText} onChange={(event) => setDraft((current) => ({ ...current, footerText: event.target.value }))} />
             </Field>
-            <div />
             <ImageUploadField
               label="Logo"
               hint="Shown on report letterheads."

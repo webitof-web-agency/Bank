@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { randomInt, randomUUID } = require('crypto');
+const { normalizeSocialCategory } = require('../utils/socialCategory');
 const User = require('../models/user.model');
 const Role = require('../models/role.model');
 const { Employee } = require('../models/banking.models');
@@ -228,7 +229,7 @@ function extractEmployeeHrFields(data = {}) {
   if (payload.fatherName !== undefined) hr.fatherName = String(payload.fatherName || '').trim();
   if (payload.dateOfBirth !== undefined) hr.dateOfBirth = payload.dateOfBirth || null;
   if (payload.appointmentDate !== undefined) hr.appointmentDate = payload.appointmentDate || null;
-  if (payload.category !== undefined) hr.category = String(payload.category || '').trim();
+  if (payload.category !== undefined) hr.category = normalizeSocialCategory(payload.category);
   if (payload.caste !== undefined) hr.caste = String(payload.caste || '').trim();
   if (payload.qualification !== undefined) hr.qualification = String(payload.qualification || '').trim();
   if (payload.basicSalary !== undefined) hr.basicSalary = payload.basicSalary === '' ? null : Number(payload.basicSalary);

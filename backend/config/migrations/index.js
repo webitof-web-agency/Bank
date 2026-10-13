@@ -61,6 +61,43 @@ const MIGRATIONS = [
       await db.query('ALTER TABLE branches DROP COLUMN IF EXISTS place');
       return { moved, dropped: true };
     }
+  },
+  {
+    // Category is now picked from a list (GENERAL / OBC / SC / ST); bring the
+    // legacy spellings ("O.B.C", "O.B.C.", "S.C.", "S.T.") to those codes.
+    name: '2026-10-13-social-category-codes',
+    async run(db) {
+      const result = {};
+      for (const table of ['members', 'employees']) {
+        const exists = (await db.query(
+          "SELECT 1 FROM information_schema.columns WHERE table_name = $1 AND column_name = 'category'", [table]
+        )).rowCount > 0;
+        if (!exists) continue;
+        result[table] = (await db.query(`
+          UPDATE ${table} SET category = CASE upper(regexp_replace(category, '[^A-Za-z]', '', 'g'))
+              WHEN 'GEN' THEN 'GENERAL' WHEN 'GENERAL' THEN 'GENERAL'
+              WHEN 'OBC' THEN 'OBC' WHEN 'SC' THEN 'SC' WHEN 'ST' THEN 'ST' END,
+            "updatedAt" = now()
+           WHERE upper(regexp_replace(category, '[^A-Za-z]', '', 'g')) IN ('GEN', 'GENERAL', 'OBC', 'SC', 'ST')
+             AND category NOT IN ('GENERAL', 'OBC', 'SC', 'ST')`)).rowCount;
+      }
+      return result;
+    }
+  },
+  {
+    // The society's address was the sample address from the dev seed
+    // (bankingSeed.js) and could not be edited, so every report letterhead
+    // printed it. Replace it, only if still that exact sample, with the
+    // address the old software printed on its letterheads
+    // (Template/Reports/all member list.pdf). Editable in Society Details.
+    name: '2026-10-13-society-address-from-legacy',
+    async run(db) {
+      const updated = (await db.query(
+        `UPDATE societies SET address = $1, "updatedAt" = now() WHERE address = $2`,
+        ['JILA SAHKARI KENDRIYA BANK RAIPUR COMPOUND, G.E. Road Raipur (C.G.)', 'Civil Lines, Near Collectorate, Raipur, Chhattisgarh 492001']
+      )).rowCount;
+      return { updated };
+    }
   }
 ];
 

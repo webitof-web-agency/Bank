@@ -53,7 +53,7 @@ test('Employee/User split: create/update/delete/restore via RESOURCE_DEFS.employ
 
   await t.test('response merges HR fields at the top level for the frontend', async () => {
     assert.strictEqual(created.fatherName, 'Test Father');
-    assert.strictEqual(created.category, 'General');
+    assert.strictEqual(created.category, 'GENERAL'); // stored as the category code
   });
 
   await t.test('update lands HR fields on Employee, login fields on User', async () => {
