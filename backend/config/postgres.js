@@ -320,6 +320,14 @@ function normalizeJoinRow(row) {
   };
 }
 
+// The legacy archive tables (legacy_*: old-software vouchers, recovery,
+// demand lists, master change log...) are large (~200 MB on disk, several
+// times that as objects) and only ever read with direct SQL. Keeping them in
+// the in-memory cache ran the server out of memory at startup (live, 384 MB
+// heap), so only the app's own tables are cached.
+const CACHED_TABLES = TABLES.filter((tableName) => !tableName.startsWith('legacy_'));
+const CACHED_TABLE_SET = new Set(CACHED_TABLES);
+
 function getCachedRows(tableName) {
   ensureInitialized();
   return clone(tableCache.get(tableName) || []);
@@ -330,6 +338,7 @@ function setCachedRows(tableName, rows) {
 }
 
 function updateCachedRow(tableName, row) {
+  if (!CACHED_TABLE_SET.has(tableName)) return;
   const rows = tableCache.get(tableName) || [];
   const next = clone(row);
   const index = rows.findIndex((item) => String(item.id) === String(next.id));
@@ -342,6 +351,7 @@ function updateCachedRow(tableName, row) {
 }
 
 function removeCachedRow(tableName, id) {
+  if (!CACHED_TABLE_SET.has(tableName)) return;
   const rows = tableCache.get(tableName) || [];
   const next = rows.filter((item) => String(item.id) !== String(id));
   tableCache.set(tableName, next);
@@ -479,7 +489,7 @@ function queueRefresh(task) {
 // up front and refilling it table by table (seconds on the full data) left
 // other requests meanwhile looking at empty tables — users and roles
 // included, so they failed with "Missing permission" or saw empty lists.
-async function loadCache(database, tables = TABLES) {
+async function loadCache(database, tables = CACHED_TABLES) {
   return queueRefresh(async () => {
     const loaded = [];
     for (const tableName of tables) {
@@ -499,7 +509,7 @@ async function loadCache(database, tables = TABLES) {
 // current data too. A table it hard-DELETEd from, user_roles (no updatedAt)
 // or a write whose table couldn't be told is reloaded in full instead.
 async function refreshAfterTransaction(database, written, since) {
-  const cached = new Set(TABLES);
+  const cached = CACHED_TABLE_SET;
   if (written.unknown) return loadCache(database);
   const full = [...written.tables].filter((table) => cached.has(table) && (written.deletes.has(table) || table === 'user_roles'));
   const partial = [...written.tables].filter((table) => cached.has(table) && !full.includes(table));
