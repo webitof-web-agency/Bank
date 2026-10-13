@@ -9,7 +9,6 @@ import { Modal } from '../../../components/ui/Modal';
 import { ConfirmDialog } from '../../../components/overlays/ConfirmDialog';
 import { Table } from '../../../components/ui/Table';
 import { Select } from '../../../components/ui/Select';
-import { Input } from '../../../components/ui/Input';
 import { useAuth } from '../../../context/AuthContext';
 import { useFY } from '../../../context/FYContext';
 import { uploadDocumentMap } from '../../master/documentUpload';
@@ -279,14 +278,8 @@ export function TransferVoucherPaymentWorkspacePage({ sectionKey, itemKey, detai
         </div>
       </div>
 
-      <Card className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="grid gap-3">
-          <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search voucher, party or narration" />
-        </div>
-      </Card>
-
       <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <Table loading={loading} columns={columns} data={visibleRows} emptyMessage="No transfer voucher payment entries found." />
+        <Table search={search} onSearch={setSearch} searchPlaceholder="Search voucher, party or narration" loading={loading} columns={columns} data={visibleRows} emptyMessage="No transfer voucher payment entries found." />
       </Card>
 
       <Modal open={editorOpen} onClose={closeEditor} title={activeRecord ? 'Edit Transfer Voucher Payment' : 'Create Transfer Voucher Payment'} footer={<div className="flex w-full justify-end gap-3">

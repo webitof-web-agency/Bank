@@ -10,7 +10,6 @@ import { Modal } from '../../../components/ui/Modal';
 import { ConfirmDialog } from '../../../components/overlays/ConfirmDialog';
 import { Table } from '../../../components/ui/Table';
 import { Select } from '../../../components/ui/Select';
-import { Input } from '../../../components/ui/Input';
 import { useAuth } from '../../../context/AuthContext';
 import { useFY } from '../../../context/FYContext';
 import { uploadDocumentMap } from '../../master/documentUpload';
@@ -284,14 +283,8 @@ export function TransferVoucherTransactionWorkspacePage({ sectionKey, itemKey, d
         </div>
       </div>
 
-      <Card className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="grid gap-3">
-          <Input value={list.search} onChange={(event) => list.setSearch(event.target.value)} placeholder="Search voucher, member or narration" />
-        </div>
-      </Card>
-
       <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <Table columns={columns} data={visibleRows} serverPagination={list.serverPagination} emptyMessage="No transfer voucher entries found." />
+        <Table search={list.search} onSearch={list.setSearch} searchPlaceholder="Search voucher, member or narration" columns={columns} data={visibleRows} serverPagination={list.serverPagination} emptyMessage="No transfer voucher entries found." />
       </Card>
 
       <Modal open={editorOpen} onClose={closeEditor} title={`${activeRecord ? 'Edit' : 'Create'} ${transactionLabel}`} footer={<div className="flex w-full justify-end gap-3">
