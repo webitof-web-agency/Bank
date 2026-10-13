@@ -85,7 +85,10 @@ class GoogleDriveStorageProvider {
     try {
       const client = await connection.getClient();
       return await client.download(locator.storageKey);
-    } catch (_error) {
+    } catch (error) {
+      // Logged: otherwise a broken Drive connection (e.g. a changed
+      // SETTINGS_ENCRYPTION_KEY) only shows up as "file not found".
+      console.error(`[gdrive] could not read file ${locator.storageKey}: ${error.message}`);
       return null;
     }
   }

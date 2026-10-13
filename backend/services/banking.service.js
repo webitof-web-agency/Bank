@@ -5112,7 +5112,9 @@ async function getSingle(resource) {
     throw error;
   }
   const record = await def.model.findOne(def.uniqueQuery || { key: 'default' }).lean();
-  return record ? toResponse(record) : null;
+  // sanitizeSingletonResponse re-signs the society logo/watermark links;
+  // the stored ones carry a file token that expired 2h after upload.
+  return record ? sanitizeSingletonResponse(resource, record) : null;
 }
 
 // ---------------------------------------------------------------------------
