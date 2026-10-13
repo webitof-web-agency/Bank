@@ -92,17 +92,6 @@ export function LedgerForm({ value, setValue, onSubmit, isEdit = false }) {
         <label className="flex items-center gap-2 rounded-[var(--radius-input,0.75rem)] border border-slate-200 bg-slate-50 px-4 py-3 text-[13px] font-medium text-slate-700">
           <input
             type="checkbox"
-            checked={Boolean(value.isBankAccount)}
-            onChange={(event) => setValue((current) => ({ ...current, isBankAccount: event.target.checked }))}
-            className="h-4 w-4 rounded border-slate-300 focus:ring-2 focus:ring-[color-mix(in_srgb,var(--primary)_20%,transparent)]"
-            style={{ accentColor: 'var(--primary, #1661F6)' }}
-          />
-          Is Bank Account
-        </label>
-
-        <label className="flex items-center gap-2 rounded-[var(--radius-input,0.75rem)] border border-slate-200 bg-slate-50 px-4 py-3 text-[13px] font-medium text-slate-700">
-          <input
-            type="checkbox"
             checked={Boolean(value.isActive)}
             onChange={(event) => setValue((current) => ({ ...current, isActive: event.target.checked }))}
             className="h-4 w-4 rounded border-slate-300 focus:ring-2 focus:ring-[color-mix(in_srgb,var(--primary)_20%,transparent)]"
