@@ -49,3 +49,13 @@ export function CashTotalsFooter({ formatMoney, totalIncome, totalExpenses, open
     </div>
   );
 }
+
+// The sign-off line at the end of a report: the roles spread evenly, with
+// the same space at both edges and between names.
+export function SignatureRow({ roles = ['Computer Clerk', 'Manager'] }) {
+  return (
+    <div className="mt-14 flex justify-evenly text-[12px] font-bold">
+      {roles.map((role) => <span key={role}>{role}</span>)}
+    </div>
+  );
+}

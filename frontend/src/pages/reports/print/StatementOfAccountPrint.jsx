@@ -1,4 +1,5 @@
 import { PrintShell, PrintLetterhead } from './PrintShell';
+import { SignatureRow } from './LegacyBookParts';
 import { formatMoney, formatDMY, hasAmount, table, th } from './printStyles';
 
 // Compact rows (this register runs to thousands of lines): tighter padding and
@@ -95,11 +96,7 @@ export function StatementOfAccountPrint({ data, filters, headerActions }) {
         </table>
       </div>
 
-      <div className="mt-14 flex justify-between text-[12px] font-bold">
-        <span>Signature</span>
-        <span>Computer Clerk</span>
-        <span>Manager</span>
-      </div>
+      <SignatureRow />
     </PrintShell>
   );
 }

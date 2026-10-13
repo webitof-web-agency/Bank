@@ -1,4 +1,5 @@
 import { PrintShell, PrintLetterhead } from './PrintShell';
+import { SignatureRow } from './LegacyBookParts';
 import { formatMoney, hasAmount, table, th, td, tdText } from './printStyles';
 
 export function TwoColumnBalancePrint({
@@ -68,12 +69,7 @@ export function TwoColumnBalancePrint({
       {footerExtra}
 
       {showSignatures ? (
-        <div className="mt-14 flex justify-between text-[12px] font-bold">
-          <span>Signature</span>
-          <span>Computer Clerk</span>
-          <span>Manager</span>
-          <span>Chairman</span>
-        </div>
+        <SignatureRow roles={['Computer Clerk', 'Manager', 'Chairman']} />
       ) : null}
     </PrintShell>
   );

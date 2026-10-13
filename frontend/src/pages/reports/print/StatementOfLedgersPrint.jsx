@@ -1,4 +1,5 @@
 import { PrintShell, PrintLetterhead } from './PrintShell';
+import { SignatureRow } from './LegacyBookParts';
 import { formatMoney, formatDMY, table, th, td, tdText } from './printStyles';
 
 // Legacy prints the groups in this order (all of them when its Group field is
@@ -97,11 +98,7 @@ export function StatementOfLedgersPrint({ data, filters, headerActions }) {
         </table>
       </div>
 
-      <div className="mt-14 flex justify-around text-[12px] font-bold">
-        <span>Signature</span>
-        <span>Computer Clerk</span>
-        <span>Manager</span>
-      </div>
+      <SignatureRow />
     </PrintShell>
   );
 }

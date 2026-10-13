@@ -1,4 +1,5 @@
 import { PrintShell, PrintLetterhead } from './PrintShell';
+import { SignatureRow } from './LegacyBookParts';
 import { formatMoney, formatDMY, hasAmount, thTight as th, tdTight as td, tdTextTight as tdText } from './printStyles';
 
 function sumField(rows, group, field) {
@@ -126,11 +127,7 @@ export function EmployeeLedgerPrint({ data, filters, headerActions }) {
 
       <p className="mt-1 text-[9px] font-semibold">Intrst : = Interest</p>
 
-      <div className="mt-14 flex justify-between text-[12px] font-bold">
-        <span>Signature</span>
-        <span>Computer Clerk</span>
-        <span>Manager</span>
-      </div>
+      <SignatureRow />
     </PrintShell>
   );
 }

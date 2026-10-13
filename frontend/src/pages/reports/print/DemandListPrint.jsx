@@ -1,4 +1,5 @@
 import { PrintShell, PrintLetterhead } from './PrintShell';
+import { SignatureRow } from './LegacyBookParts';
 import { formatMoney, hasAmount, th, td, tdText, tdCenter, table } from './printStyles';
 
 // Amount cells: one line, never spilling over the cell border.
@@ -108,11 +109,7 @@ export function DemandListPrint({ data, filters, branches = [], headerActions })
       </table>
       </div>
 
-      <div className="mt-14 flex justify-between text-[12px] font-bold">
-        <span>Signature</span>
-        <span>Computer Clerk</span>
-        <span>Manager</span>
-      </div>
+      <SignatureRow />
     </PrintShell>
   );
 }
