@@ -164,7 +164,8 @@ export function FinancialYearClosingPage() {
       </div>
 
       <Card className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <Table columns={yearColumns} data={(years?.years || []).map((y) => ({ ...y, id: y.fy }))} emptyMessage="Loading..." defaultRowsPerPage={20} />
+        {/* Newest year first; 10 a page (one of the rows picker's sizes). */}
+        <Table columns={yearColumns} data={[...(years?.years || [])].sort((a, b) => b.fy.localeCompare(a.fy)).map((y) => ({ ...y, id: y.fy }))} emptyMessage="Loading..." defaultRowsPerPage={10} />
       </Card>
 
       {year && year.source === 'app' && year.status === 'CLOSED' ? (
