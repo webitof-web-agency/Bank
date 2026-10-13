@@ -158,6 +158,22 @@ function PopoverDropdown({ item, onNavigate, pathname, activeSub, setActiveSub }
   );
 }
 
+// Desktop width (Tailwind lg). Only there does a closed sidebar become the
+// icon rail with hover flyouts; below it a closed sidebar is just hidden.
+const DESKTOP_QUERY = '(min-width: 1024px)';
+
+function useIsDesktop() {
+  const [isDesktop, setIsDesktop] = useState(() => typeof window !== 'undefined' && window.matchMedia(DESKTOP_QUERY).matches);
+  useEffect(() => {
+    const media = window.matchMedia(DESKTOP_QUERY);
+    const update = () => setIsDesktop(media.matches);
+    update();
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
+  return isDesktop;
+}
+
 function isItemActive(pathname, item) {
   if (isPathActive(pathname, item.path)) return true;
   if (item.children) {
@@ -281,6 +297,11 @@ export function Sidebar({ open = false, onClose, onToggleCollapse }) {
   const { user, branding, hasPermission: checkAuthPermission } = useAuth();
   const { pathname } = useLocation();
   const [expandedGroups, setExpandedGroups] = useState({});
+  const isDesktop = useIsDesktop();
+  // Menu items render as the full list unless this is the desktop icon rail:
+  // on a phone/tablet the drawer closing (e.g. after tapping a link) must not
+  // switch its items to rail mode and pop a flyout open while it slides away.
+  const itemsOpen = open || !isDesktop;
   const society = useSociety();
   // Uploaded sidebar branding wins; otherwise fall back to the society logo.
   const expandedLogo = branding?.sidebarExpandedUrl || branding?.logoUrl || society.logoUrl;
@@ -373,7 +394,7 @@ export function Sidebar({ open = false, onClose, onToggleCollapse }) {
                     <SidebarDropdown
                       key={item.label}
                       item={item}
-                      open={open}
+                      open={itemsOpen}
                       pathname={pathname}
                       expanded={expandedGroups[item.label]}
                       onToggle={(next) => setExpandedGroups(next ? { [item.label]: true } : {})}
@@ -383,7 +404,7 @@ export function Sidebar({ open = false, onClose, onToggleCollapse }) {
                     <SidebarLink
                       key={item.path}
                       item={item}
-                      open={open}
+                      open={itemsOpen}
                       onNavigate={() => { if (window.innerWidth < 1024) onClose(); }}
                     />
                   )
