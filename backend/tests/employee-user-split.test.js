@@ -74,6 +74,20 @@ test('Employee/User split: create/update/delete/restore via RESOURCE_DEFS.employ
     assert.strictEqual(Number(employeeRow.basicSalary), 30000);
   });
 
+  await t.test('update keeps the rest of the Employee payload (legacy row)', async () => {
+    const employee = await Employee.findOne({ code: created.employeeCode });
+    employee.set({ payload: { raw: { AccID: '9999' } } });
+    await employee.save();
+
+    await updateResource('employees', created.id, {
+      payload: { fatherOrHusbandName: 'Test Husband' }
+    }, { actorUser: { id: 'split-test-actor' } });
+
+    const employeeRow = await Employee.findOne({ code: created.employeeCode }).lean();
+    assert.strictEqual(employeeRow.payload.raw.AccID, '9999');
+    assert.strictEqual(employeeRow.payload.fatherOrHusbandName, 'Test Husband');
+  });
+
   await t.test('delete soft-deletes both the User and its linked Employee', async () => {
     const ok = await deleteResource('employees', created.id, { actorUser: { id: 'split-test-actor' } });
     assert.strictEqual(ok, true);

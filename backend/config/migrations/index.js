@@ -98,6 +98,95 @@ const MIGRATIONS = [
       )).rowCount;
       return { updated };
     }
+  },
+  {
+    // What the 2026-10-13 member fill left out, and the staff. Members: basic
+    // salary and membership date from the legacy row; mobiles copied raw
+    // ("9926158305, 7974479923") become +91 and the first number, as the app
+    // stores them. Staff: an Employees save replaced the employee's payload,
+    // legacy row included (live's three were filled from JilaSahkariDB2627
+    // on 2026-10-14); where the row survives, the HR fields come from it. A
+    // linked login shows its own designation, mobile and address, so those
+    // are filled on it too. Empty fields only.
+    name: '2026-10-14-member-salary-and-staff-details-from-legacy',
+    async run(db) {
+      const result = {};
+      result.memberBasicSalary = (await db.query(`
+        UPDATE members SET "basicSalary" = (payload->'raw'->>'BasicSalary')::numeric, "updatedAt" = now()
+         WHERE "basicSalary" IS NULL
+           AND coalesce(payload->'raw'->>'BasicSalary', '') ~ '^\\d+(\\.\\d+)?$'
+           AND (payload->'raw'->>'BasicSalary')::numeric > 0`)).rowCount;
+      result.memberMembershipDate = (await db.query(`
+        UPDATE members SET "membershipDate" = (payload->'raw'->>'MembershipDate')::timestamptz, "updatedAt" = now()
+         WHERE "membershipDate" IS NULL
+           AND coalesce(payload->'raw'->>'MembershipDate', '') ~ '^\\d{4}-\\d{2}-\\d{2}'
+           AND left(payload->'raw'->>'MembershipDate', 4) > '1900'`)).rowCount;
+      result.memberMobile = (await db.query(`
+        UPDATE members SET "mobileNo" = '+91' || substring(regexp_replace("mobileNo", '\\D', '', 'g') from 1 for 10), "updatedAt" = now()
+         WHERE coalesce("mobileNo", '') <> '' AND left("mobileNo", 1) <> '+'
+           AND length(regexp_replace("mobileNo", '\\D', '', 'g')) >= 10`)).rowCount;
+
+      result.employees = (await db.query(`
+        UPDATE employees e SET
+          "fatherName" = coalesce(nullif(btrim(e."fatherName"), ''), nullif(btrim(r->>'FathersName'), '')),
+          "dateOfBirth" = coalesce(e."dateOfBirth", CASE WHEN left(r->>'DOB', 4) > '1900' THEN (r->>'DOB')::timestamptz END),
+          "appointmentDate" = coalesce(e."appointmentDate", CASE WHEN left(r->>'AppointmentDate', 4) > '1900' THEN (r->>'AppointmentDate')::timestamptz END),
+          address = coalesce(nullif(btrim(e.address), ''), nullif(btrim(r->>'Address'), '')),
+          category = coalesce(nullif(btrim(e.category), ''), CASE upper(regexp_replace(r->>'Category', '[^A-Za-z]', '', 'g'))
+            WHEN 'GEN' THEN 'GENERAL' WHEN 'GENERAL' THEN 'GENERAL'
+            WHEN 'OBC' THEN 'OBC' WHEN 'SC' THEN 'SC' WHEN 'ST' THEN 'ST'
+            ELSE nullif(btrim(r->>'Category'), '') END),
+          caste = coalesce(nullif(btrim(e.caste), ''), nullif(btrim(r->>'Caste'), '')),
+          qualification = coalesce(nullif(btrim(e.qualification), ''), nullif(btrim(r->>'Qualification'), '')),
+          "mobileNo" = coalesce(nullif(btrim(e."mobileNo"), ''), CASE WHEN length(regexp_replace(r->>'MobileNo', '\\D', '', 'g')) >= 10
+            THEN '+91' || substring(regexp_replace(r->>'MobileNo', '\\D', '', 'g') from 1 for 10) END),
+          "basicSalary" = coalesce(e."basicSalary", CASE WHEN (r->>'BasicSalary') ~ '^\\d+(\\.\\d+)?$' AND (r->>'BasicSalary')::numeric > 0
+            THEN (r->>'BasicSalary')::numeric END),
+          designation = coalesce(nullif(btrim(e.designation), ''), nullif(btrim(r->>'Designation'), '')),
+          "updatedAt" = now()
+          FROM (SELECT id, payload->'raw' AS r FROM employees) src
+         WHERE src.id = e.id AND src.r IS NOT NULL AND e."deletedAt" IS NULL`)).rowCount;
+
+      const hasEmployeeCode = (await db.query(
+        "SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'employeeCode'"
+      )).rowCount > 0;
+      if (hasEmployeeCode) {
+        result.employeeLogins = (await db.query(`
+          UPDATE users u SET
+            designation = coalesce(nullif(btrim(u.designation), ''), nullif(btrim(e.designation), '')),
+            "mobileNo" = coalesce(nullif(btrim(u."mobileNo"), ''), nullif(btrim(e."mobileNo"), '')),
+            address = coalesce(nullif(btrim(u.address), ''), nullif(btrim(e.address), '')),
+            "updatedAt" = now()
+          FROM employees e
+         WHERE e.code = u."employeeCode" AND e."deletedAt" IS NULL
+           AND (coalesce(btrim(u.designation), '') = '' OR coalesce(btrim(u."mobileNo"), '') = '' OR coalesce(btrim(u.address), '') = '')`)).rowCount;
+      }
+      return result;
+    }
+  },
+  {
+    name: '2026-10-14-member-edits-after-legacy-backup',
+    async run(db) {
+      // Changed in the old software after the 14-Aug-2026 backups, as its
+      // later printout shows (Template/Reports/all member list.pdf): five
+      // transfers and one name. Only where the row still has the backup value.
+      const laterLegacyEdits = [
+        ['1447', 'branchCode', '55', '60'],
+        ['1671', 'branchCode', '53', '60'],
+        ['847', 'branchCode', '12', '60'],
+        ['1497', 'branchCode', '22', '60'],
+        ['1374', 'branchCode', '73', '3'],
+        ['1095', 'name', 'VISHWA JEET KUSHWAHA', 'VISHWAJEET SINGH']
+      ];
+      let updated = 0;
+      for (const [code, column, from, to] of laterLegacyEdits) {
+        updated += (await db.query(
+          `UPDATE members SET "${column}" = $3, "updatedAt" = now() WHERE code = $1 AND "${column}" = $2 AND "deletedAt" IS NULL`,
+          [code, from, to]
+        )).rowCount;
+      }
+      return { updated };
+    }
   }
 ];
 

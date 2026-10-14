@@ -314,6 +314,12 @@ async function syncLinkedEmployee(existingEmployeeCode, data, desiredCode = null
   if (targetCode) {
     const existing = await Employee.findOne({ code: targetCode });
     if (existing) {
+      // Merge into the row's payload: it also holds the legacy master row
+      // (payload.raw, its AccID links the staff statements).
+      if (hrFields.payload) {
+        const current = typeof existing.payload === 'string' ? JSON.parse(existing.payload || '{}') : (existing.payload || {});
+        hrFields.payload = { ...current, ...hrFields.payload };
+      }
       existing.set(hrFields);
       await existing.save();
       return targetCode;
