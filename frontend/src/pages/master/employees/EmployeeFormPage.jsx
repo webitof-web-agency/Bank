@@ -12,6 +12,7 @@ import {
   prepareEmployeeAvatarFile
 } from './employeeUtils';
 import { uploadDocumentMap } from '../documentUpload';
+import { isValidMobile } from '../../../utils/mobile';
 
 export function EmployeeFormPage() {
   const { id } = useParams();
@@ -99,6 +100,14 @@ export function EmployeeFormPage() {
 
   async function saveEmployee(event) {
     event.preventDefault();
+
+    // Employees log into the member app with mobile + password, so a valid
+    // mobile is required (the password is handled by the login section below).
+    if (!isValidMobile(draft.mobileNo)) {
+      toast.error('Enter a valid 10-digit mobile number');
+      return;
+    }
+
     setSaving(true);
     try {
       const basePayload = {

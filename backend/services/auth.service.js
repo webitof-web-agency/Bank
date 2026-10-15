@@ -2,6 +2,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { randomInt, randomUUID } = require('crypto');
 const { normalizeSocialCategory } = require('../utils/socialCategory');
+const { normalizeMobile, isValidMobile } = require('../utils/mobile');
 const User = require('../models/user.model');
 const Role = require('../models/role.model');
 const { Employee } = require('../models/banking.models');
@@ -247,7 +248,7 @@ function extractEmployeeHrFields(data = {}) {
   // HR record, and reports/lookups sourced from `employees` stay accurate).
   if (data.designation !== undefined) hr.designation = String(data.designation || '').trim();
   if (data.branchCode !== undefined) hr.branchCode = normalizeUpper(data.branchCode);
-  if (data.mobileNo !== undefined) hr.mobileNo = normalizePhone(data.mobileNo);
+  if (data.mobileNo !== undefined) hr.mobileNo = normalizeMobile(data.mobileNo);
   if (data.address !== undefined) hr.address = String(data.address || '').trim();
   if (data.documents !== undefined) hr.documents = data.documents || {};
   if (data.documentsFolderId !== undefined) hr.documentsFolderId = data.documentsFolderId || null;
@@ -358,7 +359,14 @@ function applyStaffFields(user, data = {}) {
   }
 
   if (data.mobileNo !== undefined) {
-    user.mobileNo = normalizePhone(data.mobileNo);
+    // Mobile is the member-app login id for employees too — must stay valid.
+    const nextMobile = normalizeMobile(data.mobileNo);
+    if (!isValidMobile(nextMobile)) {
+      const error = new Error('A valid 10-digit mobile number is required');
+      error.statusCode = 400;
+      throw error;
+    }
+    user.mobileNo = nextMobile;
   }
 
   if (data.status !== undefined) {
@@ -997,6 +1005,15 @@ async function createUser(data = {}) {
     error.statusCode = 400;
     throw error;
   }
+  // Employees log into the member app with their mobile + password, so a valid
+  // mobile is mandatory (normalized to the canonical 10-digit form).
+  const mobileNo = normalizeMobile(data.mobileNo);
+  if (!isValidMobile(mobileNo)) {
+    const error = new Error('A valid 10-digit mobile number is required');
+    error.statusCode = 400;
+    throw error;
+  }
+  data = { ...data, mobileNo };
 
   const roleIds = await stripHiddenRoleIds(Array.isArray(data.roleIds) ? data.roleIds : []);
   const passwordHash = await hashPassword(password);
@@ -1015,7 +1032,7 @@ async function createUser(data = {}) {
     email,
     passwordHash,
 
-    mobileNo: data.mobileNo !== undefined ? normalizePhone(data.mobileNo) : undefined,
+    mobileNo: data.mobileNo,
     address: String(data.address || '').trim(),
     gender: String(data.gender || '').trim(),
     designation: String(data.designation || '').trim(),

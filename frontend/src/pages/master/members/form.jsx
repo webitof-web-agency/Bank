@@ -7,7 +7,7 @@ import { normalizeSocialCategory, socialCategoryOptions } from '../../../lib/soc
 import { UserAvatar } from '../../../components/ui/UserAvatar';
 import { DocumentSection } from '../../../components/master/DocumentSection';
 import { MEMBER_DOCUMENT_DEFS } from '../../../components/master/documentUtils';
-import { formatBranchLabel, stripPhoneDigits } from './memberUtils';
+import { formatBranchLabel, toPhoneInputValue } from './memberUtils';
 
 const BALANCE_FIELDS = [
   { name: 'openingBalance', label: 'Opening Balance' },
@@ -197,7 +197,7 @@ export function MemberForm({
             <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5">
             <div className="space-y-1.5">
               <label className="text-[13px] font-semibold text-slate-700">Member Name <span className="text-rose-500">*</span></label>
               <Input placeholder="e.g. John Doe" value={value.name || ''} onChange={(e) => setValue({ ...value, name: e.target.value })} />
@@ -214,14 +214,14 @@ export function MemberForm({
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-[13px] font-semibold text-slate-700">Mobile No</label>
+              <label className="text-[13px] font-semibold text-slate-700">Mobile No <span className="text-rose-500">*</span></label>
               <PhoneInput
                 country="in"
                 preferredCountries={['in']}
                 enableSearch
                 countryCodeEditable={false}
                 placeholder="9876543210"
-                value={stripPhoneDigits(value.mobileNo || '')}
+                value={toPhoneInputValue(value.mobileNo)}
                 onChange={(nextValue) => setValue({ ...value, mobileNo: nextValue ? `+${nextValue}` : '' })}
                 containerClass="employee-phone-input"
                 inputClass="!h-[42px] !w-full !rounded-[var(--radius-input,0.75rem)] !border-slate-200 focus:!border-[var(--primary)] focus:!ring-1 focus:!ring-[var(--primary)]"
@@ -253,6 +253,24 @@ export function MemberForm({
             </div>
 
             <div className="space-y-1.5 md:col-span-2">
+              <label className="text-[13px] font-semibold text-slate-700">
+                Login Password {isEdit ? null : <span className="text-rose-500">*</span>}
+              </label>
+              <Input
+                type="password"
+                autoComplete="new-password"
+                name="memberPassword"
+                placeholder={isEdit ? (value.hasPassword ? 'Leave blank to keep current password' : 'Set a login password') : 'Member logs in with this'}
+                value={value.password || ''}
+                onChange={(e) => setValue({ ...value, password: e.target.value })}
+              />
+              <p className="text-[11px] text-slate-500">
+                The member signs in to the app with their mobile number and this password.
+                {isEdit ? ' Leave blank to keep the existing one.' : ''}
+              </p>
+            </div>
+
+            <div className="space-y-1.5 md:col-span-3">
               <label className="text-[13px] font-semibold text-slate-700">Residential Address</label>
               <Textarea rows={3} placeholder="Full address..." value={value.address || ''} onChange={(e) => setValue({ ...value, address: e.target.value })} />
             </div>
@@ -260,22 +278,23 @@ export function MemberForm({
         </div>
 
         {/* TAB: MEMBERSHIP */}
-        <div className={activeTab === 'membership' ? 'block space-y-3' : 'hidden'}>
+        <div className={activeTab === 'membership' ? 'block space-y-6' : 'hidden'}>
           <div>
             <h3 className="text-lg font-bold text-slate-900">Membership Details</h3>
-            <p className="text-[13px] text-slate-500 mt-1">Branch assignment and membership status.</p>
+            <p className="text-[13px] text-slate-500 mt-1">Branch assignment, identifiers, service profile, and status.</p>
           </div>
 
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {/* Section 1: Core 3x3 Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5">
+            {/* Row 1: Identification & Branch */}
             <div className="space-y-1.5">
               <label className="text-[13px] font-semibold text-slate-700">Member Code</label>
-              <Input placeholder="Auto-generated" value={value.code || ''} disabled className="font-mono uppercase tracking-wider" />
+              <Input placeholder="Auto-generated" value={value.code || ''} disabled className="font-mono uppercase tracking-wider bg-slate-50 text-slate-600" />
             </div>
 
             <div className="space-y-1.5">
               <label className="text-[13px] font-semibold text-slate-700">Membership No</label>
-              <Input placeholder="Auto-generated" value={value.membershipNo || ''} disabled className="font-mono tracking-wider" />
+              <Input placeholder="Auto-generated" value={value.membershipNo || ''} disabled className="font-mono tracking-wider bg-slate-50 text-slate-600" />
             </div>
 
             <div className="space-y-1.5">
@@ -290,34 +309,15 @@ export function MemberForm({
               />
             </div>
 
+            {/* Row 2: Service & Status Profile */}
             <div className="space-y-1.5">
               <label className="text-[13px] font-semibold text-slate-700">Occupation / Designation</label>
-              <Input value={value.designation || ''} onChange={(e) => setValue({ ...value, designation: e.target.value })} />
+              <Input placeholder="e.g. Clerk, Branch Manager" value={value.designation || ''} onChange={(e) => setValue({ ...value, designation: e.target.value })} />
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-[13px] font-semibold text-slate-700">Membership Date</label>
-              <Input type="date" value={value.membershipDate || ''} onChange={(e) => setValue({ ...value, membershipDate: e.target.value })} />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-[13px] font-semibold text-slate-700">Opening Date</label>
-              <Input type="date" value={value.openingDate || ''} onChange={(e) => setValue({ ...value, openingDate: e.target.value })} />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-[13px] font-semibold text-slate-700">Appointment Date</label>
-              <Input type="date" value={value.appointmentDate || ''} onChange={(e) => setValue({ ...value, appointmentDate: e.target.value })} />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-[13px] font-semibold text-slate-700">Surety 1</label>
-              <Input value={value.serviceName1 || ''} onChange={(e) => setValue({ ...value, serviceName1: e.target.value })} />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-[13px] font-semibold text-slate-700">Surety 2</label>
-              <Input value={value.serviceName2 || ''} onChange={(e) => setValue({ ...value, serviceName2: e.target.value })} />
+              <label className="text-[13px] font-semibold text-slate-700">PF Number</label>
+              <Input placeholder="e.g. PF-1001" value={value.pfNo || ''} onChange={(e) => setValue({ ...value, pfNo: e.target.value })} />
             </div>
 
             <div className="space-y-1.5">
@@ -332,25 +332,61 @@ export function MemberForm({
                 ]}
               />
             </div>
+
+            {/* Row 3: Key Dates */}
+            <div className="space-y-1.5">
+              <label className="text-[13px] font-semibold text-slate-700">Membership Date</label>
+              <Input type="date" value={value.membershipDate || ''} onChange={(e) => setValue({ ...value, membershipDate: e.target.value })} />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[13px] font-semibold text-slate-700">Opening Date</label>
+              <Input type="date" value={value.openingDate || ''} onChange={(e) => setValue({ ...value, openingDate: e.target.value })} />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[13px] font-semibold text-slate-700">Appointment Date</label>
+              <Input type="date" value={value.appointmentDate || ''} onChange={(e) => setValue({ ...value, appointmentDate: e.target.value })} />
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div className="space-y-1.5">
-              <label className="text-[13px] font-semibold text-slate-700">Dismembered</label>
-              <label className="flex items-center gap-2 rounded-[var(--radius-input,0.75rem)] border border-slate-200 bg-white px-4 py-3 text-[13px] font-medium text-slate-700">
+          {/* Section 2: Sureties (Balanced 2-Column Grid) */}
+          <div className="space-y-2">
+            <h4 className="text-[13px] font-semibold text-slate-700">Sureties / Guarantors</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
+              <div className="space-y-1.5">
+                <Input placeholder="Enter primary surety name (Surety 1)" value={value.serviceName1 || ''} onChange={(e) => setValue({ ...value, serviceName1: e.target.value })} />
+              </div>
+              <div className="space-y-1.5">
+                <Input placeholder="Enter secondary surety name (Surety 2)" value={value.serviceName2 || ''} onChange={(e) => setValue({ ...value, serviceName2: e.target.value })} />
+              </div>
+            </div>
+          </div>
+
+          {/* Section 3: Dismemberment Status Panel */}
+          <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 sm:p-5 transition-all">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <h4 className="text-[14px] font-semibold text-slate-900">Dismemberment Status</h4>
+                <p className="text-[12px] text-slate-500 mt-0.5">Flag member if they have been dismembered or removed from the society.</p>
+              </div>
+              <label className="inline-flex items-center gap-2.5 cursor-pointer bg-white px-4 py-2.5 rounded-xl border border-slate-200 shadow-sm hover:border-slate-300 transition select-none">
                 <input
                   type="checkbox"
                   checked={Boolean(value.dismembered)}
                   onChange={(e) => setValue({ ...value, dismembered: e.target.checked })}
                   className="h-4 w-4 rounded border-slate-300 accent-[var(--primary)]"
                 />
-                Mark as dismembered
+                <span className="text-[13px] font-medium text-slate-700">Mark as Dismembered</span>
               </label>
             </div>
-            <div className="space-y-1.5">
-              <label className="text-[13px] font-semibold text-slate-700">Dismembered Date</label>
-              <Input type="date" value={value.dismemberedDate || ''} onChange={(e) => setValue({ ...value, dismemberedDate: e.target.value })} />
-            </div>
+
+            {value.dismembered && (
+              <div className="mt-4 pt-4 border-t border-slate-200/80 max-w-sm space-y-1.5">
+                <label className="text-[13px] font-semibold text-slate-700">Dismembered Date <span className="text-rose-500">*</span></label>
+                <Input type="date" value={value.dismemberedDate || ''} onChange={(e) => setValue({ ...value, dismemberedDate: e.target.value })} />
+              </div>
+            )}
           </div>
         </div>
 
@@ -424,10 +460,10 @@ export function MemberForm({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
             <div className="space-y-1.5">
               <label className="text-[13px] font-semibold text-slate-700">Nominee Name</label>
-              <Input value={value.nomineeName || ''} onChange={(e) => setValue({ ...value, nomineeName: e.target.value })} />
+              <Input placeholder="Full name of nominee" value={value.nomineeName || ''} onChange={(e) => setValue({ ...value, nomineeName: e.target.value })} />
             </div>
             <div className="space-y-1.5">
               <label className="text-[13px] font-semibold text-slate-700">Nominee Relation</label>
@@ -442,7 +478,7 @@ export function MemberForm({
                 ]}
               />
             </div>
-        </div>
+          </div>
 
       </div>
 

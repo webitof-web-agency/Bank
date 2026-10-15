@@ -2,6 +2,11 @@
 // (config/postgres.js initializeDatabase). Each runs once per database: its
 // name is recorded in app_migrations. A migration only fills in data; it
 // never overwrites a value someone has entered.
+const rateHistory = require('../../utils/rateHistory');
+const dividendRates = require('../../utils/dividendRates');
+const bcrypt = require('bcryptjs');
+const { normalizeMobile, isValidMobile } = require('../../utils/mobile');
+
 const MIGRATIONS = [
   {
     // The legacy import kept each member's master row in payload.raw but
@@ -186,6 +191,55 @@ const MIGRATIONS = [
         )).rowCount;
       }
       return { updated };
+    }
+  },
+  {
+    // The dividend moved out of the dated interest rates into one declared
+    // rate per FY (utils/dividendRates.js). Fill in the FYs whose dividend has
+    // already been declared, from the rate history the legacy MstRateList was
+    // loaded into: every FY from 2021-22 (the first legacy FY database) up to
+    // the one two years before today's, since an FY's dividend is declared
+    // when the next FY closes. Later FYs are left for the society to declare.
+    name: '2026-10-14-dividend-rate-per-fy',
+    async run(db) {
+      const { rows } = await db.query("SELECT payload FROM settings WHERE key = 'default'");
+      const ratesConfig = rows[0]?.payload?.ratesConfig;
+      if (!ratesConfig || Array.isArray(ratesConfig.dividendByFy)) return { seeded: 0 };
+      const history = rateHistory.normalizeRateHistory(ratesConfig.interestRateHistory, ratesConfig.interestRates || {});
+      const lastStart = Number(dividendRates.fyOfDate(rateHistory.todayIso()).slice(0, 4)) - 2;
+      const dividendByFy = [];
+      for (let start = 2021; start <= lastStart; start += 1) {
+        const fy = `${start}-${String((start + 1) % 100).padStart(2, '0')}`;
+        dividendByFy.push({ fy, rate: rateHistory.rateAsOf(history, 'paid', 'dividend', dividendRates.fyEndDate(fy)), note: 'From the old software', updatedAt: new Date().toISOString() });
+      }
+      await db.query(
+        `UPDATE settings SET payload = jsonb_set(payload, '{ratesConfig,dividendByFy}', $1::jsonb), "updatedAt" = now() WHERE key = 'default'`,
+        [JSON.stringify(dividendByFy)]
+      );
+      return { seeded: dividendByFy.length, rates: Object.fromEntries(dividendByFy.map((entry) => [entry.fy, entry.rate])) };
+    }
+  },
+  {
+    // Members sign in to the mobile app with mobile + password, and none had
+    // a password yet. Start each one's password as their own 10-digit mobile
+    // number (stored only as a bcrypt hash); a member without a valid mobile
+    // can't sign in and is left as is. Cost 10, not the login default, so
+    // ~750 hashes finish in about a minute at startup.
+    name: '2026-10-15-member-app-password-is-mobile',
+    async run(db) {
+      const { rows } = await db.query(
+        `SELECT id, "mobileNo" FROM members WHERE "deletedAt" IS NULL AND coalesce("passwordHash", '') = ''`
+      );
+      let set = 0;
+      let noMobile = 0;
+      for (const row of rows) {
+        const mobile = normalizeMobile(row.mobileNo);
+        if (!isValidMobile(mobile)) { noMobile += 1; continue; }
+        const hash = await bcrypt.hash(mobile, 10);
+        await db.query('UPDATE members SET "passwordHash" = $1, "updatedAt" = now() WHERE id = $2', [hash, row.id]);
+        set += 1;
+      }
+      return { set, noMobile };
     }
   }
 ];

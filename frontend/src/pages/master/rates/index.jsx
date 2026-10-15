@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CircleDollarSign, History, Percent, RotateCcw, Save, ShieldCheck, SlidersHorizontal, Sparkles, Trash2 } from 'lucide-react';
+import { CircleDollarSign, History, Landmark, Pencil, Percent, RotateCcw, Save, ShieldCheck, SlidersHorizontal, Sparkles, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../api/api';
 import { useAuth } from '../../../context/AuthContext';
@@ -88,6 +88,24 @@ function formatDate(iso) {
   return `${day}-${month}-${year}`;
 }
 
+// '2026-10-14' -> '2026-27'.
+function fyOfDate(iso) {
+  const year = Number(iso.slice(0, 4));
+  const start = Number(iso.slice(5, 7)) >= 4 ? year : year - 1;
+  return `${start}-${String((start + 1) % 100).padStart(2, '0')}`;
+}
+
+// Every FY since the first legacy year (2021-22) up to the current one,
+// newest first. A dividend is declared a year late, so the default is last FY.
+function dividendFyOptions(today) {
+  const current = Number(fyOfDate(today).slice(0, 4));
+  const options = [];
+  for (let start = current; start >= 2021; start -= 1) {
+    options.push(`${start}-${String((start + 1) % 100).padStart(2, '0')}`);
+  }
+  return options;
+}
+
 // Only the interest heads the user actually edited, so a dated change does not
 // also stamp today's values for every other head onto that date.
 function changedInterestRates(draftRates = {}, initialRates = {}) {
@@ -103,7 +121,7 @@ function changedInterestRates(draftRates = {}, initialRates = {}) {
 }
 
 const RATE_HEAD_LABELS = {
-  paid: { compulsoryDeposit: 'Compulsory Deposit', specialSaving: 'Special Saving', cashCredit: 'Cash Credit', dividend: 'Dividend' },
+  paid: { compulsoryDeposit: 'Compulsory Deposit', specialSaving: 'Special Saving', cashCredit: 'Cash Credit' },
   receive: { loan: 'Loan', loanAgainstDeposit: 'Loan Against Deposit', houseLoanStaff: 'House Loan (Staff)', vehicleLoanStaff: 'Vehicle Loan (Staff)' }
 };
 
@@ -168,6 +186,7 @@ export function RatesPage() {
   const [effectiveFrom, setEffectiveFrom] = useState(todayIso);
   const [correctOpening, setCorrectOpening] = useState(false);
   const [rateNote, setRateNote] = useState('');
+  const [dividendForm, setDividendForm] = useState(() => ({ fy: dividendFyOptions(todayIso())[1], rate: '', note: '' }));
 
   const canManage = hasPermission('rates.write');
 
@@ -257,6 +276,34 @@ export function RatesPage() {
     await sendUpdate({ removeRatePeriod: period.effectiveFrom }, 'Rate period removed');
   }
 
+  const dividendByFy = draft.dividendByFy || [];
+  const fyOptions = dividendFyOptions(today);
+
+  function pickDividendFy(fy) {
+    const declared = dividendByFy.find((entry) => entry.fy === fy);
+    setDividendForm({ fy, rate: declared ? String(declared.rate) : '', note: declared?.note || '' });
+  }
+
+  async function saveDividend(event) {
+    event.preventDefault();
+    if (!canManage || saving) return;
+    if (dividendForm.rate === '' || !Number.isFinite(Number(dividendForm.rate))) {
+      toast.error('Enter the dividend rate');
+      return;
+    }
+    await sendUpdate(
+      { dividend: { fy: dividendForm.fy, rate: Number(dividendForm.rate), note: dividendForm.note } },
+      `Dividend for FY ${dividendForm.fy} saved`
+    );
+  }
+
+  async function removeDividend(entry) {
+    if (!canManage || saving) return;
+    if (!window.confirm(`Remove the dividend declared for FY ${entry.fy}? Its Dividend Report will need a rate again.`)) return;
+    const removed = await sendUpdate({ removeDividendFy: entry.fy }, `Dividend for FY ${entry.fy} removed`);
+    if (removed && dividendForm.fy === entry.fy) setDividendForm((current) => ({ ...current, rate: '', note: '' }));
+  }
+
   function handleReset() {
     setDraft(clone(initial));
     setRateNote('');
@@ -273,8 +320,7 @@ export function RatesPage() {
   const paidInterestFields = [
     { label: 'Compulsory Deposit', path: ['interestRates', 'paid', 'compulsoryDeposit'] },
     { label: 'Special Saving A/c', path: ['interestRates', 'paid', 'specialSaving'] },
-    { label: 'Cash Credit A/c', path: ['interestRates', 'paid', 'cashCredit'] },
-    { label: 'Dividend', path: ['interestRates', 'paid', 'dividend'] }
+    { label: 'Cash Credit A/c', path: ['interestRates', 'paid', 'cashCredit'] }
   ];
 
   const receiveInterestFields = [
@@ -346,6 +392,18 @@ export function RatesPage() {
             >
               <Sparkles size={20} className={activeTab === 'demand' ? 'text-[var(--primary,#2563eb)]' : 'text-slate-700 group-hover:text-[var(--primary,#2563eb)]'} />
               Demand List Amount
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('dividend')}
+              className={`group flex shrink-0 items-center gap-3 rounded-[var(--radius-button,1rem)] px-4 py-3 text-[15px] font-medium transition-colors ${
+                activeTab === 'dividend'
+                  ? 'bg-[var(--brand-sidebar-active,#e0e7ff)] text-[var(--primary,#2563eb)]'
+                  : 'text-slate-700 hover:bg-[color-mix(in_srgb,var(--primary)_8%,transparent)] hover:text-[var(--primary,#2563eb)]'
+              }`}
+            >
+              <Landmark size={20} className={activeTab === 'dividend' ? 'text-[var(--primary,#2563eb)]' : 'text-slate-700 group-hover:text-[var(--primary,#2563eb)]'} />
+              Dividend
             </button>
           </div>
 
@@ -480,6 +538,106 @@ export function RatesPage() {
               </Card>
             )}
 
+            {activeTab === 'dividend' && (
+              <Card className="animate-in fade-in slide-in-from-bottom-2 duration-300 rounded-[1.75rem] border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+                <div className="mb-6 flex items-center justify-between gap-4">
+                  <div>
+                    <h2 className="text-xl font-semibold tracking-tight text-slate-900">Dividend</h2>
+                    <p className="mt-1 text-sm text-slate-500">
+                      The dividend declared for each financial year. It is usually decided when the next year closes;
+                      the Dividend Report for a year uses that year&apos;s rate. Can be set or corrected at any time.
+                    </p>
+                  </div>
+                  <div className="rounded-full bg-emerald-50 p-3 text-emerald-600 hidden sm:block">
+                    <Landmark size={18} />
+                  </div>
+                </div>
+
+                <div className="space-y-6">
+                  {canManage && (
+                    <form onSubmit={saveDividend} className="rounded-2xl border border-slate-200 bg-slate-50/50 p-5">
+                      <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.5fr)]">
+                        <label className="space-y-1.5">
+                          <span className="text-sm font-medium text-slate-800">Financial year</span>
+                          <select
+                            value={dividendForm.fy}
+                            onChange={(event) => pickDividendFy(event.target.value)}
+                            disabled={saving}
+                            className="h-[42px] w-full rounded-[var(--radius-input,0.75rem)] border border-slate-200 bg-white px-3 text-sm text-slate-900 focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
+                          >
+                            {fyOptions.map((fy) => (
+                              <option key={fy} value={fy}>
+                                {fy}{dividendByFy.some((entry) => entry.fy === fy) ? '' : ' (not declared)'}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="space-y-1.5">
+                          <span className="text-sm font-medium text-slate-800">Dividend (%)</span>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            max="100"
+                            value={dividendForm.rate}
+                            onChange={(event) => setDividendForm((current) => ({ ...current, rate: event.target.value }))}
+                            disabled={saving}
+                            placeholder="e.g. 10"
+                            className="bg-white text-right"
+                          />
+                        </label>
+                        <label className="space-y-1.5">
+                          <span className="text-sm font-medium text-slate-800">Note (optional)</span>
+                          <Input
+                            type="text"
+                            value={dividendForm.note}
+                            onChange={(event) => setDividendForm((current) => ({ ...current, note: event.target.value }))}
+                            disabled={saving}
+                            placeholder="e.g. AGM resolution 2027"
+                            className="bg-white"
+                          />
+                        </label>
+                      </div>
+                      <div className="mt-4 flex justify-end">
+                        <Button type="submit" disabled={saving} className="gap-2">
+                          <Save size={16} />
+                          Save dividend
+                        </Button>
+                      </div>
+                    </form>
+                  )}
+
+                  <SectionHeader>Declared dividends</SectionHeader>
+                  {dividendByFy.length ? (
+                    <div className="divide-y divide-slate-100">
+                      {[...dividendByFy].reverse().map((entry) => (
+                        <div key={entry.fy} className="flex items-center justify-between gap-4 py-3">
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-slate-900">FY {entry.fy}: {entry.rate}%</p>
+                            {entry.note && <p className="mt-0.5 text-xs text-slate-500">{entry.note}</p>}
+                          </div>
+                          {canManage && (
+                            <div className="flex shrink-0 gap-2">
+                              <Button type="button" variant="outline" className="gap-1.5" disabled={saving} onClick={() => pickDividendFy(entry.fy)}>
+                                <Pencil size={14} />
+                                Edit
+                              </Button>
+                              <Button type="button" variant="outline" className="gap-1.5 text-rose-600 hover:bg-rose-50" disabled={saving} onClick={() => removeDividend(entry)}>
+                                <Trash2 size={14} />
+                                Remove
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-slate-500">No dividend declared yet.</p>
+                  )}
+                </div>
+              </Card>
+            )}
+
             {activeTab === 'limits' && (
               <Card className="animate-in fade-in slide-in-from-bottom-2 duration-300 rounded-[1.75rem] border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
                 <div className="mb-6 flex items-center justify-between gap-4">
@@ -609,6 +767,7 @@ export function RatesPage() {
         </div>
       )}
 
+      {activeTab !== 'dividend' && (
       <div className="flex justify-end gap-3 pt-2">
         <Button variant="outline" type="button" onClick={handleReset} disabled={!dirty || saving || !canManage} className="gap-2">
           <RotateCcw size={16} />
@@ -619,6 +778,7 @@ export function RatesPage() {
           {saving ? 'Saving...' : 'Save'}
         </Button>
       </div>
+      )}
     </div>
   );
 }

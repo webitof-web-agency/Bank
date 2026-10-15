@@ -294,6 +294,8 @@ const TABLE_SCHEMAS = {
     suretyName2: T.string(191),
     address: T.text,
     mobileNo: T.string(40),
+    // bcrypt hash of the member's portal login password (never the raw value).
+    passwordHash: T.string(191),
     basicSalary: T.money,
     openingBalance: T.money,
     openingBalanceCrDr: T.string(10),

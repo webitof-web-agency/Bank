@@ -1,4 +1,5 @@
 import { PrintShell, PrintLetterhead } from './print/PrintShell';
+import { SignatureRow } from './print/LegacyBookParts';
 import { formatMoney, formatDMY, hasAmount, thTight as th, tdTight as td, tdTextTight as tdText } from './print/printStyles';
 
 function sumField(rows, group, field) {
@@ -174,11 +175,7 @@ export function MemberLedgerPrintTemplate({ payload, headerActions }) {
 
       <p className="mt-1 text-[8px] text-slate-500">Intrst : = Interest (simple interest on each head's balance since its previous movement; the last movement runs to the as-on date. CLOSING BAL = balance + interest)</p>
 
-      <div className="mt-14 flex justify-between text-[12px] font-bold">
-        <span>Signature</span>
-        <span>Computer Clerk</span>
-        <span>Manager</span>
-      </div>
+      <SignatureRow />
     </PrintShell>
   );
 }

@@ -30,16 +30,16 @@ export function BranchListPrint({ data, headerActions }) {
       <div className="overflow-x-auto">
         <table className={table}>
           <colgroup>
-            <col style={{ width: '8%' }} />
-            <col style={{ width: '8%' }} />
-            <col style={{ width: '30%' }} />
+            <col style={{ width: '7%' }} />
+            <col style={{ width: '12%' }} />
+            <col style={{ width: '27%' }} />
             <col style={{ width: '20%' }} />
             <col style={{ width: '34%' }} />
           </colgroup>
           <thead>
             <tr>
               <th className={th}>S.No.</th>
-              <th className={th}>CODE</th>
+              <th className={th}>BRANCH CODE</th>
               <th className={th}>BRANCH</th>
               <th className={th}>PHONE</th>
               <th className={th}>ADDRESS</th>

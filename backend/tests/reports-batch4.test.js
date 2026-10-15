@@ -63,11 +63,8 @@ test('Batch 4: Payment & Receipt Statement and Dividend Report', async (t) => {
   await updateSettings({
     payload: {
       ratesConfig: {
-        interestRates: {
-          paid: { dividend: 10 }
-        },
-        // Flat rates only count while there is no dated history.
-        interestRateHistory: []
+        // The dividend is declared per FY, not a dated interest rate.
+        dividendByFy: [{ fy: '2024-25', rate: 10 }]
       }
     }
   });
@@ -93,6 +90,14 @@ test('Batch 4: Payment & Receipt Statement and Dividend Report', async (t) => {
     voucherId: String(v._id || v.id), memberCode: 'M1', share: 100
   });
   const fy = { dateFrom: '2024-04-01', uptoDate: '2025-03-31' };
+
+  // A year with no declared dividend needs a rate typed on the report.
+  await assert.rejects(
+    bankingService.buildDividendReport({ mode: 'memberwise-opening', dateFrom: '2025-04-01', uptoDate: '2026-03-31' }),
+    /No dividend has been declared for FY 2025-26/
+  );
+  const typed = await bankingService.buildDividendReport({ mode: 'memberwise-opening', dateFrom: '2025-04-01', uptoDate: '2026-03-31', rate: '5' });
+  assert.ok(typed.every((row) => row.dividendRate === 5));
 
   // 1. Memberwise Opening
   const mo = await bankingService.buildDividendReport({ mode: 'memberwise-opening', ...fy });

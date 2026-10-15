@@ -23,6 +23,7 @@ export function GoogleDrivePanel({ onStatus }) {
   const [busy, setBusy] = useState(false);
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
   const [startingBackup, setStartingBackup] = useState(false);
+  const [downloadingId, setDownloadingId] = useState('');
   const pollRef = useRef(null);
 
   const load = useCallback(async () => {
@@ -100,17 +101,27 @@ export function GoogleDrivePanel({ onStatus }) {
     }
   }
 
+  // The file comes Drive -> server -> browser, so it takes a few seconds:
+  // the row shows "Downloading..." until the browser has it.
   async function handleDownload(row) {
+    if (downloadingId) return;
+    setDownloadingId(row.id);
     try {
       const blob = await api.googleDrive.downloadBackup(token, row.id);
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
       link.download = backupFileName(row.name);
+      document.body.appendChild(link);
       link.click();
-      URL.revokeObjectURL(url);
+      link.remove();
+      // Revoking at once can cancel the save in some browsers.
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      toast.success('Backup downloaded.');
     } catch (error) {
       toast.error(error.message || 'Unable to download the backup');
+    } finally {
+      setDownloadingId('');
     }
   }
 
@@ -136,6 +147,7 @@ export function GoogleDrivePanel({ onStatus }) {
             connected={Boolean(drive?.connected && !drive?.needsReconnect)}
             canWrite={canWrite}
             starting={startingBackup}
+            downloadingId={downloadingId}
             onDownload={handleDownload}
             onRefresh={load}
             onBackupNow={handleBackupNow}

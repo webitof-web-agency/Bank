@@ -37,6 +37,10 @@ router.post('/sms/flowit/webhook', smsController.flowitWebhookController);
 // Google sends the browser here after "Connect Google Drive" (no app login).
 router.get('/google-drive/oauth/callback', require('../controllers/googleDrive.controller').oauthCallbackController);
 
+// Member/employee mobile-app portal: its own app-token auth, so it is mounted
+// before the admin requireAuth guard below.
+router.use('/app', require('./appPortal.routes'));
+
 router.use(requireAuth);
 router.use('/banking', bankingRoutes);
 router.use('/notifications', notificationsRoutes);

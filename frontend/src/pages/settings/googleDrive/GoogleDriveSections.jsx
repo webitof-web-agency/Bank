@@ -92,7 +92,7 @@ export function DriveConnectionCard({ drive, canWrite = false, busy = false, use
   );
 }
 
-export function DriveBackupsCard({ backup, backups = [], connected = false, canWrite = false, starting = false, onDownload, onRefresh, onBackupNow }) {
+export function DriveBackupsCard({ backup, backups = [], connected = false, canWrite = false, starting = false, downloadingId = '', onDownload, onRefresh, onBackupNow }) {
   const last = describeLastBackup(backup?.last);
   const running = Boolean(backup?.running);
   const columns = [
@@ -100,8 +100,8 @@ export function DriveBackupsCard({ backup, backups = [], connected = false, canW
     { key: 'createdTime', label: 'Created', dateOnly: false, render: (row) => <span className="whitespace-nowrap">{formatIstDateTime(row.createdTime)}</span> },
     { key: 'size', label: 'Size', align: 'right', render: (row) => formatBytes(row.size) },
     { key: 'action', label: 'Action', render: (row) => (
-      <Button type="button" variant="outline" size="sm" disabled={!canWrite} onClick={() => onDownload?.(row)} title={canWrite ? 'Download' : 'Needs settings.write'}>
-        <Download size={14} /> Download
+      <Button type="button" variant="outline" size="sm" disabled={!canWrite || Boolean(downloadingId)} onClick={() => onDownload?.(row)} title={canWrite ? 'Download' : 'Needs settings.write'}>
+        {downloadingId === row.id ? <><RefreshCw size={14} className="animate-spin" /> Downloading...</> : <><Download size={14} /> Download</>}
       </Button>
     ) }
   ];

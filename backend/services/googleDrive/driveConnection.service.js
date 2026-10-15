@@ -99,10 +99,26 @@ function verifyState(state) {
 function clientFor(state, config = getGoogleDriveConfig()) {
   if (!state.encryptedRefreshToken) throw httpError('Google Drive is not connected.', 409, 'GDRIVE_NOT_CONNECTED');
   if (cachedClient && cachedClient.tokenRef === state.encryptedRefreshToken) return cachedClient.client;
+  // The stored refresh token is encrypted with SETTINGS_ENCRYPTION_KEY. If that
+  // key no longer matches the one used to save it (e.g. the settings row came
+  // from a database restored from another environment), the AES-GCM auth check
+  // fails. Treat that like a broken connection: flag it for reconnect and
+  // surface a clear, actionable message rather than an opaque 500.
+  let refreshToken;
+  try {
+    refreshToken = encryption.decrypt(state.encryptedRefreshToken);
+  } catch (_error) {
+    writeState({ needsReconnect: true });
+    throw httpError(
+      'Google Drive credentials could not be decrypted (the encryption key has changed). Please reconnect Google Drive in Settings.',
+      409,
+      'GDRIVE_DECRYPT'
+    );
+  }
   const client = new DriveClient({
     clientId: config.clientId,
     clientSecret: config.clientSecret,
-    refreshToken: encryption.decrypt(state.encryptedRefreshToken),
+    refreshToken,
     fetchImpl,
     onInvalidGrant: () => writeState({ needsReconnect: true })
   });

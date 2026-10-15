@@ -2,15 +2,15 @@ import { PrintShell, PrintLetterhead } from './PrintShell';
 import { th, tdText, tdCenter, table } from './printStyles';
 import { formatDMY } from './printStyles';
 
-export function AllMemberListPrint({ data, headerActions }) {
-  // As the old software printed it: active members only (the screen above
-  // still counts active and inactive).
-  const rows = (Array.isArray(data) ? data : []).filter((row) => String(row.status || '').toLowerCase() === 'active');
+export function AllMemberListPrint({ data, headerActions, title = "ALL MEMBER'S LIST" }) {
+  // The backend already applies the chosen list type (all / branch-wise /
+  // dismembered) and sort order, so print exactly what it returned.
+  const rows = Array.isArray(data) ? data : [];
 
   return (
     // Landscape, one column per field, each with its own heading.
     <PrintShell headerActions={headerActions} landscape>
-      <PrintLetterhead title="ALL MEMBER'S LIST" />
+      <PrintLetterhead title={title} />
 
       <table className={table}>
         <colgroup>

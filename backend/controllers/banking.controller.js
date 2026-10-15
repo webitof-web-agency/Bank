@@ -608,6 +608,8 @@ const reports = {
       const data = await bankingService.buildAllMemberListReport({
         user: req.user || {},
         branchCode: req.query.branchCode || '',
+        listType: req.query.listType || req.query.type || 'all',
+        sortBy: req.query.sortBy || req.query.sort || 'name',
         uptoDate: reportRange(req.query).dateTo
       });
       res.json({ success: true, data });

@@ -202,14 +202,18 @@ export function getReportDefaultFilters(reportKey = '', lookups = {}, user = {},
       mode: 'branchwise-opening',
       branchCode: getDefaultBranchCode(user),
       sortBy: 'branchName',
-      // Blank = the paid dividend rate in force at the FY end (rate master).
+      // Blank = the dividend declared for the FY (Rates Config > Dividend).
       rate: '',
       dateFrom: fyStart,
       uptoDate: fyEnd
     };
   }
 
-  if (reportKey === 'all-member-list' || reportKey === 'branch-list-report') {
+  if (reportKey === 'all-member-list') {
+    return { branchCode: getDefaultBranchCode(user), listType: 'all', sortBy: 'name' };
+  }
+
+  if (reportKey === 'branch-list-report') {
     return { branchCode: getDefaultBranchCode(user) };
   }
 
@@ -623,25 +627,48 @@ export function getReportConfig(reportKey = '') {
     'all-member-list': {
       label: 'All Member List',
       description: 'Complete member registry with status.',
-      filterMode: 'branchwise',
+      filterMode: 'member-list',
       load: async (api, token, filters) => {
-        const response = await api.banking.reports.allMemberList(token, { branchCode: filters?.branchCode || '' });
+        const listType = filters?.listType || 'all';
+        const sortBy = filters?.sortBy || 'name';
+        const isBranchWise = listType === 'branch';
+        const isDismembered = listType === 'dismembered';
+        const response = await api.banking.reports.allMemberList(token, {
+          // Branch only applies to the branch-wise list.
+          branchCode: isBranchWise ? (filters?.branchCode || '') : '',
+          listType,
+          sortBy
+        });
         const rows = Array.isArray(response.data) ? response.data : [];
-        const activeCount = rows.filter((row) => String(row.status || '').toLowerCase() === 'active').length;
+        const titles = {
+          all: 'All Member List',
+          branch: 'Branch-wise Member List',
+          dismembered: 'Dismembered Member List'
+        };
+        const sortLabel = sortBy === 'code' ? 'code' : 'name';
         return {
-          title: 'All Member List',
-          subtitle: 'Complete member registry',
+          title: titles[listType] || 'All Member List',
+          subtitle: `${isDismembered ? 'Members who have left' : 'Current members'} · sorted by ${sortLabel}`,
           summary: [
-            makeSummary('Members', rows.length, 'Total registered members'),
-            makeSummary('Active', activeCount, 'Currently active members'),
-            makeSummary('Inactive', rows.length - activeCount, 'Currently inactive members')
+            makeSummary('Members', rows.length, isDismembered ? 'Dismembered members' : 'Members in list')
           ],
           sections: [
             {
-              title: 'All Members',
-              description: 'Registered members and their current status.',
-              headers: ['Member Code', 'Member Name', 'Branch', 'Category', 'Membership No.', 'Status'],
-              rows: rows.map((row) => [row.code, row.name, row.branchName || row.branchCode, row.category, row.membershipNo, row.status])
+              title: titles[listType] || 'All Members',
+              description: isDismembered
+                ? 'Members who have been dismembered.'
+                : 'Registered members and their current status.',
+              headers: isDismembered
+                ? ['Member Code', 'Member Name', 'Branch', 'Category', 'Membership No.', 'Dismembered On']
+                : ['Member Code', 'Member Name', 'Branch', 'Category', 'Membership No.', 'Status'],
+              rows: rows.map((row) => [
+                row.code,
+                row.name,
+                row.branchName || row.branchCode,
+                row.category,
+                row.membershipNo,
+                isDismembered ? (row.dismemberedDate || '-') : row.status
+              ])
             }
           ],
           csvRows: rows,

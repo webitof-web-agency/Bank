@@ -1,13 +1,38 @@
 import imageCompression from 'browser-image-compression';
 import { MEMBER_DOCUMENT_DEFS, createEmptyDocumentMap, hydrateDocumentMap, serializeDocumentMap } from '../../../components/master/documentUtils';
+// Canonical 10-digit mobile rules shared with the employee form and the backend.
+import { normalizeMobile, isValidMobile } from '../../../utils/mobile';
+
+export { normalizeMobile, isValidMobile };
 
 export function stripPhoneDigits(value = '') {
   return String(value || '').replace(/[^\d]/g, '');
 }
 
+// The phone box reads its value as country code + number, so a bare 10-digit
+// mobile ("9425526729") must carry the 91, or "94" is read as Sri Lanka.
+export function toPhoneInputValue(value = '') {
+  const digits = normalizeMobile(value);
+  return digits.length === 10 ? `91${digits}` : digits;
+}
+
+// <input type="date"> only shows YYYY-MM-DD; the API sends timestamps.
+// Uses the local calendar day (dates are stored at local midnight).
+export function toDateInputValue(value) {
+  if (!value) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(value))) return String(value);
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const pad = (number) => String(number).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+// "9425526729" / "+919425526729" -> "+91 9425526729"; anything that isn't a
+// 10-digit Indian number is shown as its digits.
 export function formatMemberPhone(value = '') {
-  const digits = stripPhoneDigits(value);
-  return digits ? `+${digits}` : '';
+  const digits = normalizeMobile(value);
+  if (!digits) return '';
+  return digits.length === 10 ? `+91 ${digits}` : digits;
 }
 
 export async function prepareMemberAvatarFile(file) {
@@ -93,6 +118,7 @@ export function createEmptyMemberDraft() {
   return {
     code: '',
     membershipNo: '',
+    pfNo: '',
     name: '',
     fatherOrHusbandName: '',
     branchCode: '',
@@ -106,6 +132,7 @@ export function createEmptyMemberDraft() {
     appointmentDate: '',
     address: '',
     mobileNo: '',
+    password: '',
     photoUrl: '',
     photoFileId: null,
     basicSalary: 0,
@@ -145,6 +172,7 @@ export function createMemberDraftFromRecord(member = {}) {
   return {
     code: member.code || '',
     membershipNo: member.membershipNo || '',
+    pfNo: member.pfNo || '',
     name: member.name || '',
     fatherOrHusbandName: member.fatherOrHusbandName || '',
     branchCode: member.branchCode || '',
@@ -153,11 +181,15 @@ export function createMemberDraftFromRecord(member = {}) {
     designation: member.designation || '',
     serviceName1: member.serviceName1 || '',
     serviceName2: member.serviceName2 || '',
-    dateOfBirth: member.dateOfBirth || '',
-    membershipDate: member.membershipDate || '',
-    appointmentDate: member.appointmentDate || '',
+    dateOfBirth: toDateInputValue(member.dateOfBirth),
+    membershipDate: toDateInputValue(member.membershipDate),
+    appointmentDate: toDateInputValue(member.appointmentDate),
+    openingDate: toDateInputValue(member.openingDate || payload.openingDate),
     address: member.address || '',
     mobileNo: member.mobileNo || '',
+    // Never round-trip the hash; blank means "keep the existing password".
+    password: '',
+    hasPassword: Boolean(member.hasPassword),
     photoUrl: member.photoUrl || '',
     photoFileId: member.photoFileId || null,
     basicSalary: member.basicSalary ?? 0,
@@ -182,7 +214,7 @@ export function createMemberDraftFromRecord(member = {}) {
     nomineeName: member.nomineeName || '',
     nomineeRelation: member.nomineeRelation || '',
     dismembered: member.dismembered ?? payload.dismembered ?? false,
-    dismemberedDate: member.dismemberedDate || payload.dismemberedDate || '',
+    dismemberedDate: toDateInputValue(member.dismemberedDate || payload.dismemberedDate),
     status: member.status || 'Active',
     payload,
     documents: hydrateDocumentMap(MEMBER_DOCUMENT_DEFS, member.documents || {})
@@ -204,6 +236,8 @@ export function buildMemberPayload(draft = {}) {
 
   return {
     code: String(draft.code || '').trim().toUpperCase() || undefined,
+    membershipNo: String(draft.membershipNo || '').trim() || undefined,
+    pfNo: String(draft.pfNo || '').trim(),
     name: String(draft.name || '').trim(),
     fatherOrHusbandName: String(draft.fatherOrHusbandName || '').trim(),
     branchCode: String(draft.branchCode || '').trim().toUpperCase(),
@@ -217,7 +251,9 @@ export function buildMemberPayload(draft = {}) {
     openingDate: String(draft.openingDate || '').trim(),
     appointmentDate: String(draft.appointmentDate || '').trim(),
     address: String(draft.address || '').trim(),
-    mobileNo: String(draft.mobileNo || '').trim(),
+    mobileNo: normalizeMobile(draft.mobileNo),
+    // Only send a password when one was typed; blank keeps the current one.
+    password: String(draft.password || '').trim(),
     photoUrl: String(draft.photoUrl || '').trim(),
     photoFileId: draft.photoFileId || null,
     basicSalary: Number.isFinite(basicSalary) ? basicSalary : 0,

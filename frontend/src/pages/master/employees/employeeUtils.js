@@ -1,13 +1,18 @@
 import imageCompression from 'browser-image-compression';
 import { EMPLOYEE_DOCUMENT_DEFS, createEmptyDocumentMap, hydrateDocumentMap, serializeDocumentMap } from '../../../components/master/documentUtils';
+import { toDateInputValue } from '../members/memberUtils';
+import { normalizeMobile } from '../../../utils/mobile';
 
 export function stripPhoneDigits(value = '') {
   return String(value || '').replace(/[^\d]/g, '');
 }
 
+// Show the canonical 10-digit number as "+91 9669685295"; fall back to the raw
+// digits for anything that isn't a clean 10-digit mobile.
 export function formatEmployeePhone(value = '') {
-  const digits = stripPhoneDigits(value);
-  return digits ? `+${digits}` : '';
+  const digits = normalizeMobile(value);
+  if (!digits) return '';
+  return digits.length === 10 ? `+91 ${digits}` : digits;
 }
 
 
@@ -89,8 +94,8 @@ export function createEmployeeDraftFromRecord(user = {}) {
     fullName: user.fullName || user.name || '',
     fatherOrHusbandName: user.fatherOrHusbandName || payload.fatherOrHusbandName || '',
     fatherName: user.fatherName || payload.fatherName || '',
-    dateOfBirth: user.dateOfBirth || payload.dateOfBirth || '',
-    appointmentDate: user.appointmentDate || payload.appointmentDate || '',
+    dateOfBirth: toDateInputValue(user.dateOfBirth || payload.dateOfBirth),
+    appointmentDate: toDateInputValue(user.appointmentDate || payload.appointmentDate),
     category: user.category || payload.category || '',
     caste: user.caste || payload.caste || '',
     qualification: user.qualification || payload.qualification || '',
@@ -109,7 +114,7 @@ export function createEmployeeDraftFromRecord(user = {}) {
     grainAdvance: user.grainAdvance ?? payload.grainAdvance ?? '',
     grainSide: user.grainSide || payload.grainSide || 'Dr',
     retired: user.retired ?? payload.retired ?? false,
-    retiredDate: user.retiredDate || payload.retiredDate || '',
+    retiredDate: toDateInputValue(user.retiredDate || payload.retiredDate),
     status: user.status || (user.isActive === false ? 'Inactive' : 'Active'),
     password: '',
     isActive: user.isActive !== false,

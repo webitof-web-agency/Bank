@@ -1,6 +1,8 @@
 const bcrypt = require('bcryptjs');
 const { randomBytes } = require('crypto');
 const { normalizeSocialCategory } = require('../utils/socialCategory');
+const { normalizeMobile, isValidMobile } = require('../utils/mobile');
+const { getPasswordHashRounds } = require('../config/security');
 const { ACCOUNTING_ROLES } = require('../config/accountingConstants');
 const {
   BANK_ACCOUNT_SEEDS,
@@ -56,6 +58,7 @@ const { buildFileViewUrl } = require('../utils/file-url');
 const { withTransaction, restoreMainRow, initializeDatabase, getTableVersion } = require('../config/postgres');
 const { buildJournalLinesForVoucher } = require('./posting.service');
 const rateHistory = require('../utils/rateHistory');
+const dividendRates = require('../utils/dividendRates');
 const smsService = require('./sms/sms.service');
 const fyLock = require('./fyClosing/fyLock');
 const { applyBranchScope, canAccessBranchRecord, getScopedBranchCode, isBranchScopedResource, resolveBranchCode } = require('../utils/branchScope');
@@ -199,6 +202,7 @@ function normalizeRatesConfig(config = {}) {
   return {
     interestRates: rateHistory.ratesAsOf(interestRateHistory, rateHistory.todayIso()),
     interestRateHistory,
+    dividendByFy: dividendRates.normalizeDividendByFy(source.dividendByFy),
     limits: {
       loan: {
         maxAmount: toNumber(source.limits?.loan?.maxAmount, DEFAULT_RATES_CONFIG.limits.loan.maxAmount),
@@ -242,10 +246,28 @@ async function updateGlobalRatesConfig(patch = {}) {
     effectiveFrom,
     rateNote = '',
     removeRatePeriod,
+    dividendByFy: _ignoredDividends,
+    dividend,
+    removeDividendFy,
     ...rest
   } = patch || {};
   const current = await getGlobalRatesConfig();
   let history = current.interestRateHistory;
+  // The dividend is declared per FY (utils/dividendRates.js), any time and
+  // whether or not that FY is closed: { fy, rate, note } sets one,
+  // removeDividendFy clears one.
+  let dividendByFy = current.dividendByFy.filter((entry) => entry.fy !== cleanText(removeDividendFy));
+  if (dividend) {
+    const fy = cleanText(dividend.fy);
+    const rate = cleanText(dividend.rate) === '' ? null : dividendRates.normalizeRate(dividend.rate);
+    if (!dividendRates.isFy(fy) || rate === null) {
+      const error = new Error('Choose a financial year and a dividend rate between 0 and 100');
+      error.statusCode = 400;
+      throw error;
+    }
+    dividendByFy = dividendByFy.filter((entry) => entry.fy !== fy)
+      .concat({ fy, rate, note: cleanText(dividend.note), updatedAt: new Date().toISOString() });
+  }
   try {
     if (removeRatePeriod) {
       history = rateHistory.removeRatePeriod(history, cleanText(removeRatePeriod));
@@ -263,7 +285,7 @@ async function updateGlobalRatesConfig(patch = {}) {
     error.statusCode = 400;
     throw error;
   }
-  const next = normalizeRatesConfig({ ...mergeDeep(current, rest), interestRateHistory: history });
+  const next = normalizeRatesConfig({ ...mergeDeep(current, rest), interestRateHistory: history, dividendByFy });
   await updateSettings({
     payload: {
       ratesConfig: next
@@ -633,11 +655,42 @@ function normalizeEmployeeUser(data = {}) {
 function sanitizeMemberResponse(doc) {
   const response = toResponse(doc);
   if (!response) return null;
-  response.mobileNo = normalizePhone(response.mobileNo || '');
+  // Never expose the password hash to API clients.
+  delete response.passwordHash;
+  response.hasPassword = Boolean(doc && (doc.passwordHash || (typeof doc.get === 'function' && doc.get('passwordHash'))));
+  // Show the canonical 10-digit number (older rows may hold a +91 form).
+  response.mobileNo = normalizeMobile(response.mobileNo || '');
   response.photoFileId = response.photoFileId ? String(response.photoFileId) : null;
   response.documentsFolderId = response.documentsFolderId ? String(response.documentsFolderId) : null;
   response.photoUrl = buildFileViewUrl(response.photoFileId || response.photoUrl || '');
   return response;
+}
+
+// A member's portal login needs a usable mobile and a password. Mobile is
+// always required; password is required only when creating (on update it is
+// left untouched unless a new one is supplied). Sets payload.passwordHash when
+// a password is given. Throws 400-style errors the controller surfaces.
+async function applyMemberCredentials(payload, data = {}, { requirePassword } = {}) {
+  if (!isValidMobile(payload.mobileNo)) {
+    const error = new Error('A valid 10-digit mobile number is required');
+    error.statusCode = 400;
+    throw error;
+  }
+  payload.mobileNo = normalizeMobile(payload.mobileNo);
+
+  const rawPassword = data.password == null ? '' : String(data.password).trim();
+  if (rawPassword) {
+    if (rawPassword.length < 4) {
+      const error = new Error('Password must be at least 4 characters');
+      error.statusCode = 400;
+      throw error;
+    }
+    payload.passwordHash = await bcrypt.hash(rawPassword, getPasswordHashRounds());
+  } else if (requirePassword) {
+    const error = new Error('A password is required when creating a member');
+    error.statusCode = 400;
+    throw error;
+  }
 }
 
 // The society logo/watermark are stored as file-view URLs whose access token
@@ -959,7 +1012,8 @@ const RESOURCE_DEFS = {
         appointmentDate: cleanText(data.appointmentDate),
         membershipNo: cleanText(data.membershipNo),
         address: cleanText(data.address),
-        mobileNo: normalizePhone(data.mobileNo),
+        // Canonical 10-digit mobile (the member portal logs in with it).
+        mobileNo: normalizeMobile(data.mobileNo),
         openingBalance: toNumber(data.openingBalance, 0),
         balances: {
           share: toNumber(balances.share, 0),
@@ -1343,6 +1397,7 @@ async function createResource(resource, data = {}, meta = {}) {
     payload.updatedByUserId = meta.actorUserId;
   }
   if (resource === 'members') {
+    await applyMemberCredentials(payload, data, { requirePassword: true });
     const record = await def.model.create(payload);
     await syncRecordDocumentsFolder(resource, record, meta.actorUserId || null);
     const response = sanitizeMemberResponse(record);
@@ -1416,6 +1471,9 @@ async function updateResource(resource, id, data = {}, meta = {}) {
     payload.branchCode = resolveBranchCode(actorUser, current.branchCode);
     payload.code = payload.code || current.code;
     payload.membershipNo = payload.membershipNo || current.membershipNo;
+    // Mobile stays required; password is only rehashed when a new one is sent
+    // (an absent/blank password leaves the existing hash in place).
+    await applyMemberCredentials(payload, data, { requirePassword: false });
     if (meta.actorUserId) {
       payload.updatedByUserId = meta.actorUserId;
     }
@@ -4913,16 +4971,48 @@ async function buildDemandListReport({ month = '', year = '', date = '', fyStart
   });
 }
 
-async function buildAllMemberListReport({ branchCode = '', uptoDate = '', user = {} } = {}) {
+// Dismembered = the member has left the society (flagged, dated, or a status
+// that says so).
+function isDismemberedMember(row = {}) {
+  if (row.dismembered === true) return true;
+  if (/^\d{4}-\d{2}-\d{2}/.test(cleanText(row.dismemberedDate))) return true;
+  return /dismember|resign|left|closed|inactive/i.test(cleanText(row.status));
+}
+
+async function buildAllMemberListReport({ branchCode = '', uptoDate = '', listType = 'all', sortBy = 'name', user = {} } = {}) {
   const effectiveBranchCode = resolveBranchCode(user, branchCode);
+  const type = String(listType || 'all').toLowerCase();
+  // Branch-wise, or a branch scope forced by the user's role, filters by branch.
   const query = effectiveBranchCode ? { branchCode: effectiveBranchCode } : {};
   const cutoff = cleanText(uptoDate);
   // Members who had not joined by the selected FY's end are left out. Only
   // ISO-dated membershipDate values are compared; anything else stays listed.
-  const rows = (await Member.find(query).sort({ name: 1 }).lean()).filter((row) => {
+  let rows = (await Member.find(query).lean()).filter((row) => {
     const joined = cleanText(row.membershipDate).slice(0, 10);
     return !cutoff || !/^\d{4}-\d{2}-\d{2}$/.test(joined) || joined <= cutoff;
   });
+
+  // List type: all / branch-wise = current (active) members; dismembered = only
+  // members who have left.
+  if (type === 'dismembered') {
+    rows = rows.filter(isDismemberedMember);
+  } else {
+    rows = rows.filter((row) => !isDismemberedMember(row));
+  }
+
+  // Sort by member name (default) or code; branch-wise groups by branch first.
+  const codeNum = (row) => Number(String(row.code || '').replace(/\D/g, '')) || 0;
+  const byName = (a, b) => cleanText(a.name).localeCompare(cleanText(b.name));
+  const byCode = (a, b) => codeNum(a) - codeNum(b) || byName(a, b);
+  const primary = String(sortBy || 'name').toLowerCase() === 'code' ? byCode : byName;
+  rows.sort((a, b) => {
+    if (type === 'branch') {
+      const branchCmp = cleanUpper(a.branchCode).localeCompare(cleanUpper(b.branchCode));
+      if (branchCmp !== 0) return branchCmp;
+    }
+    return primary(a, b);
+  });
+
   const branches = await Branch.find({}).lean();
   const branchByCode = new Map(branches.map((b) => [cleanUpper(b.code), b]));
 
@@ -4943,6 +5033,7 @@ async function buildAllMemberListReport({ branchCode = '', uptoDate = '', user =
       category: row.category,
       membershipNo: row.membershipNo,
       membershipDate: row.membershipDate,
+      dismemberedDate: row.dismemberedDate || '',
       status: row.status
     };
   });
@@ -6019,18 +6110,25 @@ async function buildDividendReport({ mode = 'branchwise-opening', dateFrom = '',
   const mMode = cleanLower(mode) || 'branchwise-opening';
   const isClosing = mMode.endsWith('-closing');
   const members = await findMembersForReport({ branchCode, user });
-  const [periods, branches, { interestRateHistory }, legacyFy] = await Promise.all([
+  const [periods, branches, { dividendByFy }, legacyFy] = await Promise.all([
     computeMemberPeriodBalances({ members, dateFrom, dateTo: uptoDate, user }),
     Branch.find({}).lean(),
     getGlobalRatesConfig(),
     getLegacyFyAccountRows('member', members.map((m) => m.code), dateFrom)
   ]);
   const branchByCode = new Map(branches.map((b) => [cleanUpper(b.code), b]));
-  // The rate declared for the year when given; otherwise the dividend rate in
-  // force at the end of the reported period, not whatever it is today.
+  // A rate typed on the report wins; otherwise the dividend declared for the
+  // reported FY (Rates Config > Dividend). It is declared a year late, so a
+  // year may have none yet.
+  const fy = dividendRates.fyOfDate(cleanText(dateFrom) || cleanText(uptoDate) || rateHistory.todayIso());
   const rate = cleanText(rateOverride) !== '' && Number.isFinite(Number(rateOverride))
     ? Number(rateOverride)
-    : rateHistory.rateAsOf(interestRateHistory, 'paid', 'dividend', cleanText(uptoDate) || cleanText(dateFrom) || rateHistory.todayIso());
+    : dividendRates.dividendRateFor(dividendByFy, fy);
+  if (rate === null) {
+    const error = new Error(`No dividend has been declared for FY ${fy} yet. Set it in Rates Config > Dividend, or enter a rate on the report.`);
+    error.statusCode = 400;
+    throw error;
+  }
 
   const rows = periods.map(({ member, buckets }) => {
     // No FY given -> before all history / the current snapshot.

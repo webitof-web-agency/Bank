@@ -73,7 +73,7 @@ const PRINT_TEMPLATES = {
     <ProfitLossPrint data={payload?.raw} filters={filters} headerActions={headerActions} />
   ),
   'all-member-list': ({ payload, headerActions }) => (
-    <AllMemberListPrint data={payload?.raw} headerActions={headerActions} />
+    <AllMemberListPrint data={payload?.raw} title={payload?.title ? payload.title.toUpperCase() : undefined} headerActions={headerActions} />
   ),
   'payment-receipt-statement': ({ payload, filters, headerActions }) => (
     <PaymentReceiptStatementPrint data={payload?.raw} filters={filters} headerActions={headerActions} />
@@ -509,6 +509,51 @@ export function ReportViewerPage() {
       );
     }
 
+    if (config.filterMode === 'member-list') {
+      const branches = Array.isArray(lookups.branches) ? lookups.branches : [];
+      const listType = filters.listType || 'all';
+      return (
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <label className="text-[13px] font-semibold text-slate-700">List Type</label>
+            <Select
+              value={listType}
+              onChange={(value) => setFilters((current) => ({ ...current, listType: value || 'all' }))}
+              options={[
+                { label: 'All Members', value: 'all' },
+                { label: 'Branch-wise Members', value: 'branch' },
+                { label: 'All Dismembered', value: 'dismembered' }
+              ]}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-[13px] font-semibold text-slate-700">Sort By</label>
+            <Select
+              value={filters.sortBy || 'name'}
+              onChange={(value) => setFilters((current) => ({ ...current, sortBy: value || 'name' }))}
+              options={[
+                { label: 'Member Name', value: 'name' },
+                { label: 'Member Code', value: 'code' }
+              ]}
+            />
+          </div>
+          {listType === 'branch' && (
+            <div className="space-y-1.5">
+              <label className="text-[13px] font-semibold text-slate-700">Branch</label>
+              <Select
+                value={filters.branchCode || ''}
+                onChange={(value) => setFilters((current) => ({ ...current, branchCode: value }))}
+                options={[
+                  { label: 'All branches', value: '' },
+                  ...branches.map((branch) => ({ label: `${branch.code} - ${branch.label || ''}`, value: branch.code }))
+                ]}
+              />
+            </div>
+          )}
+        </div>
+      );
+    }
+
     if (config.filterMode === 'dividend') {
       const branches = Array.isArray(lookups.branches) ? lookups.branches : [];
       return (
@@ -546,7 +591,7 @@ export function ReportViewerPage() {
               type="number"
               min="0"
               step="0.01"
-              placeholder="From rate master"
+              placeholder="Declared for the FY (Rates Config)"
               value={filters.rate ?? ''}
               onChange={(event) => setFilters((current) => ({ ...current, rate: event.target.value }))}
             />

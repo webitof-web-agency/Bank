@@ -21,26 +21,27 @@ const femaleNames = new Set([
   'vimala', 'vinita', 'yamini', 'yashoda', 'yashika'
 ]);
 
-const maleExceptions = new Set(['krishna', 'shiva', 'aditya', 'ravi', 'hari', 'rishi', 'mukul']);
+// Women in the society's records carry a title ("SMT.", "KU.") or a BAI/DEVI
+// name. Many men's names end in -a/-i (RAJENDRA, CHAKRADHARI) or start with
+// a name from the list above joined to a male part (TARA CHAND, UMA SHANKAR,
+// ASHA RAM), so neither counts as female on its own.
+const femaleTitles = new Set(['smt', 'shrimati', 'ku', 'kumari', 'km', 'sushri', 'mrs', 'ms', 'miss']);
+const femaleNameParts = new Set(['bai', 'devi']);
+const maleNameParts = new Set([
+  'ram', 'chand', 'shankar', 'lal', 'prasad', 'kumar', 'singh', 'das', 'nath',
+  'narayan', 'vinod', 'dev', 'dutt', 'datt', 'bihari', 'charan', 'sharan', 'raj'
+]);
 
 export function getGender(fullName) {
   if (!fullName) return 'unknown';
 
-  const lowerName = String(fullName).toLowerCase();
-  if (lowerName.startsWith('mrs.') || lowerName.startsWith('ms.') || lowerName.startsWith('miss')) return 'female';
-  if (lowerName.startsWith('mr.')) return 'male';
+  const parts = String(fullName).toLowerCase().split(/[\s.]+/).filter(Boolean);
+  if (femaleTitles.has(parts[0])) return 'female';
+  if (['mr', 'shri', 'sri'].includes(parts[0])) return 'male';
+  if (parts.some((part) => femaleNameParts.has(part))) return 'female';
 
-  let firstPart = lowerName.split(' ')[0];
-  if (firstPart === 'dr.' || firstPart === 'dr') {
-    firstPart = lowerName.split(' ')[1] || '';
-  }
-
-  if (femaleNames.has(firstPart)) return 'female';
-  if (maleExceptions.has(firstPart)) return 'male';
-
-  if (firstPart.endsWith('a') || firstPart.endsWith('i') || firstPart.endsWith('y') || firstPart.endsWith('ee')) {
-    return 'female';
-  }
+  const given = parts[0] === 'dr' ? parts.slice(1) : parts;
+  if (femaleNames.has(given[0]) && !maleNameParts.has(given[1])) return 'female';
 
   return 'male';
 }

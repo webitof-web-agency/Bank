@@ -180,7 +180,7 @@ export function EmployeeForm({
               <Input type="email" placeholder="john@bank.local" value={value.email || ''} onChange={(e) => setValue({ ...value, email: e.target.value })} />
             </div>
             <div className="space-y-1.5">
-              <label className="text-[13px] font-semibold text-slate-700">Mobile Number</label>
+              <label className="text-[13px] font-semibold text-slate-700">Mobile Number <span className="text-rose-500">*</span></label>
               <PhoneInput
                 country="in"
                 preferredCountries={['in']}

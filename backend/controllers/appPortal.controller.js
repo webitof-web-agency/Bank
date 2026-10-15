@@ -1,0 +1,83 @@
+'use strict';
+
+const appPortal = require('../services/appPortal.service');
+
+// Resolve the FY start-year from a request, defaulting to the current FY.
+function resolveStartYear(query) {
+  const fromLabel = appPortal.startYearFromLabel(query.fy);
+  if (fromLabel) return fromLabel;
+  const direct = Number(query.startYear);
+  if (Number.isFinite(direct)) return direct;
+  return appPortal.currentFyStartYear();
+}
+
+async function withAccount(req) {
+  return appPortal.resolveAccount(req.principal);
+}
+
+module.exports = {
+  async config(_req, res, next) {
+    try {
+      res.json({ success: true, data: await appPortal.getAppConfig() });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async login(req, res, next) {
+    try {
+      const { mobile, mobileNo, password } = req.body || {};
+      const result = await appPortal.login(mobile || mobileNo, password);
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async me(req, res, next) {
+    try {
+      const account = await withAccount(req);
+      res.json({ success: true, data: { account: await appPortal.getProfile(account), products: appPortal.productsFor(account.type) } });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async financialYears(req, res, next) {
+    try {
+      const account = await withAccount(req);
+      res.json({ success: true, data: appPortal.financialYears(account) });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async profile(req, res, next) {
+    try {
+      const account = await withAccount(req);
+      res.json({ success: true, data: await appPortal.getProfile(account) });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async summary(req, res, next) {
+    try {
+      const account = await withAccount(req);
+      const data = await appPortal.getSummary(account, resolveStartYear(req.query));
+      res.json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async statement(req, res, next) {
+    try {
+      const account = await withAccount(req);
+      const data = await appPortal.getStatement(account, req.params.product, resolveStartYear(req.query));
+      res.json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  }
+};

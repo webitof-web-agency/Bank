@@ -10,6 +10,7 @@ import {
   buildMemberPayload,
   createEmptyMemberDraft,
   createMemberDraftFromRecord,
+  isValidMobile,
   prepareMemberAvatarFile
 } from './memberUtils';
 import { uploadDocumentMap } from '../documentUpload';
@@ -105,6 +106,19 @@ export function MemberFormPage() {
 
   async function saveMember(event) {
     event.preventDefault();
+
+    // The member logs into the app with mobile + password, so both are
+    // mandatory. Password is required when creating; on edit a blank field
+    // keeps the existing password.
+    if (!isValidMobile(draft.mobileNo)) {
+      toast.error('Enter a valid 10-digit mobile number');
+      return;
+    }
+    if (!isEdit && !String(draft.password || '').trim()) {
+      toast.error('Set a login password for the member');
+      return;
+    }
+
     setSaving(true);
     try {
       const payload = buildMemberPayload(draft);
