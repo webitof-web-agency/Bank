@@ -5,7 +5,7 @@ import { api, API_BASE_URL, getImageUrl } from '../../api/api';
 import { applyBranding, extractBranding } from '../../lib/branding';
 import { useAuth } from '../../context/AuthContext';
 import { Card } from '../../components/ui/Card';
-import { Input, Textarea, Select } from '../../components/ui/Input';
+import { Input, Textarea, Select, PasswordInput } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { FileBrowserModal } from '../../components/ui/FileBrowserModal';
 import statesData from '../../data/indian_states_cities.json';
@@ -268,7 +268,7 @@ function SmtpEmailTab({ smtp, setField, onSave, saving }) {
           </div>
           <div>
             <label className="mb-2 block text-[13px] font-semibold text-slate-700">Password</label>
-            <Input type="password" placeholder={smtp?.passwordSet ? 'Saved (leave empty to keep)' : '••••••••'} value={smtp?.password || ''} onChange={(e) => setField('smtp.password', e.target.value)} />
+            <PasswordInput placeholder={smtp?.passwordSet ? 'Saved (leave empty to keep)' : '••••••••'} value={smtp?.password || ''} onChange={(e) => setField('smtp.password', e.target.value)} />
           </div>
           <div>
             <label className="mb-2 block text-[13px] font-semibold text-slate-700">From Email Address</label>

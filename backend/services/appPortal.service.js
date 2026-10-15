@@ -84,11 +84,16 @@ async function login(mobileRaw, passwordRaw) {
     if (await comparePassword(password, member.passwordHash)) return issue('member', member.code, member.name);
   }
 
+  // App access follows the employee record (on the rolls, not retired), not
+  // the user's web-login switch: staff whose admin access is turned off
+  // (isActive false / "Inactive") still see their own loans in the app.
   const user = (await User.find({}).lean()).find((row) => row.passwordHash && normalizeMobile(row.mobileNo) === mobile);
-  if (user && user.isActive !== false && (await comparePassword(password, user.passwordHash))) {
-    // Resolve to the linked employee HR row for their account code.
+  if (user && (await comparePassword(password, user.passwordHash))) {
     const empCode = user.employeeCode || user.code;
-    return issue('employee', empCode, user.fullName || user.name);
+    const employee = await Employee.findOne({ code: empCode }).lean();
+    if (employee && employee.retired !== true) {
+      return issue('employee', empCode, employee.name || user.fullName || user.name);
+    }
   }
 
   throw unauthorized();

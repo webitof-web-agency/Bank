@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/formatters.dart';
 import '../core/theme.dart';
-import '../state/branding_controller.dart';
+import '../models/branding.dart';
 import '../state/providers.dart';
 import '../widgets/society_logo.dart';
 
@@ -45,7 +45,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final busy = ref.watch(authControllerProvider.select((s) => s.busy));
-    final society = ref.watch(brandingProvider.select((b) => b.society));
+    // Built-in, not from the server: nothing is fetched before login.
+    const society = Society.builtIn;
     final text = Theme.of(context).textTheme;
 
     return Scaffold(
@@ -67,27 +68,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       textAlign: TextAlign.center,
                       style: text.headlineSmall?.copyWith(fontSize: 22),
                     ),
-                    if (society.regLine.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        society.regLine,
-                        style: const TextStyle(
-                          color: AppColors.textMuted,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ],
-                    if (society.address.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        society.address,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: AppColors.textMuted,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
                     const SizedBox(height: 28),
                     Card(
                       child: Padding(

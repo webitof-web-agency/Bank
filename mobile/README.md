@@ -3,15 +3,19 @@
 Flutter app for members and employees of the society to view their own
 accounts. Read-only: no loan apply, no loan status, no data entry.
 
-The society's name, reg. no., address and logo come from **Settings → Society
-Details**, and the colours from **Settings → Branding**, via
-`GET /api/app/config` — nothing about the society is hard-coded in the app.
+Before sign-in nothing is read from the server: the login and splash screens
+use the society name in `lib/core/config.dart` and the bundled logo
+`assets/logo.png`. After sign-in the app reads **Settings → Society Details**
+and **Settings → Branding** via `GET /api/app/config` (profile society card,
+short name in the header, colours); logout returns to the built-in values.
 
 ## What it does
 - **Login** with mobile number + password. A member's first password is their
   own 10-digit mobile number (backend migration
   `2026-10-15-member-app-password-is-mobile`); the office can change it on the
-  member master. Employees use their staff login password.
+  member master. Employees use their staff password (set on the employee
+  form); their web-admin login does not need to be switched on, only an
+  employee record that is not retired.
 - **Summary** (home): per-product Balance + Interest for the selected FY, plus
   last-transaction date. Tap a product → its **passbook** (date / voucher /
   credit / debit / running balance).
@@ -26,8 +30,7 @@ Details**, and the colours from **Settings → Branding**, via
   from 2021-22 to the current year; served by the backend, never typed.
 
 ## Architecture
-- **State**: Riverpod (`lib/state/`); branding is cached in
-  `shared_preferences` so the name/colours show at once, even offline.
+- **State**: Riverpod (`lib/state/`).
 - **Networking**: Dio (`lib/data/api_client.dart`) → backend `/api/app/*`.
 - **Auth**: JWT in `flutter_secure_storage`; restored on launch (`AuthGate`).
 - **Theme**: `lib/core/theme.dart` mirrors the web app (Inter / Space Grotesk,

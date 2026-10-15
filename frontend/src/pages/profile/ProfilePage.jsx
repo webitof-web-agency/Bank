@@ -7,7 +7,7 @@ import { useAuth } from '../../context/AuthContext';
 import { api } from '../../api/api';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
-import { Input } from '../../components/ui/Input';
+import { Input, PasswordInput } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
 import { UserAvatar } from '../../components/ui/UserAvatar';
 import { stripPhoneDigits } from '../master/employees/employeeUtils';
@@ -305,17 +305,17 @@ function ProfilePage() {
           <form className="space-y-5" onSubmit={handlePasswordSubmit}>
             <div>
               <label className="mb-1.5 block text-[13px] font-medium text-slate-700">Current Password</label>
-              <Input name="currentPassword" type="password" required placeholder="********" />
+              <PasswordInput name="currentPassword" required placeholder="********" />
             </div>
 
             <div>
               <label className="mb-1.5 block text-[13px] font-medium text-slate-700">New Password</label>
-              <Input name="newPassword" type="password" required placeholder="********" minLength={8} />
+              <PasswordInput name="newPassword" required placeholder="********" minLength={8} />
             </div>
 
             <div>
               <label className="mb-1.5 block text-[13px] font-medium text-slate-700">Confirm Password</label>
-              <Input name="confirmPassword" type="password" required placeholder="********" minLength={8} />
+              <PasswordInput name="confirmPassword" required placeholder="********" minLength={8} />
             </div>
 
             <div className="flex justify-end pt-2">

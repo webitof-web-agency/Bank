@@ -9,4 +9,17 @@ class AppConfig {
     'API_BASE_URL',
     defaultValue: 'https://jskbf.webitof.com/api',
   );
+
+  // Shown before sign-in (login + splash), so nothing is read from the
+  // server until the user logs in. After login the live Society Details
+  // (Settings) replace these on the profile and header.
+  static const String societyName =
+      'The Raipur Co-operative Employees Thrift Society Ltd.';
+  static const String societyShortName = 'RCETSL';
+  static const String societyRegNo = 'CG/RPR/CS/00417';
+  static const String societyAddress =
+      'JILA SAHKARI KENDRIYA BANK RAIPUR COMPOUND, G.E. Road Raipur (C.G.)';
+
+  /// The society logo bundled with the app (not the uploaded one).
+  static const String logoAsset = 'assets/logo.png';
 }

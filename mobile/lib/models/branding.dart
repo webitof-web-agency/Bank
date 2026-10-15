@@ -53,7 +53,15 @@ class Society {
     'logoUrl': logoUrl,
   };
 
-  String get displayName => name.isNotEmpty ? name : 'Member Portal';
+  /// The society as built into the app (core/config.dart), used before login.
+  static const builtIn = Society(
+    name: AppConfig.societyName,
+    shortName: AppConfig.societyShortName,
+    regNo: AppConfig.societyRegNo,
+    address: AppConfig.societyAddress,
+  );
+
+  String get displayName => name.isNotEmpty ? name : AppConfig.societyName;
   String get regLine => regNo.isNotEmpty ? 'Reg. No. $regNo' : '';
 }
 
@@ -63,8 +71,9 @@ class BrandColors {
   final Color dark;
 
   const BrandColors({
-    this.primary = const Color(0xFF1661F6),
-    this.accent = const Color(0xFF1661F6),
+    // Settings -> Branding as set today; used until the user signs in.
+    this.primary = const Color(0xFF3B82F6),
+    this.accent = const Color(0xFF1D4ED8),
     this.dark = const Color(0xFF090D16),
   });
 
@@ -89,7 +98,7 @@ class Branding {
   final BrandColors colors;
 
   const Branding({
-    this.society = const Society(),
+    this.society = Society.builtIn,
     this.colors = const BrandColors(),
   });
 

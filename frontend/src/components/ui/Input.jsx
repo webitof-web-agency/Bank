@@ -1,3 +1,5 @@
+import { useState } from 'react';
+import { Eye, EyeOff } from 'lucide-react';
 import { cn } from '../../lib/cn';
 
 const base =
@@ -5,6 +7,26 @@ const base =
 
 export function Input({ className = '', ...props }) {
   return <input className={cn(base, className)} {...props} />;
+}
+
+// A password box with an eye button to show / hide what was typed.
+export function PasswordInput({ className = '', ...props }) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <div className="relative">
+      <input {...props} type={visible ? 'text' : 'password'} className={cn(base, 'pr-9', className)} />
+      <button
+        type="button"
+        tabIndex={-1}
+        onClick={() => setVisible((v) => !v)}
+        aria-label={visible ? 'Hide password' : 'Show password'}
+        title={visible ? 'Hide password' : 'Show password'}
+        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-muted transition-colors hover:text-text-main"
+      >
+        {visible ? <EyeOff size={16} /> : <Eye size={16} />}
+      </button>
+    </div>
+  );
 }
 
 export function Textarea({ className = '', rows = 4, ...props }) {

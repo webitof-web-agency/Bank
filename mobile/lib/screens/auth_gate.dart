@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../state/auth_controller.dart';
-import '../state/branding_controller.dart';
+import '../core/config.dart';
 import '../state/providers.dart';
 import '../widgets/society_logo.dart';
 import 'home_shell.dart';
@@ -30,9 +30,7 @@ class _Splash extends ConsumerWidget {
   const _Splash();
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final name = ref.watch(
-      brandingProvider.select((b) => b.society.displayName),
-    );
+    const name = AppConfig.societyName; // built-in: shown before login
     return Scaffold(
       body: Center(
         child: Padding(

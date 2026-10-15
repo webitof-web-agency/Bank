@@ -7,7 +7,7 @@ import { api } from '../../../api/api';
 import { useAuth } from '../../../context/AuthContext';
 import { Card } from '../../../components/ui/Card';
 import { Button } from '../../../components/ui/Button';
-import { Input } from '../../../components/ui/Input';
+import { Input, PasswordInput } from '../../../components/ui/Input';
 import { Modal } from '../../../components/ui/Modal';
 import { ConfirmDialog } from '../../../components/overlays/ConfirmDialog';
 import { UserAvatar } from '../../../components/ui/UserAvatar';
@@ -438,8 +438,7 @@ export function EmployeesPage() {
 
           <div className="space-y-1.5">
             <label className="text-[13px] font-semibold text-slate-700">New Password</label>
-            <Input
-              type="password"
+            <PasswordInput
               value={passwordDraft}
               onChange={(event) => setPasswordDraft(event.target.value)}
               placeholder="Enter new password"
@@ -449,8 +448,7 @@ export function EmployeesPage() {
 
           <div className="space-y-1.5">
             <label className="text-[13px] font-semibold text-slate-700">Confirm Password</label>
-            <Input
-              type="password"
+            <PasswordInput
               value={passwordConfirm}
               onChange={(event) => setPasswordConfirm(event.target.value)}
               placeholder="Re-enter new password"

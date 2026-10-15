@@ -3,7 +3,7 @@ import { KeyRound, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../context/AuthContext';
 import { Card } from '../../components/ui/Card';
-import { Input } from '../../components/ui/Input';
+import { Input, PasswordInput } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 
 export function ChangePasswordPage() {
@@ -42,15 +42,15 @@ export function ChangePasswordPage() {
           <div className="grid gap-5">
             <div>
               <label className="mb-1.5 block text-[13px] font-medium text-slate-700">Current Password</label>
-              <Input type="password" value={form.currentPassword} onChange={(event) => setForm((current) => ({ ...current, currentPassword: event.target.value }))} />
+              <PasswordInput value={form.currentPassword} onChange={(event) => setForm((current) => ({ ...current, currentPassword: event.target.value }))} />
             </div>
             <div>
               <label className="mb-1.5 block text-[13px] font-medium text-slate-700">New Password</label>
-              <Input type="password" value={form.newPassword} onChange={(event) => setForm((current) => ({ ...current, newPassword: event.target.value }))} />
+              <PasswordInput value={form.newPassword} onChange={(event) => setForm((current) => ({ ...current, newPassword: event.target.value }))} />
             </div>
             <div>
               <label className="mb-1.5 block text-[13px] font-medium text-slate-700">Confirm Password</label>
-              <Input type="password" value={form.confirmPassword} onChange={(event) => setForm((current) => ({ ...current, confirmPassword: event.target.value }))} />
+              <PasswordInput value={form.confirmPassword} onChange={(event) => setForm((current) => ({ ...current, confirmPassword: event.target.value }))} />
             </div>
           </div>
 

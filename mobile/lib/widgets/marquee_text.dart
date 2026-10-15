@@ -27,8 +27,16 @@ class MarqueeText extends StatefulWidget {
 
 class _MarqueeTextState extends State<MarqueeText>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _controller = AnimationController(vsync: this);
+  // Created up front: a lazy controller first touched in dispose() would ask
+  // for a ticker after the element is already deactivated.
+  late final AnimationController _controller;
   double _distance = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this);
+  }
 
   @override
   void dispose() {

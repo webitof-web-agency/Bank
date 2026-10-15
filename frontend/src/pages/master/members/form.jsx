@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react';
 import { Camera, Trash2, Upload, User, Briefcase, FileText, Wallet } from 'lucide-react';
 import PhoneInput from 'react-phone-input-2';
-import { Input, Textarea } from '../../../components/ui/Input';
+import { Input, Textarea, PasswordInput } from '../../../components/ui/Input';
+import { AmountSideInput } from '../../../components/ui/AmountSideInput';
 import { Select } from '../../../components/ui/Select';
 import { normalizeSocialCategory, socialCategoryOptions } from '../../../lib/socialCategory';
 import { UserAvatar } from '../../../components/ui/UserAvatar';
@@ -256,8 +257,7 @@ export function MemberForm({
               <label className="text-[13px] font-semibold text-slate-700">
                 Login Password {isEdit ? null : <span className="text-rose-500">*</span>}
               </label>
-              <Input
-                type="password"
+              <PasswordInput
                 autoComplete="new-password"
                 name="memberPassword"
                 placeholder={isEdit ? (value.hasPassword ? 'Leave blank to keep current password' : 'Set a login password') : 'Member logs in with this'}
@@ -432,29 +432,25 @@ export function MemberForm({
               {BALANCE_FIELDS.map((field) => (
                 <div key={field.name} className="space-y-1.5">
                   <label className="text-[13px] font-medium text-slate-700">{field.label}</label>
-                  <div className="flex gap-2">
+                  {field.sideName ? (
+                    <AmountSideInput
+                      className="bg-white"
+                      value={getNestedValue(value, field.name) ?? ''}
+                      onChange={(e) => setNestedValue(setValue, value, field.name, e.target.value)}
+                      side={getNestedValue(value, field.sideName)}
+                      defaultSide="Cr"
+                      onSideChange={(side) => setNestedValue(setValue, value, field.sideName, side)}
+                    />
+                  ) : (
                     <Input
                       type="number"
                       min="0"
                       step="1"
-                      className="bg-white flex-1"
+                      className="bg-white"
                       value={getNestedValue(value, field.name) ?? ''}
                       onChange={(e) => setNestedValue(setValue, value, field.name, e.target.value)}
                     />
-                    {field.sideName && (
-                      <div className="w-[90px]">
-                        <Select
-                          value={getNestedValue(value, field.sideName) || 'Cr'}
-                          onChange={(val) => setNestedValue(setValue, value, field.sideName, val)}
-                          options={[
-                            { value: 'Dr', label: 'Dr' },
-                            { value: 'Cr', label: 'Cr' }
-                          ]}
-                          className="bg-white"
-                        />
-                      </div>
-                    )}
-                  </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -502,6 +498,17 @@ export function MemberForm({
               className="rounded-[var(--radius-button,1rem)] border border-slate-300 bg-white px-5 py-2.5 text-[14px] font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
             >
               Previous
+            </button>
+          )}
+          {isEdit && tabs.findIndex(t => t.id === activeTab) < tabs.length - 1 && (
+            // Editing: save from any step without paging to the last one.
+            <button
+              type="button"
+              onClick={onSubmit}
+              disabled={saving}
+              className="rounded-[var(--radius-button,1rem)] border border-[var(--primary)] bg-white px-5 py-2.5 text-[14px] font-semibold text-[var(--primary)] shadow-sm transition hover:bg-[color-mix(in_srgb,var(--primary)_6%,white)] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {saving ? 'Saving...' : 'Update Member'}
             </button>
           )}
           {tabs.findIndex(t => t.id === activeTab) < tabs.length - 1 ? (

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Button } from '../../components/ui/Button';
-import { Input } from '../../components/ui/Input';
+import { Input, PasswordInput } from '../../components/ui/Input';
 import { AuthLayout } from '../../components/layout/AuthLayout';
 import { useAuth } from '../../context/AuthContext';
 
@@ -52,11 +52,11 @@ export function ResetPasswordPage() {
         </div>
         <div>
           <label className="mb-2 block text-sm font-medium text-[var(--text)]">New Password</label>
-          <Input type="password" value={form.password} onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))} />
+          <PasswordInput value={form.password} onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))} />
         </div>
         <div>
           <label className="mb-2 block text-sm font-medium text-[var(--text)]">Confirm Password</label>
-          <Input type="password" value={form.confirmPassword} onChange={(event) => setForm((current) => ({ ...current, confirmPassword: event.target.value }))} />
+          <PasswordInput value={form.confirmPassword} onChange={(event) => setForm((current) => ({ ...current, confirmPassword: event.target.value }))} />
         </div>
         <Button type="submit" className="w-full" disabled={busy}>
           {busy ? 'Resetting...' : 'Reset Password'}

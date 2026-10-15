@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react';
 import { Camera, Trash2, Upload, User, Briefcase, FileText, Lock } from 'lucide-react';
 import PhoneInput from 'react-phone-input-2';
-import { Input, Textarea } from '../../../components/ui/Input';
+import { Input, Textarea, PasswordInput } from '../../../components/ui/Input';
+import { AmountSideInput } from '../../../components/ui/AmountSideInput';
 import { Select } from '../../../components/ui/Select';
 import { normalizeSocialCategory, socialCategoryOptions } from '../../../lib/socialCategory';
 import { UserAvatar } from '../../../components/ui/UserAvatar';
@@ -306,56 +307,26 @@ export function EmployeeForm({
 
           <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-5">
             <h4 className="mb-4 text-sm font-semibold text-slate-900">Service / Salary Details</h4>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               <div className="space-y-1.5">
                 <label className="text-[13px] font-semibold text-slate-700">Basic Salary</label>
                 <Input type="number" min="0" step="1" placeholder="0" value={value.basicSalary || ''} onChange={(e) => setValue({ ...value, basicSalary: e.target.value })} />
               </div>
-              <div className="space-y-1.5">
-                <label className="text-[13px] font-semibold text-slate-700">Housing Loan</label>
-                <Input type="number" min="0" step="1" placeholder="0" value={value.housingLoan || ''} onChange={(e) => setValue({ ...value, housingLoan: e.target.value })} />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[13px] font-semibold text-slate-700">Housing Side</label>
-                <Select
-                  value={value.housingSide || 'Dr'}
-                  onChange={(val) => setValue({ ...value, housingSide: val })}
-                  options={[
-                    { value: 'Dr', label: 'Dr' },
-                    { value: 'Cr', label: 'Cr' }
-                  ]}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[13px] font-semibold text-slate-700">Vehicle Loan</label>
-                <Input type="number" min="0" step="1" placeholder="0" value={value.vehicleLoan || ''} onChange={(e) => setValue({ ...value, vehicleLoan: e.target.value })} />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[13px] font-semibold text-slate-700">Vehicle Side</label>
-                <Select
-                  value={value.vehicleSide || 'Dr'}
-                  onChange={(val) => setValue({ ...value, vehicleSide: val })}
-                  options={[
-                    { value: 'Dr', label: 'Dr' },
-                    { value: 'Cr', label: 'Cr' }
-                  ]}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[13px] font-semibold text-slate-700">Grain Advance</label>
-                <Input type="number" min="0" step="1" placeholder="0" value={value.grainAdvance || ''} onChange={(e) => setValue({ ...value, grainAdvance: e.target.value })} />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[13px] font-semibold text-slate-700">Grain Side</label>
-                <Select
-                  value={value.grainSide || 'Dr'}
-                  onChange={(val) => setValue({ ...value, grainSide: val })}
-                  options={[
-                    { value: 'Dr', label: 'Dr' },
-                    { value: 'Cr', label: 'Cr' }
-                  ]}
-                />
-              </div>
+              {[
+                { label: 'Housing Loan', amount: 'housingLoan', side: 'housingSide' },
+                { label: 'Vehicle Loan', amount: 'vehicleLoan', side: 'vehicleSide' },
+                { label: 'Grain Advance', amount: 'grainAdvance', side: 'grainSide' }
+              ].map((field) => (
+                <div key={field.amount} className="space-y-1.5">
+                  <label className="text-[13px] font-semibold text-slate-700">{field.label}</label>
+                  <AmountSideInput
+                    value={value[field.amount] ?? ''}
+                    onChange={(e) => setValue({ ...value, [field.amount]: e.target.value })}
+                    side={value[field.side]}
+                    onSideChange={(side) => setValue({ ...value, [field.side]: side })}
+                  />
+                </div>
+              ))}
             </div>
           </div>
 
@@ -428,8 +399,7 @@ export function EmployeeForm({
 
             <div className="space-y-1.5">
               <label className="text-[13px] font-semibold text-slate-700">{isEdit ? 'Set New Password' : 'Initial Password'} {!isEdit && <span className="text-rose-500">*</span>}</label>
-              <Input
-                type="password"
+              <PasswordInput
                 placeholder={isEdit ? "Leave blank to keep unchanged" : "Create password"}
                 value={value.password || ''}
                 onChange={(e) => setValue({ ...value, password: e.target.value })}
@@ -461,6 +431,17 @@ export function EmployeeForm({
               className="rounded-[var(--radius-button,1rem)] border border-slate-300 bg-white px-5 py-2.5 text-[14px] font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
             >
               Previous
+            </button>
+          )}
+          {isEdit && tabs.findIndex(t => t.id === activeTab) < tabs.length - 1 && (
+            // Editing: save from any step without paging to the last one.
+            <button
+              type="button"
+              onClick={onSubmit}
+              disabled={saving}
+              className="rounded-[var(--radius-button,1rem)] border border-[var(--primary)] bg-white px-5 py-2.5 text-[14px] font-semibold text-[var(--primary)] shadow-sm transition hover:bg-[color-mix(in_srgb,var(--primary)_6%,white)] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {saving ? 'Saving...' : 'Update Employee'}
             </button>
           )}
           {tabs.findIndex(t => t.id === activeTab) < tabs.length - 1 ? (
