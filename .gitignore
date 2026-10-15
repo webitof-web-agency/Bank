@@ -34,7 +34,7 @@ Thumbs.db
 .vscode/
 .idea/
 
-# --- Repo scope: only frontend/ and backend/ are tracked here. ---
+# --- Repo scope: only frontend/, backend/ and mobile/ are tracked here. ---
 # Everything else at the root stays local-only and must NOT be force-added:
 #   tools/legacy-migration-audit/config.json  — live legacy SQL Server credentials
 #   tools/legacy-migration-audit/reports/     — raw member financial data (PII)
@@ -45,6 +45,8 @@ Thumbs.db
 /*
 !/frontend/
 !/backend/
+# The member mobile app (Flutter); its own mobile/.gitignore keeps build output out.
+!/mobile/
 !/.gitignore
 backend/ledgers_backup_before_group_update_2026-09-28.csv
 
