@@ -100,6 +100,14 @@ export function formatMoney(value) {
 // (hidden from the list but still holding their code), so a new member
 // could not be saved (409).
 // 'ACTIVE' / 'inactive' / 'Exited' -> 'Active' | 'Inactive' | 'Exited'.
+// A member who has left: the flag, a dismembered date, or status Inactive /
+// Exited (the backend's isDismemberedMember rule).
+export function isDismemberedMember(member = {}) {
+  if (member.dismembered === true || member.payload?.dismembered === true) return true;
+  if (/^\d{4}-\d{2}-\d{2}/.test(String(member.dismemberedDate || ''))) return true;
+  return memberStatusLabel(member.status) !== 'Active';
+}
+
 export function memberStatusLabel(value) {
   const text = String(value || '').trim().toLowerCase();
   if (text.startsWith('inact')) return 'Inactive';

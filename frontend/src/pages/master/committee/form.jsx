@@ -1,6 +1,7 @@
 ﻿import { useEffect, useRef, useState } from 'react';
 import { Input } from '../../../components/ui/Input';
 import { User, X, ChevronDown, Search, Check } from 'lucide-react';
+import { isDismemberedMember } from '../members/memberUtils';
 
 // Directors are members, kept by member code (two members can share a name).
 // Ticking a member adds them, unticking removes them; the list stays open so
@@ -84,8 +85,10 @@ export function CommitteeForm({ value, setValue, onSubmit, members = [], canWrit
   const directors = value.directors || [];
   const memberByCode = new Map(members.map((m) => [String(m.code || '').toUpperCase(), m]));
 
+  // Only current members can be picked; a director who has since left stays
+  // listed (ticked) so they can be taken off.
   const memberOptions = members
-    .filter((m) => m.code)
+    .filter((m) => m.code && (!isDismemberedMember(m) || directors.some((d) => d.memberCode === String(m.code).toUpperCase())))
     .map((m) => ({
       key: String(m.id || m.code),
       value: String(m.code).toUpperCase(),
