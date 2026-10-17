@@ -9,7 +9,7 @@ import { Alert, AlertTitle, AlertDescription } from '../../../../components/ui/A
 import { useAuth } from '../../../../context/AuthContext';
 import { api } from '../../../../api/api';
 import { formatCurrency, formatDateTime } from '../../../../utils/formatters';
-import { ArrowLeft, RefreshCw, CheckCircle, Send, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, RefreshCw, CheckCircle, AlertTriangle } from 'lucide-react';
 
 export default function RecoveryImportDetail() {
   const { id } = useParams();
@@ -101,11 +101,8 @@ export default function RecoveryImportDetail() {
               <CheckCircle className="w-4 h-4 mr-2" /> Accept Batch
             </Button>
           )}
-          {isAccepted && (
-            <Button onClick={() => handleAction(api.recoveryImport.post, 'Batch posted to ledgers!')} disabled={actionLoading} className="bg-green-600 hover:bg-green-700 text-white">
-              <Send className="w-4 h-4 mr-2" /> Post to Ledgers
-            </Button>
-          )}
+          {/* No direct posting: the Excel is saved as one recovery voucher from
+              Transactions -> Recovery From Member. */}
         </PageHeaderActions>
       </PageHeader>
 

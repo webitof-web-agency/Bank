@@ -13,8 +13,8 @@ import UploadModal from './recovery-import/UploadModal';
 import { toast } from 'sonner';
 import { SmsCheckbox } from '../../../components/ui/CheckboxLine';
 import {
-  RECOVERY_HEADS, addDemandLines, applyExcelHeads, draftTotals, emptyHeads, isUnresolved, lineTotal, manualLine,
-  mergeImportRows, normalizeDraftLines, removeLine, setLineConfirmed, unresolvedCount, updateLineHeads, withWarnings
+  RECOVERY_HEADS, STATUS_LABELS, addDemandLines, applyExcelHeads, emptyHeads, expectedPaise, fromPaise, lineDifference, lineErrors, lineStatus,
+  lineTotal, manualLine, mergeImportRows, normalizeDraftLines, reconcile, removeLine, updateLineHeads, withWarnings
 } from './recoveryDraft';
 
 function deepClone(value) {
@@ -153,13 +153,36 @@ function formatHead(value) {
 }
 
 // Add Record / Edit: one member line. Editing keeps the line's demand or
-// Excel provenance; only the amounts change, and only in the draft.
+// Excel provenance; only the amounts change, and only in the draft. The
+// Excel amount is read-only; a line with no Excel row takes the expected
+// amount (what was actually received) here. The member's current balances
+// are shown beside the heads for reference.
+const BALANCE_OF_HEAD = { share: 'share', cd: 'compulsoryDeposit', ssa: 'specialDeposit', loan: 'regularLoan', lad: 'loanAgainstDeposit' };
+
 function RecoveryMemberDialog({ state, onClose, onSave, memberGroups = [], lookups = {} }) {
+  const { token } = useAuth();
   const [member, setMember] = useState(state?.member || '');
   const [heads, setHeads] = useState({ ...emptyHeads(), ...(state?.heads || {}) });
+  const [expected, setExpected] = useState(state?.excel ? String(state.excel.amount ?? '') : String(state?.expectedAmount ?? ''));
+  const [balances, setBalances] = useState(null);
   const editing = state?.index != null;
+  const fromExcel = Boolean(state?.excel);
   const memberRecord = getMemberRecord(lookups, member);
+  const memberId = memberRecord?.id || memberRecord?._id || '';
   const total = lineTotal({ heads });
+  const expectedValue = fromExcel ? Number(state.excel.amount || 0) : Number(expected || 0);
+  const difference = fromPaise(Math.round(expectedValue * 100) - Math.round(total * 100));
+
+  useEffect(() => {
+    let alive = true;
+    setBalances(null);
+    if (!memberId || !token) return undefined;
+    api.resources.get('/banking/masters/members', memberId, token)
+      .then((response) => { if (alive) setBalances(response?.data?.currentBalances || null); })
+      .catch(() => { if (alive) setBalances(null); });
+    return () => { alive = false; };
+  }, [memberId, token]);
+
   if (!state) return null;
 
   function submit() {
@@ -167,11 +190,15 @@ function RecoveryMemberDialog({ state, onClose, onSave, memberGroups = [], looku
       alert('Select a member.');
       return;
     }
+    if (!fromExcel && !(Number(expected) > 0)) {
+      alert('Enter the expected amount (the amount actually received for this member).');
+      return;
+    }
     if (total <= 0) {
       alert('Enter at least one recovered amount.');
       return;
     }
-    onSave({ member, memberRecord, heads });
+    onSave({ member, memberRecord, heads, expectedAmount: fromExcel ? undefined : expected });
   }
 
   return (
@@ -181,8 +208,11 @@ function RecoveryMemberDialog({ state, onClose, onSave, memberGroups = [], looku
       onClose={onClose}
       wide
       footer={(
-        <div className="flex w-full items-center justify-between gap-3">
-          <span className="text-sm font-semibold text-slate-700">Member total: {formatHead(total)}</span>
+        <div className="flex w-full flex-wrap items-center justify-between gap-3">
+          <span className="text-sm text-slate-700">
+            Allocated <b>{formatHead(total)}</b> · Difference{' '}
+            <b className={difference === 0 ? 'text-emerald-700' : 'text-red-700'}>{difference === 0 ? '0' : formatHead(difference)}</b>
+          </span>
           <div className="flex gap-2">
             <button type="button" onClick={onClose} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Cancel</button>
             <button type="button" onClick={submit} className="rounded-lg bg-[var(--primary,#2563eb)] px-4 py-2 text-sm font-medium text-white">{editing ? 'Update' : 'Add'}</button>
@@ -208,16 +238,46 @@ function RecoveryMemberDialog({ state, onClose, onSave, memberGroups = [], looku
             <Input value={getDesignationLabel(memberRecord) || state.designation || ''} readOnly placeholder="—" />
           </div>
         </div>
-        {state.reviewNote ? <p className="rounded-lg bg-amber-50 px-3 py-2 text-[13px] text-amber-800">{state.reviewNote}</p> : null}
-        <div className="grid gap-3 md:grid-cols-4">
-          {RECOVERY_FIELDS.map(([key, label]) => (
-            <div key={key} className="space-y-1.5">
-              <FieldLabel>{label}</FieldLabel>
-              <Input type="number" min="0" step="0.01" value={heads[key]} onChange={(e) => setHeads((curr) => ({ ...curr, [key]: e.target.value }))} placeholder="0" />
-            </div>
-          ))}
+        <div className="grid gap-3 md:grid-cols-3">
+          <div className="space-y-1.5">
+            <FieldLabel required={!fromExcel}>{fromExcel ? 'Expected (Excel) Amount' : 'Expected Amount'}</FieldLabel>
+            {fromExcel
+              ? <Input value={formatHead(state.excel.amount)} readOnly className="bg-slate-50 font-semibold" />
+              : <Input type="number" min="0" step="0.01" value={expected} onChange={(e) => setExpected(e.target.value)} placeholder="Amount actually received" />}
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel>Allocated Total</FieldLabel>
+            <Input value={formatHead(total)} readOnly className="bg-slate-50" />
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel>Difference</FieldLabel>
+            <Input value={difference === 0 ? '0' : formatHead(difference)} readOnly className={difference === 0 ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 font-semibold text-red-700'} />
+          </div>
         </div>
-        <p className="text-[12px] text-slate-500">Insurance Premium and Suspense have no confirmed posting rule yet: a recovery with either amount will not save.</p>
+        {state.reviewNote ? <p className="rounded-lg bg-amber-50 px-3 py-2 text-[13px] text-amber-800">{state.reviewNote}</p> : null}
+        <div className="overflow-x-auto rounded-xl border border-slate-200">
+          <table className="min-w-full text-left text-[13px]">
+            <thead className="bg-slate-50 text-[11px] font-semibold uppercase tracking-[0.06em] text-slate-500">
+              <tr><th className="px-3 py-2">Head</th><th className="px-3 py-2 text-right">Current Balance</th><th className="px-3 py-2">Recovery Amount</th></tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {RECOVERY_FIELDS.map(([key, label]) => {
+                const balanceKey = BALANCE_OF_HEAD[key];
+                const balance = balanceKey && balances ? balances[balanceKey] : null;
+                return (
+                  <tr key={key}>
+                    <td className="px-3 py-1.5 font-medium text-slate-700">{label}</td>
+                    <td className="px-3 py-1.5 text-right text-slate-600">{balanceKey ? (balances ? formatHead(balance) : '…') : ''}</td>
+                    <td className="px-3 py-1.5">
+                      <Input type="number" min="0" step="0.01" value={heads[key]} onChange={(e) => setHeads((curr) => ({ ...curr, [key]: e.target.value }))} placeholder="0" />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <p className="text-[12px] text-slate-500">Insurance Premium and Suspense have no confirmed posting rule yet: a line with either amount can't be saved.</p>
       </div>
     </Modal>
   );
@@ -376,30 +436,31 @@ function DemandPickerDialog({ open, onClose, onAdd, lookups = {}, voucherDate = 
 
 // The Recovery draft grid. Rows come from Demand List, Excel or Add Record;
 // each can be edited or removed before Save. Nothing here saves anything.
-function RecoveryLinesEditor({ rows = [], onChange, memberGroups = [], lookups = {}, voucherDate = '' }) {
+// A row is red until its heads add up exactly to its expected (Excel)
+// amount; Save needs every row valid.
+function RecoveryLinesEditor({ rows = [], excluded = [], onChange, memberGroups = [], lookups = {}, voucherDate = '' }) {
   const { token } = useAuth();
   const safeRows = Array.isArray(rows) ? rows : [];
+  const safeExcluded = Array.isArray(excluded) ? excluded : [];
   const [memberDialog, setMemberDialog] = useState(null);
   const [demandOpen, setDemandOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [notice, setNotice] = useState('');
-  const totals = draftTotals(safeRows);
-  const members = Array.isArray(lookups.members) ? lookups.members : [];
-  // Warnings are worked out fresh (rows saved before this check have none stored).
   const checkedRows = withWarnings(safeRows);
-  const unresolved = checkedRows.filter(isUnresolved).length;
-  const hasDemand = safeRows.some((row) => row.source === 'DEMAND');
-  const hasExcel = safeRows.some((row) => row.excel);
+  const summary = reconcile(safeRows);
+  const members = Array.isArray(lookups.members) ? lookups.members : [];
+  const hasExcel = safeRows.some((row) => row.excel) || safeExcluded.length > 0;
+  const excludedTotal = safeExcluded.reduce((sum, row) => sum + Math.round(Number(row.amount || 0) * 100), 0) / 100;
 
-  function saveMemberLine({ member, memberRecord, heads }) {
+  function saveMemberLine({ member, memberRecord, heads, expectedAmount }) {
     if (memberDialog.index != null) {
-      onChange(updateLineHeads(safeRows, memberDialog.index, heads));
+      onChange(updateLineHeads(safeRows, memberDialog.index, heads, expectedAmount));
     } else {
       onChange(withWarnings([...safeRows, manualLine({
         ...(memberRecord || { code: member }),
         branchName: getBranchLabel(lookups, memberRecord?.branchCode),
         designation: getDesignationLabel(memberRecord)
-      }, heads)]));
+      }, heads, expectedAmount)]));
     }
     setMemberDialog(null);
   }
@@ -416,100 +477,146 @@ function RecoveryLinesEditor({ rows = [], onChange, memberGroups = [], lookups =
     try {
       const response = await api.recoveryImport.getBatchRows(token, batch.id);
       const importRows = Array.isArray(response.data?.rows) ? response.data.rows : [];
-      const result = mergeImportRows(safeRows, importRows, members, batch.id);
-      onChange(result.lines);
-      const issues = result.lines.filter(isUnresolved).length;
-      const skipped = result.otherBranch ? ` ${result.otherBranch} row(s) of other branches skipped (their demand is not loaded).` : '';
-      setNotice(`Excel compared with the demand: ${result.matched} matched a demand line, ${result.added} not in the demand, ${result.unmatched} with no member.${skipped} ${issues ? `${issues} row(s) to fix or confirm.` : 'Everything matches.'}`);
+      const result = mergeImportRows(safeRows, importRows, members, batch.id, safeExcluded);
+      onChange(result.lines, result.excluded);
+      const check = reconcile(result.lines);
+      const footer = batch?.payload?.footerTotal;
+      const footerNote = footer == null ? '' : (batch.payload.footerMatches ? ` File total ₹${formatHead(footer)} matches its member rows.` : ` WARNING: the file's total line ₹${formatHead(footer)} differs from its member rows ₹${formatHead(batch.payload.parsedTotal)}.`);
+      const skipped = result.otherBranch ? ` ${result.otherBranch} row(s) of branches whose demand is not loaded were excluded (listed below).` : '';
+      setNotice(`Excel imported: ${result.matched} matched a demand line, ${result.added} not in the demand, ${result.unmatched} with no member.${skipped}${footerNote} ${check.errorRows ? `${check.errorRows} row(s) to correct.` : 'Every row reconciles.'}`);
     } catch (error) {
       alert(error.message || 'Unable to read the imported rows');
     }
   }
 
+  function remove(index) {
+    const row = safeRows[index];
+    let reason = '';
+    if (row?.excel?.rowId) {
+      reason = window.prompt(`Excel row ${row.excel.rowNo ?? ''} (PF ${row.excel.pfNo || '—'}, ₹${formatHead(row.excel.amount)}) will be EXCLUDED from this recovery and the Excel total. Reason:`, row.unmatched ? 'No member for this PF' : '');
+      if (reason == null) return;
+      if (!reason.trim()) {
+        alert('Give a reason for excluding an Excel row.');
+        return;
+      }
+    }
+    const next = removeLine(safeRows, index, safeExcluded, reason.trim());
+    onChange(next, next.excluded);
+  }
+
+  function restoreExcluded(index) {
+    onChange(safeRows, safeExcluded.filter((_, i) => i !== index));
+    setNotice('The row was taken off the excluded list. Import the Excel again to bring it back into the recovery.');
+  }
+
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <SectionTitle subtitle="1. Load the demand  2. Import the Excel to compare  3. Fix or confirm every warning, then Save.">Member Recovery</SectionTitle>
+        <SectionTitle subtitle="1. Add from the demand list  2. Load the bank Excel  3. Correct every red row until the difference is 0, then Save.">Member Recovery</SectionTitle>
         <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={() => setDemandOpen(true)}>1. Load Demand</Button>
-          <Button type="button" variant="outline" size="sm" onClick={() => setUploadOpen(true)} title={hasDemand ? '' : 'Load the demand first to compare against it'}>2. Import Excel</Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => setDemandOpen(true)}>1. Add From Demand List</Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => setUploadOpen(true)}>2. Load From Excel</Button>
           <Button type="button" size="sm" onClick={() => setMemberDialog({ index: null, heads: emptyHeads() })}>+ Add Record</Button>
         </div>
       </div>
       {notice ? <p className="rounded-lg bg-slate-50 px-3 py-2 text-[13px] text-slate-700">{notice}</p> : null}
-      {unresolved ? (
-        <p className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-[13px] font-medium text-red-700">
-          {unresolved} row(s) have warnings. Fix the amounts (Edit / Use Excel), remove the row, or tick Confirm — Save is blocked until all are resolved.
-        </p>
-      ) : (hasExcel ? <p className="rounded-lg bg-emerald-50 px-3 py-2 text-[13px] text-emerald-700">Excel and demand checked — no open warnings.</p> : null)}
 
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
         <table className="min-w-full text-left text-[12px]">
           <thead className="bg-slate-50 text-[11px] font-semibold uppercase tracking-[0.06em] text-slate-500">
             <tr>
               <th className="px-2 py-2">Member</th>
+              <th className="px-2 py-2">Branch / Designation</th>
+              <th className="px-2 py-2 text-right">Expected</th>
               {RECOVERY_HEADS.map(([key, label]) => <th key={key} className="px-2 py-2 text-right">{label}</th>)}
-              <th className="px-2 py-2 text-right">Total</th>
-              {hasExcel ? <th className="px-2 py-2 text-right">Excel</th> : null}
+              <th className="px-2 py-2 text-right">Allocated</th>
+              <th className="px-2 py-2 text-right">Difference</th>
+              <th className="px-2 py-2">Status</th>
               <th className="px-2 py-2"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {checkedRows.map((row, index) => {
               const record = getMemberRecord(lookups, row.member);
-              const open = isUnresolved(row);
-              const warnings = row.warnings || [];
+              const status = lineStatus(row, safeRows);
+              const bad = status !== 'VALID';
+              const errors = lineErrors(row, safeRows);
+              const notes = row.warnings || [];
+              const expected = expectedPaise(row);
+              const difference = lineDifference(row);
               return (
                 <tr
                   key={`${row.demandLineId || row.importRowId || 'line'}-${index}`}
-                  className={open ? 'bg-red-50 shadow-[inset_4px_0_0_0_#dc2626]' : (warnings.length ? 'bg-amber-50/60' : '')}
+                  className={bad ? 'bg-red-50 shadow-[inset_4px_0_0_0_#dc2626]' : ''}
                 >
                   <td className="px-2 py-1.5 align-top">
                     {row.unmatched
                       ? <span className="font-medium text-red-700">PF {row.excel?.pfNo || '—'} <span className="font-normal">{row.memberName}</span></span>
                       : <><span className="font-medium text-slate-800">{row.member}</span> <span className="text-slate-600">{row.memberName || record?.name || ''}</span></>}
-                    {warnings.length ? (
-                      <ul className={`mt-1 space-y-0.5 text-[11px] ${open ? 'font-semibold text-red-700' : 'text-amber-700'}`}>
-                        {warnings.map((warning) => <li key={warning}>⚠ {warning}</li>)}
-                      </ul>
-                    ) : null}
-                    {warnings.length && !row.unmatched ? (
-                      <label className="mt-1 inline-flex cursor-pointer items-center gap-1.5 text-[11px] font-medium text-slate-700">
-                        <input type="checkbox" checked={Boolean(row.confirmed)} onChange={(e) => onChange(setLineConfirmed(safeRows, index, e.target.checked))} />
-                        Confirm as is
-                      </label>
-                    ) : null}
+                    {errors.length ? <ul className="mt-1 space-y-0.5 text-[11px] font-semibold text-red-700">{errors.map((text) => <li key={text}>{text}</li>)}</ul> : null}
+                    {notes.length ? <ul className="mt-1 space-y-0.5 text-[11px] text-amber-700">{notes.map((text) => <li key={text}>ⓘ {text}</li>)}</ul> : null}
                   </td>
+                  <td className="px-2 py-1.5 align-top text-slate-600">{row.branchName || getBranchLabel(lookups, record?.branchCode) || ''}<div className="text-[11px] text-slate-500">{row.designation || getDesignationLabel(record)}</div></td>
+                  <td className="px-2 py-1.5 text-right font-semibold text-slate-800">{expected == null ? '—' : formatHead(fromPaise(expected))}</td>
                   {RECOVERY_HEADS.map(([key]) => <td key={key} className="px-2 py-1.5 text-right text-slate-700">{formatHead(row.heads?.[key])}</td>)}
                   <td className="px-2 py-1.5 text-right font-semibold text-slate-800">{formatHead(lineTotal(row))}</td>
-                  {hasExcel ? <td className="px-2 py-1.5 text-right text-slate-700">{row.excel ? formatHead(row.excel.amount) : '—'}</td> : null}
+                  <td className={`px-2 py-1.5 text-right font-semibold ${difference === 0 ? 'text-slate-400' : 'text-red-700'}`}>{difference === 0 ? '0' : formatHead(difference)}</td>
+                  <td className="px-2 py-1.5">
+                    <span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold ${bad ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>{STATUS_LABELS[status]}</span>
+                  </td>
                   <td className="whitespace-nowrap px-2 py-1.5 text-right">
-                    {row.excel && !row.unmatched && warnings.length ? (
-                      <button type="button" onClick={() => onChange(applyExcelHeads(safeRows, index))} className="mr-3 font-medium text-emerald-700 hover:underline" title="Use the Excel amount, split over the member's demand heads">Use Excel</button>
+                    {row.excel && !row.unmatched && bad ? (
+                      <button type="button" onClick={() => onChange(applyExcelHeads(safeRows, index))} className="mr-3 font-medium text-emerald-700 hover:underline" title="Split the Excel amount over the member's monthly demand heads">Use Excel split</button>
                     ) : null}
                     {!row.unmatched ? <button type="button" onClick={() => setMemberDialog({ index, ...row })} className="mr-3 font-medium text-[var(--primary,#2563eb)] hover:underline">Edit</button> : null}
-                    <button type="button" onClick={() => onChange(removeLine(safeRows, index))} className="font-medium text-rose-600 hover:text-rose-700">Remove</button>
+                    <button type="button" onClick={() => remove(index)} className="font-medium text-rose-600 hover:text-rose-700">{row.excel?.rowId ? 'Exclude' : 'Remove'}</button>
                   </td>
                 </tr>
               );
             })}
             {!safeRows.length ? (
-              <tr><td colSpan={RECOVERY_HEADS.length + (hasExcel ? 4 : 3)} className="px-3 py-6 text-center text-slate-500">No members yet — Load Demand first, then Import Excel to compare (or Add Record).</td></tr>
+              <tr><td colSpan={RECOVERY_HEADS.length + 7} className="px-3 py-6 text-center text-slate-500">No members yet — Add From Demand List, then Load From Excel (or Add Record).</td></tr>
             ) : null}
           </tbody>
           {safeRows.length ? (
             <tfoot className="bg-slate-50 font-semibold text-slate-800">
               <tr>
-                <td className="px-2 py-2">Total ({safeRows.length} members)</td>
-                {RECOVERY_HEADS.map(([key]) => <td key={key} className="px-2 py-2 text-right">{formatHead(totals.heads[key])}</td>)}
-                <td className="px-2 py-2 text-right">{formatHead(totals.total)}</td>
-                {hasExcel ? <td className="px-2 py-2 text-right">{formatHead(safeRows.reduce((sum, row) => sum + Number(row.excel?.amount || 0), 0))}</td> : null}
-                <td></td>
+                <td className="px-2 py-2" colSpan={2}>Total ({safeRows.length} members)</td>
+                <td className="px-2 py-2 text-right">{formatHead(summary.excelTotal)}</td>
+                {RECOVERY_HEADS.map(([key]) => <td key={key} className="px-2 py-2 text-right">{formatHead(summary.heads[key])}</td>)}
+                <td className="px-2 py-2 text-right">{formatHead(summary.recoveryTotal)}</td>
+                <td className={`px-2 py-2 text-right ${summary.difference === 0 ? '' : 'text-red-700'}`}>{summary.difference === 0 ? '0' : formatHead(summary.difference)}</td>
+                <td colSpan={2}></td>
               </tr>
             </tfoot>
           ) : null}
         </table>
       </div>
+
+      {safeRows.length ? (
+        <div className={`grid gap-3 rounded-xl border p-4 sm:grid-cols-3 lg:grid-cols-6 ${summary.canSave ? 'border-emerald-200 bg-emerald-50' : 'border-red-200 bg-red-50'}`}>
+          <SummaryFigure label={hasExcel ? 'Excel Total' : 'Expected Total'} value={formatHead(summary.excelTotal)} />
+          <SummaryFigure label="Recovery Total" value={formatHead(summary.recoveryTotal)} />
+          <SummaryFigure label="Difference" value={summary.difference === 0 ? '0' : formatHead(summary.difference)} tone={summary.difference === 0 ? 'ok' : 'bad'} />
+          <SummaryFigure label="Valid Rows" value={summary.validRows} />
+          <SummaryFigure label="Error Rows" value={summary.errorRows} tone={summary.errorRows ? 'bad' : 'ok'} />
+          <SummaryFigure label="Status" value={summary.canSave ? 'Ready to Save' : 'Not reconciled'} tone={summary.canSave ? 'ok' : 'bad'} />
+        </div>
+      ) : null}
+
+      {safeExcluded.length ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3">
+          <p className="mb-2 text-[13px] font-semibold text-amber-800">Excluded Excel rows: {safeExcluded.length} · ₹{formatHead(excludedTotal)} (not in this recovery or its Excel total)</p>
+          <ul className="max-h-40 space-y-0.5 overflow-y-auto text-[12px] text-amber-900">
+            {safeExcluded.map((row, index) => (
+              <li key={`${row.importRowId}-${index}`} className="flex items-center justify-between gap-3">
+                <span>Row {row.rowNo ?? '—'} · PF {row.pfNo || '—'} {row.name ? `· ${row.name}` : ''} · ₹{formatHead(row.amount)} — {row.reason}</span>
+                <button type="button" onClick={() => restoreExcluded(index)} className="shrink-0 font-medium text-[var(--primary,#2563eb)] hover:underline">Un-exclude</button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       {/* The dialogs render outside the voucher <form> (portal): inside it,
           their buttons or Enter in an amount would submit — i.e. save — the
@@ -536,6 +643,16 @@ function RecoveryLinesEditor({ rows = [], onChange, memberGroups = [], lookups =
         existingIds={safeRows.map((row) => row.demandLineId).filter(Boolean)}
       /></div>, document.body)}
       {createPortal(<div data-modal-portal="true"><UploadModal isOpen={uploadOpen} onClose={() => setUploadOpen(false)} onUploadSuccess={addFromExcel} token={token} /></div>, document.body)}
+    </div>
+  );
+}
+
+function SummaryFigure({ label, value, tone = '' }) {
+  const color = tone === 'bad' ? 'text-red-700' : tone === 'ok' ? 'text-emerald-700' : 'text-slate-900';
+  return (
+    <div>
+      <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-slate-500">{label}</div>
+      <div className={`text-[15px] font-bold ${color}`}>{value}</div>
     </div>
   );
 }
@@ -634,9 +751,10 @@ export function MemberTransactionForm({ section, lookups = {}, value, setValue, 
   const isSsa = activeKey === 'ssa-paid-member';
   const isRecovery = activeKey === 'recovery-member';
   const recoveryRows = normalizeDraftLines(draft.details?.recoveryLines);
+  const recoveryExcluded = Array.isArray(draft.details?.recoveryExcluded) ? draft.details.recoveryExcluded : [];
   const loanAmount = Number(draft.details?.components?.loanAmt || 0);
   const ladAmount = Number(draft.details?.components?.lad || 0);
-  const recoveryTotal = draftTotals(recoveryRows).total;
+  const recoveryTotal = reconcile(recoveryRows).recoveryTotal;
   const amountValue = isLoan ? loanAmount + ladAmount : isRecovery ? recoveryTotal : Number(draft.amount || 0);
 
   function updateDetails(path, nextValue) {
@@ -647,21 +765,33 @@ export function MemberTransactionForm({ section, lookups = {}, value, setValue, 
     setDetailsValue(setValue, ['components', path], nextValue);
   }
 
-  // Recovery: Save waits until every Excel/demand warning is fixed or confirmed.
+  // Recovery: Save only when every row's heads equal its expected (Excel)
+  // amount and the totals agree to the paisa. No override; the server checks
+  // the same again.
   function handleSubmit(event) {
-    const open = isRecovery ? unresolvedCount(recoveryRows) : 0;
-    if (open) {
-      event.preventDefault();
-      toast.error(`${open} recovery row(s) still have warnings. Fix, remove or confirm them before saving.`);
-      return;
+    if (isRecovery) {
+      const check = reconcile(recoveryRows);
+      if (!check.canSave) {
+        event.preventDefault();
+        toast.error(check.errorRows
+          ? `${check.errorRows} recovery row(s) don't reconcile (difference ₹${formatHead(check.difference)}). Correct them before saving.`
+          : `Recovery total ₹${formatHead(check.recoveryTotal)} must equal the expected total ₹${formatHead(check.excelTotal)}.`);
+        return;
+      }
     }
     onSubmit?.(event);
   }
 
-  function updateRecoveryRows(nextRows) {
-    setDetailsValue(setValue, 'recoveryLines', withWarnings(nextRows));
-    const nextTotal = draftTotals(nextRows).total;
-    setRootValue(setValue, 'amount', nextTotal > 0 ? nextTotal : '');
+  function updateRecoveryRows(nextRows, nextExcluded) {
+    const rowsWithStatus = withWarnings(nextRows);
+    setValue((current) => {
+      const next = deepClone(current || {});
+      next.details = { ...(next.details || {}), recoveryLines: rowsWithStatus };
+      if (nextExcluded !== undefined) next.details.recoveryExcluded = nextExcluded;
+      const total = reconcile(rowsWithStatus).recoveryTotal;
+      next.amount = total > 0 ? total : '';
+      return next;
+    });
   }
 
   function setAmount(nextValue) {
@@ -754,12 +884,8 @@ export function MemberTransactionForm({ section, lookups = {}, value, setValue, 
       <section className="space-y-3">
         <SectionTitle>Loan Disbursement</SectionTitle>
         <div className="grid gap-3 md:grid-cols-4">
-          <div className="space-y-1.5 md:col-span-3">
-            <FieldLabel>Settlement Account</FieldLabel>
-            <Input value={draft.details?.settlementAccount || ''} onChange={(event) => updateDetails('settlementAccount', event.target.value)} placeholder="Settlement account or ledger" />
-          </div>
           <div className="space-y-1.5">
-            <FieldLabel required>Loan Amount</FieldLabel>
+            <FieldLabel required>Regular Loan Amount</FieldLabel>
             <Input
               type="number"
               min="0"
@@ -773,7 +899,7 @@ export function MemberTransactionForm({ section, lookups = {}, value, setValue, 
             />
           </div>
           <div className="space-y-1.5">
-            <FieldLabel>LAD (Loan Against Deposit)</FieldLabel>
+            <FieldLabel>Loan Against Deposit Amount</FieldLabel>
             <Input
               type="number"
               min="0"
@@ -817,12 +943,8 @@ export function MemberTransactionForm({ section, lookups = {}, value, setValue, 
       <section className="space-y-3">
         <SectionTitle>Compulsory Deposit</SectionTitle>
         <div className="grid gap-3 md:grid-cols-4">
-          <div className="space-y-1.5 md:col-span-3">
-            <FieldLabel>Settlement Account</FieldLabel>
-            <Input value={draft.details?.settlementAccount || ''} onChange={(event) => updateDetails('settlementAccount', event.target.value)} placeholder="Settlement account or ledger" />
-          </div>
           <div className="space-y-1.5">
-            <FieldLabel required>Amount</FieldLabel>
+            <FieldLabel required>Compulsory Deposit Amount</FieldLabel>
             <Input type="number" min="0" step="0.01" value={draft.amount ?? ''} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" />
           </div>
           <div className="space-y-1.5">
@@ -856,12 +978,8 @@ export function MemberTransactionForm({ section, lookups = {}, value, setValue, 
       <section className="space-y-3">
         <SectionTitle>Insurance Premium</SectionTitle>
         <div className="grid gap-3 md:grid-cols-4">
-          <div className="space-y-1.5 md:col-span-3">
-            <FieldLabel>Settlement Account</FieldLabel>
-            <Input value={draft.details?.settlementAccount || ''} onChange={(event) => updateDetails('settlementAccount', event.target.value)} placeholder="Settlement account or ledger" />
-          </div>
           <div className="space-y-1.5">
-            <FieldLabel required>Amount</FieldLabel>
+            <FieldLabel required>Insurance Premium Amount</FieldLabel>
             <Input type="number" min="0" step="0.01" value={draft.amount ?? ''} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" />
           </div>
           <div className="space-y-1.5">
@@ -896,7 +1014,7 @@ export function MemberTransactionForm({ section, lookups = {}, value, setValue, 
         <SectionTitle>SSA Payment</SectionTitle>
         <div className="grid gap-3 md:grid-cols-4">
           <div className="space-y-1.5">
-            <FieldLabel required>Amount</FieldLabel>
+            <FieldLabel required>Special Saving / SSA Amount</FieldLabel>
             <Input type="number" min="0" step="0.01" value={draft.amount ?? ''} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" />
           </div>
           <div className="space-y-1.5">
@@ -954,7 +1072,7 @@ export function MemberTransactionForm({ section, lookups = {}, value, setValue, 
           </div>
         </div>
 
-        <RecoveryLinesEditor rows={recoveryRows} onChange={updateRecoveryRows} memberGroups={memberGroups} lookups={lookups} voucherDate={draft.date} />
+        <RecoveryLinesEditor rows={recoveryRows} excluded={recoveryExcluded} onChange={updateRecoveryRows} memberGroups={memberGroups} lookups={lookups} voucherDate={draft.date} />
 
         <div className="space-y-3">
           <SectionTitle>Total and Narration</SectionTitle>

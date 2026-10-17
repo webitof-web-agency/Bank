@@ -521,6 +521,7 @@ export function ReportViewerPage() {
               onChange={(value) => setFilters((current) => ({ ...current, listType: value || 'all' }))}
               options={[
                 { label: 'All Members', value: 'all' },
+                { label: 'Active Members', value: 'active' },
                 { label: 'Branch-wise Members', value: 'branch' },
                 { label: 'All Dismembered', value: 'dismembered' }
               ]}

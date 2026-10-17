@@ -102,7 +102,7 @@ async function post(req, res) {
     res.json({ success: true, data: batch });
   } catch (error) {
     console.error('Error in post:', error);
-    res.status(400).json({ success: false, error: error.message });
+    res.status(error.statusCode || 400).json({ success: false, error: error.message });
   }
 }
 

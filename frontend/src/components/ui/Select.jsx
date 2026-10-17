@@ -80,11 +80,13 @@ export function Select({
             {filteredOptions.length === 0 ? (
               <div className="px-3 py-2 text-[12px] text-slate-500 text-center">No options found</div>
             ) : (
-              filteredOptions.map((opt) => {
+              filteredOptions.map((opt, index) => {
                 const isSelected = opt.value === value;
                 return (
                   <button
-                    key={opt.value}
+                    // Values can repeat (e.g. two members with the same name);
+                    // a duplicate key makes React keep stale rows while filtering.
+                    key={`${opt.value}::${index}`}
                     type="button"
                     onClick={() => {
                       onChange(opt.value);

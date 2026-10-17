@@ -21,7 +21,8 @@ import {
   formatMoney,
   getBranchMap,
   buildNextMemberCode,
-  buildNextMembershipNo
+  buildNextMembershipNo,
+  memberStatusLabel
 } from './memberUtils';
 import { uploadDocumentMap } from '../documentUpload';
 
@@ -147,7 +148,7 @@ export function MemberDetailPage() {
   const memberName = member.name || 'Member';
   const memberCode = member.code || buildNextMemberCode([]);
   const membershipNo = member.membershipNo || buildNextMembershipNo([]);
-  const status = String(statusLabel || 'Active');
+  const status = memberStatusLabel(statusLabel);
   const summaryLabel = [
     member.branchCode ? formatBranchLabel(memberBranch) || member.branchCode : '',
     member.category,

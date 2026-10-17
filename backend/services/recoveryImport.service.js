@@ -1,7 +1,6 @@
 const xlsx = require('xlsx');
 const { randomUUID } = require('crypto');
 const { Member, MemberDemandDefault, RecoveryImportBatch, RecoveryImportRow } = require('../models/banking.models');
-const { createVoucher } = require('./banking.service');
 const { toPaise, toRupees } = require('../utils/money');
 
 // ---------------------------------------------------------------------------
@@ -88,111 +87,145 @@ function detectLegacyTemplate(headers) {
   return { isLegacy: false, colMap: null };
 }
 
-function getHeadersFromBuffer(buffer) {
+// The sheet as rows (row i = sheet row i, blanks kept), plus the sheet.
+function readSheet(buffer) {
   const workbook = xlsx.read(buffer, { type: 'buffer' });
-  const sheetName = workbook.SheetNames[0];
-  const sheet = workbook.Sheets[sheetName];
-  const data = xlsx.utils.sheet_to_json(sheet, { header: 1 });
-  if (!data.length) return [];
-  return data[0].map(h => String(h == null ? '' : h));
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  if (!sheet || !sheet['!ref']) return { sheet, rows: [], firstRow: 0, firstCol: 0 };
+  const range = xlsx.utils.decode_range(sheet['!ref']);
+  const rows = xlsx.utils.sheet_to_json(sheet, { header: 1, defval: null, blankrows: true, raw: true });
+  return { sheet, rows, firstRow: range.s.r, firstCol: range.s.c };
+}
+
+const HEADER_SCAN_ROWS = 25;
+
+function isNumericCell(value) {
+  if (value == null || value === '') return false;
+  return Number.isFinite(Number(String(value).replace(/,/g, '')));
+}
+
+// The bank's workbook has a title (and a salary-register line) above the
+// headings, so the heading row is looked for in the first rows: the first
+// row that has a PF column and an amount column. When the amount column has
+// a name we don't know (the bank's "COECOS RD"), it is the last heading
+// whose values below are numbers.
+function findHeaderRow(rows = []) {
+  for (let i = 0; i < Math.min(HEADER_SCAN_ROWS, rows.length); i += 1) {
+    const headers = (rows[i] || []).map((h) => String(h == null ? '' : h));
+    const detection = detectLegacyTemplate(headers);
+    if (detection.isLegacy) return { index: i, headers, detection };
+    if (!headers.some((h) => isPfNoHeader(normalizeHeader(h)))) continue;
+    const below = rows.slice(i + 1, i + 12).filter((row) => row && row.some((cell) => cell != null && cell !== ''));
+    for (let c = headers.length - 1; c >= 0; c -= 1) {
+      if (!headers[c].trim() || isPfNoHeader(normalizeHeader(headers[c]))) continue;
+      const values = below.map((row) => row[c]).filter((v) => v != null && v !== '');
+      if (values.length && values.filter(isNumericCell).length >= Math.ceil(values.length * 0.8)) {
+        const withAmount = [...headers];
+        const fallback = detectLegacyTemplate(withAmount.map((h, k) => (k === c ? 'Total Amt' : h)));
+        if (fallback.isLegacy) {
+          fallback.colMap.amount = headers[c];
+          return { index: i, headers, detection: fallback };
+        }
+      }
+    }
+  }
+  const headers = ((rows[0] || [])).map((h) => String(h == null ? '' : h));
+  return { index: 0, headers, detection: detectLegacyTemplate(headers) };
 }
 
 /**
- * Analyse the uploaded file buffer and return header info + auto-detected
- * column mapping. Used by the frontend GET /analyze endpoint.
+ * Analyse the uploaded file and return the heading row, its headers and the
+ * auto-detected column mapping. Used by the frontend /analyze step.
  */
 function analyzeFileHeaders(buffer) {
-  const headers = getHeadersFromBuffer(buffer);
-  const detection = detectLegacyTemplate(headers);
-  return { headers, ...detection };
+  const { rows } = readSheet(buffer);
+  const { index, headers, detection } = findHeaderRow(rows);
+  return { headers, headerRow: index + 1, ...detection };
 }
 
 // ---------------------------------------------------------------------------
 // File Parsing
 // ---------------------------------------------------------------------------
 
-/**
- * Parse the Excel file. Supports two colMap shapes:
- *   Legacy (name-based):  { pfNo: 'PF No.', amount: 'Total Amt.', branch: 'Branch', ... }
- *   Manual (index-based): { pfNo: 2, amount: 5 }
- */
-// 0-based sheet row of a parsed row: SheetJS records it as __rowNum__
-// (blank rows are skipped, so the list position is not enough).
-function sheetRowIndex(row, index) {
-  return Number.isInteger(row.__rowNum__) ? row.__rowNum__ : index + 1;
+// A row of column numbers under the headings ("1 2 3 4 5 6").
+function isColumnNumberRow(row = []) {
+  const cells = row.map((cell, index) => ({ cell, index })).filter(({ cell }) => cell != null && cell !== '');
+  if (cells.length < 3) return false;
+  return cells.every(({ cell }, k) => isNumericCell(cell) && Number(cell) === Number(cells[0].cell) + k)
+    && Number(cells[0].cell) === 1;
 }
 
+// The PF as written in the sheet: a text cell as is, a number as Excel shows
+// it — leading zeros kept, never re-formatted.
+function cellText(sheet, r, c, fallback) {
+  const cell = sheet ? sheet[xlsx.utils.encode_cell({ r, c })] : null;
+  if (!cell) return fallback == null ? '' : String(fallback).trim();
+  if (cell.t === 's') return String(cell.v).trim();
+  return String(cell.w != null ? cell.w : cell.v).trim();
+}
+
+/**
+ * Parse the Excel file from its heading row on. colMap is name-based
+ * ({ pfNo: 'PF', amount: 'COECOS RD', ... }) or index-based ({ pfNo: 2,
+ * amount: 5 }); both refer to the heading row found by findHeaderRow.
+ * Only member rows are returned: blank rows, the column-number row and
+ * total/footer lines (no PF) are skipped. The footer total, when present,
+ * is returned as rows.footerTotal to check the member rows against.
+ */
 function parseImportFile(buffer, colMap) {
-  const workbook = xlsx.read(buffer, { type: 'buffer' });
-  const sheetName = workbook.SheetNames[0];
-  const sheet = workbook.Sheets[sheetName];
+  const { sheet, rows, firstRow, firstCol } = readSheet(buffer);
 
   // Formulas are read by the value Excel saved with them. One without a saved
   // value (file written by a tool that does not calculate) cannot be read.
-  // Rows holding a formula are remembered: a formula row with no PF No. is a
-  // total line (e.g. =SUM(...)) and is skipped.
-  const formulaRows = new Set();
-  for (const key in sheet) {
+  for (const key in sheet || {}) {
     if (key[0] === '!') continue;
-    if (!sheet[key].f) continue;
-    if (sheet[key].v === undefined) {
+    if (sheet[key].f && sheet[key].v === undefined) {
       throw new Error(`Cell ${key} has a formula with no saved value. Open the file in Excel, save it, and import again (or paste values only).`);
     }
-    formulaRows.add(xlsx.utils.decode_cell(key).r);
   }
 
-  // Determine whether colMap uses string header names or numeric indices
-  const isNameBasedMap = typeof colMap.pfNo === 'string' && isNaN(Number(colMap.pfNo));
-
-  let data;
-  if (isNameBasedMap) {
-    data = xlsx.utils.sheet_to_json(sheet, { defval: null });
-  } else {
-    const rawRows = xlsx.utils.sheet_to_json(sheet, { header: 1, defval: null });
-    if (rawRows.length < 2) return [];
-    data = rawRows.slice(1).map(row => {
-      const obj = {};
-      (rawRows[0] || []).forEach((h, i) => { obj[i] = row[i]; });
-      Object.defineProperty(obj, '__rowNum__', { value: row.__rowNum__, enumerable: false });
-      return obj;
-    });
-  }
-
-  const pfKey = isNameBasedMap ? colMap.pfNo : Number(colMap.pfNo);
-  const amountKey = isNameBasedMap ? colMap.amount : Number(colMap.amount);
-  const branchKey = colMap.branch != null ? (isNameBasedMap ? colMap.branch : Number(colMap.branch)) : null;
-  const empNameKey = colMap.empName != null ? (isNameBasedMap ? colMap.empName : Number(colMap.empName)) : null;
-  const gradeKey = colMap.grade != null ? (isNameBasedMap ? colMap.grade : Number(colMap.grade)) : null;
+  const { index: headerIndex, headers } = findHeaderRow(rows);
+  const columnOf = (key) => {
+    if (key == null || key === '') return null;
+    if (typeof key === 'number' || (typeof key === 'string' && key.trim() !== '' && !Number.isNaN(Number(key)))) return Number(key);
+    const at = headers.indexOf(key);
+    return at >= 0 ? at : null;
+  };
+  const pfCol = columnOf(colMap.pfNo);
+  const amountCol = columnOf(colMap.amount);
+  if (pfCol == null || amountCol == null) throw new Error('The PF and amount columns were not found in the heading row.');
+  const branchCol = columnOf(colMap.branch);
+  const nameCol = columnOf(colMap.empName);
+  const gradeCol = columnOf(colMap.grade);
+  const textAt = (row, col) => (col != null && row[col] != null && String(row[col]).trim() !== '' ? String(row[col]).trim() : null);
 
   const parsedRows = [];
-  data.forEach((row, index) => {
-    const rawPfNo = row[pfKey];
-    const rawAmount = row[amountKey];
-
-    const pfNo = rawPfNo != null ? String(rawPfNo).trim() : null;
-    const amount = rawAmount != null ? parseFloat(rawAmount) : null;
-
-    if (!pfNo && !amount) return; // Skip completely empty rows
-    if (!pfNo && formulaRows.has(sheetRowIndex(row, index))) return; // Total line
-
-    const sourceBranch = branchKey != null && row[branchKey] != null
-      ? String(row[branchKey]).trim() : null;
-    const sourceEmployeeName = empNameKey != null && row[empNameKey] != null
-      ? String(row[empNameKey]).trim() : null;
-    const sourceGrade = gradeKey != null && row[gradeKey] != null
-      ? String(row[gradeKey]).trim() : null;
-
+  let footerTotal = null;
+  for (let i = headerIndex + 1; i < rows.length; i += 1) {
+    const row = rows[i] || [];
+    if (!row.some((cell) => cell != null && String(cell).trim() !== '')) continue;
+    if (isColumnNumberRow(row)) continue;
+    const pfNo = cellText(sheet, firstRow + i, firstCol + pfCol, row[pfCol]);
+    const rawAmount = row[amountCol];
+    const amount = isNumericCell(rawAmount) ? Number(String(rawAmount).replace(/,/g, '')) : null;
+    if (!pfNo) {
+      // A total / footer line: kept to check the member rows against.
+      if (amount != null) footerTotal = amount;
+      continue;
+    }
+    const rawPayload = Object.fromEntries(headers.map((h, k) => [h || `Column ${k + 1}`, row[k] ?? null]));
     parsedRows.push({
-      sourceRowNo: index + 2, // +2 because row 1 is header
-      pfNo: pfNo || '',
-      importedTotalAmount: isNaN(amount) ? 0 : amount,
-      sourceBranch,
-      sourceEmployeeName,
-      sourceGrade,
-      rawPayload: row
+      sourceRowNo: firstRow + i + 1,
+      pfNo,
+      importedTotalAmount: amount == null ? 0 : amount,
+      sourceBranch: textAt(row, branchCol),
+      sourceEmployeeName: textAt(row, nameCol),
+      sourceGrade: textAt(row, gradeCol),
+      rawPayload
     });
-  });
-
+  }
+  parsedRows.footerTotal = footerTotal;
+  parsedRows.headerRow = headerIndex + 1;
   return parsedRows;
 }
 
@@ -473,6 +506,11 @@ async function uploadAndParseBatch(fileName, buffer, colMap, uploadedBy) {
   }
 
   const summary = summarizeBatch(builtRows);
+  // The workbook's own total line, when it has one, checked against the sum
+  // of the member rows (paise).
+  const parsedTotalPaise = parsedRows.reduce((sum, row) => sum + toPaise(row.importedTotalAmount), 0);
+  const footerTotal = parsedRows.footerTotal;
+  const footerMatches = footerTotal == null ? null : toPaise(footerTotal) === parsedTotalPaise;
 
   const batchRecord = {
     id: batchId,
@@ -480,7 +518,7 @@ async function uploadAndParseBatch(fileName, buffer, colMap, uploadedBy) {
     uploadedBy,
     uploadedAt: new Date(),
     ...summary,
-    payload: { colMap }
+    payload: { colMap, headerRow: parsedRows.headerRow, parsedTotal: toRupees(parsedTotalPaise), footerTotal: footerTotal ?? null, footerMatches }
   };
 
   await RecoveryImportBatch.create(batchRecord);
@@ -565,70 +603,13 @@ async function acceptBatch(batchId) {
   return batchModel.toObject();
 }
 
-async function postBatch(batchId, meta = {}) {
-  const batch = await RecoveryImportBatch.findById(batchId);
-  if (!batch) throw new Error('Batch not found');
-  if (batch.status !== 'ACCEPTED') throw new Error('Batch must be ACCEPTED before posting');
-
-  const rows = await RecoveryImportRow.find({ batchId, status: 'VALID' });
-  if (rows.length !== batch.totalRows) {
-    throw new Error('Mismatch in valid rows count. Revalidate batch.');
-  }
-
-  const membersIds = [...new Set(rows.map(r => r.memberId).filter(Boolean))];
-  const members = membersIds.length > 0 ? await Member.find({ id: { $in: membersIds } }) : [];
-  const memberMap = {};
-  for (const m of members) {
-    memberMap[m.id] = m;
-  }
-
-  // Iterate to create vouchers sequentially. (True ACID atomic wrap would require modifying createVoucher)
-  for (const row of rows) {
-    const member = memberMap[row.memberId];
-    if (!member) throw new Error(`Member not found for row ${row.sourceRowNo}`);
-    
-    const recoveryLines = [];
-    const linePayload = {
-      memberCode: member.code,
-      share: row.allocatedShare,
-      specialDeposit: row.allocatedSpecialDeposit,
-      compulsoryDeposit: row.allocatedCompulsoryDeposit,
-      regularLoan: row.allocatedRegularLoan,
-      loanAgainstDeposit: row.allocatedLoanAgainstDeposit,
-      total: row.allocatedTotal
-    };
-    recoveryLines.push(linePayload);
-
-    const voucherData = {
-      voucherCategory: 'Recovery From Member',
-      transactionType: 'receipt',
-      date: new Date().toISOString().slice(0, 10),
-      amount: row.allocatedTotal,
-      partyCode: member.code,
-      // Posted to the cash ledger (the recovery rule's default payment side).
-      mode: 'CASH',
-      narration: `Imported Recovery (Batch ${batchId})`,
-      details: {
-        key: 'recovery-member',
-        recoveryLines
-      }
-    };
-
-    const createdVoucher = await createVoucher(voucherData, meta);
-    
-    const rowModel = await RecoveryImportRow.findById(row.id);
-    rowModel.set({
-      status: 'POSTED',
-      recoveryVoucherId: createdVoucher.id,
-      postedAt: new Date()
-    });
-    await rowModel.save();
-  }
-
-  batch.set({ status: 'POSTED' });
-  await batch.save();
-
-  return batch.toObject();
+// Retired: it posted one voucher per Excel row (dated today, to cash). An
+// imported Excel is only an input to the Recovery entry screen, which saves
+// the whole batch as ONE recovery voucher once every row reconciles.
+async function postBatch() {
+  const error = new Error('Posting an Excel batch directly is no longer supported. Open Transactions -> Recovery From Member, import the Excel there and save it as one recovery voucher.');
+  error.statusCode = 410;
+  throw error;
 }
 
 module.exports = {

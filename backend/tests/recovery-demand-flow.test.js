@@ -53,9 +53,13 @@ async function demandLine(n, amounts, status = 'PENDING', listNo = LIST4) {
 
 const status = async (id) => (await DemandLine.findById(id).lean()).recoveryStatus;
 const fromDemand = (id, n, heads) => ({ member: code(n), source: 'DEMAND', demandLineId: id, demandListNo: LIST4, heads });
+// A line's expected amount (what was actually received) defaults to its own
+// heads here; the reconciliation tests set it explicitly.
+const headsTotal = (heads = {}) => Math.round(Object.values(heads).reduce((total, value) => total + Number(value || 0) * 100, 0)) / 100;
+const withExpected = (line) => (line.unmatched || line.expectedAmount !== undefined || line.importRowId ? line : { ...line, expectedAmount: headsTotal(line.heads) });
 const recoveryVoucher = (lines, extra = {}) => ({
-  date: '2026-10-07', voucherCategory: 'Recovery From Member', transactionType: 'receipt', mode: 'Cash', amount: 999999,
-  details: { key: 'recovery-member', recoveryLines: lines }, ...extra
+  date: '2026-10-07', voucherCategory: 'Recovery From Member', transactionType: 'receipt', mode: 'Cash',
+  details: { key: 'recovery-member', recoveryLines: lines.map(withExpected) }, ...extra
 });
 const journalOf = async (voucherId) => JournalLine.find({ voucherId }).lean();
 const sum = (rows, key) => Math.round(rows.reduce((total, row) => total + Number(row[key] || 0) * 100, 0)) / 100;
@@ -110,8 +114,9 @@ test('18-20, 14-15, 4: save is one unit — voucher, recovery_lines, journal_lin
   assert.equal(Number(l101.specialDeposit), 500);
   assert.equal(Number(l101.total), 3000);
   assert.equal(Number(lines.find((l) => l.demandLineId === ids.d102).depositLoan), 700);
-  // Voucher amount recalculated server-side (client sent 999999).
+  // Voucher amount is the recovery total; the expected amount is kept per line.
   assert.equal(Number((await Voucher.findById(ids.v1).lean()).amount), 7700);
+  assert.equal(Number(l101.payload.expectedAmount), 3000);
   const journal = await journalOf(ids.v1);
   assert.equal(sum(journal, 'debitAmount'), 7700);
   assert.equal(sum(journal, 'creditAmount'), 7700);
@@ -132,15 +137,27 @@ test('21: the same demand line twice in one recovery is rejected, nothing saved'
   assert.equal(await status(ids.d103), 'PENDING');
 });
 
-test('Excel vs demand: unresolved warnings or an unmatched Excel row stop the Save; confirmed ones pass', async () => {
+test('no override: any line whose heads differ from its expected amount stops the Save, whatever flags are sent', async () => {
   const before = await Voucher.countDocuments({});
+  // Expected 1,000, allocated 900 — with forged "valid / confirmed / difference 0".
   await assert.rejects(banking.createVoucher(recoveryVoucher([
-    { ...fromDemand(ids.d103, 3, { cd: 900 }), warnings: ['Excel ₹900 ≠ Demand ₹1,000'] }
-  ])), /warnings/);
+    { ...fromDemand(ids.d103, 3, { cd: 900 }), expectedAmount: 1000, status: 'VALID', confirmed: true, difference: 0, warnings: [] }
+  ])), /does not reconcile.*under by 100/);
+  // One paisa over.
+  await assert.rejects(banking.createVoucher(recoveryVoucher([
+    { ...fromDemand(ids.d103, 3, { cd: 1000.01 }), expectedAmount: 1000 }
+  ])), /over by 0\.01/);
+  // No expected amount at all.
+  await assert.rejects(banking.createVoucher(recoveryVoucher([
+    { ...fromDemand(ids.d103, 3, { cd: 1000 }), expectedAmount: '' }
+  ])), /enter the expected amount/);
+  // An Excel row with no member must be excluded first.
   await assert.rejects(banking.createVoucher(recoveryVoucher([
     fromDemand(ids.d103, 3, { cd: 1000 }),
-    { member: '', source: 'EXCEL', unmatched: true, heads: {}, warnings: ['no member'], confirmed: true }
-  ])), /warnings/);
+    { member: '', source: 'EXCEL', unmatched: true, heads: {}, confirmed: true }
+  ])), /no member/);
+  // A header total that is not the recovery total.
+  await assert.rejects(banking.createVoucher(recoveryVoucher([fromDemand(ids.d103, 3, { cd: 1000 })], { amount: 999999 })), /does not equal the recovery total/);
   assert.equal(await Voucher.countDocuments({}), before);
   assert.equal(await status(ids.d103), 'PENDING');
 });
@@ -174,12 +191,13 @@ test('25-29: editing a saved recovery reconciles exactly the changed demand link
   const current = await Voucher.findById(ids.v1).lean();
   await banking.updateVoucher(ids.v1, {
     ...current,
+    amount: undefined,
     details: { ...current.details, recoveryLines: [
       fromDemand(ids.d101, 1, { cd: 1000, ssa: 500, loan: 1700 }), // amount edited, link kept
       fromDemand(ids.d103, 3, { cd: 1000 }), // added
       { member: code(4), source: 'EXCEL', heads: { loan: 2000 } }
       // d102 removed
-    ] }
+    ].map(withExpected) }
   });
   assert.equal(await status(ids.d101), 'RECOVERED');
   assert.equal(await status(ids.d102), 'PENDING');
@@ -201,10 +219,11 @@ test('30: a failed edit leaves the voucher, its lines, journal and demand as the
   const current = await Voucher.findById(ids.v1).lean();
   const err = await banking.updateVoucher(ids.v1, {
     ...current,
+    amount: undefined,
     details: { ...current.details, recoveryLines: [
       fromDemand(ids.d101, 1, { cd: 1000 }),
       fromDemand(ids.dOld, 5, { cd: 1000 }) // recovered elsewhere -> stale
-    ] }
+    ].map(withExpected) }
   }).catch((error) => error);
   assert.equal(err.statusCode, 409);
   assert.deepEqual((await RecoveryLine.find({ voucherId: ids.v1 }).lean()).map((l) => `${l.demandLineId}|${l.total}`).sort(), before.lines);

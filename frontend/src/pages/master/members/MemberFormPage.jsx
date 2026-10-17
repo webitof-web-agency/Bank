@@ -14,6 +14,8 @@ import {
   prepareMemberAvatarFile
 } from './memberUtils';
 import { uploadDocumentMap } from '../documentUpload';
+import { demandDefaultsErrors } from './memberDemand';
+import { openingBalancesErrors } from './memberBalances';
 
 export function MemberFormPage() {
   const { id } = useParams();
@@ -116,6 +118,16 @@ export function MemberFormPage() {
     }
     if (!isEdit && !String(draft.password || '').trim()) {
       toast.error('Set a login password for the member');
+      return;
+    }
+    const balanceErrors = draft.openingBalancesLocked ? [] : openingBalancesErrors(draft.openingBalances || {});
+    if (balanceErrors.length) {
+      toast.error(`Opening balances: ${balanceErrors.join(', ')} must be 0 or more with at most 2 decimals.`);
+      return;
+    }
+    const demandErrors = demandDefaultsErrors(draft.demandDefaults || {});
+    if (demandErrors.length) {
+      toast.error(`Monthly demand: ${demandErrors.join(', ')} must be 0 or more with at most 2 decimals.`);
       return;
     }
 

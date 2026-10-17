@@ -2,6 +2,14 @@
 import { Card } from '../../../components/ui/Card';
 import { formatTransactionAmount, formatTransactionModeLabel } from './transactionUtils';
 import { Sparkles, Layers3, FileText, ShieldCheck } from 'lucide-react';
+import { RECOVERY_HEADS, expectedPaise, fromPaise, lineTotalPaise } from './recoveryDraft';
+
+// Expected (Excel / received) vs allocated, per saved line.
+function lineFigures(line = {}) {
+  const expected = expectedPaise(line);
+  const allocated = lineTotalPaise(line);
+  return { expected: expected == null ? null : fromPaise(expected), allocated: fromPaise(allocated), difference: expected == null ? null : fromPaise(expected - allocated) };
+}
 
 export function RecoveryMemberTransactionDetailPage() {
   const customTabs = [
@@ -41,27 +49,52 @@ export function RecoveryMemberTransactionDetailPage() {
               <DetailRow label="Mode" value={formatTransactionModeLabel(record.mode)} />
               <DetailRow label="Cheque No" value={record.instrumentNo || details.instrumentNo || '-'} />
               <DetailRow label="Cheque Date" value={record.instrumentDate || details.instrumentDate || '-'} />
-              <DetailRow label="Settlement Account" value={details.settlementAccount || '-'} />
               <DetailRow label="Narration" value={record.narration || details.narration || '-'} />
             </div>
           </Card>
+          {details.reconciliation ? (
+            <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <div className="divide-y divide-slate-100 px-6">
+                <DetailRow label="Excel / Expected Total" value={formatTransactionAmount(details.reconciliation.expectedTotal)} />
+                <DetailRow label="Recovery Total" value={formatTransactionAmount(details.reconciliation.recoveryTotal)} />
+                <DetailRow label="Difference" value={formatTransactionAmount(details.reconciliation.difference)} />
+                <DetailRow label="Excluded Excel Rows" value={`${details.reconciliation.excludedCount || 0} (${formatTransactionAmount(details.reconciliation.excludedTotal || 0)})`} />
+              </div>
+            </Card>
+          ) : null}
           {recoveryLines.length > 0 && (
             <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
               <SimpleTable
-                headers={['Member', 'Head', 'Amount', 'Memo']}
-                rows={recoveryLines.map((line, index) => ({
-                  key: `${line.memberCode || line.member || index}`,
-                  cells: [
-                    line.memberCode || line.member || '-',
-                    line.head || '-',
-                    formatTransactionAmount(line.amount ?? line.total ?? 0),
-                    line.memo || '-'
-                  ]
-                }))}
+                headers={['Member', 'Expected', ...RECOVERY_HEADS.map(([, label]) => label), 'Allocated', 'Difference']}
+                rows={recoveryLines.map((line, index) => {
+                  const figures = lineFigures(line);
+                  return {
+                    key: `${line.memberCode || line.member || index}-${index}`,
+                    cells: [
+                      `${line.memberCode || line.member || '-'} ${line.memberName || ''}`.trim(),
+                      figures.expected == null ? '-' : formatTransactionAmount(figures.expected),
+                      ...RECOVERY_HEADS.map(([key]) => (Number(line.heads?.[key]) ? formatTransactionAmount(line.heads[key]) : '-')),
+                      formatTransactionAmount(figures.allocated),
+                      figures.difference == null ? '-' : formatTransactionAmount(figures.difference)
+                    ]
+                  };
+                })}
                 emptyMessage="No recovery lines found."
               />
             </Card>
           )}
+          {Array.isArray(details.recoveryExcluded) && details.recoveryExcluded.length ? (
+            <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <SimpleTable
+                headers={['Excluded Excel Row', 'PF', 'Amount', 'Reason']}
+                rows={details.recoveryExcluded.map((row, index) => ({
+                  key: `${row.importRowId || index}`,
+                  cells: [String(row.excelRowNo ?? row.rowNo ?? '-'), row.pfNo || '-', formatTransactionAmount(row.amount || 0), row.reason || '-']
+                }))}
+                emptyMessage=""
+              />
+            </Card>
+          ) : null}
         </div>
       );
     }

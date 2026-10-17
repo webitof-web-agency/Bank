@@ -6,20 +6,20 @@
 //     source: 'DEMAND' | 'EXCEL' | 'MANUAL',
 //     demandLineId, demandListNo,          // exact demand provenance
 //     importBatchId, importRowId,          // Excel provenance
-//     needsReview, reviewNote,             // flagged for the operator
 //     excel: { amount, name, branch, ... } // the matching Excel row, if any
+//     expectedAmount,                      // control amount of a line with no Excel row
 //     unmatched,                           // Excel row with no member
-//     confirmed,                           // operator accepted the warnings
-//     warnings: [...],                     // see lineWarnings(); kept for Save
 //     heads: { share, cd, ssa, loan, lad, ins, admfee, suspense } }
 //
-// The flow: load the demand, then import the Excel. Each Excel row is matched
-// to the member's demand line and compared; every difference is a warning,
-// and Save is refused until each warning is fixed (amounts edited, row
-// removed) or confirmed on its row.
-// Nothing here talks to the server: loading, editing and removing lines only
-// changes this draft. The server converts the lines, posts the voucher and
-// marks the exact linked demand lines recovered, all in one Save.
+// The rule (as the legacy screen's red rows): the bank Excel gives each
+// member's ACTUAL total deducted — the expected amount. The demand gives the
+// starting split. A line is VALID only when its heads add up exactly to the
+// expected amount; there is no "confirm" override. Save needs every line
+// VALID, so the recovery total equals the Excel total to the paisa.
+// An Excel row is never dropped silently: removing one moves it to the
+// excluded list (details.recoveryExcluded) with a reason, and the server
+// checks every row of the batch is either in the recovery or excluded.
+// Nothing here talks to the server; Save recomputes everything there.
 
 export const RECOVERY_HEADS = [
   ['share', 'Share'],
@@ -163,7 +163,7 @@ export function applyExcelHeads(lines = [], index) {
 // line that has to be removed before Save. The bank's Excel covers every
 // branch: once demand is loaded, rows of members from branches whose demand
 // was not loaded are left out (counted in otherBranch).
-export function mergeImportRows(lines = [], rows = [], members = [], batchId = '') {
+export function mergeImportRows(lines = [], rows = [], members = [], batchId = '', excluded = []) {
   const memberById = new Map(members.map((member) => [String(member.id || member._id), member]));
   const next = lines.map((line) => ({ ...line }));
   const demandBranches = new Set(lines.filter((line) => line.source === 'DEMAND' && line.branchCode).map((line) => line.branchCode));
@@ -171,6 +171,7 @@ export function mergeImportRows(lines = [], rows = [], members = [], batchId = '
   let added = 0;
   let unmatched = 0;
   let otherBranch = 0;
+  const nextExcluded = [...excluded];
   for (const row of rows) {
     // The import's validation result (VALID, SHORT, MEMBER NOT FOUND...).
     const { status: validation = '' } = row;
@@ -195,7 +196,9 @@ export function mergeImportRows(lines = [], rows = [], members = [], batchId = '
     const target = next.find((line) => line.member === code && !line.excel && !line.unmatched);
     const memberBranch = String(member.branchCode || '').toUpperCase();
     if (!target && demandBranches.size && memberBranch && !demandBranches.has(memberBranch)) {
+      // Recovered in another branch's voucher: excluded here, on record.
       otherBranch += 1;
+      nextExcluded.push(excludedEntry(excel, `Branch ${memberBranch}: its demand is not loaded in this recovery`));
       continue;
     }
     if (target) {
@@ -219,56 +222,122 @@ export function mergeImportRows(lines = [], rows = [], members = [], batchId = '
       heads: { ...emptyHeads(), ...excel.heads }
     });
   }
-  return { lines: withWarnings(next), matched, added, unmatched, otherBranch };
+  return { lines: withWarnings(next), excluded: nextExcluded, matched, added, unmatched, otherBranch };
 }
 
-// Everything to resolve on one line, given the whole draft (whether a demand
-// was loaded and an Excel imported decides the "not in ..." checks).
-export function lineWarnings(line = {}, lines = []) {
-  if (line.unmatched) {
-    return [`Excel row ${line.excel?.rowNo ?? ''}: PF ${line.excel?.pfNo || '—'} — ${line.unmatchedReason || 'no member found'}. Remove this row.`];
-  }
-  const demandLoaded = lines.some((entry) => entry.source === 'DEMAND');
+function excludedEntry(excel = {}, reason = '') {
+  return { importRowId: excel.rowId || '', importBatchId: excel.batchId || '', pfNo: excel.pfNo || '', rowNo: excel.rowNo ?? null, name: excel.name || '', amount: Number(excel.amount || 0), reason };
+}
+
+// The line's expected amount in paise: the Excel row's total, else the
+// operator's control amount; null when there is none yet.
+export function expectedPaise(line = {}) {
+  if (line.excel) return toPaise(line.excel.amount);
+  const text = line.expectedAmount == null ? '' : String(line.expectedAmount).trim();
+  return text === '' ? null : toPaise(text);
+}
+
+const UNSUPPORTED_HEADS = [['ins', 'Premium'], ['suspense', 'Suspense']];
+
+export const STATUS_LABELS = {
+  VALID: 'Valid',
+  UNDER: 'Under-allocated',
+  OVER: 'Over-allocated',
+  UNSUPPORTED: 'Unsupported head',
+  NO_EXPECTED: 'No expected amount',
+  NOT_IN_EXCEL: 'Not in the Excel',
+  NO_MEMBER: 'No member'
+};
+
+// VALID only when the heads add up exactly to the expected amount.
+export function lineStatus(line = {}, lines = []) {
+  if (line.unmatched) return 'NO_MEMBER';
   const excelImported = lines.some((entry) => entry.excel);
-  const warnings = [];
-  if (line.excel) {
-    const excelPaise = toPaise(line.excel.amount);
-    const linePaise = lineTotalPaise(line);
-    if (excelPaise !== linePaise) {
-      const label = line.source === 'DEMAND' ? 'Demand' : 'Recovery';
-      warnings.push(`Excel ₹${formatRupees(line.excel.amount)} ≠ ${label} ₹${formatRupees(fromPaise(linePaise))}`);
-    }
-    if (line.excel.nameDiffers) warnings.push(`Excel name "${line.excel.name}" differs from the member`);
-    if (line.excel.branchDiffers) warnings.push(`Excel branch "${line.excel.branch}" differs from the member`);
-  }
-  if (excelImported && line.source === 'DEMAND' && !line.excel) warnings.push('In demand, not in the Excel');
-  if (demandLoaded && line.source === 'EXCEL') warnings.push('In the Excel, not in the demand');
-  if (line.needsReview && line.reviewNote) warnings.push(line.reviewNote);
-  return warnings;
+  if (excelImported && line.source === 'DEMAND' && !line.excel) return 'NOT_IN_EXCEL';
+  const expected = expectedPaise(line);
+  if (expected == null || expected <= 0) return 'NO_EXPECTED';
+  const heads = normalizeHeads(line.heads);
+  if (UNSUPPORTED_HEADS.some(([key]) => toPaise(heads[key]) > 0)) return 'UNSUPPORTED';
+  const difference = expected - lineTotalPaise(line);
+  if (difference > 0) return 'UNDER';
+  if (difference < 0) return 'OVER';
+  return 'VALID';
 }
 
-// The draft with each line's warnings stored on it (Save sends them, and the
-// server refuses unresolved ones too).
+// expected - allocated, in rupees (0 when there is no expected amount).
+export function lineDifference(line = {}) {
+  const expected = expectedPaise(line);
+  return expected == null ? 0 : fromPaise(expected - lineTotalPaise(line));
+}
+
+// What blocks the line, in words (empty when VALID).
+export function lineErrors(line = {}, lines = []) {
+  const status = lineStatus(line, lines);
+  if (status === 'VALID') return [];
+  if (status === 'NO_MEMBER') return [`Excel row ${line.excel?.rowNo ?? ''}: PF ${line.excel?.pfNo || '—'} — ${line.unmatchedReason || 'no member found'}. Exclude this row.`];
+  if (status === 'NOT_IN_EXCEL') return ['In the demand but not in the Excel: the bank deducted nothing. Remove this line.'];
+  if (status === 'NO_EXPECTED') return ['Enter the expected amount (the amount actually received) — Edit.'];
+  if (status === 'UNSUPPORTED') return ['Premium / Suspense have no confirmed posting rule yet: move the amount to another head.'];
+  const difference = lineDifference(line);
+  return [`Expected ₹${formatRupees(fromPaise(expectedPaise(line)))}, allocated ₹${formatRupees(lineTotal(line))}: ${difference > 0 ? 'under' : 'over'} by ₹${formatRupees(Math.abs(difference))}.`];
+}
+
+// Information only (never blocks Save).
+export function lineNotes(line = {}, lines = []) {
+  const demandLoaded = lines.some((entry) => entry.source === 'DEMAND');
+  const notes = [];
+  if (line.excel?.nameDiffers) notes.push(`Excel name "${line.excel.name}" differs from the member`);
+  if (line.excel?.branchDiffers) notes.push(`Excel branch "${line.excel.branch}" differs from the member`);
+  if (demandLoaded && line.source === 'EXCEL') notes.push('In the Excel, not in the loaded demand (split from the member\'s monthly demand)');
+  if (line.needsReview && line.reviewNote) notes.push(line.reviewNote);
+  return notes;
+}
+
+// The draft with each line's status, difference and notes worked out.
 export function withWarnings(lines = []) {
-  return lines.map((line) => ({ ...line, warnings: lineWarnings(line, lines) }));
+  return lines.map((line) => {
+    const { confirmed, ...rest } = line || {};
+    return { ...rest, status: lineStatus(rest, lines), difference: lineDifference(rest), warnings: lineNotes(rest, lines) };
+  });
 }
 
-// A line still blocking Save: warnings not confirmed, or an unmatched row.
-export function isUnresolved(line = {}) {
-  const warnings = Array.isArray(line.warnings) ? line.warnings : [];
-  return Boolean(line.unmatched) || (warnings.length > 0 && !line.confirmed);
+export function isUnresolved(line = {}, lines = [line]) {
+  return lineStatus(line, lines) !== 'VALID';
 }
 
 export function unresolvedCount(lines = []) {
-  return withWarnings(lines).filter(isUnresolved).length;
+  return lines.filter((line) => isUnresolved(line, lines)).length;
 }
 
-export function setLineConfirmed(lines = [], index, confirmed) {
-  return withWarnings(lines.map((line, i) => (i === index ? { ...line, confirmed: Boolean(confirmed) } : line)));
+// The batch check behind Save: Excel (expected) total, recovery total (sum
+// of each line's heads), the column statistics total, and the row counts.
+export function reconcile(lines = []) {
+  let expected = 0;
+  let allocated = 0;
+  let validRows = 0;
+  let errorRows = 0;
+  for (const line of lines) {
+    expected += expectedPaise(line) || 0;
+    allocated += lineTotalPaise(line);
+    if (isUnresolved(line, lines)) errorRows += 1; else validRows += 1;
+  }
+  const stats = draftTotals(lines);
+  const statsPaise = toPaise(stats.total);
+  return {
+    excelTotal: fromPaise(expected),
+    recoveryTotal: fromPaise(allocated),
+    statsTotal: stats.total,
+    heads: stats.heads,
+    difference: fromPaise(expected - allocated),
+    validRows,
+    errorRows,
+    canSave: lines.length > 0 && errorRows === 0 && expected === allocated && allocated === statsPaise
+  };
 }
 
-// Add Record: a manual line has no demand link, whatever demand the member has.
-export function manualLine(member = {}, heads = {}) {
+// Add Record: a manual line has no demand link; expectedAmount is the amount
+// actually received for the member.
+export function manualLine(member = {}, heads = {}, expectedAmount = '') {
   return {
     member: String(member.code || '').toUpperCase(),
     memberName: member.name || '',
@@ -276,18 +345,29 @@ export function manualLine(member = {}, heads = {}) {
     designation: member.designation || '',
     source: 'MANUAL',
     demandLineId: null,
+    expectedAmount,
     heads: { ...emptyHeads(), ...heads }
   };
 }
 
-// Edit a line's amounts (Update): provenance stays, the review flag and any
-// earlier confirmation clear, and the warnings are worked out again.
-export function updateLineHeads(lines = [], index, heads = {}) {
-  return withWarnings(lines.map((line, i) => (i === index
-    ? { ...line, heads: { ...normalizeHeads(line.heads), ...heads }, needsReview: false, reviewNote: '', confirmed: false }
-    : line)));
+// Edit a line's amounts (Update): provenance stays and the Excel amount never
+// changes; a line with no Excel row may also set its expected amount.
+export function updateLineHeads(lines = [], index, heads = {}, expectedAmount) {
+  return withWarnings(lines.map((line, i) => {
+    if (i !== index) return line;
+    const next = { ...line, heads: { ...normalizeHeads(line.heads), ...heads }, needsReview: false, reviewNote: '' };
+    if (expectedAmount !== undefined && !line.excel) next.expectedAmount = expectedAmount;
+    return next;
+  }));
 }
 
-export function removeLine(lines = [], index) {
-  return withWarnings(lines.filter((_, i) => i !== index));
+// Remove a line. A line holding an Excel row moves that row to the excluded
+// list (with the reason), so the Excel control total stays accounted for.
+export function removeLine(lines = [], index, excluded = [], reason = '') {
+  const line = lines[index];
+  const nextExcluded = line?.excel?.rowId
+    ? [...excluded, excludedEntry(line.excel, reason || (line.unmatched ? 'No member for this PF' : 'Excluded by the operator'))]
+    : excluded;
+  const next = withWarnings(lines.filter((_, i) => i !== index));
+  return Object.assign(next, { excluded: nextExcluded });
 }

@@ -1,0 +1,58 @@
+// Dismembering a member makes them Inactive (flag, date and status move
+// together) and stops their member-app login; the member list offers All /
+// Active / Branch-wise / Dismembered.
+// App tokens are signed: a test-only secret when none is configured.
+process.env.JWT_SECRET = process.env.JWT_SECRET || 'member-status-test-secret';
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const banking = require('../services/banking.service');
+const appPortal = require('../services/appPortal.service');
+const { Branch, Member } = require('../models/banking.models');
+const { initializeDatabase, closeDatabase } = require('../config/postgres');
+
+const RUN = `S${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
+const BRANCH = `${RUN}B`;
+const MOBILE = `97${String(Math.floor(10000000 + Math.random() * 89999999))}`;
+const admin = { actorUser: { isSuperAdmin: true } };
+const ctx = {};
+
+test.after(async () => { if (closeDatabase) await closeDatabase(); });
+
+test('setup', async () => {
+  await initializeDatabase();
+  await Branch.create({ code: BRANCH, label: 'STATUS TEST' });
+  ctx.member = await banking.createResource('members', { name: `Status ${RUN}`, branchCode: BRANCH, mobileNo: MOBILE, password: 'secret12', status: 'ACTIVE' }, admin);
+  assert.equal(ctx.member.status, 'Active', 'stored in the form\'s spelling');
+  assert.ok((await appPortal.login(MOBILE, 'secret12')).token);
+});
+
+test('dismembering needs a date, sets Inactive and stops the app login', async () => {
+  await assert.rejects(banking.updateResource('members', ctx.member.id, { dismembered: true, dismemberedDate: '' }, admin), /dismembered date/);
+  const updated = await banking.updateResource('members', ctx.member.id, { dismembered: true, dismemberedDate: '2026-10-10', status: 'Active' }, admin);
+  assert.equal(updated.dismembered, true);
+  assert.equal(updated.status, 'Inactive', 'a dismembered member is never Active');
+  assert.equal(String(updated.dismemberedDate).slice(0, 10), '2026-10-10');
+  await assert.rejects(appPortal.login(MOBILE, 'secret12'), /Invalid mobile number or password/);
+  // A later unrelated save keeps it dismembered.
+  const again = await banking.updateResource('members', ctx.member.id, { address: 'X' }, admin);
+  assert.equal(again.dismembered, true);
+  assert.equal(again.status, 'Inactive');
+});
+
+test('member list: All lists everyone; Active and Branch-wise only current; Dismembered only those who left', async () => {
+  const other = await banking.createResource('members', { name: `Status ${RUN} B`, branchCode: BRANCH, mobileNo: '9876511111', password: 'secret12' }, admin);
+  const codes = async (listType) => (await banking.buildAllMemberListReport({ branchCode: BRANCH, listType })).map((r) => r.code).sort();
+  assert.deepEqual(await codes('all'), [ctx.member.code, other.code].sort());
+  assert.deepEqual(await codes('active'), [other.code]);
+  assert.deepEqual(await codes('branch'), [other.code]);
+  assert.deepEqual(await codes('dismembered'), [ctx.member.code]);
+});
+
+test('undoing the dismemberment makes the member Active again and lets them sign in', async () => {
+  const updated = await banking.updateResource('members', ctx.member.id, { dismembered: false, status: 'Active' }, admin);
+  assert.equal(updated.dismembered, false);
+  assert.equal(updated.dismemberedDate, null);
+  assert.equal(updated.status, 'Active');
+  assert.ok((await appPortal.login(MOBILE, 'secret12')).token);
+  assert.ok(await Member.findOne({ code: ctx.member.code }).lean());
+});

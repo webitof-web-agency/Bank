@@ -37,6 +37,7 @@ const {
   NoInterestMember,
   Rate,
   RecoveryLine,
+  RecoveryImportRow,
   Society,
   Voucher,
   JournalLine,
@@ -693,6 +694,174 @@ async function applyMemberCredentials(payload, data = {}, { requirePassword } = 
   }
 }
 
+// 'ACTIVE' / 'inactive' / 'Exited' -> the form's spelling.
+function normalizeMemberStatus(value) {
+  const text = cleanLower(value);
+  if (text.startsWith('inact')) return 'Inactive';
+  if (text.startsWith('exit')) return 'Exited';
+  return 'Active';
+}
+
+function memberStatusFields(data = {}) {
+  const payload = toMixed(data.payload, {});
+  const dismembered = toBool(data.dismembered ?? payload.dismembered, false);
+  if (!dismembered) return { dismembered: false, dismemberedDate: null, status: normalizeMemberStatus(data.status) };
+  const date = isoDay(data.dismemberedDate || payload.dismemberedDate || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw recoveryHttpError('Enter the dismembered date.');
+  return { dismembered: true, dismemberedDate: date, status: 'Inactive' };
+}
+
+// Current / Opening Balances on the member form, as the employee sees them:
+// every head a positive amount, loans as the amount outstanding. Stored in
+// member.balances with the ledger's own signs (credit-positive, so a loan
+// owed is negative). Keys the form does not edit (interest figures etc.)
+// are kept.
+const MEMBER_OPENING_FIELDS = [
+  ['share', 'Share', 1],
+  ['compulsoryDeposit', 'Compulsory Deposit', 1],
+  ['specialDeposit', 'Special Saving / SSA', 1],
+  ['regularLoan', 'Regular Loan Outstanding', -1],
+  ['loanAgainstDeposit', 'Loan Against Deposit Outstanding', -1],
+  ['insurancePremium', 'Insurance Premium', 1],
+  ['providentFund', 'Provident Fund', 1]
+];
+const OPENING_STORAGE_KEY = { regularLoan: 'loan' };
+
+function parseMoneyInput(raw, label) {
+  const text = raw == null ? '' : String(raw).trim();
+  if (!text) return 0;
+  if (!/^\d+(\.\d{1,2})?$/.test(text)) throw recoveryHttpError(`${label} must be an amount of 0 or more with at most 2 decimals.`);
+  return toRupees(toPaise(text));
+}
+
+// member.balances -> the form's positive amounts.
+function memberOpeningBalances(balancesInput = {}) {
+  const balances = typeof balancesInput === 'string' ? JSON.parse(balancesInput || '{}') : (balancesInput || {});
+  const read = {
+    share: balances.share,
+    compulsoryDeposit: balances.compulsoryDeposit ?? balances.cd,
+    specialDeposit: balances.specialDeposit ?? balances.ssa ?? balances.specialSaving,
+    regularLoan: balances.loan ?? balances.regularLoan,
+    loanAgainstDeposit: balances.loanAgainstDeposit ?? balances.lad,
+    insurancePremium: balances.insurancePremium,
+    providentFund: balances.providentFund
+  };
+  // Loans are stored negative (owed): the form shows the outstanding amount.
+  return Object.fromEntries(MEMBER_OPENING_FIELDS.map(([key, , sign]) => [key, toRupees(sign * toPaise(read[key] || 0))]));
+}
+
+// Applies the form's openingBalances onto the stored balances (null when the
+// request has none). A migrated member's opening is the reconciled legacy
+// cutover snapshot: it can't be edited here (correct it with a transaction).
+function applyMemberOpeningBalances(current = {}, input, { locked = false } = {}) {
+  if (input == null || typeof input !== 'object') return null;
+  const balances = { ...(typeof current === 'string' ? JSON.parse(current || '{}') : (current || {})) };
+  const before = memberOpeningBalances(balances);
+  const next = {};
+  for (const [key, label] of MEMBER_OPENING_FIELDS) next[key] = parseMoneyInput(input[key], label);
+  if (locked) {
+    const changed = MEMBER_OPENING_FIELDS.filter(([key]) => toPaise(next[key]) !== toPaise(before[key])).map(([, label]) => label);
+    if (changed.length) {
+      throw recoveryHttpError(`This member's opening balances come from the legacy books and are locked (${changed.join(', ')}). Record a transaction instead.`, 409);
+    }
+    return null;
+  }
+  for (const [key, , sign] of MEMBER_OPENING_FIELDS) {
+    balances[OPENING_STORAGE_KEY[key] || key] = sign * next[key];
+  }
+  // Older form-only spellings the ledger never read.
+  delete balances.specialSaving;
+  delete balances.regularLoan;
+  return balances;
+}
+
+// The member's summary columns, as migrated: Deposit = CD + SSA, Regular
+// Loan = Loan + LAD outstanding (shown on the member list / detail cards).
+function memberBalanceTotals(balances = {}) {
+  const opening = memberOpeningBalances(balances);
+  return {
+    depositBalance: toRupees(toPaise(opening.compulsoryDeposit) + toPaise(opening.specialDeposit)),
+    loanOutstanding: toRupees(toPaise(opening.regularLoan) + toPaise(opening.loanAgainstDeposit))
+  };
+}
+
+function isLegacyCutoverMember(member = {}) {
+  const payload = typeof member.payload === 'string' ? JSON.parse(member.payload || '{}') : (member.payload || {});
+  return payload?.sourceType === 'LEGACY_CUTOVER';
+}
+
+// Positive amounts as of today: the opening plus every movement since
+// (the member ledger's own walk).
+async function getMemberCurrentBalances(member) {
+  const [period] = await computeMemberPeriodBalances({ members: [member] });
+  const signed = (key) => toRupees(period?.buckets?.[key]?.closing || 0);
+  return {
+    share: signed('share'),
+    compulsoryDeposit: signed('compulsoryDeposit'),
+    specialDeposit: signed('specialDeposit'),
+    regularLoan: -signed('loan'),
+    loanAgainstDeposit: -signed('loanAgainstDeposit')
+  };
+}
+
+async function memberFinancialResponse(record) {
+  return {
+    openingBalances: memberOpeningBalances(record.balances),
+    openingBalancesLocked: isLegacyCutoverMember(record),
+    currentBalances: await getMemberCurrentBalances(record)
+  };
+}
+
+// Monthly Demand Data on the member form: the amounts normally recovered
+// each month (member_demand_defaults), separate from the member's balances.
+// Demand Entry copies them into a month's demand lines, so a later change
+// here never rewrites a saved demand. Share is not a monthly demand head:
+// the row's share column is left as it is.
+// Returns null when the request carries no demand defaults (left unchanged).
+function normalizeDemandDefaults(input) {
+  if (input == null || typeof input !== 'object') return null;
+  const result = {};
+  for (const key of DEMAND_HEADS) {
+    const raw = input[key];
+    const text = raw == null ? '' : String(raw).trim();
+    if (!text) {
+      result[key] = 0;
+      continue;
+    }
+    if (!/^\d+(\.\d{1,2})?$/.test(text)) {
+      throw recoveryHttpError(`Monthly demand ${DEMAND_HEAD_LABELS[key]} must be an amount of 0 or more with at most 2 decimals.`);
+    }
+    result[key] = toRupees(toPaise(text));
+  }
+  return result;
+}
+
+function demandDefaultsResponse(row = {}) {
+  const heads = Object.fromEntries(DEMAND_HEADS.map((key) => [key, toNumber(row?.[key], 0)]));
+  return { ...heads, total: toRupees(demandLineTotalPaise(heads)) };
+}
+
+async function getMemberDemandDefaults(memberCode) {
+  const row = memberCode ? await MemberDemandDefault.findOne({ memberCode: cleanUpper(memberCode) }).lean() : null;
+  return demandDefaultsResponse(row || {});
+}
+
+// previousCode: the member's code before this save, when it changed.
+async function saveMemberDemandDefaults(memberCode, heads, { previousCode = '' } = {}) {
+  const code = cleanUpper(memberCode);
+  let row = await MemberDemandDefault.findOne({ memberCode: code });
+  if (!row && previousCode && cleanUpper(previousCode) !== code) {
+    row = await MemberDemandDefault.findOne({ memberCode: cleanUpper(previousCode) });
+  }
+  if (row) {
+    row.set({ ...heads, memberCode: code });
+    await row.save();
+  } else if (DEMAND_HEADS.some((key) => heads[key])) {
+    await MemberDemandDefault.create({ memberCode: code, ...heads });
+  }
+  return getMemberDemandDefaults(code);
+}
+
 // The society logo/watermark are stored as file-view URLs whose access token
 // expires (FILE_VIEW_TOKEN_EXPIRES_IN, 2h by default) — re-sign them from the
 // file id on every read, as members' photos are, so the images don't break.
@@ -1011,18 +1180,19 @@ const RESOURCE_DEFS = {
         membershipDate: cleanText(data.membershipDate),
         appointmentDate: cleanText(data.appointmentDate),
         membershipNo: cleanText(data.membershipNo),
+        // The bank Excel's member key: kept exactly (leading zeros too).
+        pfNo: cleanText(data.pfNo),
         address: cleanText(data.address),
         // Canonical 10-digit mobile (the member portal logs in with it).
         mobileNo: normalizeMobile(data.mobileNo),
         openingBalance: toNumber(data.openingBalance, 0),
-        balances: {
-          share: toNumber(balances.share, 0),
-          compulsoryDeposit: depositBalance,
-          specialSaving: toNumber(balances.specialSaving, 0),
-          providentFund: toNumber(balances.providentFund, 0),
-          loanAgainstDeposit: toNumber(balances.loanAgainstDeposit, 0),
-          insurancePremium: toNumber(balances.insurancePremium, 0)
-        },
+        // Kept as stored: member.balances is the opening snapshot the member
+        // ledger and every balance report start from (credit-positive, loans
+        // negative, plus the migrated interest figures). Rebuilding it here
+        // from form fields dropped Regular Loan / SSA and flipped LAD on any
+        // save. It changes only through openingBalances (see
+        // applyMemberOpeningBalances).
+        balances,
         loanOutstanding,
         depositBalance,
         nomineeName: cleanText(data.nomineeName),
@@ -1031,7 +1201,10 @@ const RESOURCE_DEFS = {
         photoFileId: data.photoFileId || null,
         documentsFolderId: data.documentsFolderId || null,
         documents: toMixed(data.documents, {}),
-        status: cleanText(data.status, 'Active'),
+        // A dismembered member is Inactive: the flag, its date and the
+        // status move together (the member list, reports and the member app
+        // all go by them). The form keeps the flag in payload too.
+        ...memberStatusFields(data),
         payload: toMixed(data.payload, {})
       };
     }
@@ -1316,7 +1489,7 @@ async function getResource(resource, id, user = {}) {
 
   const record = await def.model.findById(id).lean();
   if (!record || !canAccessBranchRecord(resource, record, user)) return null;
-  if (resource === 'members') return sanitizeMemberResponse(record);
+  if (resource === 'members') return { ...sanitizeMemberResponse(record), ...(await memberFinancialResponse(record)), demandDefaults: await getMemberDemandDefaults(record.code) };
   if (resource === 'vouchers') return sanitizeVoucherResponse(record);
   return toResponse(record);
 }
@@ -1398,9 +1571,17 @@ async function createResource(resource, data = {}, meta = {}) {
   }
   if (resource === 'members') {
     await applyMemberCredentials(payload, data, { requirePassword: true });
+    // Checked before the member is written, so a bad amount saves nothing.
+    const demandDefaults = normalizeDemandDefaults(data.demandDefaults);
+    const openingBalances = applyMemberOpeningBalances(payload.balances, data.openingBalances);
+    if (openingBalances) Object.assign(payload, { balances: openingBalances }, memberBalanceTotals(openingBalances));
     const record = await def.model.create(payload);
     await syncRecordDocumentsFolder(resource, record, meta.actorUserId || null);
-    const response = sanitizeMemberResponse(record);
+    const response = {
+      ...sanitizeMemberResponse(record),
+      ...(await memberFinancialResponse(record.toObject ? record.toObject() : record)),
+      demandDefaults: demandDefaults ? await saveMemberDemandDefaults(record.code, demandDefaults) : await getMemberDemandDefaults(record.code)
+    };
     await notifySafely(buildResourceNotificationPayload(resource, 'created', response, meta));
     return response;
   }
@@ -1474,6 +1655,17 @@ async function updateResource(resource, id, data = {}, meta = {}) {
     // Mobile stays required; password is only rehashed when a new one is sent
     // (an absent/blank password leaves the existing hash in place).
     await applyMemberCredentials(payload, data, { requirePassword: false });
+    const demandDefaults = normalizeDemandDefaults(data.demandDefaults);
+    // The stored balances (and their totals) stay as they are unless the
+    // form's openingBalances change them; a balances object in the request
+    // is never taken as is.
+    const currentRecord = current.toObject();
+    payload.balances = currentRecord.balances || {};
+    payload.loanOutstanding = currentRecord.loanOutstanding;
+    payload.depositBalance = currentRecord.depositBalance;
+    const openingBalances = applyMemberOpeningBalances(payload.balances, data.openingBalances, { locked: isLegacyCutoverMember(currentRecord) });
+    if (openingBalances) Object.assign(payload, { balances: openingBalances }, memberBalanceTotals(openingBalances));
+    const previousCode = current.code;
     if (meta.actorUserId) {
       payload.updatedByUserId = meta.actorUserId;
     }
@@ -1484,7 +1676,13 @@ async function updateResource(resource, id, data = {}, meta = {}) {
       await deleteFileById(previousPhotoFileId).catch(() => {});
     }
     await syncRecordDocumentsFolder(resource, current, meta.actorUserId || null);
-    const response = sanitizeMemberResponse(current);
+    const response = {
+      ...sanitizeMemberResponse(current),
+      ...(await memberFinancialResponse(current.toObject())),
+      demandDefaults: demandDefaults
+        ? await saveMemberDemandDefaults(current.code, demandDefaults, { previousCode })
+        : await getMemberDemandDefaults(current.code)
+    };
     await notifySafely(buildResourceNotificationPayload(resource, 'updated', response, meta));
     return response;
   }
@@ -3809,19 +4007,16 @@ async function computeMemberPeriodBalances({ members = [], dateFrom = '', dateTo
     allRows = (historicalByMember.get(member.code) || []).concat(allRows);
     allRows.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 
+    // The anchors (member.balances) sit after every archived row and before
+    // every live one: archived rows are undone backwards from them, live rows
+    // applied forwards, as in the member ledger. (Walking backwards over the
+    // live rows too treated the snapshot as if it already included them, so
+    // nothing posted in the app ever moved these balances.)
+    applyMemberRunningBalances(allRows, anchors);
     // Signed balance before the first row of the timeline, per bucket.
-    // Anchors are credit-positive (a loan owed is negative), so undoing a row
-    // is the same for every bucket.
     const balanceBeforeAll = {};
     for (const key of MEMBER_BALANCE_BUCKETS) {
-      let running = anchors[key];
-      for (let i = allRows.length - 1; i >= 0; i -= 1) {
-        const row = allRows[i];
-        row[key].signed = running;
-        row[key].balance = Math.abs(running);
-        running -= row[key].credit - row[key].debit;
-      }
-      balanceBeforeAll[key] = running;
+      balanceBeforeAll[key] = allRows.reduce((running, row) => (row.isHistorical ? running - (row[key].credit - row[key].debit) : running), anchors[key]);
     }
 
     accrueMemberLedgerInterest(allRows, rateTimelines, toDateStr, { toFyEnd: interestToFyEnd });
@@ -3844,7 +4039,11 @@ async function computeMemberPeriodBalances({ members = [], dateFrom = '', dateTo
     for (const key of MEMBER_BALANCE_BUCKETS) {
       buckets[key] = {
         opening: fromDateStr ? signedBalanceUpTo(key, fromDateStr, false) : balanceBeforeAll[key],
-        closing: toDateStr ? signedBalanceUpTo(key, toDateStr, true) : anchors[key],
+        // No end date: the snapshot plus every live movement (a live row
+        // dated before the last archived one is still counted).
+        closing: toDateStr
+          ? signedBalanceUpTo(key, toDateStr, true)
+          : allRows.reduce((running, r) => (r.isHistorical ? running : running + r[key].credit - r[key].debit), anchors[key]),
         credit: visibleRows.reduce((total, r) => total + (r[key].credit || 0), 0),
         debit: visibleRows.reduce((total, r) => total + (r[key].debit || 0), 0),
         interest: visibleRows.reduce((total, r) => total + (r[key].interest || 0), 0)
@@ -4521,6 +4720,14 @@ async function buildRecoveryDemandCandidates({ branchCode = '', month = '', year
 // the recovery first.
 // ---------------------------------------------------------------------------
 const DEMAND_HEADS = ['compulsoryDeposit', 'specialDeposit', 'regularLoan', 'loanAgainstDeposit', 'insurancePremium', 'other'];
+const DEMAND_HEAD_LABELS = {
+  compulsoryDeposit: 'Compulsory Deposit',
+  specialDeposit: 'Special Saving / SSA',
+  regularLoan: 'Regular Loan',
+  loanAgainstDeposit: 'Loan Against Deposit',
+  insurancePremium: 'Insurance Premium',
+  other: 'Other'
+};
 
 function demandLineTotalPaise(line = {}) {
   return DEMAND_HEADS.reduce((sum, key) => sum + toPaise(line[key] || 0), 0);
@@ -4992,11 +5199,11 @@ async function buildAllMemberListReport({ branchCode = '', uptoDate = '', listTy
     return !cutoff || !/^\d{4}-\d{2}-\d{2}$/.test(joined) || joined <= cutoff;
   });
 
-  // List type: all / branch-wise = current (active) members; dismembered = only
-  // members who have left.
+  // List type: all = every member; active / branch-wise = current (active)
+  // members; dismembered = only members who have left.
   if (type === 'dismembered') {
     rows = rows.filter(isDismemberedMember);
-  } else {
+  } else if (type !== 'all') {
     rows = rows.filter((row) => !isDismemberedMember(row));
   }
 
@@ -5307,29 +5514,134 @@ function toRecoveryLine(line = {}, index = 0) {
   };
 }
 
-// Converts and validates a recovery voucher's lines: members must exist, a
-// demand line may be used once. Returns the recovery_lines rows and the
-// recalculated voucher amount; other vouchers pass through untouched.
-async function prepareRecoveryLines(payload) {
+// Converts and validates a recovery voucher's lines. The rule: each member
+// line's recovered heads add up EXACTLY to that member's expected amount, and
+// so the voucher total equals the expected (Excel) grand total. Everything is
+// recomputed here from the raw amounts; any total, status, warning or
+// "confirmed" flag the browser sends is ignored.
+//   - A line from the bank Excel takes its expected amount from the stored
+//     import row (recovery_import_rows), never from the request, and that row
+//     must belong to the same member.
+//   - Any other line (Add Record, demand-only) carries the operator's
+//     expectedAmount: the amount actually received for that member.
+//   - Every row of an imported Excel batch used here must be in the recovery
+//     or explicitly excluded (details.recoveryExcluded), so dropping a row
+//     can't silently change the control total.
+// Returns the recovery_lines rows, demand links and the reconciliation.
+async function prepareRecoveryLines(payload, submitted = {}) {
   if (payload?.details?.key !== RECOVERY_KEY) return { lines: payload?.details?.recoveryLines || [], links: [] };
   const draftLines = toArray(payload.details.recoveryLines);
   if (!draftLines.length) throw recoveryHttpError('Add at least one member line before saving the recovery.');
-  // The entry screen compares the Excel with the demand and stores each row's
-  // warnings; any not fixed or confirmed on its row stop the Save.
-  const open = draftLines.filter((line) => line?.unmatched || (toArray(line?.warnings).length && !line?.confirmed));
-  if (open.length) throw recoveryHttpError(`${open.length} recovery row(s) still have warnings (Excel vs demand). Fix, remove or confirm them before saving.`);
+  const unmatched = draftLines.filter((line) => line?.unmatched || !cleanText(line?.member || line?.memberCode));
+  if (unmatched.length) throw recoveryHttpError(`${unmatched.length} Excel row(s) have no member. Exclude them (Remove) before saving.`);
   const lines = draftLines.map((line, index) => toRecoveryLine(line, index));
 
   const codes = [...new Set(lines.map((line) => line.memberCode))];
   const known = new Set((await Member.find({ code: { $in: codes } }).lean()).map((member) => cleanUpper(member.code)));
   const unknown = codes.filter((code) => !known.has(code));
   if (unknown.length) throw recoveryHttpError(`Unknown member code(s): ${unknown.join(', ')}.`);
+  const duplicateMember = codes.length !== lines.length ? lines.find((line, i) => lines.findIndex((other) => other.memberCode === line.memberCode) !== i) : null;
+  if (duplicateMember) throw recoveryHttpError(`Member ${duplicateMember.memberCode} is in this recovery twice. Keep one line per member.`);
 
   const links = lines.map((line) => line.demandLineId).filter(Boolean);
   const duplicate = links.find((id, index) => links.indexOf(id) !== index);
   if (duplicate) throw recoveryHttpError('The same demand line is added twice in this recovery. Remove the duplicate row.');
 
-  payload.amount = toRupees(lines.reduce((sum, line) => sum + toPaise(line.total), 0));
+  // Expected amounts: Excel lines from the stored import rows.
+  const excluded = toArray(payload.details.recoveryExcluded);
+  const rowIds = [...new Set([...lines.map((line) => line.payload.importRowId), ...excluded.map((row) => cleanText(row?.importRowId))].filter(Boolean))];
+  const importRows = rowIds.length ? await RecoveryImportRow.find({ id: { $in: rowIds } }).lean() : [];
+  const importRowById = new Map(importRows.map((row) => [String(row.id || row._id), row]));
+  const memberIdByCode = new Map((await Member.find({ code: { $in: codes } }).lean()).map((member) => [cleanUpper(member.code), String(member.id || member._id)]));
+  const problems = [];
+  lines.forEach((line, index) => {
+    const label = `Line ${index + 1} (member ${line.memberCode})`;
+    const rowId = line.payload.importRowId;
+    let expectedPaise;
+    if (rowId) {
+      const row = importRowById.get(rowId);
+      if (!row) {
+        problems.push(`${label}: its Excel row was not found. Import the Excel again.`);
+        return;
+      }
+      if (String(row.memberId || '') !== memberIdByCode.get(line.memberCode)) {
+        problems.push(`${label}: the Excel row (PF ${row.pfNo}) belongs to another member.`);
+        return;
+      }
+      expectedPaise = toPaise(row.importedTotalAmount);
+      line.payload.importBatchId = cleanText(row.batchId) || line.payload.importBatchId;
+      line.payload.excelRowNo = row.sourceRowNo ?? null;
+      line.payload.pfNo = row.pfNo || null;
+    } else {
+      const raw = draftLines[index]?.expectedAmount;
+      const text = raw == null ? '' : String(raw).trim();
+      if (!text || !/^\d+(\.\d{1,2})?$/.test(text) || toPaise(text) <= 0) {
+        problems.push(`${label}: enter the expected amount (the amount actually received for this member).`);
+        return;
+      }
+      expectedPaise = toPaise(text);
+    }
+    const allocatedPaise = toPaise(line.total);
+    if (allocatedPaise !== expectedPaise) {
+      const difference = expectedPaise - allocatedPaise;
+      problems.push(`${label}: expected ${toRupees(expectedPaise)}, allocated ${toRupees(allocatedPaise)} (${difference > 0 ? 'under' : 'over'} by ${toRupees(Math.abs(difference))}).`);
+    }
+    line.payload.expectedAmount = toRupees(expectedPaise);
+  });
+  if (problems.length) {
+    const shown = problems.slice(0, 8).join(' ');
+    throw recoveryHttpError(`Recovery does not reconcile — ${problems.length} line(s) to fix. ${shown}${problems.length > 8 ? ' …' : ''}`);
+  }
+
+  // Every row of each Excel batch used: in the recovery, or excluded.
+  const batchIds = [...new Set(lines.map((line) => line.payload.importBatchId).filter(Boolean))];
+  const excludedIds = new Set();
+  const excludedRows = [];
+  for (const entry of excluded) {
+    const row = importRowById.get(cleanText(entry?.importRowId));
+    if (!row) throw recoveryHttpError('An excluded Excel row was not found. Import the Excel again.');
+    excludedIds.add(String(row.id || row._id));
+    excludedRows.push({
+      importRowId: String(row.id || row._id),
+      importBatchId: row.batchId,
+      excelRowNo: row.sourceRowNo ?? null,
+      pfNo: row.pfNo || '',
+      amount: toNumber(row.importedTotalAmount, 0),
+      reason: cleanText(entry?.reason) || 'Excluded by the operator'
+    });
+  }
+  const usedIds = new Set(lines.map((line) => line.payload.importRowId).filter(Boolean));
+  for (const batchId of batchIds) {
+    const batchRows = await RecoveryImportRow.find({ batchId }).lean();
+    const missing = batchRows.filter((row) => !usedIds.has(String(row.id || row._id)) && !excludedIds.has(String(row.id || row._id)));
+    if (missing.length) {
+      throw recoveryHttpError(`${missing.length} row(s) of the imported Excel are neither in this recovery nor excluded (e.g. row ${missing[0].sourceRowNo}, PF ${missing[0].pfNo}). Add them or exclude them explicitly.`);
+    }
+  }
+
+  const totalPaise = lines.reduce((sum, line) => sum + toPaise(line.total), 0);
+  const expectedTotalPaise = lines.reduce((sum, line) => sum + toPaise(line.payload.expectedAmount), 0);
+  if (totalPaise !== expectedTotalPaise) throw recoveryHttpError('Recovery total does not equal the expected (Excel) total.');
+  // The header total is the recovery total; a different figure sent is refused.
+  const sentAmount = firstDefined(submitted.amount);
+  if (sentAmount != null && toPaise(sentAmount) !== totalPaise) {
+    throw recoveryHttpError(`Total Amount ${toRupees(toPaise(sentAmount))} does not equal the recovery total ${toRupees(totalPaise)}.`);
+  }
+  payload.amount = toRupees(totalPaise);
+  payload.details.recoveryExcluded = excludedRows;
+  payload.details.reconciliation = {
+    expectedTotal: toRupees(expectedTotalPaise),
+    recoveryTotal: toRupees(totalPaise),
+    difference: 0,
+    lineCount: lines.length,
+    excludedCount: excludedRows.length,
+    excludedTotal: toRupees(excludedRows.reduce((sum, row) => sum + toPaise(row.amount), 0))
+  };
+  // The draft as saved carries the server's own expected amounts.
+  payload.details.recoveryLines = draftLines.map((line, index) => {
+    const { warnings, confirmed, status, difference, ...rest } = line || {};
+    return { ...rest, expectedAmount: lines[index].payload.expectedAmount };
+  });
   return { lines, links };
 }
 
@@ -5426,7 +5738,7 @@ async function createVoucher(data = {}, meta = {}) {
       payload.updatedByUserId = meta.actorUserId;
     }
     
-    const recovery = await prepareRecoveryLines(payload);
+    const recovery = await prepareRecoveryLines(payload, data);
     const journalLines = await buildJournalLinesForVoucher(payload, { ...meta, tx, recoveryLines: recovery.lines });
 
     const record = await Voucher.create(payload, { tx });
@@ -5493,7 +5805,7 @@ async function updateVoucher(id, data = {}, meta = {}) {
       payload.updatedByUserId = meta.actorUserId;
     }
     
-    const recovery = await prepareRecoveryLines(payload);
+    const recovery = await prepareRecoveryLines(payload, data);
     const journalLines = await buildJournalLinesForVoucher(payload, { ...meta, tx, recoveryLines: recovery.lines });
     // Demand lines this voucher held before the edit (its own recovery_lines).
     const oldLinks = (await RecoveryLine.find({ voucherId: id }).lean())

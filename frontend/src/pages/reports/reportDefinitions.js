@@ -642,13 +642,14 @@ export function getReportConfig(reportKey = '') {
         const rows = Array.isArray(response.data) ? response.data : [];
         const titles = {
           all: 'All Member List',
+          active: 'Active Member List',
           branch: 'Branch-wise Member List',
           dismembered: 'Dismembered Member List'
         };
         const sortLabel = sortBy === 'code' ? 'code' : 'name';
         return {
           title: titles[listType] || 'All Member List',
-          subtitle: `${isDismembered ? 'Members who have left' : 'Current members'} · sorted by ${sortLabel}`,
+          subtitle: `${isDismembered ? 'Members who have left' : listType === 'all' ? 'Every member, active and dismembered' : 'Current members'} · sorted by ${sortLabel}`,
           summary: [
             makeSummary('Members', rows.length, isDismembered ? 'Dismembered members' : 'Members in list')
           ],

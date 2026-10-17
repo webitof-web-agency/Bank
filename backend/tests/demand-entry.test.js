@@ -155,7 +155,7 @@ test('the saved demand is offered by Add From Demand List and shown on the Deman
 test('after a recovery collects a line it is locked; pending lines keep their ids when edited', async () => {
   const voucher = await banking.createVoucher({
     date: '2026-10-07', voucherCategory: 'Recovery From Member', transactionType: 'receipt', mode: 'Cash',
-    details: { key: 'recovery-member', recoveryLines: [{ member: code(3), source: 'DEMAND', demandLineId: ctx.lineIds[code(3)], heads: { cd: 1000 } }] }
+    details: { key: 'recovery-member', recoveryLines: [{ member: code(3), source: 'DEMAND', demandLineId: ctx.lineIds[code(3)], expectedAmount: 1000, heads: { cd: 1000 } }] }
   });
   ctx.voucherId = String(voucher.id || voucher._id);
   assert.equal(await statusOf(ctx.lineIds[code(3)]), 'RECOVERED');

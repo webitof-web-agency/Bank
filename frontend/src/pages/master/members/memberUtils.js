@@ -2,6 +2,8 @@ import imageCompression from 'browser-image-compression';
 import { MEMBER_DOCUMENT_DEFS, createEmptyDocumentMap, hydrateDocumentMap, serializeDocumentMap } from '../../../components/master/documentUtils';
 // Canonical 10-digit mobile rules shared with the employee form and the backend.
 import { normalizeMobile, isValidMobile } from '../../../utils/mobile';
+import { buildDemandDefaultsPayload, demandDefaultsFromRecord, emptyDemandDefaults } from './memberDemand';
+import { buildOpeningBalancesPayload, emptyOpeningBalances, openingBalancesFromRecord } from './memberBalances';
 
 export { normalizeMobile, isValidMobile };
 
@@ -105,15 +107,19 @@ export function formatMoney(value) {
   return new Intl.NumberFormat('en-IN').format(number);
 }
 
-function toNumber(value, fallback = 0) {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : fallback;
-}
 
 // Member code and membership no. are assigned by the backend sequence on
 // create. Guessing "highest visible + 1" here collided with deleted members
 // (hidden from the list but still holding their code), so a new member
 // could not be saved (409).
+// 'ACTIVE' / 'inactive' / 'Exited' -> 'Active' | 'Inactive' | 'Exited'.
+export function memberStatusLabel(value) {
+  const text = String(value || '').trim().toLowerCase();
+  if (text.startsWith('inact')) return 'Inactive';
+  if (text.startsWith('exit')) return 'Exited';
+  return 'Active';
+}
+
 export function createEmptyMemberDraft() {
   return {
     code: '',
@@ -136,24 +142,10 @@ export function createEmptyMemberDraft() {
     photoUrl: '',
     photoFileId: null,
     basicSalary: 0,
-    openingBalance: 0,
-    depositBalance: 0,
-    loanOutstanding: 0,
-    balances: {
-      share: 0,
-      shareSide: 'Cr',
-      compulsoryDeposit: 0,
-      compulsoryDepositSide: 'Cr',
-      specialSaving: 0,
-      specialSavingSide: 'Cr',
-      providentFund: 0,
-      providentFundSide: 'Cr',
-      loanAgainstDeposit: 0,
-      loanAgainstDepositSide: 'Dr',
-      insurancePremium: 0,
-      insurancePremiumSide: 'Cr',
-      loanOutstandingSide: 'Dr'
-    },
+    openingBalances: emptyOpeningBalances(),
+    openingBalancesLocked: false,
+    currentBalances: null,
+    demandDefaults: emptyDemandDefaults(),
     nomineeName: '',
     nomineeRelation: '',
     dismembered: false,
@@ -165,8 +157,6 @@ export function createEmptyMemberDraft() {
 }
 
 export function createMemberDraftFromRecord(member = {}) {
-  const balances = member.balances || {};
-  const depositBalance = member.depositBalance ?? balances.compulsoryDeposit ?? 0;
   const payload = member.payload || {};
 
   return {
@@ -193,40 +183,23 @@ export function createMemberDraftFromRecord(member = {}) {
     photoUrl: member.photoUrl || '',
     photoFileId: member.photoFileId || null,
     basicSalary: member.basicSalary ?? 0,
-    openingBalance: member.openingBalance ?? 0,
-    depositBalance,
-    loanOutstanding: member.loanOutstanding ?? 0,
-    balances: {
-      share: toNumber(balances.share, 0),
-      shareSide: balances.shareSide || 'Cr',
-      compulsoryDeposit: toNumber(balances.compulsoryDeposit, depositBalance),
-      compulsoryDepositSide: balances.compulsoryDepositSide || 'Cr',
-      specialSaving: toNumber(balances.specialSaving, 0),
-      specialSavingSide: balances.specialSavingSide || 'Cr',
-      providentFund: toNumber(balances.providentFund, 0),
-      providentFundSide: balances.providentFundSide || 'Cr',
-      loanAgainstDeposit: toNumber(balances.loanAgainstDeposit, 0),
-      loanAgainstDepositSide: balances.loanAgainstDepositSide || 'Dr',
-      insurancePremium: toNumber(balances.insurancePremium, 0),
-      insurancePremiumSide: balances.insurancePremiumSide || 'Cr',
-      loanOutstandingSide: balances.loanOutstandingSide || 'Dr'
-    },
+    openingBalances: openingBalancesFromRecord(member),
+    openingBalancesLocked: Boolean(member.openingBalancesLocked),
+    currentBalances: member.currentBalances || null,
+    demandDefaults: demandDefaultsFromRecord(member),
     nomineeName: member.nomineeName || '',
     nomineeRelation: member.nomineeRelation || '',
     dismembered: member.dismembered ?? payload.dismembered ?? false,
     dismemberedDate: toDateInputValue(member.dismemberedDate || payload.dismemberedDate),
-    status: member.status || 'Active',
+    // Stored as 'ACTIVE' by the migration: the form's option spelling.
+    status: memberStatusLabel(member.status),
     payload,
     documents: hydrateDocumentMap(MEMBER_DOCUMENT_DEFS, member.documents || {})
   };
 }
 
 export function buildMemberPayload(draft = {}) {
-  const openingBalance = Number(draft.openingBalance);
-  const depositBalance = Number(draft.depositBalance);
-  const loanOutstanding = Number(draft.loanOutstanding);
   const basicSalary = Number(draft.basicSalary);
-  const balances = draft.balances || {};
   const payload = {
     ...(draft.payload || {}),
     dismembered: Boolean(draft.dismembered),
@@ -257,28 +230,17 @@ export function buildMemberPayload(draft = {}) {
     photoUrl: String(draft.photoUrl || '').trim(),
     photoFileId: draft.photoFileId || null,
     basicSalary: Number.isFinite(basicSalary) ? basicSalary : 0,
-    openingBalance: Number.isFinite(openingBalance) ? openingBalance : 0,
-    depositBalance: Number.isFinite(depositBalance) ? depositBalance : 0,
-    loanOutstanding: Number.isFinite(loanOutstanding) ? loanOutstanding : 0,
-    balances: {
-      share: toNumber(balances.share, 0),
-      shareSide: String(balances.shareSide || 'Cr'),
-      compulsoryDeposit: Number.isFinite(depositBalance) ? depositBalance : toNumber(balances.compulsoryDeposit, 0),
-      compulsoryDepositSide: String(balances.compulsoryDepositSide || 'Cr'),
-      specialSaving: toNumber(balances.specialSaving, 0),
-      specialSavingSide: String(balances.specialSavingSide || 'Cr'),
-      providentFund: toNumber(balances.providentFund, 0),
-      providentFundSide: String(balances.providentFundSide || 'Cr'),
-      loanAgainstDeposit: toNumber(balances.loanAgainstDeposit, 0),
-      loanAgainstDepositSide: String(balances.loanAgainstDepositSide || 'Dr'),
-      insurancePremium: toNumber(balances.insurancePremium, 0),
-      insurancePremiumSide: String(balances.insurancePremiumSide || 'Cr'),
-      loanOutstandingSide: String(balances.loanOutstandingSide || 'Dr')
-    },
+    // The stored balances change only through openingBalances (never sent
+    // for a migrated member, whose opening is locked).
+    openingBalances: buildOpeningBalancesPayload(draft.openingBalances || {}, { locked: draft.openingBalancesLocked }),
+    demandDefaults: buildDemandDefaultsPayload(draft.demandDefaults || {}),
     nomineeName: String(draft.nomineeName || '').trim(),
     nomineeRelation: String(draft.nomineeRelation || '').trim(),
-    status: String(draft.status || 'Active').trim(),
-    isActive: String(draft.status || 'Active').trim() !== 'Inactive',
+    // Dismembered goes with Inactive (the server enforces it too).
+    dismembered: Boolean(draft.dismembered),
+    dismemberedDate: draft.dismembered ? String(draft.dismemberedDate || '').trim() : '',
+    status: draft.dismembered ? 'Inactive' : memberStatusLabel(draft.status),
+    isActive: !draft.dismembered && memberStatusLabel(draft.status) === 'Active',
     payload,
     documents: serializeDocumentMap(draft.documents || {})
   };

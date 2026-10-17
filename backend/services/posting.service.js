@@ -47,16 +47,26 @@ function isVehicleLoanInterest(voucher = {}) {
 }
 
 const POSTING_REGISTRY = {
+  // Regular Loan and Loan Against Deposit go to their own ledgers, as legacy
+  // posts TransType 1 (RLoanAmt -> Loan to Members, DLoanAmt -> Loan against
+  // Deposit). A voucher with no split (amount only) is all Regular Loan.
   'loan-paid-member': {
     status: 'PROVEN',
     build: async (voucher, { tx }) => {
-      const amount = Number(voucher.amount) || 0;
+      const components = voucher?.details?.components || {};
+      const hasSplit = components.loanAmt != null || components.lad != null;
+      const loanPaise = Math.round((hasSplit ? Number(components.loanAmt) || 0 : Number(voucher.amount) || 0) * 100);
+      const ladPaise = Math.round((hasSplit ? Number(components.lad) || 0 : 0) * 100);
+      if (hasSplit && loanPaise + ladPaise !== Math.round((Number(voucher.amount) || 0) * 100)) {
+        throw new PostingError('Total Amount must equal Regular Loan Amount + Loan Against Deposit Amount.', 'FAILURE');
+      }
       const paymentLedgerId = await getPaymentLedger(voucher, tx);
-      const loanLedgerId = await resolveLedgerId(ACCOUNTING_ROLES.REGULAR_LOAN, tx);
-      return [
-        { ledgerId: loanLedgerId, dr: amount, cr: 0, memberId: voucher.partyCode },
-        { ledgerId: paymentLedgerId, dr: 0, cr: amount }
-      ];
+      const lines = [];
+      if (loanPaise > 0) lines.push({ ledgerId: await resolveLedgerId(ACCOUNTING_ROLES.REGULAR_LOAN, tx), dr: loanPaise / 100, cr: 0, memberId: voucher.partyCode });
+      if (ladPaise > 0) lines.push({ ledgerId: await resolveLedgerId(ACCOUNTING_ROLES.LOAN_AGAINST_DEPOSIT, tx), dr: ladPaise / 100, cr: 0, memberId: voucher.partyCode });
+      if (!lines.length) throw new PostingError('Enter the loan amount.', 'FAILURE');
+      lines.push({ ledgerId: paymentLedgerId, dr: 0, cr: (loanPaise + ladPaise) / 100 });
+      return lines;
     }
   },
   'deposit-paid-member': {

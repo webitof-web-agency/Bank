@@ -2,45 +2,17 @@ import { useRef, useState } from 'react';
 import { Camera, Trash2, Upload, User, Briefcase, FileText, Wallet } from 'lucide-react';
 import PhoneInput from 'react-phone-input-2';
 import { Input, Textarea, PasswordInput } from '../../../components/ui/Input';
-import { AmountSideInput } from '../../../components/ui/AmountSideInput';
 import { Select } from '../../../components/ui/Select';
 import { normalizeSocialCategory, socialCategoryOptions } from '../../../lib/socialCategory';
 import { UserAvatar } from '../../../components/ui/UserAvatar';
 import { DocumentSection } from '../../../components/master/DocumentSection';
 import { MEMBER_DOCUMENT_DEFS } from '../../../components/master/documentUtils';
 import { formatBranchLabel, toPhoneInputValue } from './memberUtils';
+import { MEMBER_DEMAND_FIELDS, demandAmountError, demandDefaultsTotal } from './memberDemand';
+import { LEDGER_TRACKED_HEADS, MEMBER_OPENING_FIELDS } from './memberBalances';
 
-const BALANCE_FIELDS = [
-  { name: 'openingBalance', label: 'Opening Balance' },
-  { name: 'depositBalance', label: 'Deposit Balance' },
-  { name: 'loanOutstanding', label: 'Regular Loan', sideName: 'balances.loanOutstandingSide' },
-  { name: 'balances.share', label: 'Share Balance', sideName: 'balances.shareSide' },
-  { name: 'balances.compulsoryDeposit', label: 'Compulsory Deposit', sideName: 'balances.compulsoryDepositSide' },
-  { name: 'balances.specialSaving', label: 'Special Saving', sideName: 'balances.specialSavingSide' },
-  { name: 'balances.providentFund', label: 'Provident Fund', sideName: 'balances.providentFundSide' },
-  { name: 'balances.loanAgainstDeposit', label: 'Loan Against Deposit', sideName: 'balances.loanAgainstDepositSide' },
-  { name: 'balances.insurancePremium', label: 'Insurance Premium', sideName: 'balances.insurancePremiumSide' }
-];
+const formatRupees = (amount) => new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(amount || 0));
 
-function getNestedValue(value = {}, path = '') {
-  return path.split('.').reduce((acc, key) => (acc ? acc[key] : undefined), value);
-}
-
-function setNestedValue(setValue, current, path, nextValue) {
-  const parts = path.split('.');
-  if (parts.length === 1) {
-    setValue({ ...current, [path]: nextValue });
-    return;
-  }
-  const [root, leaf] = parts;
-  setValue({
-    ...current,
-    [root]: {
-      ...(current[root] || {}),
-      [leaf]: nextValue
-    }
-  });
-}
 
 export function MemberForm({
   value,
@@ -80,7 +52,7 @@ export function MemberForm({
   const tabs = [
     { id: 'basic', label: 'Basic Info', icon: User },
     { id: 'membership', label: 'Membership', icon: Briefcase },
-    { id: 'financial', label: 'Financial & Nominee', icon: Wallet },
+    { id: 'financial', label: 'Financial, Demand & Nominee', icon: Wallet },
     { id: 'documents', label: 'Documents', icon: FileText }
   ];
 
@@ -323,8 +295,9 @@ export function MemberForm({
             <div className="space-y-1.5">
               <label className="text-[13px] font-semibold text-slate-700">Account Status</label>
               <Select
-                value={value.status || 'Active'}
+                value={value.dismembered ? 'Inactive' : (value.status || 'Active')}
                 onChange={(val) => setValue({ ...value, status: val })}
+                disabled={Boolean(value.dismembered)}
                 options={[
                   { value: 'Active', label: 'Active' },
                   { value: 'Inactive', label: 'Inactive' },
@@ -368,13 +341,14 @@ export function MemberForm({
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>
                 <h4 className="text-[14px] font-semibold text-slate-900">Dismemberment Status</h4>
-                <p className="text-[12px] text-slate-500 mt-0.5">Flag member if they have been dismembered or removed from the society.</p>
+                <p className="text-[12px] text-slate-500 mt-0.5">Flag member if they have been dismembered or removed from the society. A dismembered member is Inactive and can no longer sign in to the member app.</p>
               </div>
               <label className="inline-flex items-center gap-2.5 cursor-pointer bg-white px-4 py-2.5 rounded-xl border border-slate-200 shadow-sm hover:border-slate-300 transition select-none">
                 <input
                   type="checkbox"
                   checked={Boolean(value.dismembered)}
-                  onChange={(e) => setValue({ ...value, dismembered: e.target.checked })}
+                  // Dismembered = Inactive; un-ticking makes the member Active again.
+                  onChange={(e) => setValue({ ...value, dismembered: e.target.checked, status: e.target.checked ? 'Inactive' : 'Active' })}
                   className="h-4 w-4 rounded border-slate-300 accent-[var(--primary)]"
                 />
                 <span className="text-[13px] font-medium text-slate-700">Mark as Dismembered</span>
@@ -422,40 +396,81 @@ export function MemberForm({
         {/* TAB: FINANCIAL */}
         <div className={activeTab === 'financial' ? 'block space-y-3' : 'hidden'}>
           <div>
-            <h3 className="text-lg font-bold text-slate-900">Balances & Nominee</h3>
-            <p className="text-[13px] text-slate-500 mt-1">Opening balances and beneficiary details.</p>
+            <h3 className="text-lg font-bold text-slate-900">Financial, Demand & Nominee</h3>
+            <p className="text-[13px] text-slate-500 mt-1">Balances, monthly demand and beneficiary details.</p>
           </div>
           
           <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-5">
-            <h4 className="text-sm font-semibold text-slate-900 mb-4">Initial Balances</h4>
+            <h4 className="text-sm font-semibold text-slate-900">Current / Opening Balances</h4>
+            <p className="mb-4 mt-0.5 text-[12px] text-slate-500">What the member currently has or owes.</p>
+            {value.openingBalancesLocked ? (
+              <p className="mb-4 rounded-lg bg-slate-100 px-3 py-2 text-[12px] text-slate-600">
+                Opening balances of a migrated member come from the legacy books and can't be edited here. They change only through transactions (Loan / CD / SSA payments, Recovery).
+              </p>
+            ) : null}
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5">
-              {BALANCE_FIELDS.map((field) => (
-                <div key={field.name} className="space-y-1.5">
-                  <label className="text-[13px] font-medium text-slate-700">{field.label}</label>
-                  {field.sideName ? (
-                    <AmountSideInput
-                      className="bg-white"
-                      value={getNestedValue(value, field.name) ?? ''}
-                      onChange={(e) => setNestedValue(setValue, value, field.name, e.target.value)}
-                      side={getNestedValue(value, field.sideName)}
-                      defaultSide="Cr"
-                      onSideChange={(side) => setNestedValue(setValue, value, field.sideName, side)}
-                    />
-                  ) : (
+              {MEMBER_OPENING_FIELDS.map(([key, label]) => {
+                const amount = value.openingBalances?.[key] ?? '';
+                const error = demandAmountError(amount);
+                const current = value.currentBalances && LEDGER_TRACKED_HEADS.has(key) ? value.currentBalances[key] : null;
+                return (
+                  <div key={key} className="space-y-1.5">
+                    <label className="text-[13px] font-medium text-slate-700">{label}{isEdit ? <span className="font-normal text-slate-400"> (opening)</span> : null}</label>
                     <Input
                       type="number"
                       min="0"
-                      step="1"
-                      className="bg-white"
-                      value={getNestedValue(value, field.name) ?? ''}
-                      onChange={(e) => setNestedValue(setValue, value, field.name, e.target.value)}
+                      step="0.01"
+                      inputMode="decimal"
+                      className={`bg-white ${error ? 'border-rose-400' : ''}`}
+                      value={amount}
+                      placeholder="0"
+                      disabled={value.openingBalancesLocked}
+                      onChange={(e) => setValue({ ...value, openingBalances: { ...(value.openingBalances || {}), [key]: e.target.value } })}
                     />
-                  )}
-                </div>
-              ))}
+                    {error ? <p className="text-[11px] text-rose-600">{error}</p> : null}
+                    {current != null ? <p className="text-[11px] text-slate-500">Current: <span className="font-semibold text-slate-700">₹{formatRupees(current)}</span></p> : null}
+                  </div>
+                );
+              })}
             </div>
           </div>
 
+          {/* Monthly demand: a separate thing from the balances above. */}
+          <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-5">
+            <h4 className="text-sm font-semibold text-slate-900">Monthly Demand Data</h4>
+            <p className="mb-4 mt-0.5 text-[12px] text-slate-500">Amounts normally recovered from this member each month.</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5">
+              {MEMBER_DEMAND_FIELDS.map(([key, label]) => {
+                const amount = value.demandDefaults?.[key] ?? '';
+                const error = demandAmountError(amount);
+                return (
+                  <div key={key} className="space-y-1.5">
+                    <label className="text-[13px] font-medium text-slate-700">{label}</label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      inputMode="decimal"
+                      className={`bg-white ${error ? 'border-rose-400' : ''}`}
+                      value={amount}
+                      placeholder="0"
+                      onChange={(e) => setValue({ ...value, demandDefaults: { ...(value.demandDefaults || {}), [key]: e.target.value } })}
+                    />
+                    {error ? <p className="text-[11px] text-rose-600">{error}</p> : null}
+                  </div>
+                );
+              })}
+              <div className="space-y-1.5">
+                <label className="text-[13px] font-semibold text-slate-700">Monthly Demand Total</label>
+                <div className="flex h-9 items-center rounded-[var(--radius-input,0.75rem)] border border-slate-200 bg-slate-100 px-3 text-[13px] font-semibold text-slate-900">
+                  {new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(demandDefaultsTotal(value.demandDefaults || {}))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-5">
+          <h4 className="mb-4 text-sm font-semibold text-slate-900">Nominee Details</h4>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
             <div className="space-y-1.5">
               <label className="text-[13px] font-semibold text-slate-700">Nominee Name</label>
@@ -474,6 +489,7 @@ export function MemberForm({
                 ]}
               />
             </div>
+          </div>
           </div>
 
       </div>
