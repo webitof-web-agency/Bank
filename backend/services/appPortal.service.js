@@ -3,7 +3,7 @@
 // Member / employee mobile-app portal (read-only): login by mobile + password,
 // then FY-scoped summary + passbooks. It reuses the heavy lifting already in
 // banking.service (buildMemberLedgerReport / buildEmployeeLedgerReport), which
-// compute per-product running balances and interest exactly as the legacy
+// compute per-ledger running balances and interest exactly as the legacy
 // desktop app did.
 
 const { Branch, Member, Employee } = require('../models/banking.models');
@@ -12,6 +12,7 @@ const bankingService = require('./banking.service');
 const { comparePassword, signToken } = require('./auth.service');
 const { getSettings } = require('./settings.service');
 const { normalizeMobile, isValidMobile } = require('../utils/mobile');
+const { createHash } = require('crypto');
 
 // ---- Financial-year helpers (Indian FY: 1 Apr → 31 Mar) -------------------
 const FIRST_FY_START_YEAR = 2021; // FY 2021-22 is the earliest archive we hold.
@@ -46,26 +47,32 @@ function unauthorized(message = 'Invalid mobile number or password') {
   return error;
 }
 
-// ---- Product definitions per account type ---------------------------------
+// ---- Ledger definitions per account type --------------------------------
 // Keys match the per-row buckets returned by the ledger reports.
-const MEMBER_PRODUCTS = [
+const MEMBER_LEDGERS = [
   { key: 'share', label: 'Share', nature: 'Cr' },
   { key: 'specialDeposit', label: 'Special Saving A/c', nature: 'Cr' },
   { key: 'compulsoryDeposit', label: 'Compulsory Deposit', nature: 'Cr' },
   { key: 'loan', label: 'Regular Loan', nature: 'Dr' },
   { key: 'loanAgainstDeposit', label: 'Loan Against Deposit', nature: 'Dr' }
 ];
-const EMPLOYEE_PRODUCTS = [
+const EMPLOYEE_LEDGERS = [
   { key: 'housingLoan', label: 'Home Loan', nature: 'Dr' },
   { key: 'vehicleLoan', label: 'Vehicle Loan', nature: 'Dr' },
   { key: 'grainAdvance', label: 'Grain Advance', nature: 'Dr' }
 ];
 
-function productsFor(type) {
-  return type === 'employee' ? EMPLOYEE_PRODUCTS : MEMBER_PRODUCTS;
+function ledgersFor(type) {
+  return type === 'employee' ? EMPLOYEE_LEDGERS : MEMBER_LEDGERS;
 }
 
 // ---- Authentication --------------------------------------------------------
+// A dismembered (or Inactive / Exited) member can no longer sign in.
+function isMemberActive(member = {}) {
+  const status = String(member.status || '').trim().toLowerCase();
+  return member.dismembered !== true && !status.startsWith('inact') && !status.startsWith('exit');
+}
+
 async function login(mobileRaw, passwordRaw) {
   const mobile = normalizeMobile(mobileRaw);
   const password = String(passwordRaw || '');
@@ -78,10 +85,10 @@ async function login(mobileRaw, passwordRaw) {
   // normalized form. Two members can share a number: the first whose
   // password matches signs in.
   const members = (await Member.find({}).lean())
-    .filter((row) => row.passwordHash && normalizeMobile(row.mobileNo) === mobile)
+    .filter((row) => row.passwordHash && normalizeMobile(row.mobileNo) === mobile && isMemberActive(row))
     .sort((a, b) => String(a.code).localeCompare(String(b.code), undefined, { numeric: true }));
   for (const member of members) {
-    if (await comparePassword(password, member.passwordHash)) return issue('member', member.code, member.name);
+    if (await comparePassword(password, member.passwordHash)) return issue('member', member.code, member.name, member.passwordHash);
   }
 
   // App access follows the employee record (on the rolls, not retired), not
@@ -92,27 +99,47 @@ async function login(mobileRaw, passwordRaw) {
     const empCode = user.employeeCode || user.code;
     const employee = await Employee.findOne({ code: empCode }).lean();
     if (employee && employee.retired !== true) {
-      return issue('employee', empCode, employee.name || user.fullName || user.name);
+      return issue('employee', empCode, employee.name || user.fullName || user.name, user.passwordHash);
     }
   }
 
   throw unauthorized();
 }
 
-function issue(type, code, name) {
-  const token = signToken({ scope: 'app', acct: type, sub: code, name: name || '' });
+// pwv: a short fingerprint of the password hash the token was issued
+// against. Changing or clearing the password changes it, which ends every
+// session signed in with the old one.
+function passwordVersion(hash) {
+  return hash ? createHash('sha256').update(String(hash)).digest('hex').slice(0, 16) : '';
+}
+
+function issue(type, code, name, passwordHash) {
+  const token = signToken({ scope: 'app', acct: type, sub: code, name: name || '', pwv: passwordVersion(passwordHash) });
   return { token, account: { type, code, name: name || '' } };
 }
 
+// The employee's login lives on the users table, keyed by employee code.
+async function findEmployeeUser(code) {
+  return (await User.find({}).lean()).find((row) => String(row.employeeCode || row.code || '') === String(code)) || null;
+}
+
+// Every /me request re-checks the account behind the token, so a retired
+// employee, a deleted member or a changed/removed password loses access at
+// once rather than when the token expires.
 async function resolveAccount(principal) {
-  if (!principal || principal.scope !== 'app' || !principal.sub) throw unauthorized('Session expired');
+  if (!principal || principal.scope !== 'app' || !principal.sub || !principal.pwv) throw unauthorized('Session expired');
   if (principal.acct === 'employee') {
     const employee = await Employee.findOne({ code: principal.sub }).lean();
-    if (!employee) throw unauthorized('Account not found');
+    if (!employee || employee.retired === true) throw unauthorized('Account not found');
+    const user = await findEmployeeUser(employee.code);
+    if (!user || passwordVersion(user.passwordHash) !== principal.pwv) throw unauthorized('Session expired');
     return { type: 'employee', code: employee.code, record: employee };
   }
+  if (principal.acct !== 'member') throw unauthorized('Session expired');
   const member = await Member.findOne({ code: principal.sub }).lean();
   if (!member) throw unauthorized('Account not found');
+  if (!isMemberActive(member)) throw unauthorized('This membership is inactive');
+  if (passwordVersion(member.passwordHash) !== principal.pwv) throw unauthorized('Session expired');
   return { type: 'member', code: member.code, record: member };
 }
 
@@ -139,7 +166,14 @@ function financialYears(account) {
   return years;
 }
 
-// ---- Per-product summary + passbook ---------------------------------------
+// The requested FY, refused unless it is one the account can view.
+function allowedStartYear(account, startYear) {
+  const year = Number(startYear);
+  if (!financialYears(account).some((row) => row.startYear === year)) throw badRequest('Financial year not available');
+  return year;
+}
+
+// ---- Per-ledger summary + passbook ---------------------------------------
 function cellOf(row, key) {
   const c = row && row[key];
   if (!c || typeof c !== 'object') return null;
@@ -151,7 +185,7 @@ function cellOf(row, key) {
   };
 }
 
-function summarizeProduct(rows, key) {
+function summarizeLedger(rows, key) {
   let balance = 0;
   let interest = 0;
   let seen = false;
@@ -175,7 +209,7 @@ function lastTransactionDate(rows) {
 }
 
 async function ledgerFor(account, startYear) {
-  const { fyStart, fyEnd } = fyDates(startYear);
+  const { fyStart, fyEnd } = fyDates(allowedStartYear(account, startYear));
   if (account.type === 'employee') {
     const data = await bankingService.buildEmployeeLedgerReport({ employeeCode: account.code, dateFrom: fyStart, dateTo: fyEnd });
     return { data, rows: (data && data.rows) || [] };
@@ -186,14 +220,14 @@ async function ledgerFor(account, startYear) {
 
 async function getSummary(account, startYear) {
   const { rows } = await ledgerFor(account, startYear);
-  const products = productsFor(account.type).map((p) => {
-    const { balance, interest } = summarizeProduct(rows, p.key);
+  const ledgers = ledgersFor(account.type).map((p) => {
+    const { balance, interest } = summarizeLedger(rows, p.key);
     return { key: p.key, label: p.label, nature: p.nature, balance, interest };
   });
   return {
     fy: fyLabel(startYear),
     lastTransactionDate: lastTransactionDate(rows),
-    products
+    ledgers
   };
 }
 
@@ -241,17 +275,17 @@ async function getProfile(account) {
   };
 }
 
-async function getStatement(account, productKey, startYear) {
-  const product = productsFor(account.type).find((p) => p.key === productKey);
-  if (!product) throw badRequest('Unknown account/product');
+async function getStatement(account, ledgerKey, startYear) {
+  const ledger = ledgersFor(account.type).find((p) => p.key === ledgerKey);
+  if (!ledger) throw badRequest('Unknown ledger');
   const { rows } = await ledgerFor(account, startYear);
 
   const lines = [];
   for (const row of rows) {
-    const c = cellOf(row, productKey);
+    const c = cellOf(row, ledgerKey);
     if (!c) continue;
     const isOpening = Boolean(row.isOpening);
-    // Keep the opening row and any row that actually moves this product.
+    // Keep the opening row and any row that actually moves this ledger.
     if (!isOpening && !c.credit && !c.debit) continue;
     lines.push({
       date: row.date || '',
@@ -260,10 +294,10 @@ async function getStatement(account, productKey, startYear) {
       credit: c.credit,
       debit: c.debit,
       balance: c.balance,
-      nature: product.nature
+      nature: ledger.nature
     });
   }
-  return { fy: fyLabel(startYear), product: { key: product.key, label: product.label, nature: product.nature }, lines };
+  return { fy: fyLabel(startYear), ledger: { key: ledger.key, label: ledger.label, nature: ledger.nature }, lines };
 }
 
 // ---- Public app config (before login) -------------------------------------
@@ -294,15 +328,34 @@ async function getAppConfig() {
   };
 }
 
+// ---- App update (public) ---------------------------------------------------
+// The latest app release, set in Settings -> Mobile App (settings
+// payload.appUpdate): the app compares its own version with this on launch
+// and offers the APK at downloadUrl. Empty version = no update offered.
+async function getAppVersion() {
+  const settings = await getSettings();
+  const update = settings?.payload?.appUpdate || {};
+  const version = String(update.version || '').trim();
+  const buildNumber = Number.parseInt(update.buildNumber, 10);
+  return {
+    version,
+    buildNumber: Number.isFinite(buildNumber) ? buildNumber : null,
+    downloadUrl: String(update.downloadUrl || '').trim(),
+    notes: String(update.notes || '').trim(),
+    force: update.force === true
+  };
+}
+
 module.exports = {
   getAppConfig,
+  getAppVersion,
   login,
   resolveAccount,
   financialYears,
   getSummary,
   getProfile,
   getStatement,
-  productsFor,
+  ledgersFor,
   fyLabel,
   startYearFromLabel,
   currentFyStartYear

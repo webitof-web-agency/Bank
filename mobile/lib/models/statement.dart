@@ -1,4 +1,4 @@
-/// One line of a product passbook.
+/// One line of a ledger passbook.
 class StatementLine {
   final String date;
   final String voucherNo;
@@ -33,26 +33,28 @@ class StatementLine {
 
 class Statement {
   final String fy;
-  final String productKey;
-  final String productLabel;
+  final String ledgerKey;
+  final String ledgerLabel;
   final String nature;
   final List<StatementLine> lines;
 
   const Statement({
     required this.fy,
-    required this.productKey,
-    required this.productLabel,
+    required this.ledgerKey,
+    required this.ledgerLabel,
     required this.nature,
     required this.lines,
   });
 
   factory Statement.fromJson(Map<String, dynamic> json) {
-    final product = (json['product'] as Map<String, dynamic>?) ?? {};
+    // 'product' is the older backend's name for the same object.
+    final ledger =
+        (json['ledger'] ?? json['product']) as Map<String, dynamic>? ?? {};
     return Statement(
       fy: (json['fy'] ?? '').toString(),
-      productKey: (product['key'] ?? '').toString(),
-      productLabel: (product['label'] ?? '').toString(),
-      nature: (product['nature'] ?? 'Cr').toString(),
+      ledgerKey: (ledger['key'] ?? '').toString(),
+      ledgerLabel: (ledger['label'] ?? '').toString(),
+      nature: (ledger['nature'] ?? 'Cr').toString(),
       lines: ((json['lines'] as List?) ?? [])
           .map((e) => StatementLine.fromJson(e as Map<String, dynamic>))
           .toList(),

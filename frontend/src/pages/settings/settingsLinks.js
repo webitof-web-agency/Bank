@@ -1,4 +1,4 @@
-import { Bell, Building2, CalendarClock, Archive, DatabaseBackup, KeyRound, ShieldCheck, Mail, MessageSquare, HardDrive } from 'lucide-react';
+import { Bell, Building2, CalendarClock, Archive, DatabaseBackup, KeyRound, ShieldCheck, Mail, MessageSquare, HardDrive, Smartphone } from 'lucide-react';
 
 // `hidden: true` keeps a page (and its route) but leaves it out of the menu
 // and the Settings home.
@@ -77,6 +77,15 @@ const ALL_SETTINGS_LINKS = [
     permission: 'settings.read',
     description: 'Flowit SMS configuration status, DLT templates, and the SMS log.',
     group: 'Communication',
+    tone: 'blue'
+  },
+  {
+    label: 'Mobile App',
+    path: '/app/settings/mobile-app',
+    icon: Smartphone,
+    permission: 'settings.read',
+    description: 'Publish a new member-app version: phones on an older one are asked to download it.',
+    group: 'Configuration',
     tone: 'blue'
   },
   {

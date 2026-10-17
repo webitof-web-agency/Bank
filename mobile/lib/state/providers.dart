@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../data/api_client.dart';
 import '../data/portal_repository.dart';
@@ -63,21 +64,21 @@ final summaryProvider = FutureProvider<AccountSummary>((ref) async {
 
 final statementProvider = FutureProvider.family<Statement, String>((
   ref,
-  productKey,
+  ledgerKey,
 ) async {
   final startYear = await _resolveStartYear(ref);
-  return ref.watch(portalRepositoryProvider).statement(productKey, startYear);
+  return ref.watch(portalRepositoryProvider).statement(ledgerKey, startYear);
 });
 
 /// One entry on the Transactions tab: a passbook line plus its account.
 class Transaction {
-  final String productKey;
-  final String productLabel;
+  final String ledgerKey;
+  final String ledgerLabel;
   final String nature;
   final StatementLine line;
   const Transaction({
-    required this.productKey,
-    required this.productLabel,
+    required this.ledgerKey,
+    required this.ledgerLabel,
     required this.nature,
     required this.line,
   });
@@ -88,17 +89,16 @@ class Transaction {
 final transactionsProvider = FutureProvider<List<Transaction>>((ref) async {
   final summary = await ref.watch(summaryProvider.future);
   final statements = await Future.wait([
-    for (final p in summary.products)
-      ref.watch(statementProvider(p.key).future),
+    for (final p in summary.ledgers) ref.watch(statementProvider(p.key).future),
   ]);
   final list = <Transaction>[
     for (var i = 0; i < statements.length; i++)
       for (final line in statements[i].lines)
         if (!line.isOpening && (line.credit != 0 || line.debit != 0))
           Transaction(
-            productKey: summary.products[i].key,
-            productLabel: summary.products[i].label,
-            nature: summary.products[i].nature,
+            ledgerKey: summary.ledgers[i].key,
+            ledgerLabel: summary.ledgers[i].label,
+            nature: summary.ledgers[i].nature,
             line: line,
           ),
   ];
@@ -107,4 +107,12 @@ final transactionsProvider = FutureProvider<List<Transaction>>((ref) async {
     return byDate != 0 ? byDate : b.line.voucherNo.compareTo(a.line.voucherNo);
   });
   return list;
+});
+
+/// The installed app's version, e.g. "1.0.0 (1)".
+final appVersionLabelProvider = FutureProvider<String>((ref) async {
+  final info = await PackageInfo.fromPlatform();
+  return info.buildNumber.isEmpty
+      ? info.version
+      : '${info.version} (${info.buildNumber})';
 });

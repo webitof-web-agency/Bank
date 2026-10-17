@@ -35,6 +35,7 @@ import { BackupRestorePage } from './pages/settings/BackupRestorePage';
 import { FinancialYearClosingPage } from './pages/settings/FinancialYearClosingPage';
 import { StorageSettingsPage } from './pages/settings/StorageSettingsPage';
 import { SmsSettingsPage } from './pages/settings/SmsSettingsPage';
+import { MobileAppSettingsPage } from './pages/settings/MobileAppSettingsPage';
 import { GoogleDrivePage } from './pages/settings/GoogleDrivePage';
 import { TransactionsHomePage } from './pages/transactions';
 import { MemberTransactionsHomePage } from './pages/transactions/member/home';
@@ -152,6 +153,7 @@ function AppRoutes() {
         <Route path="settings/financial-year-closing" element={<PermissionRoute permission="settings.read"><FinancialYearClosingPage /></PermissionRoute>} />
         <Route path="settings/google-drive" element={<PermissionRoute permission="settings.read"><GoogleDrivePage /></PermissionRoute>} />
         <Route path="settings/sms" element={<PermissionRoute permission="settings.read"><SmsSettingsPage /></PermissionRoute>} />
+        <Route path="settings/mobile-app" element={<PermissionRoute permission="settings.read"><MobileAppSettingsPage /></PermissionRoute>} />
         <Route path="settings/storage" element={<PermissionRoute permission="settings.read"><StorageSettingsPage /></PermissionRoute>} />
         <Route path="calendar" element={<PermissionRoute permission="calendar.read"><CalendarPage /></PermissionRoute>} />
         <Route path="master" element={<Navigate to="/app/master/overview" replace />} />

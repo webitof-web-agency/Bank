@@ -7,28 +7,27 @@ import '../models/statement.dart';
 import '../state/providers.dart';
 import '../widgets/async_view.dart';
 
-/// A product passbook: one card per transaction (no horizontal scrolling, the
+/// A ledger passbook: one card per transaction (no horizontal scrolling, the
 /// bug the legacy table had on phones), newest first, with a running balance.
 class PassbookScreen extends ConsumerWidget {
   const PassbookScreen({
     super.key,
-    required this.productKey,
-    required this.productLabel,
+    required this.ledgerKey,
+    required this.ledgerLabel,
   });
 
-  final String productKey;
-  final String productLabel;
+  final String ledgerKey;
+  final String ledgerLabel;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final statement = ref.watch(statementProvider(productKey));
+    final statement = ref.watch(statementProvider(ledgerKey));
 
     return Scaffold(
-      appBar: AppBar(title: Text(productLabel)),
+      appBar: AppBar(title: Text(ledgerLabel)),
       body: AsyncView(
         value: statement,
-        onRefresh: () async =>
-            ref.refresh(statementProvider(productKey).future),
+        onRefresh: () async => ref.refresh(statementProvider(ledgerKey).future),
         data: (data) {
           if (data.lines.isEmpty) {
             return const Center(child: Text('No transactions for this year.'));

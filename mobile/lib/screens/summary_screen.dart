@@ -5,7 +5,7 @@ import '../core/theme.dart';
 import '../core/formatters.dart';
 import '../state/providers.dart';
 import '../widgets/async_view.dart';
-import '../widgets/product_card.dart';
+import '../widgets/ledger_card.dart';
 import 'passbook_screen.dart';
 
 class SummaryScreen extends ConsumerWidget {
@@ -30,21 +30,21 @@ class SummaryScreen extends ConsumerWidget {
                   style: TextStyle(color: AppColors.textMuted, fontSize: 13),
                 ),
               ),
-            if (data.products.isEmpty)
+            if (data.ledgers.isEmpty)
               const Padding(
                 padding: EdgeInsets.only(top: 64),
                 child: Center(child: Text('No accounts for this year.')),
               ),
-            for (final p in data.products)
+            for (final p in data.ledgers)
               Padding(
                 padding: const EdgeInsets.only(bottom: 12),
-                child: ProductCard(
-                  product: p,
+                child: LedgerCard(
+                  ledger: p,
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => PassbookScreen(
-                        productKey: p.key,
-                        productLabel: p.label,
+                        ledgerKey: p.key,
+                        ledgerLabel: p.label,
                       ),
                     ),
                   ),

@@ -7,6 +7,7 @@
 
 const jwt = require('jsonwebtoken');
 const { getJwtSecret } = require('../config/security');
+const { isSessionRevoked } = require('../services/session.service');
 
 function extractBearerToken(req) {
   const header = req.headers.authorization || req.headers.Authorization || '';
@@ -15,14 +16,14 @@ function extractBearerToken(req) {
   return '';
 }
 
-function requireAppAuth(req, res, next) {
+async function requireAppAuth(req, res, next) {
   try {
     const token = extractBearerToken(req);
     if (!token) {
       return res.status(401).json({ success: false, message: 'Authentication token is required' });
     }
     const decoded = jwt.verify(token, getJwtSecret(), { algorithms: ['HS256'] });
-    if (!decoded || decoded.scope !== 'app' || !decoded.sub) {
+    if (!decoded || decoded.scope !== 'app' || !decoded.sub || await isSessionRevoked(decoded.jti)) {
       return res.status(401).json({ success: false, message: 'Invalid app session' });
     }
     req.principal = decoded;

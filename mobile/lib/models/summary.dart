@@ -1,12 +1,12 @@
-/// One product row on the Summary screen: balance + interest for the FY.
-class ProductSummary {
+/// One ledger row on the Summary screen: balance + interest for the FY.
+class LedgerSummary {
   final String key;
   final String label;
   final String nature; // 'Cr' | 'Dr'
   final double balance;
   final double interest;
 
-  const ProductSummary({
+  const LedgerSummary({
     required this.key,
     required this.label,
     required this.nature,
@@ -14,7 +14,7 @@ class ProductSummary {
     required this.interest,
   });
 
-  factory ProductSummary.fromJson(Map<String, dynamic> json) => ProductSummary(
+  factory LedgerSummary.fromJson(Map<String, dynamic> json) => LedgerSummary(
     key: (json['key'] ?? '').toString(),
     label: (json['label'] ?? '').toString(),
     nature: (json['nature'] ?? 'Cr').toString(),
@@ -26,19 +26,21 @@ class ProductSummary {
 class AccountSummary {
   final String fy;
   final String lastTransactionDate;
-  final List<ProductSummary> products;
+  final List<LedgerSummary> ledgers;
 
   const AccountSummary({
     required this.fy,
     required this.lastTransactionDate,
-    required this.products,
+    required this.ledgers,
   });
 
   factory AccountSummary.fromJson(Map<String, dynamic> json) => AccountSummary(
     fy: (json['fy'] ?? '').toString(),
     lastTransactionDate: (json['lastTransactionDate'] ?? '').toString(),
-    products: ((json['products'] as List?) ?? [])
-        .map((e) => ProductSummary.fromJson(e as Map<String, dynamic>))
-        .toList(),
+    ledgers:
+        ((json['ledgers'] ?? json['products']) as List? ??
+                []) // older backend: 'products'
+            .map((e) => LedgerSummary.fromJson(e as Map<String, dynamic>))
+            .toList(),
   );
 }

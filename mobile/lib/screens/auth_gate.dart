@@ -3,17 +3,34 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../state/auth_controller.dart';
 import '../core/config.dart';
+import '../core/updater.dart';
 import '../state/providers.dart';
 import '../widgets/society_logo.dart';
 import 'home_shell.dart';
 import 'login_screen.dart';
 
-/// Chooses the first screen from the restored auth state.
-class AuthGate extends ConsumerWidget {
+/// Chooses the first screen from the restored auth state, and checks once
+/// per launch whether a newer app version is published.
+class AuthGate extends ConsumerStatefulWidget {
   const AuthGate({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends ConsumerState<AuthGate> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        AppUpdater.checkOnce(context, ref.read(portalRepositoryProvider));
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final status = ref.watch(authControllerProvider.select((s) => s.status));
     switch (status) {
       case AuthStatus.unknown:

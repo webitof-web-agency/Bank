@@ -1,4 +1,5 @@
 import '../models/account.dart';
+import '../models/app_release.dart';
 import '../models/branding.dart';
 import '../models/financial_year.dart';
 import '../models/statement.dart';
@@ -15,6 +16,12 @@ class LoginResult {
 class PortalRepository {
   PortalRepository(this._api);
   final ApiClient _api;
+
+  /// Latest app release (public), for the update check on launch.
+  Future<AppRelease> appVersion() async {
+    final res = await _api.get('/app/version');
+    return AppRelease.fromJson((res['data'] as Map<String, dynamic>?) ?? {});
+  }
 
   /// Society details + theme colours (public, before login).
   Future<Branding> appConfig() async {
@@ -34,6 +41,11 @@ class PortalRepository {
         (data['account'] as Map<String, dynamic>?) ?? {},
       ),
     );
+  }
+
+  /// Ends this session on the server, so the token can't be reused.
+  Future<void> logout() async {
+    await _api.post('/app/auth/logout');
   }
 
   Future<List<FinancialYear>> financialYears() async {
@@ -59,9 +71,9 @@ class PortalRepository {
     );
   }
 
-  Future<Statement> statement(String productKey, int startYear) async {
+  Future<Statement> statement(String ledgerKey, int startYear) async {
     final res = await _api.get(
-      '/app/me/statement/$productKey',
+      '/app/me/statement/$ledgerKey',
       query: {'startYear': startYear},
     );
     return Statement.fromJson((res['data'] as Map<String, dynamic>?) ?? {});

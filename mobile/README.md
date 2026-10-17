@@ -16,8 +16,8 @@ short name in the header, colours); logout returns to the built-in values.
   member master. Employees use their staff password (set on the employee
   form); their web-admin login does not need to be switched on, only an
   employee record that is not retired.
-- **Summary** (home): per-product Balance + Interest for the selected FY, plus
-  last-transaction date. Tap a product → its **passbook** (date / voucher /
+- **Summary** (home): per-ledger Balance + Interest for the selected FY, plus
+  last-transaction date. Tap a ledger → its **passbook** (date / voucher /
   credit / debit / running balance).
   - Members: Share, Special Saving, Compulsory Deposit, Regular Loan, Loan
     Against Deposit.
@@ -42,7 +42,7 @@ short name in the header, colours); logout returns to the built-in values.
 - `POST /api/app/auth/login` `{ mobile, password }` → `{ token, account }`
 - `GET  /api/app/me/financial-years`
 - `GET  /api/app/me/summary?startYear=YYYY`
-- `GET  /api/app/me/statement/:product?startYear=YYYY`
+- `GET  /api/app/me/statement/:ledger?startYear=YYYY`
 - `GET  /api/app/me/profile`
 
 ## Run / build

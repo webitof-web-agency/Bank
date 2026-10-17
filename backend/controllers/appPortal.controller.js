@@ -1,6 +1,7 @@
 'use strict';
 
 const appPortal = require('../services/appPortal.service');
+const { revokeSession } = require('../services/session.service');
 
 // Resolve the FY start-year from a request, defaulting to the current FY.
 function resolveStartYear(query) {
@@ -24,6 +25,14 @@ module.exports = {
     }
   },
 
+  async version(_req, res, next) {
+    try {
+      res.json({ success: true, data: await appPortal.getAppVersion() });
+    } catch (error) {
+      next(error);
+    }
+  },
+
   async login(req, res, next) {
     try {
       const { mobile, mobileNo, password } = req.body || {};
@@ -34,10 +43,19 @@ module.exports = {
     }
   },
 
+  async logout(req, res, next) {
+    try {
+      await revokeSession({ jti: req.principal.jti, exp: req.principal.exp });
+      res.json({ success: true });
+    } catch (error) {
+      next(error);
+    }
+  },
+
   async me(req, res, next) {
     try {
       const account = await withAccount(req);
-      res.json({ success: true, data: { account: await appPortal.getProfile(account), products: appPortal.productsFor(account.type) } });
+      res.json({ success: true, data: { account: await appPortal.getProfile(account), ledgers: appPortal.ledgersFor(account.type) } });
     } catch (error) {
       next(error);
     }
@@ -74,7 +92,7 @@ module.exports = {
   async statement(req, res, next) {
     try {
       const account = await withAccount(req);
-      const data = await appPortal.getStatement(account, req.params.product, resolveStartYear(req.query));
+      const data = await appPortal.getStatement(account, req.params.ledger, resolveStartYear(req.query));
       res.json({ success: true, data });
     } catch (error) {
       next(error);

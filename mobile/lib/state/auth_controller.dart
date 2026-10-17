@@ -101,6 +101,13 @@ class AuthController extends StateNotifier<AuthState> {
   }
 
   Future<void> logout() async {
+    if (state.status == AuthStatus.authenticated) {
+      try {
+        await _repo.logout();
+      } catch (_) {
+        // Offline or already expired: signing out locally is enough.
+      }
+    }
     await _storage.delete(key: _kToken);
     await _storage.delete(key: _kAccount);
     _ref.read(selectedFyProvider.notifier).state = null;
