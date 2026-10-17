@@ -19,6 +19,7 @@ import {
 import { toast } from 'sonner';
 import { api } from '../../api/api';
 import { useAuth } from '../../context/AuthContext';
+import { useConfirm } from '../../components/overlays/ConfirmProvider';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { PageHeader } from '../../components/ui/PageHeader';
@@ -79,6 +80,7 @@ export function NotificationDetailPage() {
   const navigate = useNavigate();
   const goBack = useGoBack();
   const { token, pageAccess } = useAuth();
+  const confirm = useConfirm();
   const { canDelete } = pageAccess('workspace', 'notifications');
   const [notification, setNotification] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -189,7 +191,7 @@ export function NotificationDetailPage() {
 
   async function handleDelete() {
     if (!notification) return;
-    if (!window.confirm('Delete this notification?')) return;
+    if (!(await confirm({ title: 'Delete notification', description: 'Delete this notification?', confirmLabel: 'Delete' }))) return;
 
     try {
       setSaving(true);

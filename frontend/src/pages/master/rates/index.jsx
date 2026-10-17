@@ -3,6 +3,7 @@ import { CircleDollarSign, History, Landmark, Pencil, Percent, RotateCcw, Save, 
 import { toast } from 'sonner';
 import { api } from '../../../api/api';
 import { useAuth } from '../../../context/AuthContext';
+import { useConfirm } from '../../../components/overlays/ConfirmProvider';
 import { Button } from '../../../components/ui/Button';
 import { Card } from '../../../components/ui/Card';
 import { Input } from '../../../components/ui/Input';
@@ -178,6 +179,7 @@ function SectionHeader({ children }) {
 
 export function RatesPage() {
   const { token, hasPermission } = useAuth();
+  const confirm = useConfirm();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState(() => clone(DEFAULT_RATES_CONFIG));
@@ -269,9 +271,11 @@ export function RatesPage() {
 
   async function removePeriod(period) {
     if (!canManage || saving) return;
-    const confirmed = window.confirm(
-      `Remove the rate change effective ${formatDate(period.effectiveFrom)}? Reports will use the previous rates for those dates again.`
-    );
+    const confirmed = await confirm({
+      title: 'Remove rate change',
+      description: `Remove the rate change effective ${formatDate(period.effectiveFrom)}? Reports will use the previous rates for those dates again.`,
+      confirmLabel: 'Remove'
+    });
     if (!confirmed) return;
     await sendUpdate({ removeRatePeriod: period.effectiveFrom }, 'Rate period removed');
   }
@@ -299,7 +303,7 @@ export function RatesPage() {
 
   async function removeDividend(entry) {
     if (!canManage || saving) return;
-    if (!window.confirm(`Remove the dividend declared for FY ${entry.fy}? Its Dividend Report will need a rate again.`)) return;
+    if (!(await confirm({ title: 'Remove dividend', description: `Remove the dividend declared for FY ${entry.fy}? Its Dividend Report will need a rate again.`, confirmLabel: 'Remove' }))) return;
     const removed = await sendUpdate({ removeDividendFy: entry.fy }, `Dividend for FY ${entry.fy} removed`);
     if (removed && dividendForm.fy === entry.fy) setDividendForm((current) => ({ ...current, rate: '', note: '' }));
   }

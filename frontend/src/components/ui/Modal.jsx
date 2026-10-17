@@ -11,7 +11,9 @@ import { DialogContext } from './dialogContext';
 const DEFAULT_WIDTH = 'min(720px, 94vw)';
 const WIDE_WIDTH = 'min(1200px, 97vw)';
 
-export function Modal({ open, title, subtitle, children, onClose, footer, width, wide = false, hideHeader = false, overflowVisible = false }) {
+// bare: no header row at all; the content draws its own title and close
+// button (ConfirmDialog).
+export function Modal({ open, title, subtitle, children, onClose, footer, width, wide = false, hideHeader = false, bare = false, overflowVisible = false }) {
   const modalRef = useRef();
 
   if (!open) return null;
@@ -35,7 +37,7 @@ export function Modal({ open, title, subtitle, children, onClose, footer, width,
           aria-modal="true"
           aria-label={title}
         >
-          {hideHeader ? (
+          {bare ? null : hideHeader ? (
             <div className="flex justify-end px-5 pt-4">
               <Button variant="ghost" size="icon" type="button" aria-label="Close modal" onClick={onClose}>
                 <X size={18} />
@@ -52,7 +54,7 @@ export function Modal({ open, title, subtitle, children, onClose, footer, width,
               </Button>
             </div>
           )}
-          <div className={hideHeader ? `px-5 pb-5 pt-2 ${overflowVisible ? 'overflow-visible' : 'overflow-y-auto'}` : `px-5 py-4 ${overflowVisible ? 'overflow-visible' : 'overflow-y-auto'}`}><DialogContext.Provider value>{children}</DialogContext.Provider></div>
+          <div className={`${bare ? 'px-5 pb-5 pt-5' : hideHeader ? 'px-5 pb-5 pt-2' : 'px-5 py-4'} ${overflowVisible ? 'overflow-visible' : 'overflow-y-auto'}`}><DialogContext.Provider value>{children}</DialogContext.Provider></div>
           {footer ? <div className="rounded-b-2xl border-t border-slate-200 px-5 py-3 bg-slate-50 shrink-0">{footer}</div> : null}
         </div>
       </div>

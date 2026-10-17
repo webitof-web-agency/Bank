@@ -5,6 +5,7 @@ import { ArrowLeft, Edit2, Mail, Phone, Shield, User, CheckCircle } from 'lucide
 import { toast } from 'sonner';
 import { api } from '../../../api/api';
 import { useAuth } from '../../../context/AuthContext';
+import { useConfirm } from '../../../components/overlays/ConfirmProvider';
 import { Button } from '../../../components/ui/Button';
 import { Card } from '../../../components/ui/Card';
 import { Modal } from '../../../components/ui/Modal';
@@ -41,6 +42,7 @@ export function EmployeeDetailPage() {
   const navigate = useNavigate();
   const goBack = useGoBack();
   const { token, pageAccess } = useAuth();
+  const confirm = useConfirm();
   const [user, setUser] = useState(null);
   const [roles, setRoles] = useState([]);
   const [branches, setBranches] = useState([]);
@@ -102,7 +104,7 @@ export function EmployeeDetailPage() {
   async function handleDeleteDocument(key, document) {
     if (!canEdit || !document?.fileId || !user) return;
     const label = document.originalName || key;
-    if (!window.confirm(`Delete ${label}?`)) return;
+    if (!(await confirm({ title: 'Delete document', description: `Delete "${label}" from this employee? This can't be undone.`, confirmLabel: 'Delete' }))) return;
 
     try {
       await api.files.remove(token, document.fileId);

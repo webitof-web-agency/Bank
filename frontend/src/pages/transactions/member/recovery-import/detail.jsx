@@ -10,6 +10,7 @@ import { useAuth } from '../../../../context/AuthContext';
 import { api } from '../../../../api/api';
 import { formatCurrency, formatDateTime } from '../../../../utils/formatters';
 import { ArrowLeft, RefreshCw, CheckCircle, AlertTriangle } from 'lucide-react';
+import { toast } from 'sonner';
 
 export default function RecoveryImportDetail() {
   const { id } = useParams();
@@ -40,11 +41,11 @@ export default function RecoveryImportDetail() {
       setActionLoading(true);
       const res = await actionFn(token, id);
       if (res.success) {
-        alert(successMsg);
+        toast.success(successMsg);
         fetchDetail();
       }
     } catch (err) {
-      alert(err.message || 'Action failed');
+      toast.error(err.message || 'Action failed');
     } finally {
       setActionLoading(false);
     }

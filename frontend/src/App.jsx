@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation, useParams } from '
 import { Toaster } from 'sonner';
 import { AuthProvider } from './context/AuthContext';
 import { FYProvider } from './context/FYContext';
+import { ConfirmProvider } from './components/overlays/ConfirmProvider';
 import { ProtectedRoute } from './components/guards/ProtectedRoute';
 import { PermissionRoute } from './components/guards/PermissionRoute';
 import { AppLayout } from './components/layout/AppLayout';
@@ -365,9 +366,11 @@ export default function App() {
   return <FYProvider>
       <AuthProvider>
         <BrowserRouter>
-          <TitleUpdater />
-          <AppRoutes />
-          <Toaster richColors position="top-right" closeButton />
+          <ConfirmProvider>
+            <TitleUpdater />
+            <AppRoutes />
+            <Toaster richColors position="top-right" closeButton />
+          </ConfirmProvider>
         </BrowserRouter>
       </AuthProvider>
     </FYProvider>;

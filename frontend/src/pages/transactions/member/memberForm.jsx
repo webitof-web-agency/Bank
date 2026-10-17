@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '../../../context/AuthContext';
+import { useConfirm } from '../../../components/overlays/ConfirmProvider';
 import { api } from '../../../api/api';
 import { Input, Textarea } from '../../../components/ui/Input';
 import { Select as CustomSelect } from '../../../components/ui/Select';
@@ -187,15 +188,15 @@ function RecoveryMemberDialog({ state, onClose, onSave, memberGroups = [], looku
 
   function submit() {
     if (!member) {
-      alert('Select a member.');
+      toast.error('Select a member.');
       return;
     }
     if (!fromExcel && !(Number(expected) > 0)) {
-      alert('Enter the expected amount (the amount actually received for this member).');
+      toast.error('Enter the expected amount (the amount actually received for this member).');
       return;
     }
     if (total <= 0) {
-      alert('Enter at least one recovered amount.');
+      toast.error('Enter at least one recovered amount.');
       return;
     }
     onSave({ member, memberRecord, heads, expectedAmount: fromExcel ? undefined : expected });
@@ -336,13 +337,13 @@ function DemandPickerDialog({ open, onClose, onAdd, lookups = {}, voucherDate = 
       const response = await api.recoveryImport.getBatchRows(token, batch.id);
       setExcel({ batch, rows: Array.isArray(response.data?.rows) ? response.data.rows : [] });
     } catch (error) {
-      alert(error.message || 'Unable to read the imported rows');
+      toast.error(error.message || 'Unable to read the imported rows');
     }
   }
 
   async function loadDemand() {
     if (!month || !year) {
-      alert('Choose the demand month and year.');
+      toast.error('Choose the demand month and year.');
       return;
     }
     setLoading(true);
@@ -357,7 +358,7 @@ function DemandPickerDialog({ open, onClose, onAdd, lookups = {}, voucherDate = 
       // An Excel imported for the previous month/branch no longer applies.
       setExcel(null);
     } catch (error) {
-      alert(error.message || 'Unable to load demand');
+      toast.error(error.message || 'Unable to load demand');
     } finally {
       setLoading(false);
     }
@@ -503,6 +504,7 @@ function DemandPickerDialog({ open, onClose, onAdd, lookups = {}, voucherDate = 
 // amount; Save needs every row valid.
 function RecoveryLinesEditor({ rows = [], excluded = [], onChange, onOutstanding, memberGroups = [], lookups = {}, voucherDate = '', voucherId = '' }) {
   const { token } = useAuth();
+  const confirm = useConfirm();
   const safeRows = Array.isArray(rows) ? rows : [];
   const safeExcluded = Array.isArray(excluded) ? excluded : [];
   const [memberDialog, setMemberDialog] = useState(null);
@@ -566,18 +568,25 @@ function RecoveryLinesEditor({ rows = [], excluded = [], onChange, onOutstanding
     setNotice(`${demandNote} Excel: ${result.matched} matched a demand line, ${result.added} not in the demand, ${result.unmatched} with no member.${skippedNote}${footerNote} ${check.errorRows ? `${check.errorRows} row(s) to correct.` : 'Every row reconciles.'}`);
   }
 
-  function remove(index) {
+  // Removing a line holding an Excel row excludes that row, and needs a
+  // reason (it is kept with the recovery).
+  async function remove(index) {
     const row = safeRows[index];
     let reason = '';
     if (row?.excel?.rowId) {
-      reason = window.prompt(`Excel row ${row.excel.rowNo ?? ''} (PF ${row.excel.pfNo || '—'}, ₹${formatHead(row.excel.amount)}) will be EXCLUDED from this recovery and the Excel total. Reason:`, row.unmatched ? 'No member for this PF' : '');
+      const who = row.unmatched ? `PF ${row.excel.pfNo || '—'}` : `${row.member} ${row.memberName || ''}`.trim();
+      reason = await confirm({
+        title: 'Exclude Excel row',
+        description: `Excel row ${row.excel.rowNo ?? '—'} (${who}, ₹${formatHead(row.excel.amount)}) will be left out of this recovery and its Excel total.`,
+        confirmLabel: 'Exclude',
+        requireReason: true,
+        reasonLabel: 'Reason for excluding',
+        reasonPlaceholder: 'e.g. deducted for another month',
+        defaultReason: row.unmatched ? 'No member for this PF' : ''
+      });
       if (reason == null) return;
-      if (!reason.trim()) {
-        alert('Give a reason for excluding an Excel row.');
-        return;
-      }
     }
-    const next = removeLine(safeRows, index, safeExcluded, reason.trim());
+    const next = removeLine(safeRows, index, safeExcluded, reason);
     onChange(next, next.excluded);
   }
 

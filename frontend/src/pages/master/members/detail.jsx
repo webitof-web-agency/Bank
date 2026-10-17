@@ -5,6 +5,7 @@ import { ArrowLeft, Edit2, User, CalendarDays, Home, Coins, Wallet, PiggyBank, L
 import { toast } from 'sonner';
 import { api } from '../../../api/api';
 import { useAuth } from '../../../context/AuthContext';
+import { useConfirm } from '../../../components/overlays/ConfirmProvider';
 import { REPORT_LINK_MAP } from '../../reports/reportLinks';
 import { Button } from '../../../components/ui/Button';
 import { Card } from '../../../components/ui/Card';
@@ -58,6 +59,7 @@ export function MemberDetailPage() {
   const navigate = useNavigate();
   const goBack = useGoBack();
   const { token, hasPermission, pageAccess } = useAuth();
+  const confirm = useConfirm();
   const [member, setMember] = useState(null);
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -112,7 +114,7 @@ export function MemberDetailPage() {
   async function handleDeleteDocument(key, document) {
     if (!canEdit || !document?.fileId || !member) return;
     const label = document.originalName || key;
-    if (!window.confirm(`Delete ${label}?`)) return;
+    if (!(await confirm({ title: 'Delete document', description: `Delete "${label}" from this member? This can't be undone.`, confirmLabel: 'Delete' }))) return;
 
     try {
       await api.files.remove(token, document.fileId);
