@@ -328,7 +328,7 @@ export function TransferVoucherPaymentWorkspaceDetailPage({ sectionKey, itemKey,
 
           {activeTab === 'attachments' ? (
             <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm p-6">
-              <DocumentSection title="" description="" definitions={documentDefs} documents={record.documents || {}} editable={false} onDeleteFile={handleDeleteAttachment} />
+              <DocumentSection title="" description="" definitions={documentDefs} documents={record.documents || {}} editable={false} onDeleteFile={canEdit ? handleDeleteAttachment : undefined} />
             </Card>
           ) : null}
 

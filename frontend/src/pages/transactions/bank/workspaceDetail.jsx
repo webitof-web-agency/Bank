@@ -289,7 +289,7 @@ export function BankTransactionWorkspaceDetailPage({ sectionKey, itemKey = '', d
 
           {activeTab === 'attachments' ? (
             <Card className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <DocumentSection title="" description="" definitions={documentDefs} documents={record.documents || {}} editable={false} onDeleteFile={handleDeleteAttachment} />
+              <DocumentSection title="" description="" definitions={documentDefs} documents={record.documents || {}} editable={false} onDeleteFile={canEdit ? handleDeleteAttachment : undefined} />
             </Card>
           ) : null}
 

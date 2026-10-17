@@ -361,8 +361,8 @@ export function EmployeeTransactionWorkspaceDetailPage({ sectionKey, itemKey }) 
                 definitions={documentDefs}
                 documents={record.documents || {}}
                 editable={false}
-                onDeleteFile={async (_key, document) => {
-                  if (!canEdit || !document?.fileId || !record) return;
+                onDeleteFile={canEdit ? async (_key, document) => {
+                  if (!document?.fileId || !record) return;
                   try {
                     await api.files.remove(token, document.fileId);
                     const nextDocuments = { ...(record.documents || {}) };
@@ -377,7 +377,7 @@ export function EmployeeTransactionWorkspaceDetailPage({ sectionKey, itemKey }) 
                   } catch (error) {
                     toast.error(error.message || 'Unable to remove attachment');
                   }
-                }}
+                } : undefined}
               />
             </Card>
           ) : null}

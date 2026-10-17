@@ -429,7 +429,7 @@ export function TransferVoucherTransactionWorkspaceDetailPage({ sectionKey, item
                 definitions={documentDefs}
                 documents={record.documents || {}}
                 editable={false}
-                onDeleteFile={handleDeleteAttachment}
+                onDeleteFile={canEdit ? handleDeleteAttachment : undefined}
               />
             </Card>
           ) : null}

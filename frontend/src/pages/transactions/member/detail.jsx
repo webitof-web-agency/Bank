@@ -805,7 +805,7 @@ export function MemberTransactionDetailPage({
               definitions={documentDefs}
               documents={record.documents || {}}
               editable={false}
-              onDeleteFile={handleDeleteAttachment}
+              onDeleteFile={canEdit ? handleDeleteAttachment : undefined}
             />
           </div>
         </Card>

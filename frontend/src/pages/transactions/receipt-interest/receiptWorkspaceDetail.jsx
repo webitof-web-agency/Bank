@@ -287,7 +287,7 @@ export function ReceiptVoucherWorkspaceDetailPage({ sectionKey, itemKey, detailP
           ) : null}
 
           <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm p-6">
-            <DocumentSection title="" description="" definitions={documentDefs} documents={record.documents || {}} editable={false} onDeleteFile={async () => {}} />
+            <DocumentSection title="" description="" definitions={documentDefs} documents={record.documents || {}} editable={false} />
           </Card>
         </div>
       </div>

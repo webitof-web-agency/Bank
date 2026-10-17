@@ -527,7 +527,7 @@ export function ReceiptInterestTransactionDetailPage({ sectionKey }) {
               definitions={documentDefs}
               documents={record.documents || {}}
               editable={false}
-              onDeleteFile={handleDeleteAttachment}
+              onDeleteFile={canEdit ? handleDeleteAttachment : undefined}
             />
           </div>
         </Card>
