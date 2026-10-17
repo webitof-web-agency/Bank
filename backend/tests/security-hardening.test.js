@@ -64,7 +64,7 @@ test('notification links: only app paths and http(s) addresses', () => {
 
 function runErrorHandler(error, env) {
   const previous = process.env.NODE_ENV;
-  process.env.NODE_ENV = env;
+  if (env) process.env.NODE_ENV = env; else delete process.env.NODE_ENV;
   const originalError = console.error;
   console.error = () => {};
   const reply = {};
@@ -77,7 +77,7 @@ function runErrorHandler(error, env) {
     errorHandler(error, { method: 'GET', baseUrl: '/api', path: '/x' }, res, () => {});
   } finally {
     console.error = originalError;
-    process.env.NODE_ENV = previous;
+    if (previous === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = previous;
   }
   return reply;
 }
@@ -93,4 +93,15 @@ test('errors in production: internal text and stack are not sent to the client',
 
   const exposed = Object.assign(new Error('Google could not be reached'), { status: 503, expose: true });
   assert.equal(runErrorHandler(exposed, 'production').body.message, 'Google could not be reached');
+});
+
+test('errors with NODE_ENV unset are treated as production: no stack, no internal text', () => {
+  const reply = runErrorHandler(new Error('relation "users" does not exist'), '');
+  assert.doesNotMatch(reply.body.message, /relation/);
+  assert.equal(reply.body.stack, undefined);
+  const clientError = Object.assign(new Error('Invalid mobile number or password'), { statusCode: 401 });
+  const login = runErrorHandler(clientError, '');
+  assert.equal(login.body.message, 'Invalid mobile number or password');
+  assert.equal(login.body.stack, undefined);
+  assert.ok(runErrorHandler(new Error('x'), 'development').body.stack, 'development still shows it');
 });

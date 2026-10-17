@@ -67,6 +67,12 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun startDownload(url: String, fileName: String): Long {
+        // Only an https link: a plain http APK could be swapped in transit.
+        val uri = Uri.parse(url)
+        require(uri.scheme.equals("https", ignoreCase = true) && !uri.host.isNullOrBlank()) { "The update link must be https" }
+        // The name is built from the server's version text: no path parts.
+        val safeName = fileName.replace(Regex("[^A-Za-z0-9._+-]"), "_").trimStart('.').ifBlank { "update.apk" }
+            .let { if (it.endsWith(".apk", ignoreCase = true)) it else "$it.apk" }
         if (!receiverRegistered) {
             val filter = IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
             if (Build.VERSION.SDK_INT >= 33) {
@@ -77,12 +83,12 @@ class MainActivity : FlutterActivity() {
             }
             receiverRegistered = true
         }
-        val request = DownloadManager.Request(Uri.parse(url))
-            .setTitle(fileName)
+        val request = DownloadManager.Request(uri)
+            .setTitle(safeName)
             .setDescription("Downloading the new version")
             .setMimeType("application/vnd.android.package-archive")
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
+            .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, safeName)
         val dm = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
         downloadId = dm.enqueue(request)
         return downloadId

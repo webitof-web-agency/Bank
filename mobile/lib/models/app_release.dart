@@ -38,7 +38,8 @@ class AppRelease {
   /// True when this release is newer than the installed [version] / [build]:
   /// compares 1.2.3 part by part, then the build number when both are set.
   bool isNewerThan(String version, int build) {
-    if (this.version.isEmpty || downloadUrl.isEmpty) return false;
+    // Only an https download is offered (the phone refuses others too).
+    if (this.version.isEmpty || !Uri.tryParse(downloadUrl).isHttpsLink) return false;
     List<int> parts(String v) =>
         v.split('.').map((p) => int.tryParse(p.trim()) ?? 0).toList();
     final a = parts(this.version), b = parts(version);
@@ -48,4 +49,8 @@ class AppRelease {
     }
     return buildNumber != null && buildNumber! > build;
   }
+}
+
+extension on Uri? {
+  bool get isHttpsLink => this != null && this!.scheme == 'https' && this!.host.isNotEmpty;
 }

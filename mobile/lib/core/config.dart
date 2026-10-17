@@ -7,7 +7,7 @@
 class AppConfig {
   static const String apiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'https://jskbf.webitof.com/api',
+    defaultValue: 'https://api.thriftrpr.in/api',
   );
 
   // Shown before sign-in (login + splash), so nothing is read from the

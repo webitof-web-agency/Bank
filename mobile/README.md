@@ -46,11 +46,12 @@ short name in the header, colours); logout returns to the built-in values.
 - `GET  /api/app/me/profile`
 
 ## Run / build
-The API defaults to the live backend (`https://jskbf.webitof.com/api`).
+The API defaults to the live backend (`https://api.thriftrpr.in/api`).
 
 ```sh
-# Release APK against live
-flutter build apk --release
+# Release APK against live: signed with the release key, obfuscated. Keep
+# build/symbols/<version> (needed to read crash stack traces).
+flutter build apk --release --obfuscate --split-debug-info=build/symbols/<version>
 
 # Development against a local backend on a USB-connected phone
 adb reverse tcp:8001 tcp:8001
@@ -61,9 +62,35 @@ For a local backend run on a copy of live data, set `SMS_ENABLED=false` (the
 automation job retries pending SMS) and `GDRIVE_BACKUP_HOUR_IST=-1` (no Drive
 backup upload).
 
+## Release signing
+Release builds are signed with the society's own key and refuse to build
+without it. `android/key.properties` (gitignored) points to the keystore,
+which is kept outside the repository:
+
+```properties
+storeFile=/absolute/path/to/thriftrpr-release.jks
+storePassword=...
+keyAlias=thriftrpr
+keyPassword=...
+```
+
+Back up the keystore **and** its password together, somewhere safe and
+offline. Every update must be signed with this same key: without it, no new
+version can be installed over the app already on members' phones.
+Release certificate SHA-256:
+`EE:2D:7B:B2:25:DF:18:F3:07:16:88:44:FA:5A:E4:EF:AA:DF:67:F1:E2:3E:84:2F:0D:86:A8:DA:D5:13:D5:BF`
+
+## Security
+- HTTPS only in release builds (`res/xml/network_security_config.xml`);
+  user-installed certificates are not trusted. Debug builds may use plain
+  http to localhost only.
+- The sign-in token is kept in the Android keystore (flutter_secure_storage);
+  app data is excluded from backup and device transfer.
+- In-app updates download only from an https link.
+
 ## Before production
-- The release build is still signed with the debug key
-  (`android/app/build.gradle.kts`); add a real release keystore before
-  publishing, and keep it out of git.
+- Phones with an older test build (signed with the debug key) must uninstall
+  it once before installing a release build: Android refuses an update signed
+  with a different key.
 - Two members can share a mobile number; with password = mobile only the
   lowest code can sign in until the other is given its own password.
