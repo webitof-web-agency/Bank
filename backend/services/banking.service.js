@@ -804,6 +804,40 @@ async function getMemberCurrentBalances(member) {
   };
 }
 
+// What each member still owes on the two loans a recovery cuts, before this
+// recovery: today's outstanding (opening snapshot + every live movement),
+// plus whatever the voucher being edited (excludeVoucherId) already cut.
+// { CODE: { regularLoan, loanAgainstDeposit } } in rupees, never negative.
+async function memberLoanOutstanding(codes = [], { excludeVoucherId = '' } = {}) {
+  const wanted = [...new Set(codes.map(cleanUpper).filter(Boolean))];
+  if (!wanted.length) return {};
+  const members = await Member.find({ code: { $in: wanted } }).lean();
+  const periods = await computeMemberPeriodBalances({ members, withHistory: false });
+  const ownCut = new Map();
+  if (excludeVoucherId) {
+    for (const line of await RecoveryLine.find({ voucherId: String(excludeVoucherId) }).lean()) {
+      const code = cleanUpper(line.memberCode);
+      const cut = ownCut.get(code) || { loan: 0, lad: 0 };
+      cut.loan += toPaise(line.regularLoan || 0);
+      cut.lad += toPaise(line.depositLoan || 0);
+      ownCut.set(code, cut);
+    }
+  }
+  const result = {};
+  members.forEach((member, index) => {
+    const code = cleanUpper(member.code);
+    const buckets = periods[index]?.buckets || {};
+    // Bucket closings are signed paise, credit-positive: owed = -closing.
+    const owed = (key) => Math.max(0, -Math.round(Number(buckets[key]?.closing) || 0));
+    const cut = ownCut.get(code) || { loan: 0, lad: 0 };
+    result[code] = {
+      regularLoan: toRupees(owed('loan') + cut.loan),
+      loanAgainstDeposit: toRupees(owed('loanAgainstDeposit') + cut.lad)
+    };
+  });
+  return result;
+}
+
 async function memberFinancialResponse(record) {
   return {
     openingBalances: memberOpeningBalances(record.balances),
@@ -3948,7 +3982,9 @@ function statementOfMemberLedgerInterest(rows, key, openingPaise, fromDate, toDa
   return Math.round(total / 100) * 100;
 }
 
-async function computeMemberPeriodBalances({ members = [], dateFrom = '', dateTo = '', user = {}, interestToFyEnd = true, statementInterest = false } = {}) {
+// withHistory: false skips the archived (legacy) rows, which never change a
+// closing balance with no end date: the snapshot already sits after them.
+async function computeMemberPeriodBalances({ members = [], dateFrom = '', dateTo = '', user = {}, interestToFyEnd = true, statementInterest = false, withHistory = true } = {}) {
   const effectiveBranchCode = resolveBranchCode(user);
   const voucherQuery = {};
   if (effectiveBranchCode) voucherQuery.branchCode = effectiveBranchCode;
@@ -3960,7 +3996,7 @@ async function computeMemberPeriodBalances({ members = [], dateFrom = '', dateTo
     ? await RecoveryLine.find({ $or: [{ voucherId: { $in: voucherIds } }, { voucherNo: { $in: voucherNos } }] }).lean()
     : [];
 
-  const historicalByMember = await getHistoricalMemberLedgerRowsBatch(members);
+  const historicalByMember = withHistory ? await getHistoricalMemberLedgerRowsBatch(members) : new Map();
   const rateTimelines = await getInterestRateTimelines(MEMBER_INTEREST_HEADS);
   const fromDateStr = cleanText(dateFrom);
   const toDateStr = cleanText(dateTo);
@@ -4680,31 +4716,41 @@ function demandPeriod(list = {}, line = {}) {
 // and month, with the member's name/designation, for the selection grid.
 // Only months inside the active FY are offered, so demand from a closed
 // year never enters a current recovery.
+// Load Demand on the recovery screen, for one month (and branch): a line for
+// every member to recover from —
+//   - the member's PENDING demand line of that month (Demand Entry / legacy),
+//     kept linked so Save marks it recovered;
+//   - otherwise the member's Monthly Demand Data (member form), for active
+//     members with a membership date, unless that month is already recovered
+//     for them (a RECOVERED demand line, or a saved recovery line of that
+//     month from their Monthly Demand Data).
 async function buildRecoveryDemandCandidates({ branchCode = '', month = '', year = '', fyStart = '', fyEnd = '', user = {} } = {}) {
   const effectiveBranchCode = resolveBranchCode(user, branchCode);
   const monthNumber = Number(month) || 0;
+  const yearText = cleanText(year);
   const lists = (await DemandList.find(effectiveBranchCode ? { branchCode: effectiveBranchCode } : {}).lean())
     .filter((list) => {
       const period = demandPeriod(list);
       if (monthNumber && period.month !== monthNumber) return false;
-      if (cleanText(year) && period.year !== cleanText(year)) return false;
+      if (yearText && period.year !== yearText) return false;
       if (fyStart && fyEnd && period.month && period.year) {
         const first = `${period.year}-${String(period.month).padStart(2, '0')}-01`;
         if (first < cleanText(fyStart).slice(0, 10) || first > cleanText(fyEnd).slice(0, 10)) return false;
       }
       return true;
     });
-  if (!lists.length) return [];
   const listByKey = new Map(lists.map((list) => [`${list.demandListNo}|${cleanUpper(list.branchCode)}`, list]));
-  const lines = (await DemandLine.find({ demandListNo: { $in: [...new Set(lists.map((list) => list.demandListNo))] } }).lean())
-    .filter((line) => cleanUpper(line.recoveryStatus) === DEMAND_PENDING && listByKey.has(`${line.demandListNo}|${cleanUpper(line.postedBranch)}`));
-  const codes = [...new Set(lines.map((line) => cleanUpper(line.memberCode)))];
-  const members = codes.length ? await Member.find({ code: { $in: codes } }).lean() : [];
-  const memberByCode = new Map(members.map((member) => [cleanUpper(member.code), member]));
+  const monthLines = lists.length
+    ? (await DemandLine.find({ demandListNo: { $in: [...new Set(lists.map((list) => list.demandListNo))] } }).lean())
+      .filter((line) => listByKey.has(`${line.demandListNo}|${cleanUpper(line.postedBranch)}`))
+    : [];
+  const lines = monthLines.filter((line) => cleanUpper(line.recoveryStatus) === DEMAND_PENDING);
   const branches = await Branch.find({}).lean();
   const branchByCode = new Map(branches.map((branch) => [cleanUpper(branch.code), branch]));
+  const allMembers = await Member.find({}).lean();
+  const memberByCode = new Map(allMembers.map((member) => [cleanUpper(member.code), member]));
 
-  return lines.map((line) => {
+  const candidates = lines.map((line) => {
     const list = listByKey.get(`${line.demandListNo}|${cleanUpper(line.postedBranch)}`);
     const member = memberByCode.get(cleanUpper(line.memberCode)) || {};
     const branch = branchByCode.get(cleanUpper(line.postedBranch)) || {};
@@ -4713,6 +4759,7 @@ async function buildRecoveryDemandCandidates({ branchCode = '', month = '', year
       demandLineId: String(line.id || line._id),
       demandListNo: line.demandListNo,
       demandListDate: cleanText(list.demandListDate).slice(0, 10),
+      source: 'DEMAND',
       month: period.month,
       year: period.year,
       memberCode: line.memberCode,
@@ -4728,7 +4775,49 @@ async function buildRecoveryDemandCandidates({ branchCode = '', month = '', year
       other: toNumber(line.other, 0),
       totalAmount: toNumber(line.totalAmount, 0)
     };
-  }).sort((a, b) => compareCodesNumerically(a.memberCode, b.memberCode));
+  });
+
+  if (monthNumber && yearText) {
+    // Members whose month is settled one way or another: no new line.
+    const covered = new Set(monthLines.map((line) => cleanUpper(line.memberCode)));
+    for (const line of await RecoveryLine.find({}).lean()) {
+      const payload = toMixed(line.payload, {});
+      if (Number(payload.demandMonth) === monthNumber && cleanText(payload.demandYear) === yearText) covered.add(cleanUpper(line.memberCode));
+    }
+    const defaults = await MemberDemandDefault.find({}).lean();
+    for (const row of defaults) {
+      const code = cleanUpper(row.memberCode);
+      const member = memberByCode.get(code);
+      if (!member || covered.has(code) || isDismemberedMember(member)) continue;
+      if (effectiveBranchCode && cleanUpper(member.branchCode) !== cleanUpper(effectiveBranchCode)) continue;
+      if (!/^\d{4}-\d{2}-\d{2}/.test(cleanText(member.membershipDate))) continue;
+      const heads = demandDefaultsResponse(row);
+      if (!(heads.total > 0)) continue;
+      const branch = branchByCode.get(cleanUpper(member.branchCode)) || {};
+      candidates.push({
+        demandLineId: '',
+        candidateKey: `member:${code}:${yearText}-${monthNumber}`,
+        demandListNo: '',
+        demandListDate: '',
+        source: 'MEMBER_DEMAND',
+        month: monthNumber,
+        year: yearText,
+        memberCode: member.code,
+        memberName: member.name || '',
+        designation: member.designation || member?.payload?.raw?.Designation || '',
+        branchCode: member.branchCode,
+        branchName: branch.label || member.branchCode || '',
+        compulsoryDeposit: heads.compulsoryDeposit,
+        specialDeposit: heads.specialDeposit,
+        regularLoan: heads.regularLoan,
+        loanAgainstDeposit: heads.loanAgainstDeposit,
+        insurancePremium: heads.insurancePremium,
+        other: heads.other,
+        totalAmount: heads.total
+      });
+    }
+  }
+  return candidates.sort((a, b) => compareCodesNumerically(a.memberCode, b.memberCode));
 }
 
 // ---------------------------------------------------------------------------
@@ -5529,7 +5618,11 @@ function toRecoveryLine(line = {}, index = 0) {
       source: cleanUpper(line.source) || (line.demandLineId ? 'DEMAND' : 'MANUAL'),
       demandListNo: cleanText(line.demandListNo) || null,
       importBatchId: cleanText(line.importBatchId) || null,
-      importRowId: cleanText(line.importRowId) || null
+      importRowId: cleanText(line.importRowId) || null,
+      // The month a line from a member's Monthly Demand Data recovers (it has
+      // no demand line to mark): Load Demand skips that member next time.
+      demandMonth: Number(line.demandMonth) || null,
+      demandYear: cleanText(line.demandYear) || null
     }
   };
 }
@@ -5548,7 +5641,7 @@ function toRecoveryLine(line = {}, index = 0) {
 //     or explicitly excluded (details.recoveryExcluded), so dropping a row
 //     can't silently change the control total.
 // Returns the recovery_lines rows, demand links and the reconciliation.
-async function prepareRecoveryLines(payload, submitted = {}) {
+async function prepareRecoveryLines(payload, submitted = {}, { voucherId = '' } = {}) {
   if (payload?.details?.key !== RECOVERY_KEY) return { lines: payload?.details?.recoveryLines || [], links: [] };
   const draftLines = toArray(payload.details.recoveryLines);
   if (!draftLines.length) throw recoveryHttpError('Add at least one member line before saving the recovery.');
@@ -5572,7 +5665,9 @@ async function prepareRecoveryLines(payload, submitted = {}) {
   const rowIds = [...new Set([...lines.map((line) => line.payload.importRowId), ...excluded.map((row) => cleanText(row?.importRowId))].filter(Boolean))];
   const importRows = rowIds.length ? await RecoveryImportRow.find({ id: { $in: rowIds } }).lean() : [];
   const importRowById = new Map(importRows.map((row) => [String(row.id || row._id), row]));
-  const memberIdByCode = new Map((await Member.find({ code: { $in: codes } }).lean()).map((member) => [cleanUpper(member.code), String(member.id || member._id)]));
+  const lineMembers = await Member.find({ code: { $in: codes } }).lean();
+  const memberIdByCode = new Map(lineMembers.map((member) => [cleanUpper(member.code), String(member.id || member._id)]));
+  const memberByCode = new Map(lineMembers.map((member) => [cleanUpper(member.code), member]));
   const problems = [];
   lines.forEach((line, index) => {
     const label = `Line ${index + 1} (member ${line.memberCode})`;
@@ -5589,6 +5684,16 @@ async function prepareRecoveryLines(payload, submitted = {}) {
         return;
       }
       expectedPaise = toPaise(row.importedTotalAmount);
+      // From the Excel only rows with an amount, for members with a
+      // membership date (the entry screen excludes the others).
+      if (expectedPaise <= 0) {
+        problems.push(`${label}: its Excel amount is 0. Exclude the row.`);
+        return;
+      }
+      if (!/^\d{4}-\d{2}-\d{2}/.test(cleanText(memberByCode.get(line.memberCode)?.membershipDate))) {
+        problems.push(`${label}: the member has no membership date. Exclude the row, or add the date on the member first.`);
+        return;
+      }
       line.payload.importBatchId = cleanText(row.batchId) || line.payload.importBatchId;
       line.payload.excelRowNo = row.sourceRowNo ?? null;
       line.payload.pfNo = row.pfNo || null;
@@ -5607,6 +5712,18 @@ async function prepareRecoveryLines(payload, submitted = {}) {
       problems.push(`${label}: expected ${toRupees(expectedPaise)}, allocated ${toRupees(allocatedPaise)} (${difference > 0 ? 'under' : 'over'} by ${toRupees(Math.abs(difference))}).`);
     }
     line.payload.expectedAmount = toRupees(expectedPaise);
+  });
+  // A loan is cut only while something is owed, and never past it.
+  const outstanding = await memberLoanOutstanding(codes, { excludeVoucherId: voucherId });
+  lines.forEach((line, index) => {
+    const label = `Line ${index + 1} (member ${line.memberCode})`;
+    for (const [field, key, name] of [['regularLoan', 'regularLoan', 'Regular Loan'], ['depositLoan', 'loanAgainstDeposit', 'Loan Against Deposit']]) {
+      const cutPaise = toPaise(line[field] || 0);
+      if (cutPaise <= 0) continue;
+      const owedPaise = toPaise(outstanding[line.memberCode]?.[key] || 0);
+      if (owedPaise <= 0) problems.push(`${label}: ${name} is fully repaid (balance 0), so nothing can be cut.`);
+      else if (cutPaise > owedPaise) problems.push(`${label}: ${name} cut ${toRupees(cutPaise)} is more than the ${toRupees(owedPaise)} outstanding.`);
+    }
   });
   if (problems.length) {
     const shown = problems.slice(0, 8).join(' ');
@@ -5825,7 +5942,7 @@ async function updateVoucher(id, data = {}, meta = {}) {
       payload.updatedByUserId = meta.actorUserId;
     }
     
-    const recovery = await prepareRecoveryLines(payload, data);
+    const recovery = await prepareRecoveryLines(payload, data, { voucherId: id });
     const journalLines = await buildJournalLinesForVoucher(payload, { ...meta, tx, recoveryLines: recovery.lines });
     // Demand lines this voucher held before the edit (its own recovery_lines).
     const oldLinks = (await RecoveryLine.find({ voucherId: id }).lean())
@@ -6517,6 +6634,7 @@ module.exports = {
   buildDashboardQuickSummary,
   buildDemandListReport,
   buildRecoveryDemandCandidates,
+  memberLoanOutstanding,
   listDemandEntries,
   getDemandEntry,
   getDemandEntryMembers,

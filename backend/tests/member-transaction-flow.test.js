@@ -8,7 +8,7 @@ const assert = require('node:assert/strict');
 const xlsx = require('xlsx');
 const banking = require('../services/banking.service');
 const recoveryImport = require('../services/recoveryImport.service');
-const { Ledger, Branch, DemandLine, DemandList, RecoveryImportRow, RecoveryLine, JournalLine, Voucher } = require('../models/banking.models');
+const { Ledger, Branch, DemandLine, DemandList, Member, RecoveryImportRow, RecoveryLine, JournalLine, Voucher } = require('../models/banking.models');
 const { ACCOUNTING_ROLES } = require('../config/accountingConstants');
 const { initializeDatabase, closeDatabase, restoreMainRow } = require('../config/postgres');
 
@@ -40,7 +40,7 @@ test('setup: ledgers, branch, three members with opening balances and monthly de
   const make = async (n, openingBalances, demandDefaults) => {
     ctx.pf[n] = PF(n);
     const created = await banking.createResource('members', {
-      name: `Flow ${RUN} ${n}`, branchCode: BRANCH, pfNo: ctx.pf[n], mobileNo: `98765${String(40000 + n).slice(-5)}`, password: 'secret12',
+      name: `Flow ${RUN} ${n}`, branchCode: BRANCH, membershipDate: '2020-04-01', pfNo: ctx.pf[n], mobileNo: `98765${String(40000 + n).slice(-5)}`, password: 'secret12',
       openingBalances, demandDefaults
     }, admin);
     return created;
@@ -144,6 +144,10 @@ test('54-56: Excel 12,000 vs demand 10,000 is refused — whatever the client cl
   await assert.rejects(banking.createVoucher(recovery([line(1, { cd: 2000, loan: 10000 }), line(2, { cd: 1000 })]), admin), /neither in this recovery nor excluded/);
   // A forged header total.
   await assert.rejects(banking.createVoucher({ ...recovery([line(1, { cd: 2000, loan: 10000 }), line(2, { cd: 1000 }), line(3, { cd: 500 })]), amount: 13000 }, admin), /does not equal the recovery total/);
+  // From the Excel, only members with a membership date.
+  await Member.updateOne({ code: ctx.c.code }, { $set: { membershipDate: null } });
+  await assert.rejects(banking.createVoucher(recovery([line(1, { cd: 2000, loan: 10000 }), line(2, { cd: 1000 }), line(3, { cd: 500 })]), admin), /no membership date/);
+  await Member.updateOne({ code: ctx.c.code }, { $set: { membershipDate: '2020-04-01' } });
   assert.equal(await Voucher.countDocuments({}), before);
   assert.equal((await DemandLine.findById(ctx.demand[ctx.a.code]).lean()).recoveryStatus, 'PENDING');
 });
@@ -191,6 +195,42 @@ test('46: deleting the recovery reverses its effect and frees the demand', async
   await banking.deleteVoucher(ctx.recoveryId, admin);
   assert.equal((await balancesOf(ctx.a.id)).regularLoan, 150000);
   assert.equal((await DemandLine.findById(ctx.demand[ctx.a.code]).lean()).recoveryStatus, 'PENDING');
+});
+
+test('Load Demand lists every member from their Monthly Demand Data when the month has no demand list; loan cuts stop at the outstanding', async () => {
+  const forNovember = async () => (await banking.buildRecoveryDemandCandidates({ branchCode: BRANCH, month: '11', year: '2026' }))
+    .filter((row) => [ctx.a.code, ctx.b.code, ctx.c.code].includes(row.memberCode));
+  const listed = await forNovember();
+  const defaultsTotal = async (member) => (await banking.getResource('members', member.id)).demandDefaults.total;
+  assert.deepEqual(listed.map((row) => [row.memberCode, row.source, row.totalAmount]), [
+    [ctx.a.code, 'MEMBER_DEMAND', await defaultsTotal(ctx.a)], [ctx.b.code, 'MEMBER_DEMAND', 1000], [ctx.c.code, 'MEMBER_DEMAND', 500]
+  ]);
+  assert.equal(listed[0].regularLoan, 10000, 'the heads come from the member\'s Monthly Demand Data');
+  // October has its demand list: those lines, not the members' defaults.
+  assert.ok((await banking.buildRecoveryDemandCandidates({ branchCode: BRANCH, month: '10', year: '2026' })).every((row) => row.source === 'DEMAND'));
+
+  const manual = (member, heads, expectedAmount) => ({ member: member.code, source: 'DEMAND', demandSource: 'MEMBER_DEMAND', demandMonth: 11, demandYear: '2026', heads, expectedAmount });
+  const owed = await banking.memberLoanOutstanding([ctx.a.code, ctx.b.code]);
+  const aBalances = await balancesOf(ctx.a.id);
+  assert.deepEqual(owed[ctx.a.code], { regularLoan: aBalances.regularLoan, loanAgainstDeposit: aBalances.loanAgainstDeposit }, 'the member screen\'s outstanding');
+  const ladOwed = aBalances.loanAgainstDeposit;
+  assert.ok(ladOwed > 0);
+  assert.deepEqual(owed[ctx.b.code], { regularLoan: 0, loanAgainstDeposit: 0 });
+  await assert.rejects(banking.createVoucher(recovery([manual(ctx.b, { cd: 1000, loan: 100 }, '1100')]), admin), /Regular Loan is fully repaid \(balance 0\)/);
+  await assert.rejects(banking.createVoucher(recovery([manual(ctx.a, { lad: ladOwed + 0.01 }, String(ladOwed + 0.01))]), admin), new RegExp(`Loan Against Deposit cut ${ladOwed + 0.01} is more than the ${ladOwed} outstanding`));
+
+  // Saved: C's November is recovered, so Load Demand no longer lists C.
+  const saved = await banking.createVoucher(recovery([manual(ctx.c, { cd: 500 }, '500')]), admin);
+  assert.deepEqual((await forNovember()).map((row) => row.memberCode), [ctx.a.code, ctx.b.code]);
+  // Editing that recovery: its own cut is added back to the outstanding.
+  // A cut of exactly the outstanding is allowed; editing it is still allowed
+  // (the voucher's own cut counts as owed again).
+  const lad = await banking.createVoucher(recovery([manual(ctx.a, { lad: ladOwed }, String(ladOwed))]), admin);
+  assert.equal((await banking.memberLoanOutstanding([ctx.a.code]))[ctx.a.code].loanAgainstDeposit, 0);
+  assert.equal((await banking.memberLoanOutstanding([ctx.a.code], { excludeVoucherId: String(lad.id) }))[ctx.a.code].loanAgainstDeposit, ladOwed);
+  await banking.updateVoucher(String(lad.id), recovery([manual(ctx.a, { lad: ladOwed }, String(ladOwed))]), admin);
+  await banking.deleteVoucher(String(lad.id), admin);
+  await banking.deleteVoucher(String(saved.id), admin);
 });
 
 test('cleanup', async () => {

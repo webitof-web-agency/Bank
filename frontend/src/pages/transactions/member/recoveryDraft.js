@@ -5,6 +5,9 @@
 //   { member, memberName, branchName, designation,
 //     source: 'DEMAND' | 'EXCEL' | 'MANUAL',
 //     demandLineId, demandListNo,          // exact demand provenance
+//     demandSource: 'MEMBER_DEMAND',       // from the member's Monthly Demand Data
+//     demandMonth, demandYear,             //   (no demand line), for that month
+//     outstanding: { regularLoan, loanAgainstDeposit } // owed before this recovery
 //     importBatchId, importRowId,          // Excel provenance
 //     excel: { amount, name, branch, ... } // the matching Excel row, if any
 //     expectedAmount,                      // control amount of a line with no Excel row
@@ -91,9 +94,13 @@ const amountOrBlank = (value) => (Number(value) ? Number(value) : '');
 
 // A demand line copied into the draft. The demand row itself is not changed;
 // "Other" has no recovery head, so it is noted on the line, never moved.
+// A line from the member's Monthly Demand Data (no demand line) remembers its
+// month, so the saved recovery marks that month recovered for the member.
 export function lineFromDemand(candidate = {}) {
   const other = Number(candidate.other || 0);
+  const fromMember = candidate.source === 'MEMBER_DEMAND';
   return {
+    ...(fromMember ? { demandSource: 'MEMBER_DEMAND', demandMonth: Number(candidate.month) || null, demandYear: String(candidate.year || '') } : {}),
     member: String(candidate.memberCode || '').toUpperCase(),
     memberName: candidate.memberName || '',
     branchCode: String(candidate.branchCode || '').toUpperCase(),
@@ -115,10 +122,24 @@ export function lineFromDemand(candidate = {}) {
   };
 }
 
-// Adds demand lines not already in the draft (same demand line id).
+// The demand dialog's key for a candidate: its demand line, else the
+// member + month of their Monthly Demand Data.
+export function candidateKey(candidate = {}) {
+  return candidate.demandLineId || candidate.candidateKey || '';
+}
+
+// Adds demand lines not already in the draft: not the same demand line, and
+// not a member who already has a line (one line per member).
 export function addDemandLines(lines = [], candidates = []) {
   const present = new Set(lines.map((line) => line.demandLineId).filter(Boolean));
-  const added = candidates.filter((candidate) => candidate.demandLineId && !present.has(candidate.demandLineId)).map(lineFromDemand);
+  const members = new Set(lines.map((line) => line.member).filter(Boolean));
+  const added = [];
+  for (const candidate of candidates) {
+    const code = String(candidate.memberCode || '').toUpperCase();
+    if (!candidateKey(candidate) || (candidate.demandLineId && present.has(candidate.demandLineId)) || members.has(code)) continue;
+    members.add(code);
+    added.push(lineFromDemand(candidate));
+  }
   return { lines: withWarnings([...lines, ...added]), added: added.length, skipped: candidates.length - added.length };
 }
 
@@ -163,6 +184,9 @@ export function applyExcelHeads(lines = [], index) {
 // line that has to be removed before Save. The bank's Excel covers every
 // branch: once demand is loaded, rows of members from branches whose demand
 // was not loaded are left out (counted in otherBranch).
+// Only rows with an amount, for members with a membership date, are taken:
+// a 0 row, or a member with no membership date, goes to the excluded list
+// with its reason (counted in zeroAmount / noMembershipDate).
 export function mergeImportRows(lines = [], rows = [], members = [], batchId = '', excluded = []) {
   const memberById = new Map(members.map((member) => [String(member.id || member._id), member]));
   const next = lines.map((line) => ({ ...line }));
@@ -171,12 +195,24 @@ export function mergeImportRows(lines = [], rows = [], members = [], batchId = '
   let added = 0;
   let unmatched = 0;
   let otherBranch = 0;
+  let zeroAmount = 0;
+  let noMembershipDate = 0;
   const nextExcluded = [...excluded];
   for (const row of rows) {
     // The import's validation result (VALID, SHORT, MEMBER NOT FOUND...).
     const { status: validation = '' } = row;
     const member = memberById.get(String(row.memberId || ''));
     const excel = excelOf(row, batchId);
+    if (toPaise(excel.amount) <= 0) {
+      zeroAmount += 1;
+      nextExcluded.push(excludedEntry(excel, 'Amount is 0 in the Excel'));
+      continue;
+    }
+    if (member && !hasMembershipDate(member)) {
+      noMembershipDate += 1;
+      nextExcluded.push(excludedEntry(excel, `Member ${String(member.code || '').toUpperCase()} has no membership date`));
+      continue;
+    }
     if (!member) {
       unmatched += 1;
       next.push({
@@ -222,7 +258,11 @@ export function mergeImportRows(lines = [], rows = [], members = [], batchId = '
       heads: { ...emptyHeads(), ...excel.heads }
     });
   }
-  return { lines: withWarnings(next), excluded: nextExcluded, matched, added, unmatched, otherBranch };
+  return { lines: withWarnings(next), excluded: nextExcluded, matched, added, unmatched, otherBranch, zeroAmount, noMembershipDate };
+}
+
+export function hasMembershipDate(member = {}) {
+  return /^\d{4}-\d{2}-\d{2}/.test(String(member.membershipDate || '').trim());
 }
 
 function excludedEntry(excel = {}, reason = '') {
@@ -246,8 +286,28 @@ export const STATUS_LABELS = {
   UNSUPPORTED: 'Unsupported head',
   NO_EXPECTED: 'No expected amount',
   NOT_IN_EXCEL: 'Not in the Excel',
-  NO_MEMBER: 'No member'
+  NO_MEMBER: 'No member',
+  OVER_BALANCE: 'Cut over balance'
 };
+
+// Loan heads a recovery reduces: the cut may not pass what is still owed.
+const LOAN_HEADS = [['loan', 'regularLoan', 'Regular Loan'], ['lad', 'loanAgainstDeposit', 'Loan Against Deposit']];
+
+// A loan cut while nothing is owed, or more than is owed (empty when the
+// line's outstanding is not known yet).
+export function balanceErrors(line = {}) {
+  if (!line.outstanding) return [];
+  const heads = normalizeHeads(line.heads);
+  const errors = [];
+  for (const [head, key, name] of LOAN_HEADS) {
+    const cut = toPaise(heads[head]);
+    if (cut <= 0) continue;
+    const owed = toPaise(line.outstanding[key] || 0);
+    if (owed <= 0) errors.push(`${name} is fully repaid (balance 0): nothing should be cut. Edit the cut.`);
+    else if (cut > owed) errors.push(`${name} cut ₹${formatRupees(fromPaise(cut))} is more than the ₹${formatRupees(fromPaise(owed))} outstanding: edit the cut.`);
+  }
+  return errors;
+}
 
 // VALID only when the heads add up exactly to the expected amount.
 export function lineStatus(line = {}, lines = []) {
@@ -258,6 +318,7 @@ export function lineStatus(line = {}, lines = []) {
   if (expected == null || expected <= 0) return 'NO_EXPECTED';
   const heads = normalizeHeads(line.heads);
   if (UNSUPPORTED_HEADS.some(([key]) => toPaise(heads[key]) > 0)) return 'UNSUPPORTED';
+  if (balanceErrors(line).length) return 'OVER_BALANCE';
   const difference = expected - lineTotalPaise(line);
   if (difference > 0) return 'UNDER';
   if (difference < 0) return 'OVER';
@@ -279,6 +340,10 @@ export function lineErrors(line = {}, lines = []) {
   if (status === 'NO_EXPECTED') return ['Enter the expected amount (the amount actually received) — Edit.'];
   if (status === 'UNSUPPORTED') return ['Premium / Suspense have no confirmed posting rule yet: move the amount to another head.'];
   const difference = lineDifference(line);
+  if (status === 'OVER_BALANCE') {
+    const mismatch = difference === 0 ? [] : [`Expected ₹${formatRupees(fromPaise(expectedPaise(line)))}, allocated ₹${formatRupees(lineTotal(line))}: ${difference > 0 ? 'under' : 'over'} by ₹${formatRupees(Math.abs(difference))}.`];
+    return [...balanceErrors(line), ...mismatch];
+  }
   return [`Expected ₹${formatRupees(fromPaise(expectedPaise(line)))}, allocated ₹${formatRupees(lineTotal(line))}: ${difference > 0 ? 'under' : 'over'} by ₹${formatRupees(Math.abs(difference))}.`];
 }
 
@@ -290,6 +355,7 @@ export function lineNotes(line = {}, lines = []) {
   if (line.excel?.branchDiffers) notes.push(`Excel branch "${line.excel.branch}" differs from the member`);
   if (demandLoaded && line.source === 'EXCEL') notes.push('In the Excel, not in the loaded demand (split from the member\'s monthly demand)');
   if (line.needsReview && line.reviewNote) notes.push(line.reviewNote);
+  if (line.demandSource === 'MEMBER_DEMAND') notes.push(`From the member's Monthly Demand Data (${String(line.demandMonth || '').padStart(2, '0')}/${line.demandYear || ''})`);
   return notes;
 }
 
@@ -348,6 +414,15 @@ export function manualLine(member = {}, heads = {}, expectedAmount = '') {
     expectedAmount,
     heads: { ...emptyHeads(), ...heads }
   };
+}
+
+// Each line with the member's loan outstanding before this recovery
+// ({ CODE: { regularLoan, loanAgainstDeposit } }).
+export function withOutstanding(lines = [], outstandingByCode = {}) {
+  return lines.map((line) => {
+    const owed = outstandingByCode[String(line.member || '').toUpperCase()];
+    return owed ? { ...line, outstanding: { regularLoan: Number(owed.regularLoan || 0), loanAgainstDeposit: Number(owed.loanAgainstDeposit || 0) } } : line;
+  });
 }
 
 // Edit a line's amounts (Update): provenance stays and the Excel amount never

@@ -67,7 +67,9 @@ const sum = (rows, key) => Math.round(rows.reduce((total, row) => total + Number
 test('setup: ledgers, members, demand lists', async () => {
   await initializeDatabase();
   await ensureLedgers();
-  for (let n = 1; n <= 6; n += 1) await Member.create({ code: code(n), name: `Member ${n}`, branchCode: BRANCH, designation: 'CLERK' });
+  // Members owe on both loans (stored negative, as loans are), so the
+  // recoveries below may cut them.
+  for (let n = 1; n <= 6; n += 1) await Member.create({ code: code(n), name: `Member ${n}`, branchCode: BRANCH, designation: 'CLERK', membershipDate: '2020-04-01', balances: { loan: -1000000, loanAgainstDeposit: -1000000 } });
   // An April list (current FY) and a March list (FY 2025-26).
   await DemandList.create({ demandListNo: LIST4, branchCode: BRANCH, month: '1', year: '2026', status: 'PENDING', payload: { raw: { DMonth: '04', DYear: '2026' } } });
   await DemandList.create({ demandListNo: LIST3, branchCode: BRANCH, month: '1', year: '2026', status: 'PENDING', payload: { raw: { DMonth: '03', DYear: '2026' } } });
@@ -289,7 +291,7 @@ test('33-34: a migrated (historical) recovery is not a modern voucher: no edit, 
 
 test('S: Excel import matches the migrated PF (payload.raw.PFNo) exactly, leading zeros kept', async () => {
   const pf = `0${Math.floor(Math.random() * 90000 + 10000)}`;
-  await Member.create({ code: code(9), name: 'Import Member', branchCode: BRANCH, payload: { raw: { PFNo: pf } } });
+  await Member.create({ code: code(9), name: 'Import Member', branchCode: BRANCH, membershipDate: '2020-04-01', balances: { loan: -1000000, loanAgainstDeposit: -1000000 }, payload: { raw: { PFNo: pf } } });
   await MemberDemandDefault.create({ memberCode: code(9), compulsoryDeposit: 1000, regularLoan: 500 });
   const sheet = xlsx.utils.aoa_to_sheet([['Sno', 'Branch', 'PF', 'EmpName', 'Grade', 'TotalAmt'], [1, 'X', pf, 'Import Member', 'CLERK', 1500], [2, 'X', pf.slice(1), 'Nobody', 'CLERK', 100]]);
   const book = xlsx.utils.book_new();

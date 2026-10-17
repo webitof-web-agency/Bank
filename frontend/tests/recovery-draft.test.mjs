@@ -4,8 +4,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  addDemandLines, applyExcelHeads, draftTotals, isUnresolved, lineDifference, lineStatus, lineTotal, manualLine, mergeImportRows, reconcile,
-  removeLine, unresolvedCount, updateLineHeads, withWarnings
+  addDemandLines, applyExcelHeads, balanceErrors, draftTotals, isUnresolved, lineDifference, lineErrors, lineStatus, lineTotal, manualLine, mergeImportRows, reconcile,
+  removeLine, unresolvedCount, updateLineHeads, withOutstanding, withWarnings
 } from '../src/pages/transactions/member/recoveryDraft.js';
 
 const demand = {
@@ -24,11 +24,37 @@ test('3-4: a demand line is copied into the draft with its exact id and amounts'
 
 test('the same demand line is not added twice; "Other" is flagged, not moved', () => {
   const first = addDemandLines([], [demand]).lines;
-  const again = addDemandLines(first, [demand, { ...demand, demandLineId: 'D102', other: 250 }]);
+  const again = addDemandLines(first, [demand, { ...demand, demandLineId: 'D102', memberCode: '1474', other: 250 }]);
   assert.equal(again.added, 1);
   assert.equal(again.skipped, 1);
   assert.equal(again.lines[1].needsReview, true);
   assert.equal(lineTotal(again.lines[1]), 3500);
+  // One line per member: another demand line of a member already in the draft is skipped.
+  assert.equal(addDemandLines(first, [{ ...demand, demandLineId: 'D103' }]).added, 0);
+});
+
+test('Load Demand from Monthly Demand Data: a member with no demand line gets a line that remembers its month', () => {
+  const fromMember = { ...demand, demandLineId: '', candidateKey: 'member:1480:2026-7', source: 'MEMBER_DEMAND', memberCode: '1480', month: 7, year: '2026' };
+  const { lines, added } = addDemandLines([], [demand, fromMember]);
+  assert.equal(added, 2);
+  assert.deepEqual([lines[1].demandSource, lines[1].demandMonth, lines[1].demandYear, lines[1].demandLineId], ['MEMBER_DEMAND', 7, '2026', '']);
+  assert.match(lines[1].warnings.join(' '), /Monthly Demand Data \(07\/2026\)/);
+});
+
+test('a loan cut is red when the loan is fully repaid or the cut passes the outstanding', () => {
+  const base = withWarnings([manualLine({ code: '1473' }, { cd: 1000, loan: 2000, lad: 500 }, '3500')]);
+  const ok = withOutstanding(base, { 1473: { regularLoan: 2000, loanAgainstDeposit: 800 } });
+  assert.equal(lineStatus(ok[0], ok), 'VALID', 'a cut equal to the outstanding is fine');
+  const over = withOutstanding(base, { 1473: { regularLoan: 1500, loanAgainstDeposit: 0 } });
+  assert.equal(lineStatus(over[0], over), 'OVER_BALANCE');
+  assert.deepEqual(lineErrors(over[0], over), [
+    'Regular Loan cut ₹2,000 is more than the ₹1,500 outstanding: edit the cut.',
+    'Loan Against Deposit is fully repaid (balance 0): nothing should be cut. Edit the cut.'
+  ]);
+  assert.equal(reconcile(over).canSave, false);
+  const fixed = updateLineHeads(over, 0, { cd: 2000, loan: 1500, lad: 0 });
+  assert.equal(lineStatus(fixed[0], fixed), 'VALID', 'editing the cut to the outstanding clears it');
+  assert.deepEqual(balanceErrors(base[0]), [], 'no check until the outstanding is known');
 });
 
 test('5-10: editing a draft row changes only the draft; the demand row and the totals follow', () => {
@@ -60,14 +86,14 @@ test('12, 14: a manual row adds to the totals and carries no demand link', () =>
   assert.equal(draftTotals(withManual).total, 4500);
 });
 
-const members = [{ id: 'm1', code: '1473', name: 'A' }, { id: 'm2', code: '1474', name: 'B' }, { id: 'm3', code: '1475', name: 'C' }];
+const members = [{ id: 'm1', code: '1473', name: 'A', membershipDate: '1990-09-16' }, { id: 'm2', code: '1474', name: 'B', membershipDate: '1991-07-21' }, { id: 'm3', code: '1475', name: 'C', membershipDate: '1997-12-09' }];
 
 test('Excel rows against the loaded demand: match, missing both ways, no member', () => {
   const demandLines = addDemandLines([], [demand, { ...demand, demandLineId: 'D102', memberCode: '1474' }]).lines;
   const rows = [
     { id: 'r1', memberId: 'm1', status: 'VALID', importedTotalAmount: 3500, allocatedCompulsoryDeposit: 1000, allocatedSpecialDeposit: 500, allocatedRegularLoan: 2000 },
     { id: 'r3', memberId: 'm3', status: 'VALID', importedTotalAmount: 700, allocatedCompulsoryDeposit: 700 },
-    { id: 'r4', memberId: null, status: 'MEMBER NOT FOUND', pfNo: '999', sourceRowNo: 5, errorMessage: 'No member found with PF No: 999' }
+    { id: 'r4', memberId: null, status: 'MEMBER NOT FOUND', pfNo: '999', sourceRowNo: 5, importedTotalAmount: 900, errorMessage: 'No member found with PF No: 999' }
   ];
   const result = mergeImportRows(demandLines, rows, members, 'B1');
   assert.deepEqual([result.matched, result.added, result.unmatched], [1, 1, 1]);
@@ -79,6 +105,24 @@ test('Excel rows against the loaded demand: match, missing both ways, no member'
   assert.match(m1475.warnings.join(' '), /not in the loaded demand/);
   assert.equal(lineStatus(noMember, result.lines), 'NO_MEMBER');
   assert.equal(unresolvedCount(result.lines), 2);
+});
+
+test('Excel import takes only rows with an amount, for members with a membership date; the rest are excluded with a reason', () => {
+  const people = [...members, { id: 'm4', code: '1476', name: 'D', membershipDate: null }];
+  const rows = [
+    { id: 'r1', memberId: 'm1', importedTotalAmount: 700, allocatedCompulsoryDeposit: 700, sourceRowNo: 4, pfNo: '11' },
+    { id: 'r2', memberId: 'm2', importedTotalAmount: 0, sourceRowNo: 5, pfNo: '12' },
+    { id: 'r3', memberId: 'm4', importedTotalAmount: 500, sourceRowNo: 6, pfNo: '13' },
+    { id: 'r4', memberId: null, importedTotalAmount: 0, sourceRowNo: 7, pfNo: '999' }
+  ];
+  const result = mergeImportRows([], rows, people, 'B1');
+  assert.deepEqual(result.lines.map((line) => line.member), ['1473']);
+  assert.deepEqual([result.added, result.unmatched, result.zeroAmount, result.noMembershipDate], [1, 0, 2, 1]);
+  assert.deepEqual(result.excluded.map((row) => [row.importRowId, row.reason]), [
+    ['r2', 'Amount is 0 in the Excel'],
+    ['r3', 'Member 1476 has no membership date'],
+    ['r4', 'Amount is 0 in the Excel']
+  ]);
 });
 
 test('spec 54: Excel 12,000 vs demand CD 2,000 + Loan 8,000 is under by 2,000; Loan 10,000 makes it valid', () => {
@@ -143,7 +187,7 @@ test('removing an Excel row excludes it explicitly (with its amount and reason);
 
 test('rows of branches whose demand is not loaded are excluded on record, not silently skipped', () => {
   const demandLines = addDemandLines([], [{ ...demand, branchCode: '59' }]).lines;
-  const branchMembers = [{ id: 'm1', code: '1473', branchCode: '59' }, { id: 'm8', code: '1800', branchCode: '12' }];
+  const branchMembers = [{ id: 'm1', code: '1473', branchCode: '59', membershipDate: '1990-09-16' }, { id: 'm8', code: '1800', branchCode: '12', membershipDate: '1984-09-16' }];
   const rows = [
     { id: 'r1', memberId: 'm1', importedTotalAmount: 3500, allocatedCompulsoryDeposit: 1000, allocatedSpecialDeposit: 500, allocatedRegularLoan: 2000 },
     { id: 'r8', memberId: 'm8', importedTotalAmount: 999, allocatedCompulsoryDeposit: 999 }

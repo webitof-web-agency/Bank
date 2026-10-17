@@ -78,6 +78,7 @@ router.delete('/demand-entry/:id', requirePermission(demands.delete, supporting.
 
 const memberTransactions = page('transactions', 'member');
 router.get('/transactions/recovery/demand-candidates', requirePermission(memberTransactions.view), banking.reports.recoveryDemandCandidates);
+router.get('/transactions/recovery/member-outstanding', requirePermission(memberTransactions.view), banking.reports.recoveryMemberOutstanding);
 router.get('/transactions/vouchers/next', requirePermission('transactions.read'), banking.transactions.getNextVoucher);
 // Vouchers: any transaction page here; the controller then checks the page
 // of the voucher's own type (Member, Bank, Employee, ...).

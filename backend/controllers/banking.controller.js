@@ -575,6 +575,17 @@ const reports = {
     } catch (error) { next(error); }
   },
   // Recovery -> Add From Demand List selector (pending lines of one month).
+  // Loan outstanding per member before this recovery (red rows when a cut
+  // goes past it): ?codes=1,2&excludeVoucherId=<the voucher being edited>.
+  async recoveryMemberOutstanding(req, res, next) {
+    try {
+      const codes = String(req.query.codes || '').split(',').map((code) => code.trim()).filter(Boolean).slice(0, 2000);
+      const data = await bankingService.memberLoanOutstanding(codes, { excludeVoucherId: req.query.excludeVoucherId || '' });
+      res.json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  },
   async recoveryDemandCandidates(req, res, next) {
     try {
       const data = await bankingService.buildRecoveryDemandCandidates({

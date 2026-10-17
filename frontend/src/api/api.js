@@ -238,6 +238,7 @@ export const api = {
     },
     // Recovery -> Add From Demand List: pending demand lines of one branch/month.
     recoveryDemandCandidates: (token, query = {}) => request(`/banking/transactions/recovery/demand-candidates${buildQuery(query)}`, { token, skipCache: true }),
+    recoveryMemberOutstanding: (token, query = {}) => request(`/banking/transactions/recovery/member-outstanding${buildQuery(query)}`, { token, skipCache: true }),
     listTransactionVouchers: (token, query = {}) => request(`/banking/transactions/vouchers${buildQuery(query)}`, { token, skipCache: true }),
     getNextVoucherNo: (token, branchCode = '') => request(`/banking/transactions/vouchers/next?branchCode=${encodeURIComponent(branchCode)}`, { token, skipCache: true }),
     getTransactionVoucher: (token, id) => request(`/banking/transactions/vouchers/${id}`, { token, skipCache: true }),
