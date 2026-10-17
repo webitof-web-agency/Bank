@@ -75,13 +75,20 @@ export function applyBranding(branding = DEFAULT_BRANDING) {
   if (branding.faviconUrl) setFavicon(branding.faviconUrl);
 }
 
+// Every tab-icon link takes the uploaded image (index.html has two, .ico and
+// .png, and a browser may use either), so the bundled logo never wins.
 export function setFavicon(url) {
   if (typeof document === 'undefined' || !url) return;
-  let link = document.querySelector("link[rel~='icon']");
-  if (!link) {
-    link = document.createElement('link');
+  const links = [...document.querySelectorAll("link[rel='icon']")];
+  if (!links.length) {
+    const link = document.createElement('link');
     link.rel = 'icon';
     document.head.appendChild(link);
+    links.push(link);
   }
-  link.href = getImageUrl(url);
+  for (const link of links) {
+    link.removeAttribute('type');
+    link.removeAttribute('sizes');
+    link.href = getImageUrl(url);
+  }
 }
