@@ -391,6 +391,9 @@ const reports = {
   async lookups(req, res, next) {
     try {
       const data = await bankingService.getLookups(req.user || {});
+      // Loaded by most screens: the browser keeps it but asks every time;
+      // when nothing changed Express's ETag answers 304 with no body.
+      res.set('Cache-Control', 'private, no-cache');
       res.json({ success: true, data });
     } catch (error) {
       next(error);

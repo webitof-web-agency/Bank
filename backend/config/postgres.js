@@ -334,6 +334,16 @@ function getCachedRows(tableName) {
   return clone(tableCache.get(tableName) || []);
 }
 
+// The cached rows themselves, not a copy: READ-ONLY. Copying a whole table
+// on every query made a single-row read cost as much as reading all of it.
+// A changed row is always a new object here (updateCachedRow / refresh
+// replace, never edit, a row), which sql-model relies on to reuse its
+// converted rows.
+function getCachedRowsShared(tableName) {
+  ensureInitialized();
+  return tableCache.get(tableName) || [];
+}
+
 function setCachedRows(tableName, rows) {
   tableCache.set(tableName, clone(rows || []));
 }
@@ -957,6 +967,7 @@ module.exports = {
   getDumpConnection,
   deleteMainRow,
   getCachedRows,
+  getCachedRowsShared,
   getTableVersion,
   getUserRoles,
   getUserRolesForUsers,

@@ -2,6 +2,8 @@ const { randomUUID } = require('crypto');
 const {
   deleteMainRow,
   getCachedRows,
+  getCachedRowsShared,
+  getTableVersion,
   getUserRoles,
   getUserRolesForUsers,
   initializeDatabase,
@@ -554,8 +556,31 @@ function createSqlModel(tableName, options = {}) {
 
     return row;
   }
+  // The table's rows converted once and shared by every read: a row is
+  // converted again only when the cache replaces it (a write), and the list
+  // is rebuilt only when the table's version changes. READ-ONLY — anything
+  // handed to a caller is cloned first (SqlDocument, lean results, findAllRows).
+  const convertedByRawRow = new WeakMap();
+  let shared = { version: null, rows: [] };
+  function sharedRows() {
+    const version = getTableVersion(tableName);
+    const raw = getCachedRowsShared(tableName);
+    if (shared.version === version) return shared.rows;
+    const rows = [];
+    for (const rawRow of raw) {
+      let doc = convertedByRawRow.get(rawRow);
+      if (doc === undefined) {
+        doc = rowToData(rawRow);
+        convertedByRawRow.set(rawRow, doc);
+      }
+      if (doc) rows.push(doc);
+    }
+    shared = { version, rows };
+    return rows;
+  }
+
   function findAllRows() {
-    return getCachedRows(tableName).map(rowToData).filter(Boolean);
+    return clone(sharedRows());
   }
 
   function getAllRawRows() {
@@ -617,7 +642,7 @@ function createSqlModel(tableName, options = {}) {
 
   async function executeQuery(query) {
     await initializeDatabase();
-    const rawRows = findAllRows();
+    const rawRows = sharedRows();
     // Every read on a soft-delete-enabled table (one whose schema declares a
     // `deletedAt` field) excludes soft-deleted rows by default — the same way
     // for every one of this app's query sites, with no per-call-site changes
@@ -646,8 +671,9 @@ function createSqlModel(tableName, options = {}) {
     if (query.op === 'findByIdAndDelete') {
       const id = query.filter.id;
       if (!id) return null;
-      const record = Array.from(rows.values()).find((row) => String(row.id) === String(id));
-      if (!record) return null;
+      const found = rows.find((row) => String(row.id) === String(id));
+      if (!found) return null;
+      const record = clone(found);
       await deleteById(record.id, { tx: query.tx });
       return buildSelectResult(record, query.select);
     }
@@ -675,10 +701,18 @@ function createSqlModel(tableName, options = {}) {
       }
 
       const returnUpdated = Boolean(query.extra?.new);
-      const record = returnUpdated ? updated : target;
+      const record = returnUpdated ? updated : new SqlDocument(model, target);
       if (!record) return null;
       const finalRecord = query.lean ? record.toObject ? record.toObject() : clone(record) : record;
       return query.select ? applySelect(finalRecord.toObject ? finalRecord.toObject() : finalRecord, query.select) : finalRecord;
+    }
+
+    // A plain read: one copy of each returned row (a SqlDocument would copy
+    // it, and toObject() copy it again).
+    if (query.lean && !query.populate.length) {
+      const plain = rows.map((row) => clone(row));
+      const selected = query.select ? plain.map((record) => applySelect(record, query.select)) : plain;
+      return op === 'findOne' || op === 'findById' ? selected[0] || null : selected;
     }
 
     const records = rows.map((row) => new SqlDocument(model, row));
@@ -698,7 +732,7 @@ function createSqlModel(tableName, options = {}) {
       return;
     }
 
-    const rows = findAllRows();
+    const rows = sharedRows();
     for (const rule of uniqueFields) {
       const fields = Array.isArray(rule) ? rule : [rule];
       const conflict = rows.find((row) => {
@@ -792,7 +826,7 @@ function createSqlModel(tableName, options = {}) {
 
   async function updateById(id, patch = {}, options = {}) {
     await initializeDatabase();
-    const rows = findAllRows();
+    const rows = sharedRows();
     const target = rows.find((row) => String(row.id) === String(id));
     if (!target) {
       return null;
@@ -807,14 +841,14 @@ function createSqlModel(tableName, options = {}) {
     await persistMainRow(tableName, dataToRow(nextDoc), options.tx);
     await syncUserRolesIfNeeded(nextDoc);
     if (afterSave) {
-      await afterSave(nextDoc, { isCreate: false, previous: target });
+      await afterSave(nextDoc, { isCreate: false, previous: clone(target) });
     }
     return new SqlDocument(model, nextDoc);
   }
 
   async function updateOne(filter = {}, update = {}, options = {}) {
     await initializeDatabase();
-    const rows = findAllRows();
+    const rows = sharedRows();
     const target = rows.find((row) => matchesFilter(row, filter));
     if (!target) {
       if (options.upsert) {
@@ -838,13 +872,13 @@ function createSqlModel(tableName, options = {}) {
     await persistMainRow(tableName, dataToRow(nextDoc), options.tx);
     await syncUserRolesIfNeeded(nextDoc);
     if (afterSave) {
-      await afterSave(nextDoc, { isCreate: false, previous: target });
+      await afterSave(nextDoc, { isCreate: false, previous: clone(target) });
     }
     return { matchedCount: 1, modifiedCount: 1, upsertedCount: 0 };
   }
 
   async function updateMany(filter = {}, update = {}, options = {}) {
-    const rows = findAllRows().filter((row) => matchesFilter(row, filter));
+    const rows = sharedRows().filter((row) => matchesFilter(row, filter));
     let modifiedCount = 0;
     for (const row of rows) {
       await updateById(row.id, update.$set || update, { tx: options.tx });
@@ -855,14 +889,14 @@ function createSqlModel(tableName, options = {}) {
 
   async function deleteById(id, options = {}) {
     await initializeDatabase();
-    const row = findAllRows().find((item) => String(item.id) === String(id));
+    const row = sharedRows().find((item) => String(item.id) === String(id));
     if (!row) return false;
     await deleteMainRow(tableName, String(id), options.tx);
     return true;
   }
 
   async function deleteOne(filter = {}, options = {}) {
-    const row = findAllRows().find((item) => matchesFilter(item, filter));
+    const row = sharedRows().find((item) => matchesFilter(item, filter));
     if (!row) return { deletedCount: 0 };
     await deleteById(row.id, options);
     return { deletedCount: 1 };
@@ -870,7 +904,7 @@ function createSqlModel(tableName, options = {}) {
 
   async function deleteMany(filter = {}, options = {}) {
     await initializeDatabase();
-    const rows = findAllRows().filter((item) => matchesFilter(item, filter));
+    const rows = sharedRows().filter((item) => matchesFilter(item, filter));
     // The rows are already found: delete them directly. Going through
     // deleteById re-read (and copied) the whole table once per row, which
     // made deleting a voucher's few hundred lines take seconds.
@@ -923,16 +957,15 @@ function createSqlModel(tableName, options = {}) {
       await initializeDatabase();
       const payload = clone(doc) || {};
       const id = String(payload._id || payload.id || randomUUID());
-      const rows = findAllRows();
-      const existing = rows.find((row) => String(row.id) === String(id));
+      const existing = sharedRows().find((row) => String(row.id) === String(id));
       if (existing) {
-        const next = { ...existing, ...payload, id, createdAt: existing.createdAt, updatedAt: new Date().toISOString() };
+        const next = { ...clone(existing), ...payload, id, createdAt: existing.createdAt, updatedAt: new Date().toISOString() };
         applyExistingRoles(next, id);
         assertUnique(next, id);
         await persistMainRow(tableName, dataToRow(next));
         await syncUserRolesIfNeeded(next);
         if (afterSave) {
-          await afterSave(next, { isCreate: false, previous: existing });
+          await afterSave(next, { isCreate: false, previous: clone(existing) });
         }
         return next;
       }
@@ -945,7 +978,7 @@ function createSqlModel(tableName, options = {}) {
     },
     countDocuments: async (filter = {}) => {
       await initializeDatabase();
-      return findAllRows().filter((row) => matchesFilter(row, filter)).length;
+      return sharedRows().filter((row) => matchesFilter(row, filter)).length;
     },
     create,
     deleteById,

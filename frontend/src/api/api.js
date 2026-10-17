@@ -113,7 +113,9 @@ async function parseResponse(response) {
   return data;
 }
 
-export async function request(path, { method = 'GET', body, token, headers = {}, formData = null, skipCache = false } = {}) {
+// revalidate (with skipCache): use the browser's HTTP cache, but always ask
+// the server first; an unchanged response comes back as a bodiless 304.
+export async function request(path, { method = 'GET', body, token, headers = {}, formData = null, skipCache = false, revalidate = false } = {}) {
   const cacheKey = getCacheKey(method, path, token);
   if (method === 'GET' && !skipCache) {
     const cached = readStoredCache(cacheKey);
@@ -122,7 +124,7 @@ export async function request(path, { method = 'GET', body, token, headers = {},
 
   const init = {
     method,
-    cache: skipCache ? 'no-store' : 'default',
+    cache: skipCache ? (revalidate ? 'no-cache' : 'no-store') : 'default',
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...headers
@@ -224,7 +226,7 @@ export const api = {
     dashboard: (token) => request('/banking/dashboard', { token, skipCache: true }),
     // Static per release: the 15-minute response cache is fine.
     getTransactionCatalog: (token) => request('/banking/transactions/catalog', { token }),
-    getLookups: (token) => request('/banking/lookups', { token, skipCache: true }),
+    getLookups: (token) => request('/banking/lookups', { token, skipCache: true, revalidate: true }),
     // Demand Entry: demand list header + member component lines.
     demandEntry: {
       list: (token, query = {}) => request(`/banking/demand-entry${buildQuery(query)}`, { token, skipCache: true }),

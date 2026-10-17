@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+const compression = require('compression');
 const morgan = require('morgan');
 const http = require('http');
 const path = require('path');
@@ -37,6 +38,12 @@ if (process.env.TRUST_PROXY) {
   app.set('trust proxy', Number.isInteger(hops) ? hops : process.env.TRUST_PROXY);
 }
 app.use(helmet());
+// gzip responses: JSON shrinks ~10x (the lookups many screens load went from
+// 3.3 MB to ~300 KB on the wire). Live notifications (Server-Sent Events) are
+// left alone: compression would hold their messages back.
+app.use(compression({
+  filter: (req, res) => !String(res.getHeader('Content-Type') || '').includes('text/event-stream') && compression.filter(req, res)
+}));
 app.use(cors(buildCorsOptions()));
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: false, limit: '1mb' }));

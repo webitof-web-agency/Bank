@@ -2535,6 +2535,26 @@ async function getDashboardSummary({ user = {}, fyStart = '', fyEnd = '' } = {})
 // off employees.code, not users.code. Sourcing this list from `users` (as it
 // used to, via listResource('employees', ...)) meant a voucher posted through
 // this picker could never be found by its own employee's ledger/statement report.
+// Members for the lookups every form and list loads (dropdowns, names,
+// balances): the member row without the heavy parts no such screen reads —
+// the migrated legacy payload (over half of each row), documents and the
+// photo, whose view URL was signed for every member on every call. The
+// member screens themselves load the full record (getResource).
+const LOOKUP_MEMBER_OMIT = ['payload', 'documents', 'documentsFolderId', 'photoFileId', 'photoUrl', 'passwordHash'];
+
+async function listMembersForLookup(user = {}) {
+  const def = getResourceDef('members');
+  const query = applyBranchScope(buildSearchQuery(def.searchFields, ''), 'members', user);
+  const rows = await def.model.find(query).sort({ updatedAt: -1 }).lean();
+  return rows.map((row) => {
+    const response = toResponse(row);
+    for (const key of LOOKUP_MEMBER_OMIT) delete response[key];
+    response.hasPassword = Boolean(row.passwordHash);
+    response.mobileNo = normalizeMobile(response.mobileNo || '');
+    return response;
+  });
+}
+
 async function listEmployeesForLookup(user = {}) {
   const query = applyBranchScope({}, 'employees', user);
   const rows = await Employee.find(query).sort({ updatedAt: -1 }).lean();
@@ -2556,7 +2576,7 @@ async function getLookups(user = {}) {
     ] = await Promise.all([
       getSingle('society'),
       listResource('branches', '', user),
-      listResource('members', '', user),
+      listMembersForLookup(user),
       listEmployeesForLookup(user),
       listResource('ledgers'),
       listResource('rates'),
