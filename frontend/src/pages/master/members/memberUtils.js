@@ -71,19 +71,6 @@ export function buildNextMemberCode(rows = []) {
   return String(maxNumber + 1);
 }
 
-export function buildNextMembershipNo(rows = []) {
-  let maxNumber = 0;
-
-  for (const row of Array.isArray(rows) ? rows : []) {
-    const value = Number(String(row?.membershipNo || '').trim());
-    if (Number.isFinite(value) && value > maxNumber) {
-      maxNumber = value;
-    }
-  }
-
-  return String(maxNumber + 1);
-}
-
 export function formatBranchLabel(branch = {}) {
   const code = String(branch.code || '').trim();
   const label = String(branch.label || '').trim();
@@ -123,7 +110,6 @@ export function memberStatusLabel(value) {
 export function createEmptyMemberDraft() {
   return {
     code: '',
-    membershipNo: '',
     pfNo: '',
     name: '',
     fatherOrHusbandName: '',
@@ -161,7 +147,6 @@ export function createMemberDraftFromRecord(member = {}) {
 
   return {
     code: member.code || '',
-    membershipNo: member.membershipNo || '',
     pfNo: member.pfNo || '',
     name: member.name || '',
     fatherOrHusbandName: member.fatherOrHusbandName || '',
@@ -209,7 +194,6 @@ export function buildMemberPayload(draft = {}) {
 
   return {
     code: String(draft.code || '').trim().toUpperCase() || undefined,
-    membershipNo: String(draft.membershipNo || '').trim() || undefined,
     pfNo: String(draft.pfNo || '').trim(),
     name: String(draft.name || '').trim(),
     fatherOrHusbandName: String(draft.fatherOrHusbandName || '').trim(),

@@ -107,7 +107,7 @@ class Profile {
         ('Address', 'address', false),
       ]),
       membership: fields([
-        ('Membership No', 'membershipNo', false),
+        (s('type') == 'employee' ? 'Employee Code' : 'Member Code', 'code', false),
         ('PF Number', 'pfNo', false),
         ('Membership Date', 'membershipDate', true),
         ('Appointment Date', 'appointmentDate', true),

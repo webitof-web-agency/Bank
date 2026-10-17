@@ -361,7 +361,7 @@ export function getReportConfig(reportKey = '') {
 
         return {
           title: "Member Ledger / Member's A/c Status",
-          subtitle: `${member.name || member.code || 'Member'} ${member.membershipNo ? `- ${member.membershipNo}` : ''}`.trim(),
+          subtitle: `${member.name || 'Member'}${member.code ? ` - ${member.code}` : ''}`,
           summary: [],
           sections: [],
           raw: payload
@@ -660,14 +660,14 @@ export function getReportConfig(reportKey = '') {
                 ? 'Members who have been dismembered.'
                 : 'Registered members and their current status.',
               headers: isDismembered
-                ? ['Member Code', 'Member Name', 'Branch', 'Category', 'Membership No.', 'Dismembered On']
-                : ['Member Code', 'Member Name', 'Branch', 'Category', 'Membership No.', 'Status'],
+                ? ['Member Code', 'Member Name', 'Branch', 'Category', 'Membership Date', 'Dismembered On']
+                : ['Member Code', 'Member Name', 'Branch', 'Category', 'Membership Date', 'Status'],
               rows: rows.map((row) => [
                 row.code,
                 row.name,
                 row.branchName || row.branchCode,
                 row.category,
-                row.membershipNo,
+                String(row.membershipDate || '').slice(0, 10) || '-',
                 isDismembered ? (row.dismemberedDate || '-') : row.status
               ])
             }
@@ -830,7 +830,7 @@ export function getReportConfig(reportKey = '') {
         const member = payload.member || {};
         return {
           title: "Member's A/c Status",
-          subtitle: `${member.name || member.code || 'Member'} ${member.membershipNo ? `- ${member.membershipNo}` : ''}`.trim(),
+          subtitle: `${member.name || 'Member'}${member.code ? ` - ${member.code}` : ''}`,
           summary: [],
           sections: [],
           raw: payload

@@ -1,7 +1,7 @@
 ﻿import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useGoBack } from '../../../lib/useGoBack';
-import { ArrowLeft, Edit2, Shield, User, CalendarDays, Home, Coins, Wallet, PiggyBank, Landmark, PieChart, Lock, Star, ShieldCheck, Banknote, Umbrella, BookOpen } from 'lucide-react';
+import { ArrowLeft, Edit2, User, CalendarDays, Home, Coins, Wallet, PiggyBank, Landmark, PieChart, Lock, Star, ShieldCheck, Banknote, Umbrella, BookOpen } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../api/api';
 import { useAuth } from '../../../context/AuthContext';
@@ -21,7 +21,6 @@ import {
   formatMoney,
   getBranchMap,
   buildNextMemberCode,
-  buildNextMembershipNo,
   memberStatusLabel
 } from './memberUtils';
 import { uploadDocumentMap } from '../documentUpload';
@@ -147,12 +146,10 @@ export function MemberDetailPage() {
 
   const memberName = member.name || 'Member';
   const memberCode = member.code || buildNextMemberCode([]);
-  const membershipNo = member.membershipNo || buildNextMembershipNo([]);
   const status = memberStatusLabel(statusLabel);
   const summaryLabel = [
     member.branchCode ? formatBranchLabel(memberBranch) || member.branchCode : '',
-    member.category,
-    membershipNo
+    member.category
   ].filter(Boolean);
 
   return (
@@ -191,10 +188,6 @@ export function MemberDetailPage() {
               <p className="mb-1 text-[13px] font-semibold text-[var(--primary)] tracking-wide">{memberCode}</p>
               <h1 className="text-2xl font-bold tracking-tight">{memberName}</h1>
               <div className="mt-4 flex flex-wrap items-center gap-2 justify-center sm:justify-start">
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[13px] font-medium text-slate-700">
-                  <Shield size={14} className="text-slate-400" />
-                  {membershipNo}
-                </span>
                 {status === 'Active' ? (
                   <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[13px] font-medium text-emerald-700">
                     {status}
@@ -267,7 +260,7 @@ export function MemberDetailPage() {
             {activeTab === 'membership' && (
               <Card className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                 <div className="divide-y divide-slate-100 px-6">
-                  <DetailRow label="Membership No" value={membershipNo} />
+                  <DetailRow label="Member Code" value={memberCode} />
                   <DetailRow label="Membership Date" value={member.membershipDate} />
                   <DetailRow label="Appointment Date" value={member.appointmentDate} />
                   <DetailRow label="Date of Birth" value={member.dateOfBirth} />

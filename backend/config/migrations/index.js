@@ -241,6 +241,29 @@ const MIGRATIONS = [
       }
       return { set, noMobile };
     }
+  },
+  {
+    // Membership No and Member Code are the same number. Legacy keys every
+    // table on MemberCode; its MembershipNo is mostly empty and otherwise
+    // equals the code (one typo in six FY databases). The app had its own
+    // counter for it, so a member made here could get a different number.
+    // The member code is the one number now: the column and its counter go.
+    // A value that differs from the code is kept in payload.legacyMembershipNo
+    // first, so nothing is lost.
+    name: '2026-10-17-membership-no-is-member-code',
+    async run(db) {
+      const hasColumn = (await db.query(
+        "SELECT 1 FROM information_schema.columns WHERE table_name = 'members' AND column_name = 'membershipNo'"
+      )).rowCount > 0;
+      if (!hasColumn) return { kept: 0, dropped: false };
+      const kept = (await db.query(`
+        UPDATE members
+           SET payload = jsonb_set(coalesce(payload, '{}'::jsonb), '{legacyMembershipNo}', to_jsonb(btrim("membershipNo"))), "updatedAt" = now()
+         WHERE coalesce(btrim("membershipNo"), '') <> '' AND btrim("membershipNo") <> btrim(code)`)).rowCount;
+      await db.query('ALTER TABLE members DROP COLUMN IF EXISTS "membershipNo"');
+      await db.query('DROP SEQUENCE IF EXISTS "members_membershipNo_seq"');
+      return { kept, dropped: true };
+    }
   }
 ];
 

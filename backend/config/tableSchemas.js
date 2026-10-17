@@ -286,7 +286,6 @@ const TABLE_SCHEMAS = {
     membershipDate: T.date,
     openingDate: T.date,
     appointmentDate: T.date,
-    membershipNo: T.string(80),
     pfNo: T.string(80),
     dismembered: T.boolean,
     dismemberedDate: T.date,

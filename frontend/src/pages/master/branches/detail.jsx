@@ -265,7 +265,7 @@ export function BranchDetailPage() {
                       <div key={member.id} className="p-4 flex items-center justify-between hover:bg-slate-50">
                         <div>
                           <p className="font-medium text-slate-900">{member.name}</p>
-                          <p className="text-sm text-slate-500">{member.code || 'No Code'} • {member.membershipNo || 'No Membership No'}</p>
+                          <p className="text-sm text-slate-500">{member.code || 'No Code'}</p>
                         </div>
                         <Button variant="outline" size="sm" onClick={() => navigate(`/app/master/members/${member.id}`)}>
                           View

@@ -342,7 +342,6 @@ function summarizeRecord(resource, record = {}) {
     : resource === 'members'
       ? {
           code: record.code || '',
-          membershipNo: record.membershipNo || '',
           name: record.name || ''
         }
       : resource === 'branches'
@@ -381,7 +380,6 @@ function summarizeRecord(resource, record = {}) {
                   };
 
   if (normalized.code) parts.push(normalized.code);
-  if (normalized.membershipNo) parts.push(normalized.membershipNo);
   if (normalized.name && normalized.name !== normalized.code) parts.push(normalized.name);
   return parts.filter(Boolean).join(' - ') || normalized.code || normalized.name || 'Record';
 }
@@ -1195,7 +1193,7 @@ const RESOURCE_DEFS = {
   },
   members: {
     model: Member,
-    searchFields: ['code', 'name', 'fatherOrHusbandName', 'branchCode', 'membershipNo', 'mobileNo', 'status'],
+    searchFields: ['code', 'name', 'fatherOrHusbandName', 'branchCode', 'mobileNo', 'status'],
     normalize(data = {}) {
       const balances = toMixed(data.balances, {});
       const depositBalance = toNumber(data.depositBalance, toNumber(balances.compulsoryDeposit, 0));
@@ -1213,7 +1211,6 @@ const RESOURCE_DEFS = {
         dateOfBirth: cleanText(data.dateOfBirth),
         membershipDate: cleanText(data.membershipDate),
         appointmentDate: cleanText(data.appointmentDate),
-        membershipNo: cleanText(data.membershipNo),
         // The bank Excel's member key: kept exactly (leading zeros too).
         pfNo: cleanText(data.pfNo),
         address: cleanText(data.address),
@@ -1461,7 +1458,6 @@ async function seedBankingData() {
   // Synchronize sequences so that the next generated sequence is MAX(code) + 1
   await syncSequence('branches', 'code');
   await syncSequence('members', 'code');
-  await syncSequence('members', 'membershipNo');
   await syncSequence('employees', 'code');
   await syncSequence('ledgers', 'code');
   await syncSequence('bank_accounts', 'code');
@@ -1595,10 +1591,6 @@ async function createResource(resource, data = {}, meta = {}) {
     payload[sequenceField] = await getNextSequenceValue(tableName, sequenceField);
   }
 
-  if (resource === 'members' && !payload.membershipNo) {
-    payload.membershipNo = await getNextSequenceValue('members', 'membershipNo');
-  }
-
   if (meta.actorUserId) {
     payload.createdByUserId = meta.actorUserId;
     payload.updatedByUserId = meta.actorUserId;
@@ -1685,7 +1677,6 @@ async function updateResource(resource, id, data = {}, meta = {}) {
     const payload = def.normalize ? def.normalize({ ...current.toObject(), ...data }) : clone({ ...current.toObject(), ...data });
     payload.branchCode = resolveBranchCode(actorUser, current.branchCode);
     payload.code = payload.code || current.code;
-    payload.membershipNo = payload.membershipNo || current.membershipNo;
     // Mobile stays required; password is only rehashed when a new one is sent
     // (an absent/blank password leaves the existing hash in place).
     await applyMemberCredentials(payload, data, { requirePassword: false });
@@ -5347,7 +5338,6 @@ async function buildAllMemberListReport({ branchCode = '', uptoDate = '', listTy
       caste: cleanText(row.caste || raw.Caste),
       district: branch.district || '',
       category: row.category,
-      membershipNo: row.membershipNo,
       membershipDate: row.membershipDate,
       dismemberedDate: row.dismemberedDate || '',
       status: row.status

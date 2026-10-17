@@ -84,7 +84,7 @@ export function CommitteeForm({ value, setValue, onSubmit, members = [], canWrit
   const memberOptions = members.map((m, index) => ({
     key: `${m.id || m.code || index}`,
     value: m.name,
-    label: `${m.name} (${m.code || m.membershipNo || 'No ID'})`
+    label: `${m.name} (${m.code || 'No Code'})`
   }));
 
   const toggleDirector = (name) => {

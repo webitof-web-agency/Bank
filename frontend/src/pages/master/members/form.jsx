@@ -265,11 +265,6 @@ export function MemberForm({
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-[13px] font-semibold text-slate-700">Membership No</label>
-              <Input placeholder="Auto-generated" value={value.membershipNo || ''} disabled className="font-mono tracking-wider bg-slate-50 text-slate-600" />
-            </div>
-
-            <div className="space-y-1.5">
               <label className="text-[13px] font-semibold text-slate-700">Branch <span className="text-rose-500">*</span></label>
               <Select
                 value={value.branchCode || ''}

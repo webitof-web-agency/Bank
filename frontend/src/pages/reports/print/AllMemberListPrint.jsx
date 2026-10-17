@@ -16,13 +16,12 @@ export function AllMemberListPrint({ data, headerActions, title = "ALL MEMBER'S 
         <colgroup>
           <col style={{ width: '4%' }} />
           <col style={{ width: '5%' }} />
-          <col style={{ width: '15%' }} />
-          <col style={{ width: '15%' }} />
+          <col style={{ width: '20%' }} />
+          <col style={{ width: '19%' }} />
           <col style={{ width: '11%' }} />
           <col style={{ width: '11%' }} />
           <col style={{ width: '7%' }} />
           <col style={{ width: '12%' }} />
-          <col style={{ width: '9%' }} />
           <col style={{ width: '11%' }} />
         </colgroup>
         <thead>
@@ -35,7 +34,6 @@ export function AllMemberListPrint({ data, headerActions, title = "ALL MEMBER'S 
             <th className={th}>BRANCH</th>
             <th className={th}>CASTE</th>
             <th className={th}>DISTRICT</th>
-            <th className={`${th} text-[10px]`}>MEMBERSHIP NO.</th>
             <th className={`${th} text-[10px]`}>MEMBERSHIP DATE</th>
           </tr>
         </thead>
@@ -50,13 +48,12 @@ export function AllMemberListPrint({ data, headerActions, title = "ALL MEMBER'S 
               <td className={tdText}>{row.branchName || row.branchCode}</td>
               <td className={tdText}>{row.caste}</td>
               <td className={tdText}>{row.district}</td>
-              <td className={tdCenter}>{row.membershipNo}</td>
               <td className={`${tdCenter} whitespace-nowrap`}>{formatDMY(row.membershipDate)}</td>
             </tr>
           ))}
           {rows.length === 0 && (
             <tr>
-              <td colSpan={10} className="border border-black p-4 text-center text-[12px]">No members found.</td>
+              <td colSpan={9} className="border border-black p-4 text-center text-[12px]">No members found.</td>
             </tr>
           )}
         </tbody>

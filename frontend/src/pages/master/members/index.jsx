@@ -15,7 +15,6 @@ import { Table } from '../../../components/ui/Table';
 import { MemberForm } from './form';
 import {
   buildNextMemberCode,
-  buildNextMembershipNo,
   createEmptyMemberDraft,
   createMemberDraftFromRecord,
   buildMemberPayload,
@@ -193,7 +192,6 @@ export function MembersPage() {
         return <span className="text-slate-700">{formatBranchLabel(branch) || row.branchCode || '-'}</span>;
       }
     },
-    { key: 'membershipNo', label: 'Membership No', sortable: true, render: (row) => <span className="text-slate-700">{row.membershipNo || '-'}</span> },
     { key: 'mobileNo', label: 'Mobile No', sortable: true, render: (row) => <span className="text-slate-700">{formatMemberPhone(row.mobileNo || '') || '-'}</span> },
     { key: 'depositBalance', label: 'Deposit', sortable: true, sortField: 'depositBalance|balances.compulsoryDeposit', render: (row) => <span className="text-slate-700">{formatMoney(row.depositBalance ?? row.balances?.compulsoryDeposit ?? 0)}</span> },
     {

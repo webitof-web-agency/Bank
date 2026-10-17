@@ -261,7 +261,6 @@ async function getProfile(account) {
     name: r.name || '',
     code: r.code || '',
     mobileNo: normalizeMobile(r.mobileNo || ''),
-    membershipNo: r.membershipNo || '',
     pfNo: r.pfNo || '',
     designation: r.designation || '',
     branchCode: r.branchCode || '',
