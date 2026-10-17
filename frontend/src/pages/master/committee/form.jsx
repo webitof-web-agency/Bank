@@ -2,9 +2,11 @@
 import { Input } from '../../../components/ui/Input';
 import { User, X, ChevronDown, Search, Check } from 'lucide-react';
 
-// Directors are stored by name. Ticking a member adds them, unticking
-// removes them; the list stays open so several can be picked in one go.
-function DirectorPicker({ options = [], selected = [], onToggle, disabled = false }) {
+// Directors are members, kept by member code (two members can share a name).
+// Ticking a member adds them, unticking removes them; the list stays open so
+// several can be picked in one go.
+// count: every director on the list (a name-only one is listed but ticks no member).
+function DirectorPicker({ options = [], selected = [], count = selected.length, onToggle, disabled = false }) {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
   const containerRef = useRef(null);
@@ -30,7 +32,7 @@ function DirectorPicker({ options = [], selected = [], onToggle, disabled = fals
           isOpen ? 'border-[var(--primary,#1661F6)] ring-1 ring-[var(--primary,#1661F6)]' : 'border-slate-200 hover:border-slate-300'
         } ${disabled ? 'cursor-not-allowed bg-slate-50 text-slate-500 opacity-50' : 'cursor-pointer text-slate-700'}`}
       >
-        <span className="truncate">{selected.length ? `${selected.length} director(s) selected` : 'Select members...'}</span>
+        <span className="truncate">{count ? `${count} director(s) selected` : 'Select members...'}</span>
         <ChevronDown size={14} className={`text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </button>
 
@@ -80,20 +82,30 @@ function DirectorPicker({ options = [], selected = [], onToggle, disabled = fals
 
 export function CommitteeForm({ value, setValue, onSubmit, members = [], canWrite = true }) {
   const directors = value.directors || [];
+  const memberByCode = new Map(members.map((m) => [String(m.code || '').toUpperCase(), m]));
 
-  const memberOptions = members.map((m, index) => ({
-    key: `${m.id || m.code || index}`,
-    value: m.name,
-    label: `${m.name} (${m.code || 'No Code'})`
-  }));
+  const memberOptions = members
+    .filter((m) => m.code)
+    .map((m) => ({
+      key: String(m.id || m.code),
+      value: String(m.code).toUpperCase(),
+      label: `${m.name} (${m.code})`
+    }));
+  // Ticked = the member's code is in the list (a name-only director ticks nothing).
+  const selectedCodes = directors.map((d) => d.memberCode).filter(Boolean);
 
-  const toggleDirector = (name) => {
-    if (!name) return;
-    setValue({ ...value, directors: directors.includes(name) ? directors.filter((d) => d !== name) : [...directors, name] });
+  const toggleDirector = (code) => {
+    if (!code) return;
+    const exists = directors.some((d) => d.memberCode === code);
+    const member = memberByCode.get(code);
+    setValue({
+      ...value,
+      directors: exists ? directors.filter((d) => d.memberCode !== code) : [...directors, { memberCode: code, name: member?.name || '' }]
+    });
   };
 
-  const removeDirector = (name) => {
-    setValue({ ...value, directors: directors.filter((d) => d !== name) });
+  const removeDirector = (index) => {
+    setValue({ ...value, directors: directors.filter((_, i) => i !== index) });
   };
 
   return (
@@ -131,16 +143,23 @@ export function CommitteeForm({ value, setValue, onSubmit, members = [], canWrit
 
         <div className="md:col-span-2">
           <label className="mb-2 block text-[13px] font-semibold text-slate-700">Directors</label>
-          <DirectorPicker options={memberOptions} selected={directors} onToggle={toggleDirector} disabled={!canWrite} />
+          <DirectorPicker options={memberOptions} selected={selectedCodes} count={directors.length} onToggle={toggleDirector} disabled={!canWrite} />
 
           {value.directors && value.directors.length > 0 && (
             <div className="mt-4 flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-slate-50 p-4">
-              {value.directors.map((name) => (
-                <div key={name} className="inline-flex items-center rounded-full border border-slate-200 bg-white pl-3 pr-1 py-1 text-[13px] font-medium text-slate-700 shadow-sm">
-                  <User size={14} className="mr-2 text-slate-400" />
-                  {name}
+              {value.directors.map((director, index) => (
+                <div
+                  key={`${director.memberCode || director.name}-${index}`}
+                  title={director.memberCode ? undefined : 'Not linked to a member: remove it and tick the right member in the list.'}
+                  className={`inline-flex items-center rounded-full border pl-3 pr-1 py-1 text-[13px] font-medium shadow-sm ${director.memberCode ? 'border-slate-200 bg-white text-slate-700' : 'border-amber-300 bg-amber-50 text-amber-900'}`}
+                >
+                  <User size={14} className={`mr-2 ${director.memberCode ? 'text-slate-400' : 'text-amber-500'}`} />
+                  {director.name}
+                  {director.memberCode
+                    ? <span className="ml-1 font-normal text-slate-400">({director.memberCode})</span>
+                    : <span className="ml-1 font-normal text-amber-700">(pick the member)</span>}
                   {canWrite ? (
-                    <button type="button" onClick={() => removeDirector(name)} className="ml-2 rounded-full p-1 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-500">
+                    <button type="button" aria-label={`Remove ${director.name}`} onClick={() => removeDirector(index)} className="ml-2 rounded-full p-1 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-500">
                       <X size={14} />
                     </button>
                   ) : null}
@@ -149,6 +168,11 @@ export function CommitteeForm({ value, setValue, onSubmit, members = [], canWrit
             </div>
           )}
           <p className="mt-2 text-[12px] text-slate-500">Tick members to add them to the board of directors; untick to remove.</p>
+          {directors.some((d) => !d.memberCode) ? (
+            <p className="mt-1 text-[12px] font-medium text-amber-700">
+              An amber name was saved without its member (more than one member has that name). Remove it and tick the right member, e.g. by code.
+            </p>
+          ) : null}
         </div>
       </div>
     </form>

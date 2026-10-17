@@ -911,38 +911,67 @@ function sanitizeSingletonResponse(resource, doc) {
 
 // The committee's directors live in committee_directors (one row each, in
 // order); the committees row has no directors column, so a list set on it was
-// silently dropped on save.
+// silently dropped on save. A director is a member, kept by member code: two
+// members can share a name. { memberCode, name } each; a name without a code
+// (typed in, or migrated) is kept as it is.
 const COMMITTEE_KEY = 'default';
 
 async function getCommitteeDirectors(committeeKey = COMMITTEE_KEY) {
   return (await CommitteeDirector.find({ committeeKey }).sort({ orderIndex: 1, createdAt: 1 }).lean())
-    .map((row) => cleanText(row.name)).filter(Boolean);
+    .map((row) => ({ memberCode: cleanUpper(row.memberCode), name: cleanText(row.name) }))
+    .filter((row) => row.name || row.memberCode);
 }
 
-// Makes the director rows exactly `names`, in that order: a row is kept for a
-// name still there (re-ordered), created for a new one, soft-deleted for one
-// taken off. The same name twice (any case) counts once.
-async function saveCommitteeDirectors(names = [], committeeKey = COMMITTEE_KEY) {
-  const wanted = [];
+// Who a director is: the member code when there is one, else the name.
+function directorKey(director = {}) {
+  return director.memberCode ? `code:${cleanUpper(director.memberCode)}` : `name:${cleanText(director.name).toLowerCase()}`;
+}
+
+// The request's list: { memberCode, name } or a plain name. A known member's
+// name comes from the member record; an unknown code is refused.
+async function normalizeCommitteeDirectors(input = []) {
+  const items = toArray(input).map((item) => (item && typeof item === 'object'
+    ? { memberCode: cleanUpper(item.memberCode || item.code), name: cleanText(item.name) }
+    : { memberCode: '', name: cleanText(item) }))
+    .filter((item) => item.memberCode || item.name);
+  const codes = [...new Set(items.map((item) => item.memberCode).filter(Boolean))];
+  const members = codes.length ? await Member.find({ code: { $in: codes } }).lean() : [];
+  const nameByCode = new Map(members.map((member) => [cleanUpper(member.code), cleanText(member.name)]));
+  const unknown = codes.filter((code) => !nameByCode.has(code));
+  if (unknown.length) {
+    const error = new Error(`Unknown member code(s) for directors: ${unknown.join(', ')}.`);
+    error.statusCode = 400;
+    throw error;
+  }
   const seen = new Set();
-  for (const name of toArray(names).map((item) => cleanText(item)).filter(Boolean)) {
-    const key = name.toLowerCase();
+  const result = [];
+  for (const item of items) {
+    const director = item.memberCode ? { memberCode: item.memberCode, name: nameByCode.get(item.memberCode) } : item;
+    const key = directorKey(director);
     if (seen.has(key)) continue;
     seen.add(key);
-    wanted.push(name);
+    result.push(director);
   }
-  const rows = await CommitteeDirector.find({ committeeKey }).lean();
-  const unused = [...rows];
-  for (const [index, name] of wanted.entries()) {
-    const at = unused.findIndex((row) => cleanText(row.name).toLowerCase() === name.toLowerCase());
+  return result;
+}
+
+// Makes the director rows exactly the list, in that order: a row is kept for a
+// director still there (re-ordered, name refreshed), created for a new one,
+// soft-deleted for one taken off. The same member (or name) twice counts once.
+async function saveCommitteeDirectors(input = [], committeeKey = COMMITTEE_KEY) {
+  const wanted = await normalizeCommitteeDirectors(input);
+  const unused = await CommitteeDirector.find({ committeeKey }).lean();
+  for (const [index, director] of wanted.entries()) {
+    const key = directorKey(director);
+    const at = unused.findIndex((row) => directorKey({ memberCode: row.memberCode, name: row.name }) === key);
     const orderIndex = index + 1;
     if (at >= 0) {
       const [row] = unused.splice(at, 1);
-      if (Number(row.orderIndex) !== orderIndex || cleanText(row.name) !== name) {
-        await CommitteeDirector.updateOne({ id: String(row.id || row._id) }, { $set: { orderIndex, name } });
+      if (Number(row.orderIndex) !== orderIndex || cleanText(row.name) !== director.name) {
+        await CommitteeDirector.updateOne({ id: String(row.id || row._id) }, { $set: { orderIndex, name: director.name } });
       }
     } else {
-      await CommitteeDirector.create({ committeeKey, name, designation: 'Director', orderIndex });
+      await CommitteeDirector.create({ committeeKey, memberCode: director.memberCode || null, name: director.name, designation: 'Director', orderIndex });
     }
   }
   for (const row of unused) await CommitteeDirector.deleteOne({ id: String(row.id || row._id) });
@@ -1220,7 +1249,7 @@ const RESOURCE_DEFS = {
         viceChairman2: cleanText(data.viceChairman2),
         // Not a committees column: saved to committee_directors
         // (saveCommitteeDirectors), dropped from this row before it is written.
-        directors: toArray(data.directors).map((item) => cleanText(item)).filter(Boolean),
+        directors: toArray(data.directors),
         payload: toMixed(data.payload, {})
       };
     }

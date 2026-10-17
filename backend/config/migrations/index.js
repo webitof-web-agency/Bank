@@ -264,6 +264,28 @@ const MIGRATIONS = [
       await db.query('DROP SEQUENCE IF EXISTS "members_membershipNo_seq"');
       return { kept, dropped: true };
     }
+  },
+  {
+    // Committee directors are now kept by member code (two members can share
+    // a name). Directors saved by name before link to their member when
+    // exactly one member has that name; a name shared by several, or no
+    // member's, is left as typed for the operator to pick.
+    name: '2026-10-17-committee-directors-member-code',
+    async run(db) {
+      const linked = (await db.query(`
+        UPDATE committee_directors d SET "memberCode" = m.code, name = m.name, "updatedAt" = now()
+          FROM (
+            SELECT upper(btrim(name)) AS key, min(code) AS code, min(name) AS name
+              FROM members WHERE "deletedAt" IS NULL AND coalesce(btrim(name), '') <> ''
+             GROUP BY upper(btrim(name)) HAVING count(*) = 1
+          ) m
+         WHERE coalesce(btrim(d."memberCode"), '') = '' AND d."deletedAt" IS NULL
+           AND upper(btrim(d.name)) = m.key`)).rowCount;
+      const left = (await db.query(`
+        SELECT count(*)::int AS n FROM committee_directors
+         WHERE coalesce(btrim("memberCode"), '') = '' AND "deletedAt" IS NULL`)).rows[0].n;
+      return { linked, leftByName: left };
+    }
   }
 ];
 

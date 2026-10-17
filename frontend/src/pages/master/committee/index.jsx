@@ -15,12 +15,19 @@ const EMPTY_FORM = {
   payload: {}
 };
 
+// A director is { memberCode, name } (older answers were plain names).
+export function toDirector(item) {
+  return item && typeof item === 'object'
+    ? { memberCode: String(item.memberCode || '').toUpperCase(), name: String(item.name || '') }
+    : { memberCode: '', name: String(item || '') };
+}
+
 function buildFormFromRecord(record = {}) {
   return {
     chairman: record.chairman || '',
     viceChairman1: record.viceChairman || '',
     viceChairman2: record.viceChairman2 || record.payload?.viceChairman2 || '',
-    directors: Array.isArray(record.directors) ? record.directors : [],
+    directors: Array.isArray(record.directors) ? record.directors.map(toDirector).filter((d) => d.name || d.memberCode) : [],
     payload: record.payload || {}
   };
 }
@@ -69,7 +76,7 @@ export function CommitteePage() {
         chairman: draft.chairman.trim(),
         viceChairman: draft.viceChairman1.trim(),
         viceChairman2: draft.viceChairman2.trim(),
-        directors: draft.directors
+        directors: draft.directors.map(({ memberCode, name }) => (memberCode ? { memberCode, name } : { name }))
       };
       const response = await api.banking.updateMaster('/masters/committee', token, payload);
       const nextRecord = response.data || response;
@@ -150,7 +157,7 @@ export function CommitteePage() {
 
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Vice Chairman 2</p>
-              <p className="mt-2 text-sm font-semibold text-slate-900">{record?.payload?.viceChairman2 || '-'}</p>
+              <p className="mt-2 text-sm font-semibold text-slate-900">{record?.viceChairman2 || record?.payload?.viceChairman2 || '-'}</p>
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -160,10 +167,11 @@ export function CommitteePage() {
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
                 {Array.isArray(record?.directors) && record.directors.length > 0 ? (
-                  record.directors.map((name) => (
-                    <span key={name} className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-[12px] font-medium text-slate-700">
+                  record.directors.map(toDirector).map((director, index) => (
+                    <span key={`${director.memberCode || director.name}-${index}`} className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-[12px] font-medium text-slate-700">
                       <User size={12} className="mr-1.5" />
-                      {name}
+                      {director.name}
+                      {director.memberCode ? <span className="ml-1 text-slate-400">({director.memberCode})</span> : null}
                     </span>
                   ))
                 ) : (

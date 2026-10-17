@@ -233,6 +233,9 @@ const TABLE_SCHEMAS = {
 
   committee_directors: schema({
     committeeKey: T.string(120),
+    // The member who is the director (two members can share a name); empty
+    // for a name typed in or migrated without one.
+    memberCode: T.string(80),
     name: T.string(191),
     designation: T.string(120),
     orderIndex: T.number,

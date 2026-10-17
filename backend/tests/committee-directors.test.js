@@ -1,50 +1,70 @@
 // Managing Committee: the directors picked on the page are saved (they live in
 // committee_directors, one row each, in order) and come back on the next load.
 // Before, the list was put on the committees row, which has no such column,
-// and was silently dropped.
+// and was silently dropped. A director is kept by member code: two members
+// can share a name.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const banking = require('../services/banking.service');
-const { CommitteeDirector } = require('../models/banking.models');
+const { Branch, CommitteeDirector, Member } = require('../models/banking.models');
 const { initializeDatabase, closeDatabase } = require('../config/postgres');
 
+const RUN = `C${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
 const admin = { actorUser: { isSuperAdmin: true } };
 const ctx = {};
 const directorsNow = async () => (await banking.getSingle('committee')).directors;
+const names = (list) => list.map((d) => d.name);
 
 test.after(async () => { if (closeDatabase) await closeDatabase(); });
 
-test('setup: remember the committee as it was', async () => {
+test('setup: remember the committee; two members with the same name', async () => {
   await initializeDatabase();
   ctx.before = await banking.getSingle('committee');
+  await Branch.create({ code: `${RUN}B`, label: 'COMMITTEE TEST' });
+  const make = async (n) => (await Member.create({ code: `${RUN}${n}`, name: `DILIP ${RUN} SAHU`, branchCode: `${RUN}B`, membershipDate: '2020-04-01' })).code;
+  ctx.first = await make(1);
+  ctx.second = await make(2);
 });
 
-test('directors picked on the page are saved, in order, and load again', async () => {
+test('two members with the same name are two directors, each by code', async () => {
   const saved = await banking.updateResource('committee', null, {
     chairman: 'SHRI DEV KUMAR VYASH', viceChairman: 'SHRI KULESHWAR YADAW', viceChairman2: 'SMT. KIRAN BANDHE',
-    directors: ['SHRI VIDHAN TIWARI', 'SHRI YUVRAJ DUBEY', 'SMT. NEETU RATHOUR']
+    directors: [{ memberCode: ctx.first }, { memberCode: ctx.second, name: 'anything the browser sent' }]
   }, admin);
-  assert.deepEqual(saved.directors, ['SHRI VIDHAN TIWARI', 'SHRI YUVRAJ DUBEY', 'SMT. NEETU RATHOUR'], 'the save answers with them');
-  assert.deepEqual(await directorsNow(), ['SHRI VIDHAN TIWARI', 'SHRI YUVRAJ DUBEY', 'SMT. NEETU RATHOUR'], 'and the next load has them');
-  assert.equal((await banking.getSingle('committee')).chairman, 'SHRI DEV KUMAR VYASH');
-});
+  assert.deepEqual(saved.directors, [
+    { memberCode: ctx.first, name: `DILIP ${RUN} SAHU` },
+    { memberCode: ctx.second, name: `DILIP ${RUN} SAHU` }
+  ], 'saved, the name from the member record');
+  assert.deepEqual(await directorsNow(), saved.directors, 'and the next load has them');
+  const committee = await banking.getSingle('committee');
+  assert.equal(committee.viceChairman2, 'SMT. KIRAN BANDHE');
 
-test('re-order, remove and add; a name twice counts once', async () => {
-  await banking.updateResource('committee', null, { directors: ['SMT. NEETU RATHOUR', 'SHRI VIDHAN TIWARI', 'smt. neetu rathour', 'SMT. MADHU YADAW'] }, admin);
-  assert.deepEqual(await directorsNow(), ['SMT. NEETU RATHOUR', 'SHRI VIDHAN TIWARI', 'SMT. MADHU YADAW']);
-  const removed = (await CommitteeDirector.find({ committeeKey: 'default', name: 'SHRI YUVRAJ DUBEY' }).withDeleted().lean())[0];
+  // Taking one off leaves the other.
+  await banking.updateResource('committee', null, { directors: [{ memberCode: ctx.second }] }, admin);
+  assert.deepEqual((await directorsNow()).map((d) => d.memberCode), [ctx.second]);
+  const removed = (await CommitteeDirector.find({ committeeKey: 'default', memberCode: ctx.first }).withDeleted().lean())[0];
   assert.ok(removed?.deletedAt, 'a director taken off is soft-deleted (kept on record)');
+
+  await assert.rejects(banking.updateResource('committee', null, { directors: [{ memberCode: `${RUN}NONE` }] }, admin), /Unknown member code/);
 });
 
-test('saving the other fields leaves the directors as they are', async () => {
+test('names without a member (typed / migrated) still work; order kept; duplicates count once', async () => {
+  await banking.updateResource('committee', null, {
+    directors: ['SMT. NEETU RATHOUR', { memberCode: ctx.first }, 'smt. neetu rathour', { memberCode: ctx.first }, 'SHRI VIDHAN TIWARI']
+  }, admin);
+  assert.deepEqual(names(await directorsNow()), ['SMT. NEETU RATHOUR', `DILIP ${RUN} SAHU`, 'SHRI VIDHAN TIWARI']);
+});
+
+test('saving the other fields leaves the directors as they are; an empty list clears them', async () => {
   await banking.updateResource('committee', null, { chairman: 'SHRI DEV KUMAR VYASH' }, admin);
-  assert.deepEqual(await directorsNow(), ['SMT. NEETU RATHOUR', 'SHRI VIDHAN TIWARI', 'SMT. MADHU YADAW']);
+  assert.equal((await directorsNow()).length, 3);
   await banking.updateResource('committee', null, { directors: [] }, admin);
-  assert.deepEqual(await directorsNow(), [], 'an empty list clears them');
+  assert.deepEqual(await directorsNow(), []);
 });
 
 test('cleanup: the committee as it was', async () => {
   const { chairman, viceChairman, viceChairman2, directors } = ctx.before || {};
   await banking.updateResource('committee', null, { chairman, viceChairman, viceChairman2, directors: directors || [] }, admin);
-  assert.deepEqual(await directorsNow(), directors || []);
+  for (const code of [ctx.first, ctx.second]) await Member.deleteOne({ code });
+  await Branch.deleteOne({ code: `${RUN}B` });
 });
