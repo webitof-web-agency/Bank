@@ -909,6 +909,46 @@ function sanitizeSingletonResponse(resource, doc) {
   return resource === 'society' ? sanitizeSocietyResponse(doc) : toResponse(doc);
 }
 
+// The committee's directors live in committee_directors (one row each, in
+// order); the committees row has no directors column, so a list set on it was
+// silently dropped on save.
+const COMMITTEE_KEY = 'default';
+
+async function getCommitteeDirectors(committeeKey = COMMITTEE_KEY) {
+  return (await CommitteeDirector.find({ committeeKey }).sort({ orderIndex: 1, createdAt: 1 }).lean())
+    .map((row) => cleanText(row.name)).filter(Boolean);
+}
+
+// Makes the director rows exactly `names`, in that order: a row is kept for a
+// name still there (re-ordered), created for a new one, soft-deleted for one
+// taken off. The same name twice (any case) counts once.
+async function saveCommitteeDirectors(names = [], committeeKey = COMMITTEE_KEY) {
+  const wanted = [];
+  const seen = new Set();
+  for (const name of toArray(names).map((item) => cleanText(item)).filter(Boolean)) {
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    wanted.push(name);
+  }
+  const rows = await CommitteeDirector.find({ committeeKey }).lean();
+  const unused = [...rows];
+  for (const [index, name] of wanted.entries()) {
+    const at = unused.findIndex((row) => cleanText(row.name).toLowerCase() === name.toLowerCase());
+    const orderIndex = index + 1;
+    if (at >= 0) {
+      const [row] = unused.splice(at, 1);
+      if (Number(row.orderIndex) !== orderIndex || cleanText(row.name) !== name) {
+        await CommitteeDirector.updateOne({ id: String(row.id || row._id) }, { $set: { orderIndex, name } });
+      }
+    } else {
+      await CommitteeDirector.create({ committeeKey, name, designation: 'Director', orderIndex });
+    }
+  }
+  for (const row of unused) await CommitteeDirector.deleteOne({ id: String(row.id || row._id) });
+  return getCommitteeDirectors(committeeKey);
+}
+
 async function syncRecordDocumentsFolder(resource, record, createdBy = null) {
   if (!record?._id || !['employees', 'members'].includes(resource)) return null;
 
@@ -1178,6 +1218,8 @@ const RESOURCE_DEFS = {
         chairman: cleanText(data.chairman),
         viceChairman: cleanText(data.viceChairman),
         viceChairman2: cleanText(data.viceChairman2),
+        // Not a committees column: saved to committee_directors
+        // (saveCommitteeDirectors), dropped from this row before it is written.
         directors: toArray(data.directors).map((item) => cleanText(item)).filter(Boolean),
         payload: toMixed(data.payload, {})
       };
@@ -1723,12 +1765,22 @@ async function updateResource(resource, id, data = {}, meta = {}) {
     if (meta.actorUserId) {
       payload.updatedByUserId = meta.actorUserId;
     }
+    // Directors are their own rows: saved only when the request sends the
+    // list, so a save of the other fields never clears them.
+    let directors = null;
+    if (resource === 'committee') {
+      delete payload.directors;
+      directors = Object.prototype.hasOwnProperty.call(data, 'directors')
+        ? await saveCommitteeDirectors(data.directors)
+        : await getCommitteeDirectors();
+    }
     const record = await def.model.findOneAndUpdate(
       def.uniqueQuery || { key: 'default' },
       buildUpsertUpdate(def.uniqueQuery || { key: 'default' }, payload),
       { new: true, upsert: true, runValidators: true }
     ).lean();
     const response = record ? sanitizeSingletonResponse(resource, record) : null;
+    if (response && directors) response.directors = directors;
     if (response) {
       await notifySafely(buildResourceNotificationPayload(resource, 'updated', response, meta));
     }
@@ -5548,7 +5600,10 @@ async function getSingle(resource) {
   const record = await def.model.findOne(def.uniqueQuery || { key: 'default' }).lean();
   // sanitizeSingletonResponse re-signs the society logo/watermark links;
   // the stored ones carry a file token that expired 2h after upload.
-  return record ? sanitizeSingletonResponse(resource, record) : null;
+  if (!record) return null;
+  const response = sanitizeSingletonResponse(resource, record);
+  if (resource === 'committee') response.directors = await getCommitteeDirectors();
+  return response;
 }
 
 // ---------------------------------------------------------------------------
