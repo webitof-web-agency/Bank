@@ -34,6 +34,15 @@ function formatCurrency(value) {
   return `₹ ${formatNumber(value)}`;
 }
 
+// Short form for tight spots (the donut's centre): ₹19.66 Cr, ₹48.38 L.
+function formatCompactCurrency(value) {
+  const number = Number(value || 0);
+  const abs = Math.abs(number);
+  if (abs >= 1e7) return `₹ ${(number / 1e7).toFixed(2)} Cr`;
+  if (abs >= 1e5) return `₹ ${(number / 1e5).toFixed(2)} L`;
+  return formatCurrency(Math.round(number));
+}
+
 function formatDate(value) {
   if (!value) return '-';
   const date = new Date(value);
@@ -76,7 +85,9 @@ function countText(loading, value) {
 function ChangeBadge({ value, tone }) {
   if (value == null) return null;
   const up = value >= 0;
-  return <span className={cn('text-[11px] font-bold', tone)}>{up ? '↑' : '↓'} {Math.abs(value)}%</span>;
+  // Against a near-empty period the change runs into thousands of %: shown capped.
+  const text = Math.abs(value) > 999 ? '>999' : Math.abs(value);
+  return <span className={cn('text-[11px] font-bold', tone)} title={`${value}%`}>{up ? '↑' : '↓'} {text}%</span>;
 }
 
 export function DashboardPage() {
@@ -295,16 +306,16 @@ export function DashboardPage() {
             <div className="flex flex-col justify-between">
               <div>
                 <p className="text-[12px] font-semibold text-slate-500">Income vs Expense</p>
-                <div className="mt-3 flex items-end gap-12">
+                <div className="mt-3 flex flex-wrap items-end gap-x-8 gap-y-3">
                   <div>
-                    <p className="text-xl font-bold text-slate-900">{formatCurrency(selectedTotals.income)}</p>
+                    <p className="whitespace-nowrap text-lg font-bold text-slate-900 xl:text-xl">{formatCurrency(selectedTotals.income)}</p>
                     <div className="flex items-center gap-2 mt-1">
                       <p className="text-[11px] text-slate-500">Total Income</p>
                       <ChangeBadge value={selectedTotals.incomeChange} tone="text-emerald-500" />
                     </div>
                   </div>
                   <div>
-                    <p className="text-xl font-bold text-slate-900">{formatCurrency(selectedTotals.expense)}</p>
+                    <p className="whitespace-nowrap text-lg font-bold text-slate-900 xl:text-xl">{formatCurrency(selectedTotals.expense)}</p>
                     <div className="flex items-center gap-2 mt-1">
                       <p className="text-[11px] text-slate-500">Total Expense</p>
                       <ChangeBadge value={selectedTotals.expenseChange} tone="text-rose-500" />
@@ -354,7 +365,7 @@ export function DashboardPage() {
                     </RechartsPieChart>
                   </ResponsiveContainer>
                   <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                    <p className="text-[16px] font-bold text-slate-900">{formatCurrency(fundTotal)}</p>
+                    <p className="max-w-[96px] truncate text-[15px] font-bold text-slate-900" title={formatCurrency(fundTotal)}>{formatCompactCurrency(fundTotal)}</p>
                     <p className="text-[10px] font-medium text-slate-500">Total</p>
                   </div>
                 </div>
@@ -455,7 +466,7 @@ export function DashboardPage() {
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary,#1661F6)]">
               <Landmark size={22} strokeWidth={1.5} />
             </div>
-            Recent Bank Transactions
+            Recent Bank Entries
           </h3>
           <div className="overflow-x-auto">
             <table className="w-full text-left">
