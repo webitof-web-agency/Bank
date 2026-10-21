@@ -46,6 +46,13 @@ test('member list: All lists everyone; Active and Branch-wise only current; Dism
   assert.deepEqual(await codes('active'), [other.code]);
   assert.deepEqual(await codes('branch'), [other.code]);
   assert.deepEqual(await codes('dismembered'), [ctx.member.code]);
+
+  // By the selected FY: the member left on 2026-10-10.
+  const inFy = async (listType, fromDate, uptoDate) => (await banking.buildAllMemberListReport({ branchCode: BRANCH, listType, fromDate, uptoDate })).map((r) => r.code).sort();
+  assert.deepEqual(await inFy('dismembered', '2026-04-01', '2027-03-31'), [ctx.member.code], 'left in FY 2026-27');
+  assert.deepEqual(await inFy('dismembered', '2025-04-01', '2026-03-31'), [], 'not in FY 2025-26');
+  assert.deepEqual(await inFy('active', '2025-04-01', '2026-03-31'), [ctx.member.code, other.code].sort(), 'still a member at the end of FY 2025-26');
+  assert.deepEqual(await inFy('active', '2026-04-01', '2027-03-31'), [other.code]);
 });
 
 test('undoing the dismemberment makes the member Active again and lets them sign in', async () => {

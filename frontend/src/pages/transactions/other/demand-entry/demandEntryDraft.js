@@ -79,7 +79,7 @@ export function draftFromEntry(entry = {}) {
   };
 }
 
-// Load Members: adds the branch's members not already in the grid, with their
+// Load Demand: adds the branch's members not already in the grid, with their
 // configured demand split; existing lines (and recovered ones) are kept.
 export function mergeLoadedMembers(lines = [], loaded = []) {
   const present = new Set(lines.map((line) => String(line.memberCode).toUpperCase()));

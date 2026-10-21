@@ -2133,11 +2133,23 @@ function legacyLedgerEntries(raw = {}, codeByAccId = new Map(), cashAccId = '') 
 
 // Map of sourceDatabase -> [{ date, entries }], plus the cutover DB name.
 // Archive tables are read-only, so this is cached like the party index.
+// Calls that arrive while it is loading share that one load: many at once
+// (the dashboard's month-by-month figures for a closed FY) would otherwise
+// each read the whole archive and take every pooled connection.
+let legacyLedgerEntriesLoading = null;
 async function loadLegacyLedgerEntries(ledgers = []) {
   const now = Date.now();
   if (legacyLedgerEntriesCache && (now - legacyLedgerEntriesLoadedAt) < LEGACY_LEDGER_CACHE_TTL_MS) {
     return legacyLedgerEntriesCache;
   }
+  if (!legacyLedgerEntriesLoading) {
+    legacyLedgerEntriesLoading = readLegacyLedgerEntries(ledgers, now)
+      .finally(() => { legacyLedgerEntriesLoading = null; });
+  }
+  return legacyLedgerEntriesLoading;
+}
+
+async function readLegacyLedgerEntries(ledgers, now) {
 
   const codeByAccId = new Map();
   let cutoverDb = '';
@@ -2569,69 +2581,138 @@ async function buildLedgerTransactionStatement(ledger, { dateFrom = '', dateTo =
   return rows;
 }
 
+// Dashboard: counts and the latest entries for the selected FY. Members are
+// the active ones; employees come from the employee master (not login users);
+// "bank" entries are the Bank section's vouchers (bank work is saved as
+// vouchers), and bank accounts are the bank ledgers.
 async function getDashboardSummary({ user = {}, fyStart = '', fyEnd = '' } = {}) {
   const branchCode = resolveBranchCode(user);
-  const branchQuery = branchCode ? { code: branchCode } : {};
-  const userQuery = branchCode ? { code: { $ne: '' }, branchCode } : { code: { $ne: '' } };
-  
   const voucherQuery = branchCode ? { branchCode } : {};
-  const txQuery = branchCode ? { branchCode } : {};
-  
   if (fyStart || fyEnd) {
     voucherQuery.date = {};
-    txQuery.date = {};
-    if (fyStart) {
-      voucherQuery.date.$gte = cleanText(fyStart);
-      txQuery.date.$gte = cleanText(fyStart);
-    }
-    if (fyEnd) {
-      voucherQuery.date.$lte = cleanText(fyEnd);
-      txQuery.date.$lte = cleanText(fyEnd);
-    }
+    if (fyStart) voucherQuery.date.$gte = cleanText(fyStart);
+    if (fyEnd) voucherQuery.date.$lte = cleanText(fyEnd);
   }
-  const [
-    society,
-    branches,
-    members,
-    employees,
-    ledgers,
-    rates,
-    bankAccounts,
-    demands,
-    noInterestMembers,
-    vouchers,
-    bankTransactions
-  ] = await Promise.all([
+  const [society, branches, members, employees, ledgers, vouchers] = await Promise.all([
     Society.findOne({ key: 'default' }).lean(),
-    Branch.countDocuments(branchQuery),
-    Member.countDocuments(branchCode ? { branchCode } : {}),
-    User.countDocuments(userQuery),
-    Ledger.countDocuments({}),
-    Rate.countDocuments({}),
-    BankAccount.countDocuments({}),
-    DemandList.countDocuments(branchCode ? { branchCode } : {}),
-    NoInterestMember.countDocuments(branchCode ? { branchCode } : {}),
-    Voucher.find(voucherQuery).sort({ createdAt: -1 }).limit(10).lean(),
-    BankTransaction.find(txQuery).sort({ createdAt: -1 }).limit(10).lean()
+    Branch.countDocuments(branchCode ? { code: branchCode } : {}),
+    Member.find(branchCode ? { branchCode } : {}).lean(),
+    Employee.countDocuments(applyBranchScope({}, 'employees', user)),
+    Ledger.find({}).lean(),
+    Voucher.find(voucherQuery).lean()
   ]);
+  const newestFirst = (a, b) => cleanText(b.createdAt).localeCompare(cleanText(a.createdAt)) || cleanText(b.date).localeCompare(cleanText(a.date));
+  const sorted = [...vouchers].sort(newestFirst);
+  const bankVouchers = filterVouchersBySection(sorted, 'bank');
 
   return {
     society: society ? toResponse(society) : null,
     headOffice: society ? toResponse(society) : null,
     counts: {
       branches,
-      members,
+      members: members.filter((member) => !isDismemberedMember(member)).length,
       employees,
-      ledgers,
-      rates,
-      bankAccounts,
-      demands,
-      noInterestMembers,
-      vouchers: await Voucher.countDocuments(voucherQuery),
-      bankTransactions: await BankTransaction.countDocuments(txQuery)
+      ledgers: ledgers.length,
+      bankAccounts: ledgers.filter((ledger) => /^BANK_/.test(cleanUpper(ledger.semanticRole))).length,
+      vouchers: vouchers.length,
+      bankTransactions: bankVouchers.length
     },
-    recentVouchers: vouchers.map((voucher) => sanitizeVoucherResponse(voucher)),
-    recentBankTransactions: bankTransactions.map((transaction) => toResponse(transaction))
+    recentVouchers: sorted.slice(0, 10).map((voucher) => sanitizeVoucherResponse(voucher)),
+    recentBankTransactions: bankVouchers.slice(0, 10).map((voucher) => sanitizeVoucherResponse(voucher))
+  };
+}
+
+// Dashboard analytics from the books (journal lines / the legacy archive for
+// a closed FY), as on today within the selected FY (its 31 March for a past
+// one):
+//   - income / expense of a period: the Income ledgers' net credit and the
+//     Expense ledgers' net debit over it — this month, last month or the FY
+//     so far — with the change on the period before (none for the FY);
+//   - the FY month by month;
+//   - fund position: where the society's money sits on that date (Cash-In-
+//     Hand, Bank Saving, loans to members, staff loans and advances).
+const FUND_POSITION = [
+  { key: 'cash', label: 'Cash in Hand', roles: ['CASH'] },
+  { key: 'bank', label: 'Bank Balances', roles: ['BANK_SAVING'] },
+  { key: 'memberLoans', label: 'Loans to Members', roles: ['REGULAR_LOAN', 'LOAN_AGAINST_DEPOSIT'] },
+  { key: 'staffAdvances', label: 'Staff Loans & Advances', roles: ['EMPLOYEE_HOUSING_LOAN', 'EMPLOYEE_VEHICLE_LOAN', 'EMPLOYEE_GRAIN_ADVANCE', 'EMPLOYEE_ADVANCE'] }
+];
+
+function shiftMonth(day, months) {
+  const date = new Date(`${day.slice(0, 7)}-01T00:00:00Z`);
+  date.setUTCMonth(date.getUTCMonth() + months);
+  return date.toISOString().slice(0, 10);
+}
+
+function monthEnd(day) {
+  return isoDay(new Date(new Date(`${shiftMonth(day, 1)}T00:00:00Z`).getTime() - 86400000));
+}
+
+async function incomeExpenseOf(dateFrom, dateTo, branchCode) {
+  if (!dateFrom || !dateTo || dateFrom > dateTo) return { income: 0, expense: 0 };
+  const snapshots = await getLedgerSnapshots({ dateFrom, dateTo, branchCode });
+  let income = 0;
+  let expense = 0;
+  for (const row of snapshots) {
+    if (row.nature === 'INCOME') income += toPaise(row.totalCr) - toPaise(row.totalDr);
+    if (row.nature === 'EXPENSE') expense += toPaise(row.totalDr) - toPaise(row.totalCr);
+  }
+  return { income: toRupees(income), expense: toRupees(expense) };
+}
+
+function percentChange(current, previous) {
+  if (!previous) return null;
+  return Number((((current - previous) / Math.abs(previous)) * 100).toFixed(1));
+}
+
+async function buildDashboardAnalytics({ user = {}, fyStart = '', fyEnd = '' } = {}) {
+  const branchCode = resolveBranchCode(user);
+  const start = cleanText(fyStart).slice(0, 10);
+  const end = cleanText(fyEnd).slice(0, 10);
+  const today = isoDay(new Date());
+  const asOn = start && end ? (today < start ? start : today > end ? end : today) : today;
+  const thisMonthStart = `${asOn.slice(0, 7)}-01`;
+  const lastMonthStart = shiftMonth(asOn, -1);
+  const clampStart = (day) => (start && day < start ? start : day);
+
+  // The FY's months up to the as-on month, then the comparison windows.
+  const months = [];
+  for (let day = start || thisMonthStart; day <= asOn; day = shiftMonth(day, 1)) months.push(day.slice(0, 7) + '-01');
+  // One window after another: run together they would hold a pooled
+  // connection each and starve every other request.
+  const monthly = [];
+  for (const first of months) monthly.push(await incomeExpenseOf(first, monthEnd(first) < asOn ? monthEnd(first) : asOn, branchCode));
+  const thisMonth = await incomeExpenseOf(clampStart(thisMonthStart), asOn, branchCode);
+  const lastMonth = await incomeExpenseOf(lastMonthStart, monthEnd(lastMonthStart), branchCode);
+  const monthBefore = await incomeExpenseOf(shiftMonth(asOn, -2), monthEnd(shiftMonth(asOn, -2)), branchCode);
+  const fyToDate = await incomeExpenseOf(start || thisMonthStart, asOn, branchCode);
+  const period = (totals, previous) => ({
+    ...totals,
+    incomeChange: previous ? percentChange(totals.income, previous.income) : null,
+    expenseChange: previous ? percentChange(totals.expense, previous.expense) : null
+  });
+
+  const ledgers = await Ledger.find({}).lean();
+  const snapshots = await getLedgerSnapshots({ uptoDate: asOn, branchCode });
+  const roleByCode = new Map(ledgers.map((ledger) => [cleanText(ledger.code), cleanUpper(ledger.semanticRole)]));
+  const fundPosition = FUND_POSITION.map(({ key, label, roles }) => ({
+    key,
+    label,
+    // Asset ledgers: the balance is the debit side (signedBalance is credit-positive).
+    value: toRupees(snapshots
+      .filter((row) => roles.includes(roleByCode.get(cleanText(row.code))))
+      .reduce((sum, row) => sum - toPaise(row.signedBalance), 0))
+  }));
+
+  return {
+    asOn,
+    periods: {
+      thisMonth: { label: 'This Month', from: clampStart(thisMonthStart), to: asOn, ...period(thisMonth, lastMonth) },
+      lastMonth: { label: 'Last Month', from: lastMonthStart, to: monthEnd(lastMonthStart), ...period(lastMonth, monthBefore) },
+      thisYear: { label: 'This FY', from: start, to: asOn, ...period(fyToDate, null) }
+    },
+    monthly: months.map((first, index) => ({ month: first.slice(0, 7), ...monthly[index] })),
+    fundPosition
   };
 }
 
@@ -3038,6 +3119,56 @@ function getPartyMemberCode(voucher) {
   }
   return '';
 }
+
+// Transfer vouchers, outside recovery, in one entry per member:
+//   - Paid to Member: the member's saved Share / CD / SSA paid out to them
+//     (a dismembered member's settlement, or an excess left in a head), so
+//     each allocation comes off that head — a debit;
+//   - Recover From Member: the member pays the society towards their Loan /
+//     LAD, so each allocation comes off what they owe — a credit.
+// Paise per member bucket, for the ledger rows and the balances.
+const TRANSFER_VOUCHER_BUCKETS = {
+  'transfer-voucher-paid': { share: 'share', cd: 'compulsoryDeposit', ssa: 'specialDeposit' },
+  'transfer-voucher-recover': { loan: 'loan', lad: 'loanAgainstDeposit' }
+};
+function transferVoucherAmounts(voucher = {}) {
+  const buckets = TRANSFER_VOUCHER_BUCKETS[cleanLower(voucher.details?.key)] || {};
+  const amounts = Object.fromEntries(Object.values(buckets).map((bucket) => [bucket, 0]));
+  for (const row of toArray(voucher.details?.allocations)) {
+    const bucket = buckets[cleanLower(row?.head || row?.key)];
+    if (bucket) amounts[bucket] += toPaise(row.amount || 0);
+  }
+  return amounts;
+}
+
+// Save check: Paid to Member can't take a head below 0, and Recover From
+// Member can't cut more than the loan outstanding. The balance is today's
+// (every live movement), with this voucher's own earlier version added back
+// when it is being edited (`previous`).
+async function assertTransferVoucherWithinBalance(payload = {}, previous = null) {
+  const key = cleanLower(payload.details?.key);
+  if (!TRANSFER_VOUCHER_BUCKETS[key]) return;
+  const code = cleanUpper(payload.partyCode);
+  const member = code ? await Member.findOne({ code }).lean() : null;
+  if (!member) throw recoveryHttpError('Select the member.');
+  const [period] = await computeMemberPeriodBalances({ members: [member], withHistory: false });
+  const own = previous && cleanLower(previous.details?.key) === key && cleanUpper(previous.partyCode) === code ? transferVoucherAmounts(previous) : {};
+  const labels = { share: 'Share', compulsoryDeposit: 'Compulsory Deposit', specialDeposit: 'SSA', loan: 'Regular Loan', loanAgainstDeposit: 'Loan Against Deposit' };
+  const problems = [];
+  for (const [bucket, paise] of Object.entries(transferVoucherAmounts(payload))) {
+    if (paise <= 0) continue;
+    // Closings are signed paise, credit-positive: a deposit's balance is the
+    // closing, a loan's outstanding is minus the closing.
+    const closing = Math.round(Number(period?.buckets?.[bucket]?.closing) || 0);
+    const available = (key === 'transfer-voucher-paid' ? closing : -closing) + (own[bucket] || 0);
+    if (paise > available) {
+      problems.push(key === 'transfer-voucher-paid'
+        ? `${labels[bucket]} paid ${toRupees(paise)} is more than the ${toRupees(Math.max(0, available))} the member has in it.`
+        : `${labels[bucket]} recovered ${toRupees(paise)} is more than the ${toRupees(Math.max(0, available))} outstanding.`);
+    }
+  }
+  if (problems.length) throw recoveryHttpError(`Member ${code}: ${problems.join(' ')}`);
+}
 // Legacy loan/CD/SSA payments (TransType 1/2/3) carry the member's AccID
 // directly on the voucher; Recovery (TransType 5) never does (legacy left it
 // "0"), so its component amounts + date come from legacy_historical_recovery
@@ -3094,6 +3225,10 @@ function liveMemberLedgerRows(member, vouchers = [], recoveryLinesAll = []) {
         row.specialDeposit.debit = toPaise(components.specialDeposit || components.ssa || voucher.amount);
       } else if (key === 'share-paid-member') {
         row.share.debit = toPaise(components.share || voucher.amount);
+      } else if (key === 'transfer-voucher-paid') {
+        for (const [bucket, paise] of Object.entries(transferVoucherAmounts(voucher))) row[bucket].debit = paise;
+      } else if (key === 'transfer-voucher-recover') {
+        for (const [bucket, paise] of Object.entries(transferVoucherAmounts(voucher))) row[bucket].credit = paise;
       } else if (cleanLower(voucher.accent) === 'pink' || cleanLower(voucher.transactionType) === 'payment') {
         row.loan.debit = toPaise(voucher.amount);
       } else {
@@ -4122,6 +4257,10 @@ async function computeMemberPeriodBalances({ members = [], dateFrom = '', dateTo
           row.specialDeposit.debit = toPaise(components.specialDeposit || components.ssa || voucher.amount);
         } else if (key === 'share-paid-member') {
           row.share.debit = toPaise(components.share || voucher.amount);
+        } else if (key === 'transfer-voucher-paid') {
+          for (const [bucket, paise] of Object.entries(transferVoucherAmounts(voucher))) row[bucket].debit = paise;
+        } else if (key === 'transfer-voucher-recover') {
+          for (const [bucket, paise] of Object.entries(transferVoucherAmounts(voucher))) row[bucket].credit = paise;
         } else if (cleanLower(voucher.accent) === 'pink' || cleanLower(voucher.transactionType) === 'payment') {
           row.loan.debit = toPaise(voucher.amount);
         } else {
@@ -5016,15 +5155,59 @@ function isAllBranches(branchCode, user = {}) {
   return cleanUpper(branchCode) === ALL_BRANCHES && !getScopedBranchCode(user);
 }
 
-async function getDemandEntryMembers({ branchCode = '', user = {} } = {}) {
+// A member's demand is raised once per month. Members whose month is already
+// taken: a line in another demand list of that month (any branch), or that
+// month recovered from their Monthly Demand Data. { CODE: 'why' }.
+// excludeId: the list being edited (its own lines don't count).
+async function membersDemandedInMonth(month, year, excludeId = '') {
+  const monthNumber = Number(month) || 0;
+  const yearText = cleanText(year);
+  const taken = new Map();
+  if (!monthNumber || !yearText) return taken;
+  const lists = (await DemandList.find({}).lean()).filter((list) => {
+    if (excludeId && String(list.id || list._id) === String(excludeId)) return false;
+    const period = demandPeriod(list);
+    return period.month === monthNumber && period.year === yearText;
+  });
+  if (lists.length) {
+    const listByKey = new Map(lists.map((list) => [`${list.demandListNo}|${cleanUpper(list.branchCode)}`, list]));
+    for (const line of await DemandLine.find({ demandListNo: { $in: [...new Set(lists.map((list) => list.demandListNo))] } }).lean()) {
+      const list = listByKey.get(`${line.demandListNo}|${cleanUpper(line.postedBranch)}`);
+      if (list) taken.set(cleanUpper(line.memberCode), `in demand list ${list.demandListNo} (branch ${list.branchCode})`);
+    }
+  }
+  for (const line of await RecoveryLine.find({}).lean()) {
+    const payload = toMixed(line.payload, {});
+    const code = cleanUpper(line.memberCode);
+    if (!taken.has(code) && Number(payload.demandMonth) === monthNumber && cleanText(payload.demandYear) === yearText) {
+      taken.set(code, 'already recovered from their Monthly Demand Data');
+    }
+  }
+  return taken;
+}
+
+async function assertMembersNotDemanded(header, lines = [], excludeId = '') {
+  const taken = await membersDemandedInMonth(header.month, header.year, excludeId);
+  const clashes = lines.filter((line) => taken.has(cleanUpper(line.memberCode)));
+  if (!clashes.length) return;
+  const shown = clashes.slice(0, 8).map((line) => `${line.memberCode} ${taken.get(cleanUpper(line.memberCode))}`).join('; ');
+  throw recoveryHttpError(`A member's demand is raised once per month: ${clashes.length} member(s) already have demand for ${header.month}/${header.year} — ${shown}${clashes.length > 8 ? '; …' : ''}. Remove them from this list.`, 409);
+}
+
+// month / year: members whose demand for that month is already raised are
+// left out (`skipped` counts them). excludeId: the list being edited.
+async function getDemandEntryMembers({ branchCode = '', month = '', year = '', excludeId = '', user = {} } = {}) {
   const all = isAllBranches(branchCode, user);
   const effectiveBranchCode = all ? '' : resolveBranchCode(user, branchCode);
   if (!all && !effectiveBranchCode) throw recoveryHttpError('Choose a branch first.');
-  const members = (await Member.find(all ? {} : { branchCode: effectiveBranchCode }).lean())
+  const taken = await membersDemandedInMonth(month, year, excludeId);
+  const active = (await Member.find(all ? {} : { branchCode: effectiveBranchCode }).lean())
     .filter((member) => !member.dismembered && !cleanLower(member.status).startsWith('inact'));
+  const members = active.filter((member) => !taken.has(cleanUpper(member.code)));
+  const skipped = active.length - members.length;
   const defaults = members.length ? await MemberDemandDefault.find({ memberCode: { $in: members.map((member) => member.code) } }).lean() : [];
   const defaultByCode = new Map(defaults.map((row) => [cleanUpper(row.memberCode), row]));
-  return members.map((member) => {
+  const rows = members.map((member) => {
     const preset = defaultByCode.get(cleanUpper(member.code)) || {};
     return {
       memberCode: member.code,
@@ -5034,6 +5217,7 @@ async function getDemandEntryMembers({ branchCode = '', user = {} } = {}) {
       ...Object.fromEntries(DEMAND_HEADS.map((key) => [key, toNumber(preset[key], 0)]))
     };
   }).sort((a, b) => compareCodesNumerically(a.memberCode, b.memberCode));
+  return Object.assign(rows, { skipped });
 }
 
 function demandHeaderFrom(data = {}, { fyStart = '', fyEnd = '' } = {}) {
@@ -5110,6 +5294,7 @@ async function saveDemandEntryAllBranches(header, data = {}, { user = {}, id = '
   if (ownBranch) byBranch.delete(ownBranch);
   // The new lists (the edited one is checked by its own save below).
   await assertOneListPerMonth(header, [...byBranch.keys()], id);
+  await assertMembersNotDemanded(header, [...byBranch.values()].flat(), id);
 
   const clashes = (await DemandList.find({ demandListNo: header.demandListNo }).lean())
     .map((list) => cleanUpper(list.branchCode))
@@ -5177,6 +5362,7 @@ async function saveDemandEntry(data = {}, { id = '', fyStart = '', fyEnd = '', u
   const lines = demandLinesFrom(data.lines);
   if (!lines.length) throw recoveryHttpError('Enter a demand amount for at least one member.');
   await assertOneListPerMonth(header, [header.branchCode], id);
+  await assertMembersNotDemanded(header, lines, id);
   const members = await Member.find({ code: { $in: lines.map((line) => line.memberCode) } }).lean();
   const memberByCode = new Map(members.map((member) => [cleanUpper(member.code), member]));
   const unknown = lines.filter((line) => !memberByCode.has(line.memberCode)).map((line) => line.memberCode);
@@ -5367,7 +5553,7 @@ function isDismemberedMember(row = {}) {
   return /dismember|resign|left|closed|inactive/i.test(cleanText(row.status));
 }
 
-async function buildAllMemberListReport({ branchCode = '', uptoDate = '', listType = 'all', sortBy = 'name', user = {} } = {}) {
+async function buildAllMemberListReport({ branchCode = '', fromDate = '', uptoDate = '', listType = 'all', sortBy = 'name', user = {} } = {}) {
   const effectiveBranchCode = resolveBranchCode(user, branchCode);
   const type = String(listType || 'all').toLowerCase();
   // Branch-wise, or a branch scope forced by the user's role, filters by branch.
@@ -5380,12 +5566,29 @@ async function buildAllMemberListReport({ branchCode = '', uptoDate = '', listTy
     return !cutoff || !/^\d{4}-\d{2}-\d{2}$/.test(joined) || joined <= cutoff;
   });
 
-  // List type: all = every member; active / branch-wise = current (active)
-  // members; dismembered = only members who have left.
+  // By the dismembered date, within the selected FY (fromDate .. uptoDate):
+  // dismembered = members who left in that period; active / branch-wise =
+  // members who had not left by its end (one who left later was still a
+  // member then); inactive = every member who had left by its end, in any
+  // year (active's complement); all = every member who had joined. A member
+  // marked as left without a valid date is taken as having left already.
+  const start = cleanText(fromDate).slice(0, 10);
+  const leftOn = (row) => {
+    const day = cleanText(row.dismemberedDate).slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : '';
+  };
+  const hadLeftBy = (row, day) => isDismemberedMember(row) && (!day || !leftOn(row) || leftOn(row) <= day);
   if (type === 'dismembered') {
-    rows = rows.filter(isDismemberedMember);
+    rows = rows.filter((row) => {
+      if (!isDismemberedMember(row)) return false;
+      const day = leftOn(row);
+      if (!day) return !start;
+      return (!start || day >= start) && (!cutoff || day <= cutoff);
+    });
+  } else if (type === 'inactive') {
+    rows = rows.filter((row) => hadLeftBy(row, cutoff));
   } else if (type !== 'all') {
-    rows = rows.filter((row) => !isDismemberedMember(row));
+    rows = rows.filter((row) => !hadLeftBy(row, cutoff));
   }
 
   // Sort by member name (default) or code; branch-wise groups by branch first.
@@ -5492,17 +5695,8 @@ async function buildBranchListReport({ branchCode = '', user = {} } = {}) {
 
 async function buildDashboardQuickSummary({ user = {}, fyStart = '', fyEnd = '' } = {}) {
   const summary = await getDashboardSummary({ user, fyStart, fyEnd });
-  const reports = await Promise.all([
-    buildAccountStatementReport({ user, uptoDate: fyEnd }),
-    buildTrialBalanceReport({ user, uptoDate: fyEnd })
-  ]);
-  return {
-    ...summary,
-    reportHighlights: {
-      accountStatementRows: reports[0].length,
-      trialBalanceRows: reports[1].length
-    }
-  };
+  const analytics = await buildDashboardAnalytics({ user, fyStart, fyEnd });
+  return { ...summary, analytics };
 }
 
 async function getNextVoucherNo(branchCode = '') {
@@ -5950,6 +6144,7 @@ async function createVoucher(data = {}, meta = {}) {
     }
     
     const recovery = await prepareRecoveryLines(payload, data);
+    await assertTransferVoucherWithinBalance(payload);
     const journalLines = await buildJournalLinesForVoucher(payload, { ...meta, tx, recoveryLines: recovery.lines });
 
     const record = await Voucher.create(payload, { tx });
@@ -6017,6 +6212,7 @@ async function updateVoucher(id, data = {}, meta = {}) {
     }
     
     const recovery = await prepareRecoveryLines(payload, data, { voucherId: id });
+    await assertTransferVoucherWithinBalance(payload, current.toObject());
     const journalLines = await buildJournalLinesForVoucher(payload, { ...meta, tx, recoveryLines: recovery.lines });
     // Demand lines this voucher held before the edit (its own recovery_lines).
     const oldLinks = (await RecoveryLine.find({ voucherId: id }).lean())
@@ -6236,6 +6432,10 @@ async function buildMemberAccountStatement({ memberId, dateFrom, dateTo, user })
         dr.specialDeposit = toPaise(vc.specialDeposit || vc.ssa || voucher.amount);
       } else if (key === 'share-paid-member') {
         dr.share = toPaise(vc.share || voucher.amount);
+      } else if (key === 'transfer-voucher-paid') {
+        Object.assign(dr, transferVoucherAmounts(voucher));
+      } else if (key === 'transfer-voucher-recover') {
+        Object.assign(cr, transferVoucherAmounts(voucher));
       } else if (cleanLower(voucher.accent) === 'pink' || cleanLower(voucher.transactionType) === 'payment') {
         dr.loan = toPaise(voucher.amount);
       } else {

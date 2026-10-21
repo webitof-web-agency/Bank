@@ -547,8 +547,14 @@ const reports = {
   },
   async demandEntryMembers(req, res, next) {
     try {
-      const data = await bankingService.getDemandEntryMembers({ branchCode: req.query.branchCode || '', user: req.user || {} });
-      res.json({ success: true, data });
+      const data = await bankingService.getDemandEntryMembers({
+        branchCode: req.query.branchCode || '',
+        month: req.query.month || '',
+        year: req.query.year || '',
+        excludeId: req.query.excludeId || '',
+        user: req.user || {}
+      });
+      res.json({ success: true, data, skipped: data.skipped || 0 });
     } catch (error) { next(error); }
   },
   async demandEntryGet(req, res, next) {
@@ -624,6 +630,8 @@ const reports = {
         branchCode: req.query.branchCode || '',
         listType: req.query.listType || req.query.type || 'all',
         sortBy: req.query.sortBy || req.query.sort || 'name',
+        // The selected FY: dismembered = left within it.
+        fromDate: reportRange(req.query).dateFrom,
         uptoDate: reportRange(req.query).dateTo
       });
       res.json({ success: true, data });

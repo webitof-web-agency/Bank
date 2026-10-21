@@ -109,14 +109,14 @@ function getDefaultBranchCode(user = {}) {
 }
 
 export function getReportDefaultFilters(reportKey = '', lookups = {}, user = {}, fy = null) {
-  const { start: fyStart, end: fyEnd } = resolveFYRange(fy);
+  const { start: fyStart } = resolveFYRange(fy);
   const asOnDate = fyAsOnDate(fy);
 
   if (reportKey === 'member-ledger') {
     return {
       memberCode: firstCode(lookups.members),
       dateFrom: fyStart,
-      dateTo: fyEnd
+      dateTo: asOnDate
     };
   }
 
@@ -125,7 +125,7 @@ export function getReportDefaultFilters(reportKey = '', lookups = {}, user = {},
       type: 'ledger',
       search: '',
       nature: '',
-      uptoDate: fyEnd
+      uptoDate: asOnDate
     };
   }
 
@@ -150,7 +150,7 @@ export function getReportDefaultFilters(reportKey = '', lookups = {}, user = {},
     return {
       employeeCode: firstCode(lookups.employees),
       dateFrom: fyStart,
-      dateTo: fyEnd
+      dateTo: asOnDate
     };
   }
 
@@ -158,7 +158,7 @@ export function getReportDefaultFilters(reportKey = '', lookups = {}, user = {},
     return {
       memberCode: firstCode(lookups.members),
       dateFrom: fyStart,
-      dateTo: fyEnd
+      dateTo: asOnDate
     };
   }
 
@@ -167,7 +167,7 @@ export function getReportDefaultFilters(reportKey = '', lookups = {}, user = {},
       // Blank = every group, as legacy's own default (blank Group field).
       group: '',
       dateFrom: fyStart,
-      dateTo: fyEnd
+      dateTo: asOnDate
     };
   }
 
@@ -176,21 +176,21 @@ export function getReportDefaultFilters(reportKey = '', lookups = {}, user = {},
       // Blank = every account, as legacy's own default (blank Account field).
       ledgerCode: '',
       dateFrom: fyStart,
-      dateTo: fyEnd
+      dateTo: asOnDate
     };
   }
 
   if (reportKey === 'statement-of-member-ledger') {
-    return { dateFrom: fyStart, dateTo: fyEnd };
+    return { dateFrom: fyStart, dateTo: asOnDate };
   }
 
   if (reportKey === 'members-closing-balance' || reportKey === 'members-opening-balance') {
     // No filters on screen; the FY only dates the title (and the request).
-    return { dateFrom: fyStart, dateTo: fyEnd };
+    return { dateFrom: fyStart, dateTo: asOnDate };
   }
 
   if (reportKey === 'payment-receipt-statement') {
-    return { dateFrom: fyStart, dateTo: fyEnd };
+    return { dateFrom: fyStart, dateTo: asOnDate };
   }
 
   if (['balance-sheet', 'trial-balance', 'cash-book', 'day-book', 'voucher-summary', 'profit-loss'].includes(reportKey)) {
@@ -205,7 +205,7 @@ export function getReportDefaultFilters(reportKey = '', lookups = {}, user = {},
       // Blank = the dividend declared for the FY (Rates Config > Dividend).
       rate: '',
       dateFrom: fyStart,
-      uptoDate: fyEnd
+      uptoDate: asOnDate
     };
   }
 
@@ -633,6 +633,8 @@ export function getReportConfig(reportKey = '') {
         const sortBy = filters?.sortBy || 'name';
         const isBranchWise = listType === 'branch';
         const isDismembered = listType === 'dismembered';
+        // Both list members who have left, with the date they left.
+        const isLeft = isDismembered || listType === 'inactive';
         const response = await api.banking.reports.allMemberList(token, {
           // Branch only applies to the branch-wise list.
           branchCode: isBranchWise ? (filters?.branchCode || '') : '',
@@ -644,32 +646,38 @@ export function getReportConfig(reportKey = '') {
           all: 'All Member List',
           active: 'Active Member List',
           branch: 'Branch-wise Member List',
-          dismembered: 'Dismembered Member List'
+          dismembered: 'Dismembered Member List',
+          inactive: 'Inactive Member List'
         };
         const sortLabel = sortBy === 'code' ? 'code' : 'name';
         return {
           title: titles[listType] || 'All Member List',
-          subtitle: `${isDismembered ? 'Members who have left' : listType === 'all' ? 'Every member, active and dismembered' : 'Current members'} · sorted by ${sortLabel}`,
+          subtitle: `${isDismembered ? 'Members who left in the selected financial year' : listType === 'inactive' ? 'Every member who had left by the end of the selected financial year' : listType === 'all' ? 'Every member, active and dismembered' : 'Members as at the end of the selected financial year'} · sorted by ${sortLabel}`,
+          totalLabel: isDismembered ? 'Total Dismembered Members' : listType === 'inactive' ? 'Total Inactive Members' : listType === 'all' ? 'Total Members' : 'Total Active Members',
+          listType,
           summary: [
-            makeSummary('Members', rows.length, isDismembered ? 'Dismembered members' : 'Members in list')
+            makeSummary('Members', rows.length, isDismembered ? 'Dismembered members' : listType === 'inactive' ? 'Inactive members' : 'Members in list')
           ],
           sections: [
             {
               title: titles[listType] || 'All Members',
               description: isDismembered
-                ? 'Members who have been dismembered.'
-                : 'Registered members and their current status.',
-              headers: isDismembered
+                ? 'Members dismembered within the selected financial year.'
+                : listType === 'inactive'
+                  ? 'Members who had left by the end of the selected financial year.'
+                  : 'Registered members and their current status.',
+              headers: isLeft
                 ? ['Member Code', 'Member Name', 'Branch', 'Category', 'Membership Date', 'Dismembered On']
-                : ['Member Code', 'Member Name', 'Branch', 'Category', 'Membership Date', 'Status'],
-              rows: rows.map((row) => [
-                row.code,
-                row.name,
-                row.branchName || row.branchCode,
-                row.category,
-                String(row.membershipDate || '').slice(0, 10) || '-',
-                isDismembered ? (row.dismemberedDate || '-') : row.status
-              ])
+                : listType === 'all'
+                  ? ['Member Code', 'Member Name', 'Branch', 'Category', 'Membership Date', 'Dismembered On', 'Status']
+                  : ['Member Code', 'Member Name', 'Branch', 'Category', 'Membership Date', 'Status'],
+              rows: rows.map((row) => {
+                const day = (value) => String(value || '').slice(0, 10) || '-';
+                const base = [row.code, row.name, row.branchName || row.branchCode, row.category, day(row.membershipDate)];
+                if (isLeft) return [...base, day(row.dismemberedDate)];
+                if (listType === 'all') return [...base, day(row.dismemberedDate), row.status];
+                return [...base, row.status];
+              })
             }
           ],
           csvRows: rows,

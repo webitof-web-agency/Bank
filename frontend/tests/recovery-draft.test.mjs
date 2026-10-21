@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  addDemandLines, applyExcelHeads, balanceErrors, draftTotals, isUnresolved, lineDifference, lineErrors, lineStatus, lineTotal, manualLine, mergeImportRows, reconcile,
+  addDemandLines, addExcelLines, applyExcelHeads, fitHeadsToAmount, balanceErrors, draftTotals, isUnresolved, lineDifference, lineErrors, lineStatus, lineTotal, manualLine, mergeImportRows, reconcile,
   removeLine, unresolvedCount, updateLineHeads, withOutstanding, withWarnings
 } from '../src/pages/transactions/member/recoveryDraft.js';
 
@@ -219,4 +219,85 @@ test('Excel name / branch differences are notes, not errors', () => {
 test('totals are exact in paise', () => {
   const lines = [manualLine({ code: '1' }, { cd: 0.1 }), manualLine({ code: '2' }, { cd: 0.2 })];
   assert.equal(draftTotals(lines).total, 0.3);
+});
+
+test('Load Demand: the demand total is each line\'s expected amount, so the line is valid as loaded', () => {
+  const { lines } = addDemandLines([], [demand], { withExpected: true });
+  assert.equal(lines[0].expectedAmount, '3500');
+  assert.equal(lineStatus(lines[0], lines), 'VALID');
+});
+
+test('fit: Excel equal to the demand keeps the demand split', () => {
+  const fit = fitHeadsToAmount(3500, { cd: 1000, ssa: 500, loan: 2000 }, { regularLoan: 50000, loanAgainstDeposit: 0 });
+  assert.deepEqual([fit.heads.cd, fit.heads.ssa, fit.heads.loan, fit.heads.lad], [1000, 500, 2000, '']);
+  assert.equal(fit.note, '');
+});
+
+test('fit: Excel short of the demand comes off LAD first, then Regular Loan', () => {
+  const fit = fitHeadsToAmount(2000, { cd: 1000, ssa: 500, loan: 1000, lad: 500 }, { regularLoan: 50000, loanAgainstDeposit: 5000 });
+  assert.deepEqual([fit.heads.cd, fit.heads.ssa, fit.heads.loan, fit.heads.lad], [1000, 500, 500, '']);
+  assert.match(fit.note, /Excel ₹2,000 vs demand ₹3,000/);
+});
+
+test('fit: Excel over the demand fills the loans up to the balance left, the rest goes to CD', () => {
+  const fit = fitHeadsToAmount(5000, { cd: 1000, loan: 2000, lad: 0 }, { regularLoan: 2500, loanAgainstDeposit: 1000 });
+  assert.deepEqual([fit.heads.cd, fit.heads.loan, fit.heads.lad], [1500, 2500, 1000]);
+});
+
+test('fit: a loan cut past the outstanding is capped and the Excel amount still fits', () => {
+  const fit = fitHeadsToAmount(3000, { cd: 1000, loan: 2000 }, { regularLoan: 0, loanAgainstDeposit: 0 });
+  assert.deepEqual([fit.heads.cd, fit.heads.loan], [3000, '']);
+  assert.match(fit.note, /cut to the 0 outstanding/);
+});
+
+test('fit: Premium in the demand is not part of the split', () => {
+  const fit = fitHeadsToAmount(1200, { cd: 1000, ins: 200 }, null);
+  assert.deepEqual([fit.heads.cd, fit.heads.ins], [1200, '']);
+  assert.match(fit.note, /Premium/);
+});
+
+test('Load Excel: each row is split over the member\'s demand of the month and fitted to its Excel amount', () => {
+  const candidates = [
+    { ...demand, branchCode: 'HO' },
+    { ...demand, demandLineId: '', candidateKey: 'member:1474:2026-10', source: 'MEMBER_DEMAND', month: 10, year: '2026', memberCode: '1474', compulsoryDeposit: 800, specialDeposit: 0, regularLoan: 0, totalAmount: 800 }
+  ];
+  const excel = {
+    batch: { id: 'B9' },
+    rows: [
+      { id: 'r1', memberId: 'm1', importedTotalAmount: 3000 },
+      { id: 'r2', memberId: 'm2', importedTotalAmount: 1000 },
+      { id: 'r3', memberId: 'm3', importedTotalAmount: 600, configuredCompulsoryDeposit: 500 },
+      { id: 'r4', memberId: null, pfNo: '999', importedTotalAmount: 100 }
+    ]
+  };
+  const outstanding = { 1473: { regularLoan: 10000, loanAgainstDeposit: 0 }, 1474: { regularLoan: 0, loanAgainstDeposit: 0 } };
+  const result = addExcelLines([], excel, { candidates, members, outstanding });
+  const [a, b, c, none] = result.lines;
+  assert.equal(a.demandLineId, 'D101');
+  assert.deepEqual([a.heads.cd, a.heads.ssa, a.heads.loan], [1000, 500, 1500]);
+  assert.equal(b.demandSource, 'MEMBER_DEMAND');
+  assert.equal(b.heads.cd, 1000);
+  assert.equal(c.source, 'EXCEL');
+  assert.equal(c.heads.cd, 600);
+  assert.equal(none.unmatched, true);
+  for (const line of [a, b, c]) assert.equal(lineStatus(line, result.lines), 'VALID');
+  assert.equal(result.adjusted, 3);
+  assert.equal(result.demandMatched, 2);
+});
+
+test('Load Excel with a branch chosen: rows of other branches are excluded on record', () => {
+  const people = [{ id: 'm1', code: '1473', branchCode: 'HO', membershipDate: '1990-09-16' }, { id: 'm2', code: '1474', branchCode: 'BR2', membershipDate: '1991-07-21' }];
+  const excel = { batch: { id: 'B9' }, rows: [{ id: 'r1', memberId: 'm1', importedTotalAmount: 500 }, { id: 'r2', memberId: 'm2', importedTotalAmount: 500 }] };
+  const result = addExcelLines([], excel, { members: people, branchCode: 'HO' });
+  assert.equal(result.lines.length, 1);
+  assert.equal(result.otherBranch, 1);
+  assert.equal(result.excluded[0].importRowId, 'r2');
+});
+
+test('Load Demand then Load Excel: a ticked demand member missing from the Excel stays red', () => {
+  const excel = { batch: { id: 'B9' }, rows: [{ id: 'r1', memberId: 'm1', importedTotalAmount: 3500 }] };
+  const result = addExcelLines([], excel, { candidates: [demand, { ...demand, demandLineId: 'D102', memberCode: '1474' }], members });
+  const [a, b] = result.lines;
+  assert.equal(lineStatus(a, result.lines), 'VALID');
+  assert.equal(lineStatus(b, result.lines), 'NOT_IN_EXCEL');
 });

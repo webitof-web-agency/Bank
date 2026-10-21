@@ -9,7 +9,7 @@ import { getTransferVoucherDocumentDefinitions } from './transferVoucherDocument
 import { FormSectionTitle, FormSubheading, HideInDialog, OnlyInDialog } from '../../../components/ui/FormSectionTitle';
 import { SmsCheckbox } from '../../../components/ui/CheckboxLine';
 import {  getTransferVoucherAllocationRows,
-  getTransferVoucherAllocationTotal,  toneClassName
+  getTransferVoucherAllocationTotal,  toneClassName, transferVoucherFixedSide
 } from './transactionUtils';
 
 function deepClone(value) {
@@ -111,6 +111,8 @@ export function TransferVoucherTransactionForm({ section, itemKey, lookups = {},
   const allocationRows = useMemo(() => getTransferVoucherAllocationRows(value?.details?.allocations || [], activeKey), [value, activeKey]);
   const allocationTotal = useMemo(() => getTransferVoucherAllocationTotal(allocationRows, activeKey), [allocationRows, activeKey]);
   const defaultSide = activeKey === 'transfer-voucher-recover' ? 'CR' : 'DR';
+  const isPaid = activeKey === 'transfer-voucher-paid';
+  const fixedSide = transferVoucherFixedSide(activeKey);
 
   function updateValue(updater) {
     setValue((current) => {
@@ -325,6 +327,20 @@ export function TransferVoucherTransactionForm({ section, itemKey, lookups = {},
             <FieldLabel>Total Amount</FieldLabel>
             <Input value={allocationTotal || 0} readOnly />
           </div>
+
+          {/* Paid: the cheque given to the member, recorded for reference. */}
+          {isPaid ? (
+            <>
+              <div className="space-y-1.5">
+                <FieldLabel>Cheque No.</FieldLabel>
+                <Input value={value.instrumentNo || ''} onChange={(event) => updateRoot('instrumentNo', event.target.value)} placeholder="Cheque number" />
+              </div>
+              <div className="space-y-1.5">
+                <FieldLabel>Cheque Date</FieldLabel>
+                <Input type="date" value={value.instrumentDate || ''} onChange={(event) => updateRoot('instrumentDate', event.target.value)} />
+              </div>
+            </>
+          ) : null}
         </div>
       </Card>
 
@@ -346,15 +362,20 @@ export function TransferVoucherTransactionForm({ section, itemKey, lookups = {},
                   onChange={(event) => updateAllocation(row.head, 'amount', event.target.value)}
                   placeholder="0.00"
                 />
-                <CustomSelect
-                  ariaLabel={`Side for ${row.label}`}
-                  value={row.side || defaultSide}
-                  onChange={(next) => updateAllocation(row.head, 'side', next)}
-                  options={[
-                    { value: 'DR', label: 'DR' },
-                    { value: 'CR', label: 'CR' }
-                  ]}
-                />
+                {/* Paid to Member is always DR, Recover From Member CR. */}
+                {fixedSide ? (
+                  <Input value={fixedSide} readOnly aria-label={`Side for ${row.label}`} className="bg-slate-50" />
+                ) : (
+                  <CustomSelect
+                    ariaLabel={`Side for ${row.label}`}
+                    value={row.side || defaultSide}
+                    onChange={(next) => updateAllocation(row.head, 'side', next)}
+                    options={[
+                      { value: 'DR', label: 'DR' },
+                      { value: 'CR', label: 'CR' }
+                    ]}
+                  />
+                )}
               </div>
             </div>
           ))}

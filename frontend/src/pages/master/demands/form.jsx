@@ -115,7 +115,7 @@ export function DemandForm({ value, setValue, onSubmit, branches = [], members =
             onClick={loadMembers}
             className="inline-flex h-[42px] w-full items-center justify-center rounded-[var(--radius-input,0.75rem)] border border-[var(--primary)] bg-[var(--primary)] px-4 text-[13px] font-semibold text-white shadow-sm transition hover:opacity-90"
           >
-            Load Members
+            Load Demand
           </button>
         </div>
       </div>
@@ -166,7 +166,7 @@ export function DemandForm({ value, setValue, onSubmit, branches = [], members =
           </div>
         ) : (
           <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-6 text-center text-[13px] text-slate-500">
-            Choose a branch and click Load Members.
+            Choose a branch and click Load Demand.
           </div>
         )}
       </div>

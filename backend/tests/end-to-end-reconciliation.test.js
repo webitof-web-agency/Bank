@@ -425,7 +425,6 @@ test('Phase 7: End-to-End Functional Reconciliation', async (t) => {
     const blockedTypes = [
       'insurance-paid-member',
       'bank-deposit',
-      'transfer-voucher-paid',
       'interest-paid-member'
     ];
 

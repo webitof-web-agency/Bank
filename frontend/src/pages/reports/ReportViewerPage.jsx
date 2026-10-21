@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Download, Printer, BarChart3, TrendingUp, Wallet, PieChart, DollarSign, Calculator, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -73,7 +73,7 @@ const PRINT_TEMPLATES = {
     <ProfitLossPrint data={payload?.raw} filters={filters} headerActions={headerActions} />
   ),
   'all-member-list': ({ payload, headerActions }) => (
-    <AllMemberListPrint data={payload?.raw} title={payload?.title ? payload.title.toUpperCase() : undefined} headerActions={headerActions} />
+    <AllMemberListPrint data={payload?.raw} title={payload?.title ? payload.title.toUpperCase() : undefined} totalLabel={payload?.totalLabel} showDismembered={['dismembered', 'inactive', 'all'].includes(payload?.listType)} headerActions={headerActions} />
   ),
   'payment-receipt-statement': ({ payload, filters, headerActions }) => (
     <PaymentReceiptStatementPrint data={payload?.raw} filters={filters} headerActions={headerActions} />
@@ -249,6 +249,9 @@ function downloadCsv(sections, filename) {
   URL.revokeObjectURL(url);
 }
 
+// Report requests still running, by report + filters (see the load effect).
+const REPORT_REQUESTS_IN_FLIGHT = new Map();
+
 export function ReportViewerPage() {
   const { reportKey } = useParams();
   const navigate = useNavigate();
@@ -274,6 +277,8 @@ export function ReportViewerPage() {
   const fyMonthBounds = { min: fyStart ? fyStart.slice(0, 7) : undefined, max: fyEnd ? fyEnd.slice(0, 7) : undefined };
   const [payload, setPayload] = useState(null);
   const [loading, setLoading] = useState(false);
+  // Bumped by Show Report, so pressing it fetches again even with the same filters.
+  const [runId, setRunId] = useState(0);
 
   useEffect(() => {
     let mounted = true;
@@ -303,18 +308,35 @@ export function ReportViewerPage() {
       const employeeCode = searchParams.get('employeeCode');
       if (employeeCode) nextDefaults.employeeCode = employeeCode;
     }
-    setFilters(nextDefaults);
-    setGeneratedFilters(nextDefaults);
+    // Same content (e.g. the lookups arriving changed nothing for this
+    // report): keep the current objects, so the report isn't fetched again.
+    const same = (current) => (JSON.stringify(current) === JSON.stringify(nextDefaults) ? current : nextDefaults);
+    setFilters(same);
+    setGeneratedFilters(same);
   }, [lookups, reportKey, searchParams, activeFY]);
 
   // No activeFY dep here: an FY switch resets generatedFilters (effect above),
   // which already triggers this reload with the new FY's dates.
+  // Fetched again only when the filters' content changes, or on Show Report
+  // (runId); the lookups are read when it runs, not a reason to fetch again.
+  // An identical request still running (React StrictMode runs effects twice
+  // in development) is shared, not sent again.
+  const lookupsRef = useRef(lookups);
+  lookupsRef.current = lookups;
+  const generatedKey = JSON.stringify(generatedFilters);
   useEffect(() => {
     let mounted = true;
     if (!config) return undefined;
 
     setLoading(true);
-    config.load(api, token, generatedFilters, lookups)
+    const requestKey = `${reportKey}|${runId}|${token}|${generatedKey}`;
+    let request = REPORT_REQUESTS_IN_FLIGHT.get(requestKey);
+    if (!request) {
+      request = config.load(api, token, generatedFilters, lookupsRef.current);
+      REPORT_REQUESTS_IN_FLIGHT.set(requestKey, request);
+      request.then(() => REPORT_REQUESTS_IN_FLIGHT.delete(requestKey), () => REPORT_REQUESTS_IN_FLIGHT.delete(requestKey));
+    }
+    request
       .then((response) => {
         if (!mounted) return;
         setPayload(response || null);
@@ -331,7 +353,7 @@ export function ReportViewerPage() {
     return () => {
       mounted = false;
     };
-  }, [config, generatedFilters, lookups, token]);
+  }, [config, generatedKey, runId, token]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Built once per loaded report: a long print template (thousands of rows)
   // must not re-render on every unrelated state change of this page, such as
@@ -353,6 +375,7 @@ export function ReportViewerPage() {
 
   function showReport() {
     setGeneratedFilters(filters);
+    setRunId((current) => current + 1);
   }
 
   function resetFilters() {
@@ -523,7 +546,8 @@ export function ReportViewerPage() {
                 { label: 'All Members', value: 'all' },
                 { label: 'Active Members', value: 'active' },
                 { label: 'Branch-wise Members', value: 'branch' },
-                { label: 'All Dismembered', value: 'dismembered' }
+                { label: 'All Dismembered', value: 'dismembered' },
+                { label: 'All Inactive Members', value: 'inactive' }
               ]}
             />
           </div>
@@ -558,7 +582,7 @@ export function ReportViewerPage() {
     if (config.filterMode === 'dividend') {
       const branches = Array.isArray(lookups.branches) ? lookups.branches : [];
       return (
-        <div className="grid gap-4">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
           <div className="space-y-1.5">
             <label className="text-[13px] font-semibold text-slate-700">Report Type</label>
             <Select
@@ -672,7 +696,7 @@ export function ReportViewerPage() {
     if (config.filterMode === 'monthly') {
       const branches = Array.isArray(lookups.branches) ? lookups.branches : [];
       return (
-        <div className="grid gap-4">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
           <div className="space-y-1.5">
             <label className="text-[13px] font-semibold text-slate-700">Branch</label>
             <Select 
@@ -695,7 +719,7 @@ export function ReportViewerPage() {
     if (config.filterMode === 'demand-list') {
       const branches = Array.isArray(lookups.branches) ? lookups.branches : [];
       return (
-        <div className="grid gap-4">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
           <div className="space-y-1.5">
             <label className="text-[13px] font-semibold text-slate-700">Date</label>
             <Input
@@ -755,7 +779,7 @@ export function ReportViewerPage() {
     }
 
     return (
-      <div className="grid gap-4">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
         {config.filterMode === 'date-range' ? (
           <div className="grid gap-3 md:grid-cols-2">
             <div className="space-y-1.5">

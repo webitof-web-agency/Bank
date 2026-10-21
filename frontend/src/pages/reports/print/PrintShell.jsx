@@ -557,7 +557,7 @@ export function PrintShell({ headerActions, landscape = false, children }) {
               >
                 {/* Width/zoom set by usePagination to fit a wide report. */}
                 <div ref={fitRef}>
-                  <div ref={bodyRef}>{children}</div>
+                  <div ref={bodyRef} className="print-grid">{children}</div>
                   <div ref={footerRef} className="pt-3 text-right text-[10px] text-black">
                     Printed on: {formatPrintedAt(printedAt)}
                   </div>
@@ -593,6 +593,7 @@ export function PrintShell({ headerActions, landscape = false, children }) {
               {!exporting && layout.headers.map((header, i) => (
                 <div key={`header-${i}`} className="absolute z-20 print:hidden" style={{ top: header.top, left: header.left }}>
                   <div
+                    className="print-grid"
                     style={{ width: header.cssWidth, zoom: 1 / layout.scale }}
                     // A copy of the report's own <thead> markup, measured above.
                     dangerouslySetInnerHTML={{ __html: header.html }}
@@ -623,6 +624,14 @@ export function PrintShell({ headerActions, landscape = false, children }) {
              the next page as a whole instead of being cut mid-row. */
           table tr, table td { break-inside: avoid; page-break-inside: avoid; }
           [data-page-break-before] { break-before: page; page-break-before: always; }
+          /* Every report table is ruled in rows and columns, so each figure
+             reads against its row and heading. Unlayered, so it wins over a
+             template's own border utilities (e.g. outer-box-only tables). */
+          .print-grid table { border-collapse: collapse; }
+          .print-grid table th, .print-grid table td { border: 1px solid #000; }
+          /* A group heading row (district, branch, section): one cell from the
+             left edge, with no row or column lines of its own. */
+          .print-grid table tr[data-group-row] td { border: none; text-align: left; }
 
           @media print {
             @page {

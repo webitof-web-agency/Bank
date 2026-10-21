@@ -46,6 +46,35 @@ function isVehicleLoanInterest(voucher = {}) {
   return /vehicle/i.test(String(voucher?.details?.accountType || ''));
 }
 
+// The member heads each transfer voucher moves. The other side is Cash-in-
+// Hand, as for the other member vouchers (the mode is only recorded).
+const TRANSFER_VOUCHER_HEADS = {
+  paid: { roles: { share: ACCOUNTING_ROLES.SHARE, cd: ACCOUNTING_ROLES.COMPULSORY_DEPOSIT, ssa: ACCOUNTING_ROLES.SPECIAL_DEPOSIT }, names: 'Share, Compulsory Deposit and SSA' },
+  recover: { roles: { loan: ACCOUNTING_ROLES.REGULAR_LOAN, lad: ACCOUNTING_ROLES.LOAN_AGAINST_DEPOSIT }, names: 'Regular Loan and Loan Against Deposit' }
+};
+
+async function buildTransferVoucherLines(voucher, tx, kind) {
+  const { roles, names } = TRANSFER_VOUCHER_HEADS[kind];
+  const paid = kind === 'paid';
+  const memberId = String(voucher.partyCode || '').trim().toUpperCase();
+  if (!memberId) throw new PostingError('Select the member.', 'FAILURE');
+  const lines = [];
+  let totalPaise = 0;
+  for (const row of Array.isArray(voucher?.details?.allocations) ? voucher.details.allocations : []) {
+    const head = String(row?.head || row?.key || '').trim().toLowerCase();
+    const paise = Math.round((Number(row?.amount) || 0) * 100);
+    if (paise <= 0) continue;
+    if (!roles[head]) throw new PostingError(`This voucher takes ${names} only; remove the ${row?.label || head} amount.`, 'FAILURE');
+    const amount = paise / 100;
+    lines.push({ ledgerId: await resolveLedgerId(roles[head], tx), dr: paid ? amount : 0, cr: paid ? 0 : amount, memberId });
+    totalPaise += paise;
+  }
+  if (!totalPaise) throw new PostingError(`Enter the amount for ${names}.`, 'FAILURE');
+  const total = totalPaise / 100;
+  lines.push({ ledgerId: await getPaymentLedger(voucher, tx), dr: paid ? 0 : total, cr: paid ? total : 0 });
+  return lines;
+}
+
 const POSTING_REGISTRY = {
   // Regular Loan and Loan Against Deposit go to their own ledgers, as legacy
   // posts TransType 1 (RLoanAmt -> Loan to Members, DLoanAmt -> Loan against
@@ -274,8 +303,21 @@ const POSTING_REGISTRY = {
   },
   'bank-deposit': { status: 'BLOCKED_LEGACY_UNKNOWN' },
   'interest-paid-member': { status: 'BLOCKED_LEGACY_UNKNOWN' },
-  'transfer-voucher-paid': { status: 'BLOCKED_LEGACY_UNKNOWN' },
-  'transfer-voucher-recover': { status: 'BLOCKED_LEGACY_UNKNOWN' },
+  // Transfer Voucher Paid to Member: a member's saved Share / CD / SSA paid
+  // out to them in one entry (a dismembered member's settlement, or any
+  // excess left in a head). Each head is debited for the member, Cash-in-
+  // Hand credited.
+  'transfer-voucher-paid': {
+    status: 'PROVEN',
+    build: (voucher, { tx }) => buildTransferVoucherLines(voucher, tx, 'paid')
+  },
+  // Transfer Voucher Recover From Member, the reverse: the member pays the
+  // society towards their Regular Loan / LAD outside a recovery. Each loan is
+  // credited for the member, Cash-in-Hand debited.
+  'transfer-voucher-recover': {
+    status: 'PROVEN',
+    build: (voucher, { tx }) => buildTransferVoucherLines(voucher, tx, 'recover')
+  },
   'transfer-voucher-payment': { status: 'BLOCKED_LEGACY_UNKNOWN' },
   'transfer-voucher-receipt': { status: 'BLOCKED_LEGACY_UNKNOWN' }
 };

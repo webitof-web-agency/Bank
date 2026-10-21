@@ -238,6 +238,7 @@ export function DemandEntryPage({ detailPathBase = '/app/transactions/other/dema
             locked={editor.locked}
             allowAllBranches={!editor.locked}
             entries={entries.filter((row) => row.id !== editor.id)}
+            editingId={editor.id || ''}
           />
         ) : null}
       </Modal>

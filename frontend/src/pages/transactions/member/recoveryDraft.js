@@ -1,7 +1,7 @@
 // Recovery From Member — the editable draft behind the entry screen.
 //
-// Every source (Add From Demand List, Excel import, Add Record) produces the
-// same draft line, kept in voucher.details.recoveryLines until Save:
+// Every source (Load Demand, Load Excel, Add Record) produces the same draft
+// line, kept in voucher.details.recoveryLines until Save:
 //   { member, memberName, branchName, designation,
 //     source: 'DEMAND' | 'EXCEL' | 'MANUAL',
 //     demandLineId, demandListNo,          // exact demand provenance
@@ -130,7 +130,9 @@ export function candidateKey(candidate = {}) {
 
 // Adds demand lines not already in the draft: not the same demand line, and
 // not a member who already has a line (one line per member).
-export function addDemandLines(lines = [], candidates = []) {
+// withExpected (Load Demand, no Excel): the demand total is the line's
+// expected amount — the demand stands in for the bank's figure.
+export function addDemandLines(lines = [], candidates = [], { withExpected = false } = {}) {
   const present = new Set(lines.map((line) => line.demandLineId).filter(Boolean));
   const members = new Set(lines.map((line) => line.member).filter(Boolean));
   const added = [];
@@ -138,7 +140,9 @@ export function addDemandLines(lines = [], candidates = []) {
     const code = String(candidate.memberCode || '').toUpperCase();
     if (!candidateKey(candidate) || (candidate.demandLineId && present.has(candidate.demandLineId)) || members.has(code)) continue;
     members.add(code);
-    added.push(lineFromDemand(candidate));
+    const line = lineFromDemand(candidate);
+    if (withExpected) line.expectedAmount = String(lineTotal(line));
+    added.push(line);
   }
   return { lines: withWarnings([...lines, ...added]), added: added.length, skipped: candidates.length - added.length };
 }
@@ -165,8 +169,109 @@ function excelOf(row = {}, batchId = '') {
       ssa: amountOrBlank(row.allocatedSpecialDeposit),
       loan: amountOrBlank(row.allocatedRegularLoan),
       lad: amountOrBlank(row.allocatedLoanAgainstDeposit)
+    },
+    // The member's configured demand the import split from.
+    demandHeads: {
+      share: amountOrBlank(row.configuredShare),
+      cd: amountOrBlank(row.configuredCompulsoryDeposit),
+      ssa: amountOrBlank(row.configuredSpecialDeposit),
+      loan: amountOrBlank(row.configuredRegularLoan),
+      lad: amountOrBlank(row.configuredLoanAgainstDeposit)
     }
   };
+}
+
+const HEAD_NAMES = Object.fromEntries(RECOVERY_HEADS);
+
+// Load Excel: the bank's amount for one member, split over their demand so
+// the heads add up exactly to it. The demand is the starting split; a loan
+// head never passes what is still owed (outstanding, when known).
+//   - Excel short of the demand: the shortfall comes off LAD, then Regular
+//     Loan, then CD, then SSA, then Share (the import's fill order, reversed).
+//   - Excel over the demand: the extra goes to Regular Loan, then LAD, up to
+//     the balance left on each, and the rest to CD.
+// Premium and Suspense have no posting rule, and Admission is not a monthly
+// demand: none of them is part of the split.
+// Returns { heads, note } — note says what was changed from the demand.
+export function fitHeadsToAmount(amount, demand = {}, outstanding = null) {
+  const target = toPaise(amount);
+  const base = normalizeHeads(demand);
+  const keys = ['share', 'cd', 'ssa', 'loan', 'lad'];
+  const paise = Object.fromEntries(keys.map((key) => [key, Math.max(0, toPaise(base[key]))]));
+  const demandTotal = keys.reduce((sum, key) => sum + paise[key], 0);
+  const dropped = ['ins', 'admfee', 'suspense'].filter((key) => toPaise(base[key]) > 0);
+  const owed = {
+    loan: outstanding ? Math.max(0, toPaise(outstanding.regularLoan)) : null,
+    lad: outstanding ? Math.max(0, toPaise(outstanding.loanAgainstDeposit)) : null
+  };
+  const notes = [];
+  for (const key of ['loan', 'lad']) {
+    if (owed[key] != null && paise[key] > owed[key]) {
+      notes.push(`${HEAD_NAMES[key]} ${formatRupees(fromPaise(paise[key]))} cut to the ${formatRupees(fromPaise(owed[key]))} outstanding`);
+      paise[key] = owed[key];
+    }
+  }
+  let left = target - keys.reduce((sum, key) => sum + paise[key], 0);
+  const moved = [];
+  if (left < 0) {
+    for (const key of ['lad', 'loan', 'cd', 'ssa', 'share']) {
+      const cut = Math.min(paise[key], -left);
+      if (cut <= 0) continue;
+      paise[key] -= cut;
+      left += cut;
+      moved.push(`-${formatRupees(fromPaise(cut))} ${HEAD_NAMES[key]}`);
+    }
+  }
+  if (left > 0) {
+    for (const key of ['loan', 'lad']) {
+      if (owed[key] == null) continue;
+      const add = Math.min(owed[key] - paise[key], left);
+      if (add <= 0) continue;
+      paise[key] += add;
+      left -= add;
+      moved.push(`+${formatRupees(fromPaise(add))} ${HEAD_NAMES[key]}`);
+    }
+    if (left > 0) {
+      paise.cd += left;
+      moved.push(`+${formatRupees(fromPaise(left))} ${HEAD_NAMES.cd}`);
+      left = 0;
+    }
+  }
+  if (target !== demandTotal) notes.unshift(`Excel ₹${formatRupees(fromPaise(target))} vs demand ₹${formatRupees(fromPaise(demandTotal))}`);
+  if (moved.length) notes.push(moved.join(', '));
+  if (dropped.length) notes.push(`${dropped.map((key) => HEAD_NAMES[key]).join(' / ')} in the demand left out of the split`);
+  return {
+    heads: { ...emptyHeads(), ...Object.fromEntries(keys.map((key) => [key, paise[key] ? fromPaise(paise[key]) : ''])) },
+    demandTotal: fromPaise(demandTotal),
+    note: notes.length ? `Adjusted to the Excel: ${notes.join('; ')}.` : ''
+  };
+}
+
+// Load Demand, then Load Excel: the ticked demand lines (`candidates` — a
+// pending demand line, else the member's Monthly Demand Data) go into the
+// draft, and each Excel row joins its member's line with the heads fitted
+// to its Excel amount. The demand is the split to start from and stays
+// linked, so Save marks it recovered; a member in the Excel with no demand
+// line starts from the demand the import used. A demand line with no Excel
+// row stays red ("Not in the Excel"). Lines already in the draft keep their
+// own heads as the start. `branchCode` limits the Excel to one branch
+// (others excluded on record); '' takes every branch. Only lines of this
+// batch are refitted.
+export function addExcelLines(lines = [], excel = {}, { candidates = [], members = [], excluded = [], outstanding = {}, branchCode = '' } = {}) {
+  const rows = Array.isArray(excel.rows) ? excel.rows : [];
+  const batchId = excel.batch?.id || '';
+  const demand = addDemandLines(lines, candidates);
+  const merged = mergeImportRows(demand.lines, rows, members, batchId, excluded, { branchCodes: branchCode ? [String(branchCode).toUpperCase()] : [] });
+  const batchRowIds = new Set(rows.map((row) => row.id).filter(Boolean));
+  let adjusted = 0;
+  const fitted = withOutstanding(merged.lines, outstanding).map((line) => {
+    if (line.unmatched || !line.excel || !batchRowIds.has(line.excel.rowId)) return line;
+    const start = line.source === 'EXCEL' ? line.excel.demandHeads : line.heads;
+    const fit = fitHeadsToAmount(line.excel.amount, start, line.outstanding || null);
+    if (fit.note) adjusted += 1;
+    return { ...line, heads: fit.heads, demandAmount: fit.demandTotal, fitNote: fit.note, needsReview: false, reviewNote: '' };
+  });
+  return { ...merged, lines: withWarnings(fitted), demandMatched: demand.added, adjusted };
 }
 
 // "Use Excel": the line takes the Excel split, which matches the Excel total
@@ -187,10 +292,12 @@ export function applyExcelHeads(lines = [], index) {
 // Only rows with an amount, for members with a membership date, are taken:
 // a 0 row, or a member with no membership date, goes to the excluded list
 // with its reason (counted in zeroAmount / noMembershipDate).
-export function mergeImportRows(lines = [], rows = [], members = [], batchId = '', excluded = []) {
+// `branchCodes` (Load Excel) names the branches taken outright instead of
+// working them out from the demand lines; [] takes every branch.
+export function mergeImportRows(lines = [], rows = [], members = [], batchId = '', excluded = [], { branchCodes } = {}) {
   const memberById = new Map(members.map((member) => [String(member.id || member._id), member]));
   const next = lines.map((line) => ({ ...line }));
-  const demandBranches = new Set(lines.filter((line) => line.source === 'DEMAND' && line.branchCode).map((line) => line.branchCode));
+  const demandBranches = new Set(branchCodes || lines.filter((line) => line.source === 'DEMAND' && line.branchCode).map((line) => line.branchCode));
   let matched = 0;
   let added = 0;
   let unmatched = 0;
@@ -355,6 +462,7 @@ export function lineNotes(line = {}, lines = []) {
   if (line.excel?.branchDiffers) notes.push(`Excel branch "${line.excel.branch}" differs from the member`);
   if (demandLoaded && line.source === 'EXCEL') notes.push('In the Excel, not in the loaded demand (split from the member\'s monthly demand)');
   if (line.needsReview && line.reviewNote) notes.push(line.reviewNote);
+  if (line.fitNote) notes.push(line.fitNote);
   if (line.demandSource === 'MEMBER_DEMAND') notes.push(`From the member's Monthly Demand Data (${String(line.demandMonth || '').padStart(2, '0')}/${line.demandYear || ''})`);
   return notes;
 }
@@ -430,7 +538,7 @@ export function withOutstanding(lines = [], outstandingByCode = {}) {
 export function updateLineHeads(lines = [], index, heads = {}, expectedAmount) {
   return withWarnings(lines.map((line, i) => {
     if (i !== index) return line;
-    const next = { ...line, heads: { ...normalizeHeads(line.heads), ...heads }, needsReview: false, reviewNote: '' };
+    const next = { ...line, heads: { ...normalizeHeads(line.heads), ...heads }, needsReview: false, reviewNote: '', fitNote: '' };
     if (expectedAmount !== undefined && !line.excel) next.expectedAmount = expectedAmount;
     return next;
   }));

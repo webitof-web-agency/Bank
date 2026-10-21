@@ -86,6 +86,28 @@ export const TRANSFER_VOUCHER_HEADS = [
   { key: 'lad', label: 'Loan Against Deposit' }
 ];
 
+// Paid to Member pays out what the member deposited (Share, CD, SSA, always
+// DR); Recover From Member is the member paying towards their loans (Loan,
+// LAD, always CR). Other transfer vouchers keep every head and either side.
+const FIXED_HEADS = {
+  'transfer-voucher-paid': { keys: new Set(['share', 'cd', 'ssa']), side: 'DR' },
+  'transfer-voucher-recover': { keys: new Set(['loan', 'lad']), side: 'CR' }
+};
+
+// The fixed side of a voucher type ('' when either side is allowed).
+export function transferVoucherFixedSide(itemKey = '') {
+  return FIXED_HEADS[cleanText(itemKey).toLowerCase()]?.side || '';
+}
+
+// The heads a voucher offers. A saved voucher that already holds an amount
+// on another head keeps that row, so editing it never drops it silently.
+function transferVoucherHeads(itemKey = '', rows = []) {
+  const fixed = FIXED_HEADS[cleanText(itemKey).toLowerCase()];
+  if (!fixed) return TRANSFER_VOUCHER_HEADS;
+  const held = new Set(rows.filter((row) => row && toNumberOrZero(row.amount) > 0).map((row) => cleanText(row.head || row.key || '').toLowerCase()));
+  return TRANSFER_VOUCHER_HEADS.filter((entry) => fixed.keys.has(entry.key) || held.has(entry.key));
+}
+
 function getTransferVoucherDefaultSide(itemKey = '') {
   return cleanText(itemKey).toLowerCase() === 'transfer-voucher-recover' ? 'CR' : 'DR';
 }
@@ -103,7 +125,7 @@ function normalizeTransferVoucherAllocation(row = {}, itemKey = '') {
     head: meta?.key || head,
     label: meta?.label || toTitleCase(head),
     amount: toNumberOrZero(row.amount),
-    side: normalizeTransferVoucherSide(row.side, getTransferVoucherDefaultSide(itemKey))
+    side: transferVoucherFixedSide(itemKey) || normalizeTransferVoucherSide(row.side, getTransferVoucherDefaultSide(itemKey))
   };
 }
 
@@ -119,7 +141,7 @@ export function getTransferVoucherAllocationRows(source = [], itemKey = '') {
       })
   );
 
-  return TRANSFER_VOUCHER_HEADS.map((entry) => rowMap.get(entry.key) || {
+  return transferVoucherHeads(itemKey, rows).map((entry) => rowMap.get(entry.key) || {
     head: entry.key,
     label: entry.label,
     amount: '',

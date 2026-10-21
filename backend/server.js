@@ -102,12 +102,23 @@ async function start() {
     console.log(`Bank API listening on port ${PORT}`);
   });
 
-  const shutdown = async () => {
+  // Once only: a second Ctrl+C used to close the database while requests
+  // were still being served ("Cannot use a pool after calling end"). The
+  // server stops taking requests, idle keep-alive sockets are dropped, and
+  // open streams (the notifications stream never ends by itself) get a few
+  // seconds before they are cut; the database closes after that.
+  let shuttingDown = false;
+  const shutdown = () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
     server.close(async () => {
       stopAutomationScheduler();
-      await closeDatabase();
+      await closeDatabase().catch(() => undefined);
       process.exit(0);
     });
+    server.closeIdleConnections();
+    setTimeout(() => server.closeAllConnections(), 5000).unref();
+    setTimeout(() => process.exit(1), 15000).unref();
   };
 
   process.on('SIGINT', shutdown);

@@ -39,7 +39,7 @@ export function MemberLedgerPrintTemplate({ payload, headerActions }) {
     })
   );
 
-  const formatMny = (val) => (val === 0 || val == null ? '-' : formatMoney(val));
+  const formatMny = (val) => (val === 0 || val == null ? '' : formatMoney(val));
 
   // A row's Balance/Intrst for a group only prints when that group actually
   // moved on this voucher — a voucher with no Credit/Debit in a group carries
@@ -48,7 +48,7 @@ export function MemberLedgerPrintTemplate({ payload, headerActions }) {
   // meant to be established rather than restated.
   const formatCarried = (row, group, field) => {
     const g = row?.[group] || {};
-    if (!row.isOpening && !g.credit && !g.debit) return '-';
+    if (!row.isOpening && !g.credit && !g.debit) return '';
     return formatMny(g[field]);
   };
 
@@ -59,12 +59,12 @@ export function MemberLedgerPrintTemplate({ payload, headerActions }) {
       {/* Member Details */}
       <div className="mb-3 text-[12px] font-semibold">
         <p>
-          MEMBER CODE : {member.code || '-'} &nbsp;&nbsp; NAME : {member.name || '-'} &nbsp;&nbsp;
-          MOBILE : {member.mobileNo || '-'} &nbsp;&nbsp; PF. No. : {member.pfNo || '-'} &nbsp;&nbsp;
-          BRANCH : {member.postedBranch || member.branchCode || '-'}
+          MEMBER CODE : {member.code || ''} &nbsp;&nbsp; NAME : {member.name || ''} &nbsp;&nbsp;
+          MOBILE : {member.mobileNo || ''} &nbsp;&nbsp; PF. No. : {member.pfNo || ''} &nbsp;&nbsp;
+          BRANCH : {member.postedBranch || member.branchCode || ''}
         </p>
         <p>
-          F/H NAME : {member.fatherOrHusbandName || '-'} &nbsp;&nbsp; DESIGNATION : {member.designation || '-'}
+          F/H NAME : {member.fatherOrHusbandName || ''} &nbsp;&nbsp; DESIGNATION : {member.designation || ''}
         </p>
       </div>
 

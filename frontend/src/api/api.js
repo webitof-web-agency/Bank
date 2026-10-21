@@ -223,7 +223,7 @@ export const api = {
   banking: {
     getMaster: (path, token) => request(`/banking${path}`, { token, skipCache: true }),
     updateMaster: (path, token, payload) => request(`/banking${path}`, { method: 'PUT', token, body: payload }),
-    dashboard: (token) => request('/banking/dashboard', { token, skipCache: true }),
+    dashboard: (token, query = {}) => request(`/banking/dashboard${buildQuery(query)}`, { token, skipCache: true }),
     // Static per release: the 15-minute response cache is fine.
     getTransactionCatalog: (token) => request('/banking/transactions/catalog', { token }),
     getLookups: (token) => request('/banking/lookups', { token, skipCache: true, revalidate: true }),
@@ -231,7 +231,7 @@ export const api = {
     demandEntry: {
       list: (token, query = {}) => request(`/banking/demand-entry${buildQuery(query)}`, { token, skipCache: true }),
       get: (token, id) => request(`/banking/demand-entry/${id}`, { token, skipCache: true }),
-      members: (token, branchCode) => request(`/banking/demand-entry/members${buildQuery({ branchCode })}`, { token, skipCache: true }),
+      members: (token, query = {}) => request(`/banking/demand-entry/members${buildQuery(query)}`, { token, skipCache: true }),
       create: (token, payload, query = {}) => request(`/banking/demand-entry${buildQuery(query)}`, { method: 'POST', token, body: payload }),
       update: (token, id, payload, query = {}) => request(`/banking/demand-entry/${id}${buildQuery(query)}`, { method: 'PUT', token, body: payload }),
       remove: (token, id) => request(`/banking/demand-entry/${id}`, { method: 'DELETE', token })

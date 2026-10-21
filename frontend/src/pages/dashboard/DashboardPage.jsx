@@ -4,25 +4,20 @@ import {
   ArrowRight,
   ArrowRightLeft,
   Building2,
-  ChevronDown,
   Download,
   FileBarChart,
   FileText,
   Landmark,
   PieChart,
   ReceiptText,
-  Search,
   ShieldCheck,
   Upload,
   User,
   Users,
-  WalletCards,
   Zap
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../api/api';
-import { Button } from '../../components/ui/Button';
-import { Card } from '../../components/ui/Card';
 import { Select } from '../../components/ui/Select';
 import { useAuth } from '../../context/AuthContext';
 import { useFY } from '../../context/FYContext';
@@ -59,6 +54,31 @@ function statusTone(value = '') {
 }
 
 
+const FUND_COLORS = { cash: '#1661F6', bank: '#10b981', memberLoans: '#8b5cf6', staffAdvances: '#f59e0b' };
+
+// Quick Actions: real pages only, each shown when the user may open it.
+const QUICK_ACTIONS = [
+  { label: 'Recovery', desc: 'Recovery from member', icon: ReceiptText, to: '/app/transactions/member/recovery', permission: 'transactions.member.view', color: 'text-blue-600', bg: 'bg-blue-50' },
+  { label: 'Demand Entry', desc: 'Monthly demand', icon: FileText, to: '/app/transactions/other/demand-entry', permission: ['demands.read', 'transactions.supporting.view'], color: 'text-violet-600', bg: 'bg-violet-50' },
+  { label: 'Receipt Voucher', desc: 'Add receipt', icon: Download, to: '/app/transactions/other/receipt-voucher', permission: 'transactions.receipt-interest.view', color: 'text-emerald-600', bg: 'bg-emerald-50' },
+  { label: 'Payment Voucher', desc: 'Add payment', icon: Upload, to: '/app/transactions/other/payment-voucher', permission: 'transactions.receipt-interest.view', color: 'text-rose-600', bg: 'bg-rose-50' },
+  { label: 'Members', desc: 'Search member', icon: User, to: '/app/master/members', permission: 'members.read', color: 'text-amber-600', bg: 'bg-amber-50' },
+  { label: 'Reports', desc: 'View reports', icon: PieChart, to: '/app/reports', permission: 'reports.read', color: 'text-slate-800', bg: 'bg-slate-100' }
+];
+
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+// A count, or '…' while the dashboard is loading (never a made-up number).
+function countText(loading, value) {
+  return loading ? '…' : formatNumber(value);
+}
+
+function ChangeBadge({ value, tone }) {
+  if (value == null) return null;
+  const up = value >= 0;
+  return <span className={cn('text-[11px] font-bold', tone)}>{up ? '↑' : '↓'} {Math.abs(value)}%</span>;
+}
+
 export function DashboardPage() {
   const { token, user, hasPermission } = useAuth();
   const { activeFY } = useFY();
@@ -73,7 +93,7 @@ export function DashboardPage() {
       return () => { mounted = false; };
     }
     setLoading(true);
-    api.banking.dashboard(token)
+    api.banking.dashboard(token, { fyStart: activeFY?.start || '', fyEnd: activeFY?.end || '' })
       .then((response) => {
         if (!mounted) return;
         setDashboard(response.data || null);
@@ -90,117 +110,44 @@ export function DashboardPage() {
 
   const headOffice = dashboard?.headOffice || dashboard?.society || null;
   const counts = dashboard?.counts || {};
+  const analytics = dashboard?.analytics || null;
   const recentVouchers = Array.isArray(dashboard?.recentVouchers) ? dashboard.recentVouchers : [];
   const recentBankTransactions = Array.isArray(dashboard?.recentBankTransactions) ? dashboard.recentBankTransactions : [];
 
   const metrics = [
-    { label: 'Branches', value: formatNumber(counts.branches || 4), icon: Building2, desc: 'Offices and branch coverage across the system.', color: 'text-blue-500', bg: 'bg-blue-50', spark: 'text-blue-500' },
-    { label: 'Members', value: formatNumber(counts.members || 8), icon: Users, desc: 'Registered member records and KYC base.', color: 'text-emerald-500', bg: 'bg-emerald-50', spark: 'text-emerald-500' },
-    { label: 'Employees', value: formatNumber(counts.employees || 9), icon: ShieldCheck, desc: 'Staff and access-controlled user accounts.', color: 'text-amber-500', bg: 'bg-amber-50', spark: 'text-amber-500' },
-    { label: 'Ledgers', value: formatNumber(counts.ledgers || 19), icon: FileText, desc: 'Accounting heads available for posting.', color: 'text-rose-500', bg: 'bg-rose-50', spark: 'text-rose-500' },
-    { label: 'Bank Accounts', value: formatNumber(counts.bankAccounts || 3), icon: Landmark, desc: 'Operational accounts linked to the books.', color: 'text-violet-500', bg: 'bg-violet-50', spark: 'text-violet-500' },
-    { label: 'Vouchers', value: formatNumber(counts.vouchers || 5), icon: ReceiptText, desc: 'Posted vouchers and workflow entries.', color: 'text-emerald-500', bg: 'bg-emerald-50', spark: 'text-emerald-500' }
+    { label: 'Branches', value: countText(loading, counts.branches), icon: Building2, desc: 'Offices and branch coverage across the system.', color: 'text-blue-500', bg: 'bg-blue-50', spark: 'text-blue-500' },
+    { label: 'Members', value: countText(loading, counts.members), icon: Users, desc: 'Active members on the roll.', color: 'text-emerald-500', bg: 'bg-emerald-50', spark: 'text-emerald-500' },
+    { label: 'Employees', value: countText(loading, counts.employees), icon: ShieldCheck, desc: 'Staff in the employee master.', color: 'text-amber-500', bg: 'bg-amber-50', spark: 'text-amber-500' },
+    { label: 'Ledgers', value: countText(loading, counts.ledgers), icon: FileText, desc: 'Accounting heads available for posting.', color: 'text-rose-500', bg: 'bg-rose-50', spark: 'text-rose-500' },
+    { label: 'Bank Accounts', value: countText(loading, counts.bankAccounts), icon: Landmark, desc: 'Bank ledgers in the books.', color: 'text-violet-500', bg: 'bg-violet-50', spark: 'text-violet-500' },
+    { label: 'Vouchers', value: countText(loading, counts.vouchers), icon: ReceiptText, desc: 'Vouchers entered in this financial year.', color: 'text-emerald-500', bg: 'bg-emerald-50', spark: 'text-emerald-500' }
   ];
 
-  const quickActions = [
-    { label: 'New Voucher', desc: 'Supporting voucher', icon: FileText, to: '/app/transactions/supporting/new', color: 'text-blue-600', bg: 'bg-blue-50' },
-    { label: 'Receipt Entry', desc: 'Add receipt', icon: Download, to: '/app/transactions/receipt-interest/new', color: 'text-emerald-600', bg: 'bg-emerald-50' },
-    { label: 'Bank Entry', desc: 'Add bank tx', icon: Upload, to: '/app/transactions/bank/new', color: 'text-rose-600', bg: 'bg-rose-50' },
-    { label: 'Bank Transfer', desc: 'New transfer', icon: ArrowRightLeft, to: '/app/transactions/transfer-voucher/new', color: 'text-violet-600', bg: 'bg-violet-50' },
-    { label: 'Member Search', desc: 'Search member', icon: User, to: '/app/master/members', color: 'text-amber-600', bg: 'bg-amber-50' },
-    { label: 'Reports', desc: 'View reports', icon: PieChart, to: '/app/reports', color: 'text-slate-800', bg: 'bg-slate-100' }
-  ];
-
-  const analyticsPeriods = {
-    thisMonth: {
-      label: 'This Month',
-      totals: { income: 1245000, expense: 875000, totalFunds: 3560000, incomeChange: 12.5, expenseChange: 8.2 },
-      lineData: [
-        { name: '01 Jul', income: 6.0, expense: 4.0 },
-        { name: '07 Jul', income: 4.5, expense: 5.0 },
-        { name: '14 Jul', income: 7.0, expense: 4.0 },
-        { name: '21 Jul', income: 6.0, expense: 4.5 },
-        { name: '28 Jul', income: 8.0, expense: 5.0 }
-      ],
-      fundPosition: [
-        { name: 'Cash in Hand', value: 845000, color: '#1661F6' },
-        { name: 'Bank Balances', value: 2015000, color: '#10b981' },
-        { name: 'Deposits', value: 560000, color: '#8b5cf6' },
-        { name: 'Advances', value: 140000, color: '#f59e0b' }
-      ]
-    },
-    lastMonth: {
-      label: 'Last Month',
-      totals: { income: 1098000, expense: 821000, totalFunds: 3415000, incomeChange: 7.8, expenseChange: 4.6 },
-      lineData: [
-        { name: '01 Jun', income: 5.2, expense: 4.1 },
-        { name: '07 Jun', income: 4.8, expense: 4.4 },
-        { name: '14 Jun', income: 5.9, expense: 4.2 },
-        { name: '21 Jun', income: 5.4, expense: 4.6 },
-        { name: '28 Jun', income: 6.5, expense: 4.8 }
-      ],
-      fundPosition: [
-        { name: 'Cash in Hand', value: 765000, color: '#1661F6' },
-        { name: 'Bank Balances', value: 1905000, color: '#10b981' },
-        { name: 'Deposits', value: 515000, color: '#8b5cf6' },
-        { name: 'Advances', value: 230000, color: '#f59e0b' }
-      ]
-    },
-    thisYear: {
-      label: 'This Year',
-      totals: { income: 12150000, expense: 8640000, totalFunds: 37560000, incomeChange: 18.4, expenseChange: 11.2 },
-      lineData: [
-        { name: 'Jan', income: 4.5, expense: 3.6 },
-        { name: 'Mar', income: 5.8, expense: 4.2 },
-        { name: 'May', income: 6.9, expense: 4.8 },
-        { name: 'Jul', income: 8.2, expense: 5.3 },
-        { name: 'Sep', income: 7.4, expense: 5.0 }
-      ],
-      fundPosition: [
-        { name: 'Cash in Hand', value: 9800000, color: '#1661F6' },
-        { name: 'Bank Balances', value: 18950000, color: '#10b981' },
-        { name: 'Deposits', value: 5600000, color: '#8b5cf6' },
-        { name: 'Advances', value: 3200000, color: '#f59e0b' }
-      ]
-    },
-    allTime: {
-      label: 'All Time',
-      totals: { income: 28650000, expense: 20540000, totalFunds: 68290000, incomeChange: 22.1, expenseChange: 14.7 },
-      lineData: [
-        { name: 'FY-1', income: 4.9, expense: 3.7 },
-        { name: 'FY-2', income: 5.6, expense: 4.1 },
-        { name: 'FY-3', income: 6.8, expense: 4.9 },
-        { name: 'FY-4', income: 7.5, expense: 5.4 },
-        { name: 'FY-5', income: 8.4, expense: 5.7 }
-      ],
-      fundPosition: [
-        { name: 'Cash in Hand', value: 14500000, color: '#1661F6' },
-        { name: 'Bank Balances', value: 28950000, color: '#10b981' },
-        { name: 'Deposits', value: 14700000, color: '#8b5cf6' },
-        { name: 'Advances', value: 10140000, color: '#f59e0b' }
-      ]
-    }
-  };
+  const quickActions = QUICK_ACTIONS.filter((action) => hasPermission(action.permission));
 
   const analyticsOptions = useMemo(() => [
     { value: 'thisMonth', label: 'This Month' },
     { value: 'lastMonth', label: 'Last Month' },
-    { value: 'thisYear', label: 'This Year' },
-    { value: 'allTime', label: 'All Time' }
+    { value: 'thisYear', label: 'This FY' }
   ], []);
 
-  const selectedAnalytics = useMemo(
-    () => analyticsPeriods[analyticsPeriod] || analyticsPeriods.thisMonth,
-    [analyticsPeriod]
-  );
+  const selectedTotals = analytics?.periods?.[analyticsPeriod] || analytics?.periods?.thisMonth || { income: 0, expense: 0 };
+  // Month by month over the FY, in lakh.
+  const lineData = useMemo(() => (analytics?.monthly || []).map((row) => ({
+    name: `${MONTH_NAMES[Number(row.month.slice(5, 7)) - 1]} ${row.month.slice(2, 4)}`,
+    income: Number((row.income / 100000).toFixed(2)),
+    expense: Number((row.expense / 100000).toFixed(2))
+  })), [analytics]);
 
-  const selectedFundPosition = useMemo(() => {
-    const total = selectedAnalytics.fundPosition.reduce((sum, item) => sum + item.value, 0) || 1;
-    return selectedAnalytics.fundPosition.map((item) => ({
-      ...item,
-      pct: `${((item.value / total) * 100).toFixed(1)}%`
-    }));
-  }, [selectedAnalytics]);
+  const fundTotal = (analytics?.fundPosition || []).reduce((sum, item) => sum + Math.max(0, Number(item.value || 0)), 0);
+  const selectedFundPosition = useMemo(() => (analytics?.fundPosition || []).map((item) => ({
+    name: item.label,
+    // The donut takes no negative slice; the list shows the true figure.
+    value: Math.max(0, Number(item.value || 0)),
+    amount: Number(item.value || 0),
+    color: FUND_COLORS[item.key] || '#94a3b8',
+    pct: fundTotal ? `${((Math.max(0, Number(item.value || 0)) / fundTotal) * 100).toFixed(1)}%` : '0%'
+  })), [analytics, fundTotal]);
 
   return (
     <div className="space-y-6 pb-12">
@@ -230,10 +177,10 @@ export function DashboardPage() {
               Welcome back,
             </p>
             <h1 className="text-2xl font-bold leading-tight tracking-tight md:text-[32px]">
-              {user?.fullName || 'System Admin'} <span className="inline-block">👋</span>
+              {user?.fullName || user?.name || ''} <span className="inline-block">👋</span>
             </h1>
             <p className="mt-1.5 text-sm font-medium text-white/90 max-w-xl">
-              {headOffice?.name || 'The Raipur Co-operative Employees Thrift Society Ltd.'} • {headOffice?.branchCode || 'BR01'}
+              {headOffice?.name || ''}{headOffice?.branchCode ? ` • ${headOffice.branchCode}` : ''}
             </p>
           </div>
 
@@ -244,7 +191,7 @@ export function DashboardPage() {
               </div>
               <div className="pr-2">
                 <p className="text-[10px] font-bold text-white/70 uppercase tracking-wider">Members</p>
-                <p className="text-[15px] font-bold text-white leading-none mt-1">{counts.members || 8}</p>
+                <p className="text-[15px] font-bold text-white leading-none mt-1">{countText(loading, counts.members)}</p>
               </div>
             </div>
 
@@ -254,7 +201,7 @@ export function DashboardPage() {
               </div>
               <div className="pr-2">
                 <p className="text-[10px] font-bold text-white/70 uppercase tracking-wider">Employees</p>
-                <p className="text-[15px] font-bold text-white leading-none mt-1">{counts.employees || 9}</p>
+                <p className="text-[15px] font-bold text-white leading-none mt-1">{countText(loading, counts.employees)}</p>
               </div>
             </div>
 
@@ -264,7 +211,7 @@ export function DashboardPage() {
               </div>
               <div className="pr-2">
                 <p className="text-[10px] font-bold text-white/70 uppercase tracking-wider">Vouchers</p>
-                <p className="text-[15px] font-bold text-white leading-none mt-1">{counts.vouchers || 5}</p>
+                <p className="text-[15px] font-bold text-white leading-none mt-1">{countText(loading, counts.vouchers)}</p>
               </div>
             </div>
 
@@ -273,8 +220,8 @@ export function DashboardPage() {
                 <ArrowRightLeft size={18} className="text-white" />
               </div>
               <div className="pr-2">
-                <p className="text-[10px] font-bold text-white/70 uppercase tracking-wider">Bank TX</p>
-                <p className="text-[15px] font-bold text-white leading-none mt-1">{counts.bankTransactions || 1}</p>
+                <p className="text-[10px] font-bold text-white/70 uppercase tracking-wider">Bank Entries</p>
+                <p className="text-[15px] font-bold text-white leading-none mt-1">{countText(loading, counts.bankTransactions)}</p>
               </div>
             </div>
           </div>
@@ -350,28 +297,28 @@ export function DashboardPage() {
                 <p className="text-[12px] font-semibold text-slate-500">Income vs Expense</p>
                 <div className="mt-3 flex items-end gap-12">
                   <div>
-                    <p className="text-xl font-bold text-slate-900">{formatCurrency(selectedAnalytics.totals.income)}</p>
+                    <p className="text-xl font-bold text-slate-900">{formatCurrency(selectedTotals.income)}</p>
                     <div className="flex items-center gap-2 mt-1">
                       <p className="text-[11px] text-slate-500">Total Income</p>
-                      <span className="text-[11px] font-bold text-emerald-500">↑ {selectedAnalytics.totals.incomeChange}%</span>
+                      <ChangeBadge value={selectedTotals.incomeChange} tone="text-emerald-500" />
                     </div>
                   </div>
                   <div>
-                    <p className="text-xl font-bold text-slate-900">{formatCurrency(selectedAnalytics.totals.expense)}</p>
+                    <p className="text-xl font-bold text-slate-900">{formatCurrency(selectedTotals.expense)}</p>
                     <div className="flex items-center gap-2 mt-1">
                       <p className="text-[11px] text-slate-500">Total Expense</p>
-                      <span className="text-[11px] font-bold text-rose-500">↑ {selectedAnalytics.totals.expenseChange}%</span>
+                      <ChangeBadge value={selectedTotals.expenseChange} tone="text-rose-500" />
                     </div>
                   </div>
                 </div>
               </div>
               <div className="mt-6 h-[180px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={selectedAnalytics.lineData} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
+                  <LineChart data={lineData} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} dy={10} />
                     <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} tickFormatter={(value) => `${value}L`} />
-                    <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                    <Tooltip formatter={(value) => `₹ ${value} L`} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
                     <Line type="monotone" dataKey="income" stroke="#1661F6" strokeWidth={2.5} dot={{ r: 4, strokeWidth: 2, fill: '#fff' }} />
                     <Line type="monotone" dataKey="expense" stroke="#94a3b8" strokeWidth={2} strokeDasharray="5 5" dot={false} />
                   </LineChart>
@@ -385,7 +332,7 @@ export function DashboardPage() {
 
             {/* Fund Position Donut Chart */}
             <div>
-              <p className="text-[12px] font-semibold text-slate-500">Fund Position</p>
+              <p className="text-[12px] font-semibold text-slate-500">Fund Position{analytics?.asOn ? ` as on ${formatDate(analytics.asOn)}` : ''}</p>
               <div className="mt-6 flex flex-col items-center sm:flex-row sm:items-center sm:justify-between gap-6">
                 <div className="relative h-[160px] w-[160px]">
                   <ResponsiveContainer width="100%" height="100%">
@@ -407,8 +354,8 @@ export function DashboardPage() {
                     </RechartsPieChart>
                   </ResponsiveContainer>
                   <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                    <p className="text-[16px] font-bold text-slate-900">{formatCurrency(selectedAnalytics.totals.totalFunds)}</p>
-                    <p className="text-[10px] font-medium text-slate-500">Total Funds</p>
+                    <p className="text-[16px] font-bold text-slate-900">{formatCurrency(fundTotal)}</p>
+                    <p className="text-[10px] font-medium text-slate-500">Total</p>
                   </div>
                 </div>
 
@@ -420,7 +367,7 @@ export function DashboardPage() {
                         <span className="font-medium text-slate-600">{item.name}</span>
                       </div>
                       <div className="flex items-center gap-4">
-                        <span className="font-bold text-slate-900">{formatCurrency(item.value)}</span>
+                        <span className="font-bold text-slate-900">{formatCurrency(item.amount)}</span>
                         <span className="w-8 text-right font-medium text-slate-400">{item.pct}</span>
                       </div>
                     </div>
@@ -478,9 +425,9 @@ export function DashboardPage() {
                 {loading ? (
                   <tr><td colSpan={5} className="py-6 text-center text-slate-500">Loading...</td></tr>
                 ) : recentVouchers.length === 0 ? (
-                  <tr><td colSpan={5} className="py-6 text-center text-slate-500">No recent vouchers</td></tr>
+                  <tr><td colSpan={5} className="py-6 text-center text-slate-500">No vouchers in this financial year</td></tr>
                 ) : recentVouchers.slice(0, 5).map(v => (
-                  <tr key={v._id || v.voucherNo} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50">
+                  <tr key={v.id || v._id || v.voucherNo} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50">
                     <td className="py-3 pl-1 pr-4 font-bold text-slate-800">{v.voucherNo || '-'}</td>
                     <td className="py-3 pr-4 text-slate-500">{formatDate(v.date)}</td>
                     <td className="py-3 pr-4 font-medium text-slate-600">{v.voucherCategory || v.transactionType || '-'}</td>
@@ -496,13 +443,13 @@ export function DashboardPage() {
             </table>
           </div>
           <div className="mt-5 flex justify-center">
-            <Link to="/app/transactions/transfer-voucher" className="inline-flex items-center gap-1.5 text-[13px] font-bold transition-all hover:opacity-80 hover:gap-2.5" style={{ color: 'var(--primary, #1661F6)' }}>
+            <Link to="/app/transactions/overview" className="inline-flex items-center gap-1.5 text-[13px] font-bold transition-all hover:opacity-80 hover:gap-2.5" style={{ color: 'var(--primary, #1661F6)' }}>
               View all vouchers <ArrowRight size={14} strokeWidth={2.5} />
             </Link>
           </div>
         </div>
 
-        {/* Recent Bank Transactions */}
+        {/* Recent Bank Entries */}
         <div className="rounded-[var(--radius-card,1.75rem)] border border-slate-100 bg-white p-6 shadow-sm">
           <h3 className="mb-5 flex items-center gap-2.5 text-lg font-bold text-slate-900">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary,#1661F6)]">
@@ -514,9 +461,8 @@ export function DashboardPage() {
             <table className="w-full text-left">
               <thead>
                 <tr className="border-b border-slate-100 text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                  <th className="pb-3 pl-1 pr-4">TX No</th>
+                  <th className="pb-3 pl-1 pr-4">Voucher No</th>
                   <th className="pb-3 pr-4">Date</th>
-                  <th className="pb-3 pr-4">Account</th>
                   <th className="pb-3 pr-4">Type</th>
                   <th className="pb-3 pr-4">Amount</th>
                   <th className="pb-3 pr-1">Status</th>
@@ -524,15 +470,14 @@ export function DashboardPage() {
               </thead>
               <tbody className="text-[13px]">
                 {loading ? (
-                  <tr><td colSpan={6} className="py-6 text-center text-slate-500">Loading...</td></tr>
+                  <tr><td colSpan={5} className="py-6 text-center text-slate-500">Loading...</td></tr>
                 ) : recentBankTransactions.length === 0 ? (
-                  <tr><td colSpan={6} className="py-6 text-center text-slate-500">No recent transactions</td></tr>
+                  <tr><td colSpan={5} className="py-6 text-center text-slate-500">No bank entries in this financial year</td></tr>
                 ) : recentBankTransactions.slice(0, 5).map(tx => (
-                  <tr key={tx._id || tx.transactionNo} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50">
-                    <td className="py-3 pl-1 pr-4 font-bold text-slate-800">{tx.transactionNo || '-'}</td>
+                  <tr key={tx.id || tx._id || tx.voucherNo} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50">
+                    <td className="py-3 pl-1 pr-4 font-bold text-slate-800">{tx.voucherNo || '-'}</td>
                     <td className="py-3 pr-4 text-slate-500">{formatDate(tx.date)}</td>
-                    <td className="py-3 pr-4 font-medium text-slate-600">{tx.bankAccountCode || '-'}</td>
-                    <td className="py-3 pr-4 text-slate-600 capitalize">{tx.transactionType || '-'}</td>
+                    <td className="py-3 pr-4 font-medium text-slate-600">{tx.voucherCategory || tx.transactionType || '-'}</td>
                     <td className="py-3 pr-4 font-bold text-slate-800">₹ {formatNumber(tx.amount)}</td>
                     <td className="py-3 pr-1">
                       <span className={cn('inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider', statusTone(tx.status))}>

@@ -58,7 +58,7 @@ export function StatementOfLedgersPrint({ data, filters, headerActions }) {
           </thead>
           {sections.map((section) => (
             <tbody key={section.key}>
-              <tr>
+              <tr data-group-row>
                 <td className="border border-black bg-slate-100 px-2 py-1 text-[11px] font-bold" colSpan={5}>{section.label}</td>
               </tr>
               {section.rows.map((row) => (

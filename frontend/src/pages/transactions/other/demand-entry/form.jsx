@@ -27,7 +27,7 @@ function money(value) {
 // allowAllBranches (not for a locked list): "All branches" loads every
 // branch's members and saves one list per branch with the same list number;
 // when editing, the list's own branch is updated and the others are added.
-export function DemandForm({ value, setValue, onSubmit, branches = [], members = [], fy = null, locked = false, allowAllBranches = false, entries = [] }) {
+export function DemandForm({ value, setValue, onSubmit, branches = [], members = [], fy = null, locked = false, allowAllBranches = false, entries = [], editingId = '' }) {
   const { token } = useAuth();
   const [loading, setLoading] = useState(false);
   const [addCode, setAddCode] = useState('');
@@ -53,12 +53,17 @@ export function DemandForm({ value, setValue, onSubmit, branches = [], members =
     }
     setLoading(true);
     try {
-      const response = await api.banking.demandEntry.members(token, value.branchCode);
+      // A member's demand is raised once per month: members who already have
+      // it for this month (another list, or recovered) are not loaded again.
+      const response = await api.banking.demandEntry.members(token, {
+        branchCode: value.branchCode, month: value.month || '', year: value.year || '', excludeId: editingId
+      });
       const result = mergeLoadedMembers(lines, Array.isArray(response.data) ? response.data : []);
       setLines(result.lines);
-      toast.success(`${result.added} member(s)${allBranches ? ' of all branches' : ''} loaded with their usual demand. Correct any amount before saving.`);
+      const skipped = Number(response.skipped || 0);
+      toast.success(`${result.added} member(s)${allBranches ? ' of all branches' : ''} loaded with their usual demand.${skipped ? ` ${skipped} already have demand for this month and were not loaded.` : ''} Correct any amount before saving.`);
     } catch (error) {
-      toast.error(error.message || 'Unable to load members');
+      toast.error(error.message || 'Unable to load demand');
     } finally {
       setLoading(false);
     }
@@ -134,7 +139,7 @@ export function DemandForm({ value, setValue, onSubmit, branches = [], members =
           </div>
           <button type="button" onClick={addMember} disabled={!addCode} className="h-10 rounded-lg border border-slate-300 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">Add</button>
           <button type="button" onClick={loadMembers} disabled={loading} className="h-10 rounded-lg bg-[var(--primary,#2563eb)] px-4 text-sm font-medium text-white disabled:opacity-50">
-            {loading ? 'Loading...' : 'Load Members'}
+            {loading ? 'Loading...' : 'Load Demand'}
           </button>
         </div>
       </div>
@@ -183,7 +188,7 @@ export function DemandForm({ value, setValue, onSubmit, branches = [], members =
               );
             })}
             {!lines.length ? (
-              <tr><td colSpan={DEMAND_HEADS.length + 4} className="px-3 py-6 text-center text-slate-500">Choose a branch and click Load Members.</td></tr>
+              <tr><td colSpan={DEMAND_HEADS.length + 4} className="px-3 py-6 text-center text-slate-500">Choose a branch and click Load Demand.</td></tr>
             ) : null}
           </tbody>
           {lines.length ? (

@@ -1,9 +1,10 @@
 import { PrintShell, PrintLetterhead } from './PrintShell';
 import { formatDMY } from './printStyles';
 
-// Legacy "LIST OF BRANCH": an outer box with no inner grid, branches grouped
-// under their district (bold, dashed rule above), S.No. running on across
-// groups. Rows arrive sorted by district then branch from the backend.
+// Legacy "LIST OF BRANCH": branches grouped under their district (a bold
+// heading row from the left edge), S.No. running on across groups. The grid
+// lines come from PrintShell. Rows arrive sorted by district then branch
+// from the backend.
 const table = 'w-full border-collapse border border-black text-[11px] table-fixed';
 const th = 'border-b border-black px-2 py-1 text-left font-bold text-[11px]';
 const cell = 'px-2 py-0.5 text-[11px] align-top';
@@ -65,9 +66,8 @@ function DistrictGroup({ group, first }) {
   const rule = first ? '' : 'border-t border-dashed border-black';
   return (
     <>
-      <tr>
-        <td colSpan={2} className={`${cell} ${rule}`} />
-        <td colSpan={3} className={`${cell} ${rule} font-bold`}>{group.district}</td>
+      <tr data-group-row>
+        <td colSpan={5} className={`${cell} ${rule} font-bold`}>{group.district}</td>
       </tr>
       {group.rows.map((row, i) => (
         <tr key={row.code}>

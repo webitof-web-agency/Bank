@@ -97,7 +97,7 @@ function BranchwiseTable({ rows, rate, withFooter }) {
       <thead>
         <tr>
           <th className={th}>S.No.</th>
-          <th className={thRight}>CODE</th>
+          <th className={th}>BRANCH CODE</th>
           <th className={th}>BRANCH</th>
           <th className={thRight}>MEMBER'S SHARE</th>
           <th className={thRight}>DIVIDEND AMT. AS ON {rate} %</th>
@@ -107,7 +107,7 @@ function BranchwiseTable({ rows, rate, withFooter }) {
         {rows.map((row, i) => (
           <tr key={row.branch || i}>
             <td className={cell}>{i + 1}</td>
-            <td className={`${cell} text-right`}>{row.branch}</td>
+            <td className={cell}>{row.branch}</td>
             <td className={`${cell} font-semibold`}>{row.branchName || row.branch}</td>
             <td className={num}>{money(row.shareTotal)}</td>
             <td className={num}>{money(row.dividendTotal)}</td>
@@ -145,7 +145,7 @@ function SummaryHead({ rate }) {
     <thead>
       <tr>
         <th className={th}>SN.</th>
-        <th className={thRight}>CODE</th>
+        <th className={th}>CODE</th>
         <th className={th}>MEMBER'S NAME</th>
         <th className={thRight}>SHARE</th>
         <th className={`${th} text-center`}>DIVIDEND AMOUNT<br />ON {rate}</th>
@@ -158,14 +158,13 @@ function SummaryHead({ rate }) {
 function BranchRows({ group, totalLabel = '' }) {
   return (
     <>
-      <tr>
-        <td colSpan={2} className={`${cell} pt-1 font-bold`}>BRANCH :</td>
-        <td colSpan={4} className={`${cell} pt-1 font-bold`}>{group.branchName}</td>
+      <tr data-group-row>
+        <td colSpan={6} className={`${cell} pt-1 font-bold`}>BRANCH : {group.branchName}</td>
       </tr>
       {group.rows.map((row, i) => (
         <tr key={row.memberCode}>
           <td className={cell}>{group.firstSerial + i}</td>
-          <td className={`${cell} text-right`}>{row.memberCode}</td>
+          <td className={cell}>{row.memberCode}</td>
           <td className={cell}>{row.memberName}</td>
           <td className={num}>{money(row.share)}</td>
           <td className={num}>{money(row.dividendAmount)}</td>
