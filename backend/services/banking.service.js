@@ -2925,6 +2925,18 @@ function mapLegacyVoucherRow(row, partyIndex, { branchCode, partyTypeFilter } = 
     narration: row.narration || raw.Narration || '',
     details: {
       key: catalogItem.key,
+      // The amount split, under the keys the app's own vouchers use (the
+      // lists show Loan / LAD / home, vehicle and grain advance from them).
+      components: {
+        share: legacyNumber(raw.ShareAmt),
+        cd: legacyNumber(raw.CDAmt),
+        ssa: legacyNumber(raw.SSAamt),
+        loanAmt: legacyNumber(raw.RLoanAmt),
+        lad: legacyNumber(raw.DLoanAmt),
+        house: legacyNumber(raw.HomeLoan),
+        vehicle: legacyNumber(raw.VehicleLoan),
+        grain: legacyNumber(raw.GrainAdvance)
+      },
       isHistorical: true,
       legacySourceDatabase: row.sourceDatabase,
       legacyVoucherNo: row.voucherNo
@@ -2961,6 +2973,9 @@ async function buildHistoricalVoucherRows(filter = {}) {
 }
 
 async function getHistoricalVoucherById(legacyId, user = {}) {
+  // 'legacy:<id>:cd' is the CD Paid view of a transfer voucher (see
+  // filterVouchersBySection): it opens that voucher.
+  legacyId = String(legacyId || '').replace(/:cd$/, '');
   const database = await initializeDatabase();
   const result = await database.query(
     `SELECT id, "voucherNo", "voucherCategory", amount, narration, "sourceDatabase", payload
@@ -5720,12 +5735,33 @@ function filterVouchersBySection(rows = [], sectionKey = '', itemKey = '') {
   const itemKeys = new Set(items.map((item) => cleanText(item.key).toLowerCase()));
   const labels = new Set(items.map((item) => cleanText(item.label).toLowerCase()));
 
-  return rows.filter((row) => {
+  const matched = rows.filter((row) => {
     const rowKey = cleanText(row?.details?.key || row?.transactionKey || row?.sectionKey || '').toLowerCase();
     if (activeKey && rowKey) return rowKey === activeKey;
     if (rowKey && itemKeys.has(rowKey)) return true;
     return labels.has(cleanText(row.voucherCategory).toLowerCase());
   });
+  // Legacy never used its own "Deposit Paid" voucher: it paid compulsory
+  // deposit back with a Transfer Voucher Paid carrying a CD amount. The CD
+  // Paid list shows those too, as a view of that voucher (its CD part only).
+  // Only this list: the voucher itself is listed and counted once elsewhere.
+  if (itemKeys.has('deposit-paid-member')) {
+    const cdLabel = items.find((item) => item.key === 'deposit-paid-member')?.label || 'Deposit Paid to Member';
+    for (const row of rows) {
+      const cd = Number(row?.details?.components?.cd || 0);
+      if (!row?.isHistorical || row?.details?.key !== 'transfer-voucher-paid' || !cd) continue;
+      matched.push({
+        ...row,
+        id: `${row.id}:cd`,
+        amount: cd,
+        voucherCategory: cdLabel,
+        details: { ...row.details, key: 'deposit-paid-member', viewOf: 'transfer-voucher-paid', viewOfId: row.id }
+      });
+    }
+    // Newest first, as the lists come.
+    matched.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+  }
+  return matched;
 }
 
 function getTransactionCatalogItemByKey(key = '') {

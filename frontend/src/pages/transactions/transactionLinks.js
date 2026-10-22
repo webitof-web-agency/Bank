@@ -9,9 +9,9 @@ export const TRANSACTION_SECTIONS = [
     description: 'Dedicated loan paid, compulsory deposit, insurance, and recovery workspaces.',
     tone: 'pink',
     children: [
-      { label: 'Loan Payment', path: '/app/transactions/member/loan-paid', icon: HandCoins },
-      { label: 'CD Payment', path: '/app/transactions/member/deposit-paid', icon: PiggyBank },
-      { label: 'SSA Payment', path: '/app/transactions/member/ssa-paid', icon: Wallet },
+      { label: 'Loan Paid To Member', path: '/app/transactions/member/loan-paid', icon: HandCoins },
+      { label: 'CD Paid To Member', path: '/app/transactions/member/deposit-paid', icon: PiggyBank },
+      { label: 'SSA Paid To Member', path: '/app/transactions/member/ssa-paid', icon: Wallet },
       { label: 'Premium Paid To Member', path: '/app/transactions/member/insurance-paid', icon: Umbrella },
       { label: 'Recovery', path: '/app/transactions/member/recovery', icon: RotateCcw }
     ]

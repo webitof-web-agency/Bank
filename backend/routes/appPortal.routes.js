@@ -1,8 +1,8 @@
 'use strict';
 
-// Member / employee mobile-app portal API (read-only). Mounted at /api/app,
-// BEFORE the admin requireAuth guard in routes/index.js, with its own app-token
-// auth. Everything under /me is scoped to the logged-in account.
+// Member / employee mobile-app portal API (read-only, bar the account's own
+// password change). Mounted at /api/app, BEFORE the admin requireAuth guard
+// in routes/index.js, with its own app-token auth. Everything under /me is scoped to the logged-in account.
 
 const express = require('express');
 const controller = require('../controllers/appPortal.controller');
@@ -39,6 +39,7 @@ router.use('/me', requireAppAuth, (_req, res, next) => {
   next();
 });
 router.get('/me', controller.me);
+router.post('/me/password', authRateLimit, controller.changePassword);
 router.get('/me/financial-years', controller.financialYears);
 router.get('/me/profile', controller.profile);
 router.get('/me/summary', controller.summary);

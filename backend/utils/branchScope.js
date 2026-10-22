@@ -1,6 +1,8 @@
-// Branch scoping: a user with a branchCode (not a super admin) only sees and
-// changes the records of that branch. Shared by the banking service and the
-// SMS service so both apply the same rule.
+// Branch scoping. The society's staff manage the whole society, so a user's
+// own branch never limits what they see or change: their role's permissions
+// decide that (the society's rule, 2026-10-22). What remains is the branch a
+// user picks as a filter. Shared by the banking and SMS services; the helpers
+// stay so the callers keep one place to change if that rule ever changes.
 
 const BRANCH_SCOPED_RESOURCES = new Set([
   'branches',
@@ -16,11 +18,9 @@ function cleanUpper(value) {
   return String(value ?? '').trim().toUpperCase();
 }
 
-function getScopedBranchCode(user = {}) {
-  if (!user || user.isSuperAdmin) {
-    return '';
-  }
-  return cleanUpper(user.branchCode);
+// No user is held to a branch (see above).
+function getScopedBranchCode() {
+  return '';
 }
 
 function resolveBranchCode(user = {}, branchCode = '') {

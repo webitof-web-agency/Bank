@@ -6,7 +6,9 @@ import '../models/account.dart';
 import '../state/branding_controller.dart';
 import '../state/providers.dart';
 import '../widgets/async_view.dart';
+import '../widgets/page_list_view.dart';
 import '../widgets/society_logo.dart';
+import 'change_password_screen.dart';
 
 /// Profile: a header with initials, name, account tags and quick facts, then
 /// Personal and Membership/Service sections (label above value, so long
@@ -24,8 +26,7 @@ class ProfileScreen extends ConsumerWidget {
       value: profile,
       onRefresh: () async => ref.refresh(profileProvider.future),
       data: (Profile p) {
-        return ListView(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+        return PageListView(
           children: [
             _Header(profile: p),
             const SizedBox(height: 20),
@@ -38,6 +39,25 @@ class ProfileScreen extends ConsumerWidget {
                 fields: p.membership,
               ),
             ],
+            const SizedBox(height: 20),
+            Card(
+              child: ListTile(
+                leading: Icon(
+                  Icons.lock_reset_outlined,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                title: const Text(
+                  'Change password',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const ChangePasswordScreen(),
+                  ),
+                ),
+              ),
+            ),
             const SizedBox(height: 20),
             Card(
               child: Padding(

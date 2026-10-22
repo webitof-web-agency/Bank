@@ -31,7 +31,9 @@ class AppUpdater {
     BuildContext context,
     PortalRepository repo,
   ) async {
-    if (_checked) return;
+    // In a browser the site is always the latest version, and there's no
+    // APK to install.
+    if (kIsWeb || _checked) return;
     _checked = true;
     try {
       final prefs = await SharedPreferences.getInstance();

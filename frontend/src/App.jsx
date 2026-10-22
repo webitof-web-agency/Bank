@@ -96,6 +96,15 @@ function LegacyEmployeeRedirect() {
   } = useParams();
   return <Navigate to={id ? `/app/master/employees/${id}` : '/app/master/employees'} replace />;
 }
+// The member app's browser build is static files in public/member/. A host
+// that answers /member with this site's index.html instead lands here: go on
+// to the app's own page (always a real file, so this can't loop).
+function MemberAppRedirect() {
+  useEffect(() => {
+    window.location.replace('/member/index.html');
+  }, []);
+  return null;
+}
 function TitleUpdater() {
   const location = useLocation();
   useEffect(() => {
@@ -109,6 +118,7 @@ function TitleUpdater() {
 function AppRoutes() {
   return <Routes>
       <Route path="/" element={<Navigate to="/app/dashboard" replace />} />
+      <Route path="/member/*" element={<MemberAppRedirect />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />

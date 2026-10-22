@@ -8,10 +8,16 @@ import '../models/statement.dart';
 import '../models/summary.dart';
 import 'auth_controller.dart';
 
-/// Dio client; reads the current token from the auth controller on each call.
-final apiClientProvider = Provider<ApiClient>((ref) {
-  return ApiClient(tokenProvider: () => ref.read(authControllerProvider).token);
-});
+/// Dio client; reads the current token from the auth controller on each call,
+/// and signs the session out when the server refuses that token.
+final apiClientProvider = Provider<ApiClient>((ref) => buildApiClient(ref));
+
+ApiClient buildApiClient(Ref ref, {String? baseUrl}) => ApiClient(
+  baseUrl: baseUrl,
+  tokenProvider: () => ref.read(authControllerProvider).token,
+  onUnauthorized: (token) =>
+      ref.read(authControllerProvider.notifier).expireSession(token),
+);
 
 final portalRepositoryProvider = Provider<PortalRepository>((ref) {
   return PortalRepository(ref.watch(apiClientProvider));

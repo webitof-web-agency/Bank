@@ -34,7 +34,7 @@ export function ChangePasswordPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Change Password</h1>
-        <p className="mt-1 text-sm text-slate-500">Current profile ke security form ko separate page par laaye hain.</p>
+        <p className="mt-1 text-sm text-slate-500">Enter your current password, then choose a new one (at least 8 characters).</p>
       </div>
 
       <Card className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm max-w-2xl">

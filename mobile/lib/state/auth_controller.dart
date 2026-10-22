@@ -100,6 +100,22 @@ class AuthController extends StateNotifier<AuthState> {
     }
   }
 
+  /// Returns null on success, else the message to show. The old token is
+  /// dead once the password changes, so the new one replaces it at once.
+  Future<String?> changePassword(
+    String currentPassword,
+    String newPassword,
+  ) async {
+    try {
+      final result = await _repo.changePassword(currentPassword, newPassword);
+      await _storage.write(key: _kToken, value: result.token);
+      state = state.copyWith(token: result.token);
+      return null;
+    } catch (e) {
+      return e.toString();
+    }
+  }
+
   Future<void> logout() async {
     if (state.status == AuthStatus.authenticated) {
       try {
@@ -108,9 +124,27 @@ class AuthController extends StateNotifier<AuthState> {
         // Offline or already expired: signing out locally is enough.
       }
     }
+    await _signOutLocally();
+  }
+
+  /// The server refused [token] (expired, password changed on another
+  /// device, membership ended): sign out here and say why. Ignored when it
+  /// is no longer this session's token, so a late answer to an old session
+  /// can't end a new one.
+  Future<void> expireSession(String token) async {
+    if (state.status != AuthStatus.authenticated || state.token != token) {
+      return;
+    }
+    await _signOutLocally(
+      reason: 'Your session has expired. Please sign in again.',
+    );
+  }
+
+  Future<void> _signOutLocally({String? reason}) async {
+    // State first: requests failing meanwhile then see no session to end.
+    state = AuthState(status: AuthStatus.unauthenticated, error: reason);
+    _ref.read(selectedFyProvider.notifier).state = null;
     await _storage.delete(key: _kToken);
     await _storage.delete(key: _kAccount);
-    _ref.read(selectedFyProvider.notifier).state = null;
-    state = const AuthState(status: AuthStatus.unauthenticated);
   }
 }

@@ -400,7 +400,7 @@ export function MemberForm({
             <p className="mb-4 mt-0.5 text-[12px] text-slate-500">What the member currently has or owes.</p>
             {value.openingBalancesLocked ? (
               <p className="mb-4 rounded-lg bg-slate-100 px-3 py-2 text-[12px] text-slate-600">
-                Opening balances of a migrated member come from the legacy books and can't be edited here. They change only through transactions (Loan / CD / SSA payments, Recovery).
+                Opening balances of a migrated member come from the legacy books and can't be edited here. They change only through transactions (Loan / CD / SSA paid to member, Recovery).
               </p>
             ) : null}
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5">

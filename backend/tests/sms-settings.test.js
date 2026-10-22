@@ -2,8 +2,9 @@
 //
 // - GET /api/sms/config/status: what is configured, never a secret's value.
 // - GET/PUT /api/sms/templates, GET /api/sms/messages (filters, safe fields).
-// - DELETE /banking/transactions/vouchers/:id and POST .../:id/restore:
-//   a branch-scoped user gets 403 for another branch's voucher.
+// - DELETE /banking/transactions/vouchers/:id and POST .../:id/restore: a
+//   user of one branch may handle another branch's voucher (staff manage
+//   every branch; their permissions decide).
 //
 // Runs through the real routers and permission middleware; only the JWT step
 // is replaced by a header naming one of the test users below. Uses its own
@@ -263,7 +264,7 @@ test('messages: date filters are whole India (IST) days, inclusive at both ends'
   assert.deepEqual(await list('dateFrom=2026-09-13&dateTo=2026-09-15'), ['B1', 'B2', 'B3', 'B4']);
 });
 
-test('messages: a branch-scoped user sees only SMS for their own branch\'s vouchers', async () => {
+test('messages: a user of one branch sees the SMS of every branch\'s vouchers', async () => {
   const own = await banking.createVoucher(ssaVoucher(code(1)), { actorUser: USERS.branchA });
   const other = await banking.createVoucher(ssaVoucher(code(2)), { actorUser: USERS.branchB });
   for (const [voucher, memberCode] of [[own, code(1)], [other, code(2)]]) {
@@ -277,38 +278,22 @@ test('messages: a branch-scoped user sees only SMS for their own branch\'s vouch
   const seen = await call('GET', '/sms/messages?limit=500', { user: 'branchReaderA' });
   assert.equal(seen.status, 200);
   const ids = seen.body.data.map((row) => row.voucherId);
-  assert.ok(ids.includes(own.id));
-  assert.equal(ids.includes(other.id), false);
-  assert.ok(seen.body.data.every((row) => row.entityCode !== code(2)));
-  // Asking for the other branch's voucher directly returns nothing.
-  assert.equal((await call('GET', `/sms/messages?voucherId=${other.id}`, { user: 'branchReaderA' })).body.data.length, 0);
-  // An unscoped reader sees both.
-  const all = (await call('GET', '/sms/messages?limit=500', { user: 'reader' })).body.data.map((row) => row.voucherId);
-  assert.ok(all.includes(own.id) && all.includes(other.id));
+  assert.ok(ids.includes(own.id) && ids.includes(other.id));
+  assert.equal((await call('GET', `/sms/messages?voucherId=${other.id}`, { user: 'branchReaderA' })).body.data.length, 1);
 });
 
 // ---------------------------------------------------------------------------
-// Voucher delete / restore: branch security
+// Voucher delete / restore / edit across branches
 
 async function journalCount(voucherId) {
   return (await JournalLine.find({ voucherId }).lean()).length;
 }
 
-test('delete: another branch\'s voucher is 403 and stays intact; own branch deletes', async () => {
+test('delete: a user of another branch may delete a voucher, with its journal lines', async () => {
   const voucher = await banking.createVoucher(ssaVoucher(code(1)), { actorUser: USERS.branchA });
-  const journals = await journalCount(voucher.id);
-  assert.ok(journals > 0);
+  assert.ok(await journalCount(voucher.id) > 0);
 
-  const denied = await call('DELETE', `/banking/transactions/vouchers/${voucher.id}`, { user: 'branchB' });
-  assert.equal(denied.status, 403);
-  assert.ok(await Voucher.findById(voucher.id).lean(), 'voucher still there');
-  assert.equal(await journalCount(voucher.id), journals, 'journal lines untouched');
-
-  // Same rule when called directly with an actor.
-  await assert.rejects(banking.deleteVoucher(voucher.id, { actorUser: USERS.branchB }), (error) => error.statusCode === 403);
-  assert.ok(await Voucher.findById(voucher.id).lean());
-
-  const ok = await call('DELETE', `/banking/transactions/vouchers/${voucher.id}`, { user: 'branchA' });
+  const ok = await call('DELETE', `/banking/transactions/vouchers/${voucher.id}`, { user: 'branchB' });
   assert.equal(ok.status, 200);
   assert.equal(await Voucher.findById(voucher.id).lean(), null);
   assert.equal(await journalCount(voucher.id), 0);
@@ -317,30 +302,23 @@ test('delete: another branch\'s voucher is 403 and stays intact; own branch dele
   assert.equal((await call('DELETE', `/banking/transactions/vouchers/${crypto.randomUUID()}`, { user: 'branchA' })).status, 404);
 });
 
-test('restore: another branch\'s deleted voucher is 403 and stays deleted; own branch restores', async () => {
+test('restore: a user of another branch may restore a deleted voucher', async () => {
   const voucher = await banking.createVoucher(ssaVoucher(code(1)), { actorUser: USERS.branchA });
   const journals = await journalCount(voucher.id);
   assert.equal((await call('DELETE', `/banking/transactions/vouchers/${voucher.id}`, { user: 'branchA' })).status, 200);
 
-  const denied = await call('POST', `/banking/transactions/vouchers/${voucher.id}/restore`, { user: 'branchB' });
-  assert.equal(denied.status, 403);
-  assert.equal(await Voucher.findById(voucher.id).lean(), null, 'still deleted');
-  await assert.rejects(banking.restoreVoucher(voucher.id, { actorUser: USERS.branchB }), (error) => error.statusCode === 403);
-
-  const ok = await call('POST', `/banking/transactions/vouchers/${voucher.id}/restore`, { user: 'branchA' });
+  const ok = await call('POST', `/banking/transactions/vouchers/${voucher.id}/restore`, { user: 'branchB' });
   assert.equal(ok.status, 200);
   assert.ok(await Voucher.findById(voucher.id).lean());
   assert.equal(await journalCount(voucher.id), journals, 'journal lines restored with it');
 });
 
-test('edit: another branch\'s voucher is 403 (same as delete/restore); reading it stays 404', async () => {
+test('edit: a user of another branch may read and edit a voucher', async () => {
   const voucher = await banking.createVoucher(ssaVoucher(code(1)), { actorUser: USERS.branchA });
-  const denied = await call('PUT', `/banking/transactions/vouchers/${voucher.id}`, { user: 'branchB', body: { narration: 'cross-branch edit' } });
-  assert.equal(denied.status, 403);
-  assert.notEqual((await Voucher.findById(voucher.id).lean()).narration, 'cross-branch edit');
-  assert.equal((await call('GET', `/banking/transactions/vouchers/${voucher.id}`, { user: 'branchB' })).status, 404);
-  const ok = await call('PUT', `/banking/transactions/vouchers/${voucher.id}`, { user: 'branchA', body: { narration: 'own edit' } });
+  assert.equal((await call('GET', `/banking/transactions/vouchers/${voucher.id}`, { user: 'branchB' })).status, 200);
+  const ok = await call('PUT', `/banking/transactions/vouchers/${voucher.id}`, { user: 'branchB', body: { narration: 'cross-branch edit' } });
   assert.equal(ok.status, 200);
+  assert.equal((await Voucher.findById(voucher.id).lean()).narration, 'cross-branch edit');
   assert.equal((await call('PUT', `/banking/transactions/vouchers/${crypto.randomUUID()}`, { user: 'branchA', body: {} })).status, 404);
 });
 

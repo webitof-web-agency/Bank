@@ -331,26 +331,20 @@ test('duplicate queue for the same voucher is refused by the unique idempotency 
   ), /unique|duplicate/i);
 });
 
-test('security: a branch-scoped user selecting another branch\'s member gets 403, no voucher, no SMS', async () => {
-  await saveTemplate();
-  const before = (await smsRowsForMember(code(90))).length;
-  await assert.rejects(
-    banking.createVoucher(ssaVoucher(code(90), { narration: `${RUN}-cross-branch` }), meta),
-    (error) => error.statusCode === 403 && /access to this member/.test(error.message)
-  );
-  assert.equal((await db.query('SELECT 1 FROM "vouchers" WHERE "narration" = $1', [`${RUN}-cross-branch`])).rowCount, 0);
-  assert.equal((await smsRowsForMember(code(90))).length, before);
-  assert.equal(flowitCalls.length, 0);
+test('a user of one branch may post and edit vouchers for any branch\'s member', async () => {
+  // Staff manage every branch: their permissions decide, not their branch.
+  const cross = await banking.createVoucher(ssaVoucher(code(90), { narration: `${RUN}-cross-branch`, details: { sms: false } }), meta);
+  assert.equal(cross.partyCode, code(90));
 
-  // Editing an own-branch voucher over to the other branch's member: refused too.
+  // An own-branch voucher can be moved over to the other branch's member.
   const own = await banking.createVoucher(ssaVoucher(code(1), { details: { sms: false } }), meta);
-  await assert.rejects(banking.updateVoucher(own.id, ssaVoucher(code(90)), meta), (error) => error.statusCode === 403);
-  assert.equal((await Voucher.findById(own.id).lean()).partyCode, code(1));
+  await banking.updateVoucher(own.id, ssaVoucher(code(90), { details: { sms: false } }), meta);
+  assert.equal((await Voucher.findById(own.id).lean()).partyCode, code(90));
 
-  // Another branch's user cannot edit this branch's voucher at all (403).
+  // And another branch's user may edit it.
   const otherUser = { id: null, branchCode: OTHER_BRANCH, isSuperAdmin: false };
-  await assert.rejects(banking.updateVoucher(own.id, { narration: 'x' }, { actorUser: otherUser }), (error) => error.statusCode === 403);
-  assert.notEqual((await Voucher.findById(own.id).lean()).narration, 'x');
+  await banking.updateVoucher(own.id, ssaVoucher(code(90), { narration: 'x', details: { sms: false } }), { actorUser: otherUser });
+  assert.equal((await Voucher.findById(own.id).lean()).narration, 'x');
 
   // A super admin may post for any branch's member.
   const admin = await banking.createVoucher(ssaVoucher(code(90), { details: { sms: false } }), { actorUser: { isSuperAdmin: true } });

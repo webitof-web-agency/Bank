@@ -43,6 +43,25 @@ class PortalRepository {
     );
   }
 
+  /// Changes the signed-in account's password. Every token issued with the
+  /// old password stops working; the result carries this device's new one.
+  Future<LoginResult> changePassword(
+    String currentPassword,
+    String newPassword,
+  ) async {
+    final res = await _api.post(
+      '/app/me/password',
+      body: {'currentPassword': currentPassword, 'newPassword': newPassword},
+    );
+    final data = (res['data'] as Map<String, dynamic>?) ?? {};
+    return LoginResult(
+      token: (data['token'] ?? '').toString(),
+      account: Account.fromJson(
+        (data['account'] as Map<String, dynamic>?) ?? {},
+      ),
+    );
+  }
+
   /// Ends this session on the server, so the token can't be reused.
   Future<void> logout() async {
     await _api.post('/app/auth/logout');

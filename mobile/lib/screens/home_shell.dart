@@ -6,6 +6,7 @@ import '../state/branding_controller.dart';
 import '../state/providers.dart';
 import '../widgets/fy_dropdown.dart';
 import '../widgets/marquee_text.dart';
+import '../widgets/page_list_view.dart';
 import '../widgets/society_logo.dart';
 import 'profile_screen.dart';
 import 'transactions_screen.dart';
@@ -23,11 +24,25 @@ class _HomeShellState extends ConsumerState<HomeShell> {
 
   static const _titles = ['Summary', 'Transactions', 'Profile'];
 
+  // (icon, selected icon, label): the bottom bar on a phone, a side rail on
+  // a wide (tablet / desktop browser) screen.
+  static const _destinations = [
+    (Icons.dashboard_outlined, Icons.dashboard, 'Summary'),
+    (Icons.receipt_long_outlined, Icons.receipt_long, 'Transactions'),
+    (Icons.person_outline, Icons.person, 'Profile'),
+  ];
+
   @override
   Widget build(BuildContext context) {
     final account = ref.watch(authControllerProvider.select((s) => s.account));
     final showFy = _index != 2; // hide FY picker on Profile
     final society = ref.watch(brandingProvider.select((b) => b.society));
+    final width = MediaQuery.sizeOf(context).width;
+    final wide = width >= kWideLayoutWidth;
+    final pages = IndexedStack(
+      index: _index,
+      children: const [SummaryScreen(), TransactionsScreen(), ProfileScreen()],
+    );
 
     return Scaffold(
       appBar: AppBar(
@@ -68,35 +83,48 @@ class _HomeShellState extends ConsumerState<HomeShell> {
           if (_index == 2) const SizedBox(width: 4),
         ],
       ),
-      body: IndexedStack(
-        index: _index,
-        children: const [
-          SummaryScreen(),
-          TransactionsScreen(),
-          ProfileScreen(),
-        ],
-      ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: (i) => setState(() => _index = i),
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.dashboard_outlined),
-            selectedIcon: Icon(Icons.dashboard),
-            label: 'Summary',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.receipt_long_outlined),
-            selectedIcon: Icon(Icons.receipt_long),
-            label: 'Transactions',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.person_outline),
-            selectedIcon: Icon(Icons.person),
-            label: 'Profile',
-          ),
-        ],
-      ),
+      body: wide
+          ? Row(
+              children: [
+                NavigationRail(
+                  selectedIndex: _index,
+                  onDestinationSelected: (i) => setState(() => _index = i),
+                  extended: width >= 1100,
+                  labelType: width >= 1100
+                      ? NavigationRailLabelType.none
+                      : NavigationRailLabelType.all,
+                  destinations: [
+                    for (final d in _destinations)
+                      NavigationRailDestination(
+                        icon: Icon(d.$1),
+                        selectedIcon: Icon(d.$2),
+                        label: Text(d.$3),
+                      ),
+                  ],
+                ),
+                const VerticalDivider(
+                  width: 1,
+                  thickness: 1,
+                  color: AppColors.border,
+                ),
+                Expanded(child: pages),
+              ],
+            )
+          : pages,
+      bottomNavigationBar: wide
+          ? null
+          : NavigationBar(
+              selectedIndex: _index,
+              onDestinationSelected: (i) => setState(() => _index = i),
+              destinations: [
+                for (final d in _destinations)
+                  NavigationDestination(
+                    icon: Icon(d.$1),
+                    selectedIcon: Icon(d.$2),
+                    label: d.$3,
+                  ),
+              ],
+            ),
     );
   }
 

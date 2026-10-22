@@ -6,6 +6,7 @@ import '../core/theme.dart';
 import '../models/statement.dart';
 import '../state/providers.dart';
 import '../widgets/async_view.dart';
+import '../widgets/page_list_view.dart';
 
 /// A ledger passbook: one card per transaction (no horizontal scrolling, the
 /// bug the legacy table had on phones), newest first, with a running balance.
@@ -34,18 +35,23 @@ class PassbookScreen extends ConsumerWidget {
           }
           final lines = data.lines.reversed.toList(); // newest first
           final closing = data.lines.last;
-          return Column(
-            children: [
-              _ClosingHeader(line: closing, fy: data.fy),
-              Expanded(
-                child: ListView.separated(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: lines.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 8),
-                  itemBuilder: (_, i) => _TxnCard(line: lines[i]),
-                ),
-              ),
-            ],
+          return LayoutBuilder(
+            builder: (context, box) {
+              final side = pageSideInset(box.maxWidth);
+              return Column(
+                children: [
+                  _ClosingHeader(line: closing, fy: data.fy, side: side + 4),
+                  Expanded(
+                    child: ListView.separated(
+                      padding: EdgeInsets.fromLTRB(side, 16, side, 16),
+                      itemCount: lines.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 8),
+                      itemBuilder: (_, i) => _TxnCard(line: lines[i]),
+                    ),
+                  ),
+                ],
+              );
+            },
           );
         },
       ),
@@ -54,9 +60,14 @@ class PassbookScreen extends ConsumerWidget {
 }
 
 class _ClosingHeader extends StatelessWidget {
-  const _ClosingHeader({required this.line, required this.fy});
+  const _ClosingHeader({
+    required this.line,
+    required this.fy,
+    required this.side,
+  });
   final StatementLine line;
   final String fy;
+  final double side;
 
   @override
   Widget build(BuildContext context) {
@@ -65,7 +76,7 @@ class _ClosingHeader extends StatelessWidget {
     return Container(
       width: double.infinity,
       color: Colors.white,
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+      padding: EdgeInsets.fromLTRB(side, 16, side, 16),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [

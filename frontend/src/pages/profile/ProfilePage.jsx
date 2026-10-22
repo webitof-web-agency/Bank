@@ -137,9 +137,11 @@ function ProfilePage() {
 
   async function handlePasswordSubmit(event) {
     event.preventDefault();
+    // currentTarget is cleared once the handler awaits, so keep the form.
+    const form = event.currentTarget;
     setSavingPassword(true);
     try {
-      const formData = new FormData(event.currentTarget);
+      const formData = new FormData(form);
       const currentPassword = formData.get('currentPassword');
       const newPassword = formData.get('newPassword');
       const confirmPassword = formData.get('confirmPassword');
@@ -151,7 +153,7 @@ function ProfilePage() {
 
       await changePassword({ currentPassword, newPassword, confirmPassword });
       toast.success('Password changed successfully');
-      event.currentTarget.reset();
+      form.reset();
     } catch (error) {
       toast.error(error.message || 'Unable to change password');
     } finally {

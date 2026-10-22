@@ -3,9 +3,11 @@ import 'package:dio/dio.dart';
 import '../core/config.dart';
 
 /// Thin Dio wrapper. The auth token is supplied lazily via [tokenProvider] so
-/// the client doesn't need rebuilding on login/logout. A 401 is surfaced as an
-/// [ApiException] the auth layer can react to (force logout).
+/// the client doesn't need rebuilding on login/logout. A 401 on a request
+/// that carried a token is reported to [onUnauthorized] with that token, so
+/// the auth layer can sign the session out.
 typedef TokenProvider = String? Function();
+typedef UnauthorizedHandler = void Function(String sentToken);
 
 class ApiException implements Exception {
   final int? status;
@@ -17,15 +19,18 @@ class ApiException implements Exception {
 }
 
 class ApiClient {
-  ApiClient({required TokenProvider tokenProvider})
-    : _dio = Dio(
-        BaseOptions(
-          baseUrl: AppConfig.apiBaseUrl,
-          connectTimeout: const Duration(seconds: 15),
-          receiveTimeout: const Duration(seconds: 20),
-          headers: {'Content-Type': 'application/json'},
-        ),
-      ) {
+  ApiClient({
+    required TokenProvider tokenProvider,
+    UnauthorizedHandler? onUnauthorized,
+    String? baseUrl, // tests point it at a local server
+  }) : _dio = Dio(
+         BaseOptions(
+           baseUrl: baseUrl ?? AppConfig.apiBaseUrl,
+           connectTimeout: const Duration(seconds: 15),
+           receiveTimeout: const Duration(seconds: 20),
+           headers: {'Content-Type': 'application/json'},
+         ),
+       ) {
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) {
@@ -34,6 +39,15 @@ class ApiClient {
             options.headers['Authorization'] = 'Bearer $token';
           }
           handler.next(options);
+        },
+        onError: (e, handler) {
+          final auth = e.requestOptions.headers['Authorization']?.toString();
+          if (e.response?.statusCode == 401 &&
+              auth != null &&
+              auth.startsWith('Bearer ')) {
+            onUnauthorized?.call(auth.substring(7));
+          }
+          handler.next(e);
         },
       ),
     );

@@ -5,6 +5,7 @@ import '../core/formatters.dart';
 import '../core/theme.dart';
 import '../state/providers.dart';
 import '../widgets/async_view.dart';
+import '../widgets/page_list_view.dart';
 
 /// Every entry of the selected FY across all accounts, newest first and
 /// grouped by date: what was deposited, deducted or repaid, and to which
@@ -66,10 +67,7 @@ class TransactionsScreen extends ConsumerWidget {
             ),
           );
         }
-        return ListView(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-          children: children,
-        );
+        return PageListView(children: children);
       },
     );
   }
@@ -230,31 +228,35 @@ class _TxnTile extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             // Amounts shrink to fit instead of pushing the account name onto
-            // a second line.
+            // a second line, and keep to the card's right edge however wide
+            // it is (Align fills the slot; FittedBox alone hugs its left).
             Flexible(
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
+              child: Align(
                 alignment: Alignment.centerRight,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      '${isCredit ? '+' : '−'} ${formatMoney(amount)}',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: color,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerRight,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        '${isCredit ? '+' : '−'} ${formatMoney(amount)}',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: color,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Bal ${formatMoneyCrDr(line.balance, nature: line.nature)}',
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: AppColors.textMuted,
+                      const SizedBox(height: 2),
+                      Text(
+                        'Bal ${formatMoneyCrDr(line.balance, nature: line.nature)}',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: AppColors.textMuted,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),

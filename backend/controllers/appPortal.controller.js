@@ -52,6 +52,21 @@ module.exports = {
     }
   },
 
+  async changePassword(req, res, next) {
+    try {
+      const { currentPassword, newPassword, confirmPassword } = req.body || {};
+      if (confirmPassword !== undefined && newPassword !== confirmPassword) {
+        return res.status(400).json({ success: false, message: 'New passwords do not match' });
+      }
+      const result = await appPortal.changePassword(req.principal, currentPassword, newPassword);
+      // The old token stops working with the old password; end it explicitly too.
+      await revokeSession({ jti: req.principal.jti, exp: req.principal.exp });
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  },
+
   async me(req, res, next) {
     try {
       const account = await withAccount(req);

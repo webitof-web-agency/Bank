@@ -9,7 +9,7 @@
 const { Branch, Member, Employee } = require('../models/banking.models');
 const User = require('../models/user.model');
 const bankingService = require('./banking.service');
-const { comparePassword, signToken } = require('./auth.service');
+const { comparePassword, hashPassword, signToken } = require('./auth.service');
 const { getSettings } = require('./settings.service');
 const { normalizeMobile, isValidMobile } = require('../utils/mobile');
 const { createHash } = require('crypto');
@@ -141,6 +141,33 @@ async function resolveAccount(principal) {
   if (!isMemberActive(member)) throw unauthorized('This membership is inactive');
   if (passwordVersion(member.passwordHash) !== principal.pwv) throw unauthorized('Session expired');
   return { type: 'member', code: member.code, record: member };
+}
+
+// The signed-in member / employee changes their own password. A member's
+// hash lives on the members row; an employee's on their users row, which is
+// also their web login, so its stricter minimum applies. The new hash ends
+// every other session (see passwordVersion); this device gets a fresh token.
+async function changePassword(principal, currentPasswordRaw, newPasswordRaw) {
+  const account = await resolveAccount(principal);
+  const currentPassword = String(currentPasswordRaw || '');
+  const newPassword = String(newPasswordRaw || '').trim();
+  if (!currentPassword || !newPassword) throw badRequest('Current and new password are required');
+
+  const minLength = account.type === 'employee' ? 8 : 4;
+  if (newPassword.length < minLength) throw badRequest(`New password must be at least ${minLength} characters`);
+
+  const lean = account.type === 'employee' ? await findEmployeeUser(account.code) : account.record;
+  const doc = account.type === 'employee' ? await User.findById(lean._id || lean.id) : await Member.findById(lean._id || lean.id);
+  if (!doc) throw unauthorized('Account not found');
+  if (!(await comparePassword(currentPassword, doc.passwordHash))) throw badRequest('Current password is incorrect');
+  if (await comparePassword(newPassword, doc.passwordHash)) throw badRequest('New password must be different from the current one');
+
+  doc.passwordHash = await hashPassword(newPassword);
+  if (account.type === 'employee') doc.passwordChangedAt = new Date();
+  await doc.save();
+
+  const name = account.record.name || doc.fullName || doc.name || '';
+  return { message: 'Password changed successfully', ...issue(account.type, account.code, name, doc.passwordHash) };
 }
 
 // ---- Financial years the account can view ---------------------------------
@@ -349,6 +376,7 @@ module.exports = {
   getAppConfig,
   getAppVersion,
   login,
+  changePassword,
   resolveAccount,
   financialYears,
   getSummary,

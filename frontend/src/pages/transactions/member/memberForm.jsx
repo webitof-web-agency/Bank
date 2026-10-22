@@ -1136,7 +1136,7 @@ export function MemberTransactionForm({ section, lookups = {}, value, setValue, 
   function renderSsaForm() {
     return (
       <section className="space-y-3">
-        <SectionTitle>SSA Payment</SectionTitle>
+        <SectionTitle>SSA Paid To Member</SectionTitle>
         <div className="grid gap-3 md:grid-cols-4">
           <div className="space-y-1.5">
             <FieldLabel required>Special Saving / SSA Amount</FieldLabel>
@@ -1161,7 +1161,7 @@ export function MemberTransactionForm({ section, lookups = {}, value, setValue, 
           <SmsCheckbox className="md:col-span-3" checked={draft.details?.sms} onChange={(checked) => updateDetails('sms', checked)} />
           <div className="space-y-1.5 md:col-span-3">
             <FieldLabel>Narration</FieldLabel>
-            <Textarea rows={3} value={draft.narration || ''} onChange={(event) => setRootValue(setValue, 'narration', event.target.value)} placeholder="SSA payment remarks" />
+            <Textarea rows={3} value={draft.narration || ''} onChange={(event) => setRootValue(setValue, 'narration', event.target.value)} placeholder="SSA paid to member remarks" />
           </div>
         </div>
       </section>

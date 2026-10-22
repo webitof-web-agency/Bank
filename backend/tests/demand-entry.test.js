@@ -124,9 +124,10 @@ test('All branches: members of every branch load; save makes one list per branch
   await assert.rejects(banking.saveDemandEntry({
     ...header({ demandListNo: ALL_LIST, branchCode: 'ALL', month: '9', demandListDate: '2026-09-01' }), lines: [{ memberCode: code(3), compulsoryDeposit: 1 }]
   }, { ...FY, user: admin }), /already exists/);
-  // A branch user cannot use All: it stays their own branch.
-  const scoped = await banking.getDemandEntryMembers({ branchCode: 'ALL', user: { branchCode: OTHER_BRANCH } });
-  assert.ok(scoped.every((row) => row.branchCode === OTHER_BRANCH));
+  // A branch user may use All too: staff manage every branch.
+  const fromBranchUser = await banking.getDemandEntryMembers({ branchCode: 'ALL', user: { branchCode: OTHER_BRANCH } });
+  assert.ok(fromBranchUser.some((row) => row.branchCode === BRANCH));
+  assert.ok(fromBranchUser.some((row) => row.branchCode === OTHER_BRANCH));
 });
 
 test('editing a list with All branches updates its own branch and adds the other branches', async () => {

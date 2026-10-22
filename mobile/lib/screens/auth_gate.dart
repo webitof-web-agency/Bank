@@ -31,6 +31,22 @@ class _AuthGateState extends ConsumerState<AuthGate> {
 
   @override
   Widget build(BuildContext context) {
+    // Signed out (by hand or because the session expired): close any open
+    // page (a passbook, Change password) so sign-in isn't hidden under it,
+    // and say why when the server ended the session.
+    ref.listen<AuthState>(authControllerProvider, (prev, next) {
+      if (prev?.status != AuthStatus.authenticated ||
+          next.status != AuthStatus.unauthenticated) {
+        return;
+      }
+      Navigator.of(context).popUntil((route) => route.isFirst);
+      final reason = next.error;
+      if (reason != null) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(content: Text(reason)));
+      }
+    });
     final status = ref.watch(authControllerProvider.select((s) => s.status));
     switch (status) {
       case AuthStatus.unknown:
