@@ -3386,7 +3386,11 @@ async function buildMemberLedgerReport({ memberCode, dateFrom = '', dateTo = '',
   // balance shown after each one; walking forward from the final balance
   // would double-count everything that already happened before cutover.
   const historicalRows = await getHistoricalMemberLedgerRows(member);
-  allRows = historicalRows.concat(allRows);
+  // Legacy interest settlement vouchers (20 Interest Paid / 21 Interest
+  // Received): a row of their own that moves no balance, its amount in the
+  // head's Intrst column (added after the accrual below), as legacy prints it.
+  const interestOnlyRows = (await getLegacyMemberInterestRows([member])).get(member.code) || [];
+  allRows = historicalRows.concat(interestOnlyRows, allRows);
   allRows.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 
   // Anchors are member.balances as migrated: signed credit-positive, so a
@@ -3407,6 +3411,11 @@ async function buildMemberLedgerReport({ memberCode, dateFrom = '', dateTo = '',
   // day, so a later rate change leaves earlier spans alone.
   const rateTimelines = await getInterestRateTimelines(MEMBER_INTEREST_HEADS);
   accrueMemberLedgerInterest(allRows, rateTimelines, cleanText(dateTo));
+  // The accrual skips rows that move nothing; a settlement row's interest is
+  // its own (legacy signs: Interest Received on a loan prints as (317)).
+  for (const row of interestOnlyRows) {
+    for (const [key, amount] of Object.entries(row.interestOnly || {})) row[key].interest = toPaise(amount);
+  }
 
   const fromDateStr = cleanText(dateFrom);
   const toDateStr = cleanText(dateTo);

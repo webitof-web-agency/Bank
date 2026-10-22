@@ -63,8 +63,10 @@ test.before(async () => {
   doc.balances = { share: 10000, compulsoryDeposit: 50000, specialDeposit: 0, loan: -100000, loanAgainstDeposit: 0 };
   await doc.save();
   for (const [code, accId] of Object.entries(LEDGER_ACC)) {
-    const ledger = await Ledger.findOne({ code });
-    ledgerBackup.set(code, { payload: ledger.payload, openingBalance: ledger.openingBalance, balanceSide: ledger.balanceSide });
+    // Other test files soft-delete these ledgers: use them anyway, and put
+    // their deleted state back afterwards.
+    const ledger = await Ledger.findOne({ code }).withDeleted();
+    ledgerBackup.set(code, { payload: ledger.payload, openingBalance: ledger.openingBalance, balanceSide: ledger.balanceSide, deletedAt: ledger.deletedAt || null });
     ledger.payload = { ...(ledger.payload || {}), raw: { ...((ledger.payload || {}).raw || {}), AccID: accId } };
     ledger.openingBalance = 100000;
     ledger.balanceSide = code === '6' ? 'CR' : 'DR';
@@ -94,7 +96,7 @@ test.after(async () => {
   await db.query('DELETE FROM legacy_deleted_vouchers WHERE "sourceKey" LIKE $1', [`${RUN}-%`]);
   await db.query('DELETE FROM legacy_deleted_recovery_lines WHERE "sourceKey" LIKE $1', [`${RUN}-%`]);
   for (const [code, backup] of ledgerBackup) {
-    const ledger = await Ledger.findOne({ code });
+    const ledger = await Ledger.findOne({ code }).withDeleted();
     Object.assign(ledger, backup);
     await ledger.save();
   }
