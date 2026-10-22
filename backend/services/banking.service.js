@@ -62,6 +62,8 @@ const rateHistory = require('../utils/rateHistory');
 const dividendRates = require('../utils/dividendRates');
 const smsService = require('./sms/sms.service');
 const fyLock = require('./fyClosing/fyLock');
+const archivedVoucherService = require('./archivedVoucher.service');
+const { employeeVoucherMovement, legacyLedgerEntries, memberVoucherMovement, recoveryLineMovement } = require('../utils/legacyMovements');
 const { applyBranchScope, canAccessBranchRecord, getScopedBranchCode, isBranchScopedResource, resolveBranchCode } = require('../utils/branchScope');
 // The 'employees' resource here is a second, historically-unused entry point
 // (no frontend caller) alongside the real one at /users — delegating to
@@ -2080,56 +2082,7 @@ function legacyNumber(value) {
   return Number.isFinite(number) ? number : 0;
 }
 
-// One EntTrans row -> [{ code, cr, dr, viaPayMode }] ledger entries (dr is
-// negative), mirroring each UNION branch of legacy VwLedgerTransaction.
-// viaPayMode marks the pay-mode side (cash / bank) of the voucher, which the
-// legacy Cash Book leaves out of its particulars.
-function legacyLedgerEntries(raw = {}, codeByAccId = new Map(), cashAccId = '') {
-  const entries = [];
-  const type = Number(raw.TransType);
-  const isReceipt = String(raw.VoucherType).toUpperCase() === 'R';
-  const isPayment = String(raw.VoucherType).toUpperCase() === 'P';
-  const total = legacyNumber(raw.TotalAmt);
-  const push = (code, cr, dr, viaPayMode = false) => {
-    if (code && (cr || dr)) entries.push({ code, cr, dr, viaPayMode });
-  };
-  // "Normal" direction: receipt credits the account, payment debits it.
-  const normal = (code, amount) => push(code, isReceipt ? amount : 0, isPayment ? -amount : 0);
-  const codeOf = (accId) => codeByAccId.get(String(accId ?? '')) || '';
-
-  // Cash pay mode: payment credits cash, receipt debits it.
-  if (cashAccId && String(raw.PayModeAccID) === cashAccId) {
-    push(codeOf(cashAccId), isPayment ? total : 0, isReceipt ? -total : 0, true);
-  }
-  const particular = codeOf(raw.ParticularAccID);
-  if (particular && particular !== '2') normal(particular, total);
-  if ([2, 20, 21, 22].includes(type)) normal(codeOf(raw.LedgerAccID), total);
-  const payMode = codeOf(raw.PayModeAccID);
-  if (legacyNumber(raw.PayModeAccID) > 0 && payMode && payMode !== '2') {
-    push(payMode, isReceipt ? total : 0, isPayment ? -total : 0, true);
-  }
-
-  const component = (field, code, types) => {
-    const amount = legacyNumber(raw[field]);
-    if (amount !== 0 && types.includes(type)) normal(code, amount);
-  };
-  component('ShareAmt', '5', [5]);
-  component('CDAmt', '6', [5]);
-  component('SSAamt', '7', [5]);
-  component('RLoanAmt', '8', [5]);
-  component('DLoanAmt', '9', [5]);
-  component('ShareAmt', '5', [14, 15]);
-  component('CDAmt', '6', [14, 15]);
-  component('SSAamt', '7', [14, 15, 1, 3]);
-  component('RLoanAmt', '8', [14, 15, 1]);
-  component('DLoanAmt', '9', [14, 15]);
-  component('DLoanAmt', '9', [1]);
-  component('AdmissionFee', '10', [5]);
-  component('HomeLoan', '33', [12, 13]);
-  component('VehicleLoan', '34', [12, 13]);
-  component('GrainAdvance', '35', [12, 13]);
-  return entries;
-}
+// legacyLedgerEntries: utils/legacyMovements.js (shared with archived voucher edits).
 
 // Map of sourceDatabase -> [{ date, entries }], plus the cutover DB name.
 // Archive tables are read-only, so this is cached like the party index.
@@ -2889,7 +2842,7 @@ function deriveLegacySourceSuffix(dateFromStr) {
 // (single-record detail lookup) so both stay in sync with the category map.
 // Returns null when the row's category has no catalog mapping, or when a
 // branch-scoped caller isn't allowed to see it.
-function mapLegacyVoucherRow(row, partyIndex, { branchCode, partyTypeFilter } = {}) {
+function mapLegacyVoucherRow(row, partyIndex, { branchCode, partyTypeFilter, archiveEditable = false } = {}) {
   const map = LEGACY_VOUCHER_CATALOG_MAP[String(row.voucherCategory)];
   if (!map) return null;
   if (partyTypeFilter && partyTypeFilter !== map.partyKind) return null;
@@ -2938,6 +2891,8 @@ function mapLegacyVoucherRow(row, partyIndex, { branchCode, partyTypeFilter } = 
         grain: legacyNumber(raw.GrainAdvance)
       },
       isHistorical: true,
+      // Its FY is still open: it can be edited / deleted (archivedVoucher.service).
+      archiveEditable,
       legacySourceDatabase: row.sourceDatabase,
       legacyVoucherNo: row.voucherNo
     },
@@ -2963,9 +2918,11 @@ async function buildHistoricalVoucherRows(filter = {}) {
   const branchCode = resolveBranchCode(filter.user, filter.branchCode);
   const partyTypeFilter = filter.partyType ? cleanText(filter.partyType) : '';
 
+  // One FY database per query, so one open/closed answer for every row.
+  const archiveEditable = await archivedVoucherService.isArchiveFyOpen(result.rows[0].sourceDatabase);
   const rows = [];
   for (const row of result.rows) {
-    const mapped = mapLegacyVoucherRow(row, partyIndex, { branchCode, partyTypeFilter });
+    const mapped = mapLegacyVoucherRow(row, partyIndex, { branchCode, partyTypeFilter, archiveEditable });
     if (mapped) rows.push(mapped);
   }
 
@@ -2988,7 +2945,8 @@ async function getHistoricalVoucherById(legacyId, user = {}) {
 
   const partyIndex = await loadLegacyPartyIndex(database);
   const branchCode = resolveBranchCode(user);
-  return mapLegacyVoucherRow(row, partyIndex, { branchCode });
+  const archiveEditable = await archivedVoucherService.isArchiveFyOpen(row.sourceDatabase);
+  return mapLegacyVoucherRow(row, partyIndex, { branchCode, archiveEditable });
 }
 
 async function buildVoucherRows(filter = {}) {
@@ -3028,6 +2986,13 @@ const LIST_CACHE_LIMIT = 30;
 const LIST_CACHE_MAX_AGE_MS = 30 * 60 * 1000;
 const VOUCHER_SOURCE_TABLES = ['vouchers', 'members', 'employees', 'ledgers', 'bank_accounts'];
 const listRowsCache = new Map();
+
+// After an archived voucher changes (archivedVoucher.service): the archive
+// isn't a cached table, so the caches built from it are dropped by hand.
+function resetLegacyArchiveCaches() {
+  legacyLedgerEntriesCache = null;
+  listRowsCache.clear();
+}
 
 function readListCache(key, version) {
   const hit = listRowsCache.get(key);
@@ -3889,20 +3854,10 @@ async function getHistoricalMemberLedgerRowsBatch(members) {
         narration: withLegacyDateNote(v.narration || raw.Narration || '', raw.VoucherDate, date)
       };
 
-      if (v.voucherCategory === '1') {
-        row.loan.debit = toPaise(raw.RLoanAmt);
-        row.loanAgainstDeposit.debit = toPaise(raw.DLoanAmt);
-      } else if (v.voucherCategory === '2') {
-        row.compulsoryDeposit.debit = toPaise(raw.CDAmt);
-      } else if (v.voucherCategory === '3') {
-        row.specialDeposit.debit = toPaise(raw.SSAamt);
-      } else if (v.voucherCategory === '14' || v.voucherCategory === '15') {
-        const rowSide = v.voucherCategory === '14' ? 'debit' : 'credit';
-        row.share[rowSide] = toPaise(raw.ShareAmt);
-        row.compulsoryDeposit[rowSide] = toPaise(raw.CDAmt);
-        row.specialDeposit[rowSide] = toPaise(raw.SSAamt);
-        row.loan[rowSide] = toPaise(raw.RLoanAmt);
-        row.loanAgainstDeposit[rowSide] = toPaise(raw.DLoanAmt);
+      const movement = memberVoucherMovement(v.voucherCategory, raw);
+      for (const [bucket, { credit, debit }] of Object.entries(movement || {})) {
+        row[bucket].credit = credit;
+        row[bucket].debit = debit;
       }
 
       list.push(row);
@@ -3928,14 +3883,15 @@ async function getHistoricalMemberLedgerRowsBatch(members) {
       const date = bookedInLegacyFy(vraw.VoucherDate, r.source_database);
       if (!date) continue;
 
+      const line = recoveryLineMovement(rraw);
       list.push({
         voucherNo: r.parent_voucher_no ? String(r.parent_voucher_no) : 'RECOVERY',
         date,
-        share: { credit: toPaise(rraw.Share), debit: 0, balance: 0 },
-        specialDeposit: { credit: toPaise(rraw.SSA), debit: 0, balance: 0, interest: 0 },
-        compulsoryDeposit: { credit: toPaise(rraw.CD), debit: 0, balance: 0, interest: 0 },
-        loan: { credit: toPaise(rraw.RLoan), debit: 0, balance: 0, interest: 0 },
-        loanAgainstDeposit: { credit: toPaise(rraw.DLoan), debit: 0, balance: 0, interest: 0 },
+        share: { ...line.share, balance: 0 },
+        specialDeposit: { ...line.specialDeposit, balance: 0, interest: 0 },
+        compulsoryDeposit: { ...line.compulsoryDeposit, balance: 0, interest: 0 },
+        loan: { ...line.loan, balance: 0, interest: 0 },
+        loanAgainstDeposit: { ...line.loanAgainstDeposit, balance: 0, interest: 0 },
         isOpening: false,
         isHistorical: true,
         fyStart: legacyFyStart(r.source_database),
@@ -6643,19 +6599,9 @@ async function getHistoricalEmployeeLedgerRows(employee) {
       isHistorical: true,
       narration: v.narration || raw.Narration || ''
     };
-    if (v.voucherCategory === '12') {
-      row.housingLoan.debit = toPaise(raw.HomeLoan);
-      row.vehicleLoan.debit = toPaise(raw.VehicleLoan);
-      row.grainAdvance.debit = toPaise(raw.GrainAdvance);
-    } else if (v.voucherCategory === '13') {
-      row.housingLoan.credit = toPaise(raw.HomeLoan);
-      row.vehicleLoan.credit = toPaise(raw.VehicleLoan);
-      row.grainAdvance.credit = toPaise(raw.GrainAdvance);
-    } else {
-      row.grainAdvance.credit = toPaise(raw.GrainAdvance);
-      // Printed in the Intrst column (in brackets), not in the balance.
-      row.housingLoan.interestReceived = toPaise(raw.HomeLoan);
-      row.vehicleLoan.interestReceived = toPaise(raw.VehicleLoan);
+    // Interest (22) lands in interestReceived: the Intrst column, not the balance.
+    for (const [group, movement] of Object.entries(employeeVoucherMovement(v.voucherCategory, raw) || {})) {
+      Object.assign(row[group], movement);
     }
     rows.push(row);
   }
@@ -6958,6 +6904,7 @@ module.exports = {
   buildProfitLossReport,
   buildTrialBalanceReport,
   buildVoucherRows,
+  resetLegacyArchiveCaches,
   getCachedVoucherRows,
   getCachedResourceRows,
   filterVouchersBySection,

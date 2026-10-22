@@ -86,6 +86,8 @@ router.get('/transactions/vouchers', requirePermission('transactions.read'), ban
 router.post('/transactions/vouchers', requirePermission('transactions.write'), banking.transactions.createVoucher);
 router.get('/transactions/vouchers/:id', requirePermission('transactions.read'), banking.transactions.getVoucher);
 router.get('/transactions/vouchers/:id/sms', requirePermission('transactions.read'), banking.transactions.getVoucherSms);
+// An archived legacy voucher's entry fields, for its edit dialog.
+router.get('/transactions/vouchers/:id/archive', requirePermission('transactions.read'), banking.transactions.getArchivedVoucher);
 router.put('/transactions/vouchers/:id', requirePermission('transactions.write'), banking.transactions.updateVoucher);
 router.delete('/transactions/vouchers/:id', requirePermission('transactions.write'), banking.transactions.deleteVoucher);
 router.post('/transactions/vouchers/:id/restore', requirePermission('transactions.write'), banking.transactions.restoreVoucher);

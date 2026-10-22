@@ -1,4 +1,6 @@
 ﻿import { useEffect, useMemo, useState } from 'react';
+import { ArchivedVoucherDialog, canChangeVoucherRow, deleteVoucherRow } from '../../../components/transactions/ArchivedVoucherDialog';
+import { useConfirm } from '../../../components/overlays/ConfirmProvider';
 import { useNavigate } from 'react-router-dom';
 import { Eye, Edit2, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -39,6 +41,10 @@ export function TransferVoucherPaymentWorkspacePage({ sectionKey, itemKey, detai
   const [draft, setDraft] = useState(createEmptyTransactionDraft(sectionKey, []));
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [archiveTarget, setArchiveTarget] = useState(null);
+  const confirm = useConfirm();
+  // Bumped after an archived voucher is edited: reloads the list.
+  const [reloadKey, setReloadKey] = useState(0);
   const [search, setSearch] = useState('');
   const [removedDocumentIds, setRemovedDocumentIds] = useState([]);
 
@@ -76,7 +82,7 @@ export function TransferVoucherPaymentWorkspacePage({ sectionKey, itemKey, detai
     return () => {
       mounted = false;
     };
-  }, [token, activeFY]);
+  }, [token, activeFY, reloadKey]);
 
   const visibleRows = useMemo(() => {
     const baseRows = filterTransactionRows(rows, sectionItems, itemKey);
@@ -208,7 +214,8 @@ export function TransferVoucherPaymentWorkspacePage({ sectionKey, itemKey, detai
   async function confirmDelete() {
     if (!deleteTarget) return;
     try {
-      await api.banking.deleteTransactionVoucher(token, deleteTarget.id);
+      if (!(await deleteVoucherRow(token, deleteTarget, confirm))) return;
+      if (deleteTarget.isHistorical) setReloadKey((key) => key + 1);
       setRows((current) => current.filter((item) => item.id !== deleteTarget.id));
       toast.success('Transfer voucher payment deleted');
     } catch (error) {
@@ -248,12 +255,12 @@ export function TransferVoucherPaymentWorkspacePage({ sectionKey, itemKey, detai
           <button type="button" onClick={() => navigate(`${detailPathBase}/${row.id}`)} className="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-900" title="View">
             <Eye size={16} />
           </button>
-          {canEdit && !row.isHistorical ? (
-            <button type="button" onClick={() => openEdit(row)} className="rounded-full p-2 text-slate-400 hover:bg-blue-50 hover:text-blue-600" title="Edit">
+          {canEdit && canChangeVoucherRow(row) ? (
+            <button type="button" onClick={() => (row.isHistorical ? setArchiveTarget(row) : openEdit(row))} className="rounded-full p-2 text-slate-400 hover:bg-blue-50 hover:text-blue-600" title="Edit">
               <Edit2 size={16} />
             </button>
           ) : null}
-          {canDelete && !row.isHistorical ? (
+          {canDelete && canChangeVoucherRow(row) ? (
             <button type="button" onClick={() => setDeleteTarget(row)} className="rounded-full p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600" title="Delete">
               <Trash2 size={16} />
             </button>
@@ -299,6 +306,7 @@ export function TransferVoucherPaymentWorkspacePage({ sectionKey, itemKey, detai
         />
       </Modal>
 
+      <ArchivedVoucherDialog voucher={archiveTarget} onClose={() => setArchiveTarget(null)} onSaved={() => setReloadKey((key) => key + 1)} />
       <ConfirmDialog open={Boolean(deleteTarget)} title="Delete Transfer Voucher Payment" description="This payment voucher will be removed permanently." confirmLabel="Delete" onConfirm={confirmDelete} onCancel={() => setDeleteTarget(null)} />
     </div>
   );

@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
+import { ArchivedVoucherDialog, canChangeVoucherRow, deleteVoucherRow } from '../../../components/transactions/ArchivedVoucherDialog';
+import { useConfirm } from '../../../components/overlays/ConfirmProvider';
 import { useNavigate } from 'react-router-dom';
 import { useServerList } from '../../../lib/useServerList';
 import { Eye, Edit2, Plus, Trash2, ArrowRight, Sparkles, Link2, ChevronDown, FileText, Banknote, Filter, X } from 'lucide-react';
@@ -39,6 +41,8 @@ export function OtherTransactionsPage({ sectionKey, itemKey, detailPathBase }) {
   const [draft, setDraft] = useState(createEmptyTransactionDraft(sectionKey, []));
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [archiveTarget, setArchiveTarget] = useState(null);
+  const confirm = useConfirm();
   const [removedDocumentIds, setRemovedDocumentIds] = useState([]);
   const [filterPartyType, setFilterPartyType] = useState('');
   const [filterDateFrom, setFilterDateFrom] = useState('');
@@ -204,7 +208,7 @@ export function OtherTransactionsPage({ sectionKey, itemKey, detailPathBase }) {
   async function confirmDelete() {
     if (!deleteTarget) return;
     try {
-      await api.banking.deleteTransactionVoucher(token, deleteTarget.id);
+      if (!(await deleteVoucherRow(token, deleteTarget, confirm))) return;
       list.reload();
       toast.success('Transaction deleted');
     } catch (error) {
@@ -267,12 +271,12 @@ export function OtherTransactionsPage({ sectionKey, itemKey, detailPathBase }) {
           <button type="button" onClick={() => navigate(`${detailPathBase}/${row.id}`)} className="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-900" title="View">
             <Eye size={16} />
           </button>
-          {canEdit && !row.isHistorical ? (
-            <button type="button" onClick={() => openEdit(row)} className="rounded-full p-2 text-slate-400 hover:bg-blue-50 hover:text-blue-600" title="Edit">
+          {canEdit && canChangeVoucherRow(row) ? (
+            <button type="button" onClick={() => (row.isHistorical ? setArchiveTarget(row) : openEdit(row))} className="rounded-full p-2 text-slate-400 hover:bg-blue-50 hover:text-blue-600" title="Edit">
               <Edit2 size={16} />
             </button>
           ) : null}
-          {canDelete && !row.isHistorical ? (
+          {canDelete && canChangeVoucherRow(row) ? (
             <button type="button" onClick={() => setDeleteTarget(row)} className="rounded-full p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600" title="Delete">
               <Trash2 size={16} />
             </button>
@@ -479,6 +483,7 @@ export function OtherTransactionsPage({ sectionKey, itemKey, detailPathBase }) {
         />
       </Modal>
 
+      <ArchivedVoucherDialog voucher={archiveTarget} onClose={() => setArchiveTarget(null)} onSaved={() => list.reload()} />
       <ConfirmDialog
         open={Boolean(deleteTarget)}
         title="Delete transaction"

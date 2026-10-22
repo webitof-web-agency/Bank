@@ -1,4 +1,5 @@
 const bankingService = require('../services/banking.service');
+const archivedVoucherService = require('../services/archivedVoucher.service');
 const { hasPermission } = require('../middlewares/auth');
 const { paginateRows, wantsPaging } = require('../utils/paginate');
 
@@ -290,10 +291,27 @@ const transactions = {
       next(error);
     }
   },
+  async getArchivedVoucher(req, res, next) {
+    try {
+      const current = req.params.id.startsWith('legacy:')
+        ? await bankingService.getHistoricalVoucherById(req.params.id.slice('legacy:'.length), req.user || {})
+        : null;
+      if (!current) return res.status(404).json({ success: false, message: 'Voucher not found' });
+      if (!canVoucher(req.user || {}, current, 'view')) return voucherForbidden(res, 'view');
+      res.json({ success: true, data: await archivedVoucherService.getArchivedVoucher(req.params.id) });
+    } catch (error) {
+      next(error);
+    }
+  },
   async updateVoucher(req, res, next) {
     try {
       if (req.params.id.startsWith('legacy:')) {
-        return res.status(400).json({ success: false, message: 'This is a read-only historical record and cannot be edited.' });
+        // An archived legacy voucher: editable while its FY is open.
+        const current = await bankingService.getHistoricalVoucherById(req.params.id.slice('legacy:'.length), req.user || {});
+        if (!current) return res.status(404).json({ success: false, message: 'Voucher not found' });
+        if (!canVoucher(req.user || {}, current, 'edit')) return voucherForbidden(res, 'edit');
+        const record = await archivedVoucherService.updateArchivedVoucher(req.params.id, req.body || {}, { actorUserId: req.user?.id || null, actorUser: req.user || null });
+        return res.json({ success: true, data: record });
       }
       const current = await bankingService.findVoucherForAccess(req.params.id);
       if (current) {
@@ -316,7 +334,15 @@ const transactions = {
   async deleteVoucher(req, res, next) {
     try {
       if (req.params.id.startsWith('legacy:')) {
-        return res.status(400).json({ success: false, message: 'This is a read-only historical record and cannot be deleted.' });
+        const current = await bankingService.getHistoricalVoucherById(req.params.id.slice('legacy:'.length), req.user || {});
+        if (!current) return res.status(404).json({ success: false, message: 'Voucher not found' });
+        if (!canVoucher(req.user || {}, current, 'delete')) return voucherForbidden(res, 'delete');
+        const removed = await archivedVoucherService.deleteArchivedVoucher(
+          req.params.id,
+          { actorUserId: req.user?.id || null, actorUser: req.user || null },
+          { acceptImbalance: req.query.acceptImbalance === '1' }
+        );
+        return res.json({ success: true, message: removed?.partner ? `Deleted, with its ${removed.partner.label} voucher ${removed.partner.voucherNo}` : 'Deleted successfully', data: removed });
       }
       const current = await bankingService.findVoucherForAccess(req.params.id);
       if (current && !canVoucher(req.user || {}, current, 'delete')) return voucherForbidden(res, 'delete');

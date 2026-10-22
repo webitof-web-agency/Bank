@@ -1,4 +1,6 @@
 ﻿import { useEffect, useMemo, useState } from 'react';
+import { ArchivedVoucherDialog, canChangeVoucherRow, deleteVoucherRow } from '../../../components/transactions/ArchivedVoucherDialog';
+import { useConfirm } from '../../../components/overlays/ConfirmProvider';
 import { useNavigate } from 'react-router-dom';
 import { useServerList } from '../../../lib/useServerList';
 import { Plus, Eye, Edit2, Trash2, Filter, X } from 'lucide-react';
@@ -38,6 +40,8 @@ export function EmployeeTransactionWorkspacePage({ sectionKey, itemKey, detailPa
   const [draft, setDraft] = useState(createEmptyTransactionDraft(sectionKey, []));
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [archiveTarget, setArchiveTarget] = useState(null);
+  const confirm = useConfirm();
   const [filterDropdownOpen, setFilterDropdownOpen] = useState(false);
   const [removedDocumentIds, setRemovedDocumentIds] = useState([]);
 
@@ -201,7 +205,7 @@ export function EmployeeTransactionWorkspacePage({ sectionKey, itemKey, detailPa
   async function confirmDelete() {
     if (!deleteTarget) return;
     try {
-      await api.banking.deleteTransactionVoucher(token, deleteTarget.id);
+      if (!(await deleteVoucherRow(token, deleteTarget, confirm))) return;
       list.reload();
       toast.success('Employee transaction deleted');
     } catch (error) {
@@ -290,12 +294,12 @@ export function EmployeeTransactionWorkspacePage({ sectionKey, itemKey, detailPa
           <button type="button" onClick={() => navigate(`${detailPathBase}/${row.id}`)} className="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-900" title="View">
             <Eye size={16} />
           </button>
-          {canEdit && !row.isHistorical ? (
-            <button type="button" onClick={() => openEdit(row)} className="rounded-full p-2 text-slate-400 hover:bg-blue-50 hover:text-blue-600" title="Edit">
+          {canEdit && canChangeVoucherRow(row) ? (
+            <button type="button" onClick={() => (row.isHistorical ? setArchiveTarget(row) : openEdit(row))} className="rounded-full p-2 text-slate-400 hover:bg-blue-50 hover:text-blue-600" title="Edit">
               <Edit2 size={16} />
             </button>
           ) : null}
-          {canDelete && !row.isHistorical ? (
+          {canDelete && canChangeVoucherRow(row) ? (
             <button type="button" onClick={() => setDeleteTarget(row)} className="rounded-full p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600" title="Delete">
               <Trash2 size={16} />
             </button>
@@ -389,6 +393,7 @@ export function EmployeeTransactionWorkspacePage({ sectionKey, itemKey, detailPa
         ) : null}
       </Modal>
 
+      <ArchivedVoucherDialog voucher={archiveTarget} onClose={() => setArchiveTarget(null)} onSaved={() => list.reload()} />
       <ConfirmDialog
         open={Boolean(deleteTarget)}
         title="Delete employee transaction"

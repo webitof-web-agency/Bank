@@ -25,6 +25,9 @@ function errorHandler(error, req, res, next) {
   res.status(statusCode).json({
     success: false,
     message,
+    // A machine-readable reason the page can act on (e.g. FY_CLOSED,
+    // TB_IMBALANCE), for errors written for the user.
+    ...(statusCode < 500 && error.code && typeof error.code === 'string' ? { code: error.code } : {}),
     ...(showDetails ? { stack: error.stack } : {})
   });
 }

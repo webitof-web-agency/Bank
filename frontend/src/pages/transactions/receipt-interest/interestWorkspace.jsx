@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
+import { ArchivedVoucherDialog, canChangeVoucherRow, deleteVoucherRow } from '../../../components/transactions/ArchivedVoucherDialog';
+import { useConfirm } from '../../../components/overlays/ConfirmProvider';
 import { useNavigate } from 'react-router-dom';
 import { useServerList } from '../../../lib/useServerList';
 import { Eye, Edit2, Plus, Trash2, ChevronDown, FileText, Banknote, X } from 'lucide-react';
@@ -38,6 +40,8 @@ export function InterestVoucherWorkspacePage({ sectionKey, itemKey, detailPathBa
   const [draft, setDraft] = useState(createEmptyTransactionDraft(sectionKey, []));
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [archiveTarget, setArchiveTarget] = useState(null);
+  const confirm = useConfirm();
   const [removedDocumentIds, setRemovedDocumentIds] = useState([]);
   const [filterDropdownOpen, setFilterDropdownOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -204,7 +208,7 @@ export function InterestVoucherWorkspacePage({ sectionKey, itemKey, detailPathBa
   async function confirmDelete() {
     if (!deleteTarget) return;
     try {
-      await api.banking.deleteTransactionVoucher(token, deleteTarget.id);
+      if (!(await deleteVoucherRow(token, deleteTarget, confirm))) return;
       list.reload();
       toast.success('Interest deleted');
     } catch (error) {
@@ -230,12 +234,12 @@ export function InterestVoucherWorkspacePage({ sectionKey, itemKey, detailPathBa
           <button type="button" onClick={() => navigate(`${detailPathBase}/${row.id}`)} className="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-900" title="View">
             <Eye size={16} />
           </button>
-          {canEdit && !row.isHistorical ? (
-            <button type="button" onClick={() => openEdit(row)} className="rounded-full p-2 text-slate-400 hover:bg-blue-50 hover:text-blue-600" title="Edit">
+          {canEdit && canChangeVoucherRow(row) ? (
+            <button type="button" onClick={() => (row.isHistorical ? setArchiveTarget(row) : openEdit(row))} className="rounded-full p-2 text-slate-400 hover:bg-blue-50 hover:text-blue-600" title="Edit">
               <Edit2 size={16} />
             </button>
           ) : null}
-          {canDelete && !row.isHistorical ? (
+          {canDelete && canChangeVoucherRow(row) ? (
             <button type="button" onClick={() => setDeleteTarget(row)} className="rounded-full p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600" title="Delete">
               <Trash2 size={16} />
             </button>
@@ -370,6 +374,7 @@ export function InterestVoucherWorkspacePage({ sectionKey, itemKey, detailPathBa
         <InterestVoucherForm section={section} lookups={lookups} value={draft} setValue={setDraft} onSubmit={saveVoucher} onDocumentRemove={handleDocumentRemove} />
       </Modal>
 
+      <ArchivedVoucherDialog voucher={archiveTarget} onClose={() => setArchiveTarget(null)} onSaved={() => list.reload()} />
       <ConfirmDialog open={Boolean(deleteTarget)} title="Delete interest" description="This interest entry will be removed permanently." confirmLabel="Delete" tone="destructive" onConfirm={confirmDelete} onClose={() => setDeleteTarget(null)} />
     </div>
   );

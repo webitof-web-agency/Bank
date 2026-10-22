@@ -247,6 +247,8 @@ export const api = {
     createTransactionVoucher: (token, payload) => request('/banking/transactions/vouchers', { method: 'POST', token, body: payload }),
     updateTransactionVoucher: (token, id, payload) => request(`/banking/transactions/vouchers/${id}`, { method: 'PUT', token, body: payload }),
     deleteTransactionVoucher: (token, id) => request(`/banking/transactions/vouchers/${id}`, { method: 'DELETE', token }),
+    // An archived legacy voucher's entry fields (ArchivedVoucherDialog).
+    getArchivedVoucher: (token, id) => request(`/banking/transactions/vouchers/${id}/archive`, { token, skipCache: true }),
     reports: {
       memberLedger: (token, query = {}) => request(`/banking/reports/member-ledger${buildQuery(query)}`, { token, skipCache: true }),
       employeeLedger: (token, query = {}) => request(`/banking/reports/employee-ledger${buildQuery(query)}`, { token, skipCache: true }),
