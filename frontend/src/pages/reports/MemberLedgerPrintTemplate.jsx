@@ -13,8 +13,12 @@ export function MemberLedgerPrintTemplate({ payload, headerActions }) {
 
   const { member } = payload;
   const groups = ['share', 'specialDeposit', 'compulsoryDeposit', 'loan', 'loanAgainstDeposit'];
-  // Voucher rows with no credit/debit in any head are hidden; opening stays.
-  const rows = (payload.rows || []).filter((r) => r.isOpening || hasAmount(...groups.flatMap((g) => [r[g]?.credit, r[g]?.debit])));
+  // Voucher rows with no credit/debit in any head are hidden; opening stays,
+  // and so does an interest settlement voucher (old software's Interest Paid /
+  // Received): it moves no balance, only the head's Intrst.
+  const interestGroups = ['specialDeposit', 'compulsoryDeposit', 'loan', 'loanAgainstDeposit'];
+  const isInterestPayment = (r) => Boolean(r.interestOnly) && interestGroups.some((g) => Number(r[g]?.interest || 0) !== 0);
+  const rows = (payload.rows || []).filter((r) => r.isOpening || isInterestPayment(r) || hasAmount(...groups.flatMap((g) => [r[g]?.credit, r[g]?.debit])));
   const txRows = rows.filter((r) => !r.isOpening);
   const openingRow = rows.find((r) => r.isOpening);
   const lastDate = payload.asOnDate || (txRows.length ? txRows[txRows.length - 1].date : openingRow?.date);
@@ -22,8 +26,8 @@ export function MemberLedgerPrintTemplate({ payload, headerActions }) {
   // Bottom of the legacy printout: TOTAL Credit/Debit include the opening row
   // (deposits open as a Credit, loans as a Debit), TOTAL Balance is the
   // closing balance, and CLOSING BAL is that balance plus the period's
-  // interest (share has none).
-  const interestGroups = ['specialDeposit', 'compulsoryDeposit', 'loan', 'loanAgainstDeposit'];
+  // interest (share has none). Interest paid / received on a settlement
+  // voucher is negative, so it comes off the head's interest.
   const totals = Object.fromEntries(
     groups.map((g) => {
       const movers = txRows.filter((r) => r[g]?.credit || r[g]?.debit);
@@ -40,6 +44,13 @@ export function MemberLedgerPrintTemplate({ payload, headerActions }) {
   );
 
   const formatMny = (val) => (val === 0 || val == null ? '' : formatMoney(val));
+  // Interest as the old software prints it: what accrued as is, interest
+  // paid / received in brackets, e.g. 317 then (317).
+  const formatInterest = (val) => {
+    const amount = Number(val || 0);
+    if (!amount) return '';
+    return amount < 0 ? `(${formatMoney(-amount)})` : formatMoney(amount);
+  };
 
   // A row's Balance/Intrst for a group only prints when that group actually
   // moved on this voucher — a voucher with no Credit/Debit in a group carries
@@ -48,8 +59,9 @@ export function MemberLedgerPrintTemplate({ payload, headerActions }) {
   // meant to be established rather than restated.
   const formatCarried = (row, group, field) => {
     const g = row?.[group] || {};
+    if (field === 'interest' && row.interestOnly) return formatInterest(g.interest);
     if (!row.isOpening && !g.credit && !g.debit) return '';
-    return formatMny(g[field]);
+    return field === 'interest' ? formatInterest(g[field]) : formatMny(g[field]);
   };
 
   return (
@@ -159,7 +171,7 @@ export function MemberLedgerPrintTemplate({ payload, headerActions }) {
                 <td key={`${g}-cr`} className={td}>{formatMoney(totals[g].credit)}</td>,
                 <td key={`${g}-dr`} className={td}>{formatMoney(totals[g].debit)}</td>,
                 <td key={`${g}-bal`} className={td}>{formatMoney(totals[g].balance)}</td>,
-                <td key={`${g}-int`} className={td}>{formatMny(totals[g].interest)}</td>
+                <td key={`${g}-int`} className={td}>{formatInterest(totals[g].interest)}</td>
               ])}
             </tr>
             <tr className="font-bold">
@@ -173,7 +185,7 @@ export function MemberLedgerPrintTemplate({ payload, headerActions }) {
         </table>
       </div>
 
-      <p className="mt-1 text-[8px] text-slate-500">Intrst : = Interest (simple interest on each head's balance since its previous movement; the last movement runs to the as-on date. CLOSING BAL = balance + interest)</p>
+      <p className="mt-1 text-[8px] text-slate-500">Intrst : = Interest (simple interest on each head's balance since its previous movement; the last movement runs to the as-on date. Interest paid or received is shown in brackets. CLOSING BAL = balance + interest)</p>
 
       <SignatureRow />
     </PrintShell>

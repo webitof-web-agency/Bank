@@ -4078,22 +4078,37 @@ function fyEndOf(isoDate) {
 // `toFyEnd: false` drops that year-end span, as legacy's Statement of Member
 // Ledger does (interest only up to each head's last movement).
 // Rows need row[key].signed/.balance set (balance walk) before this runs.
+// What each head's interest runs on, as legacy's GetMemberLedger works it
+// (fyClosing/legacyInterest.js): Compulsory Deposit only while in credit;
+// Special Saving on its signed balance (overdrawn earns negative); a loan on
+// what is owed, so an overpaid loan earns the member negative interest
+// (member 876: Rs 8,000 over for 22 days, -43). Balances are signed
+// credit-positive: a loan owed is negative.
+const MEMBER_INTEREST_BASIS = {
+  compulsoryDeposit: (signed) => Math.max(0, signed),
+  specialDeposit: (signed) => signed,
+  loan: (signed) => -signed,
+  loanAgainstDeposit: (signed) => -signed
+};
+
 function accrueMemberLedgerInterest(allRows, rateTimelines, asOnDate = '', { toFyEnd = true } = {}) {
   const toRupeePaise = (paise) => Math.round((paise || 0) / 100) * 100;
   for (const key of Object.keys(rateTimelines)) {
     const timeline = rateTimelines[key];
+    const basis = MEMBER_INTEREST_BASIS[key] || ((signed) => Math.abs(signed));
+    const earning = (signed) => basis(signed || 0);
     for (const row of allRows) row[key].interest = 0;
     const movers = allRows.filter((row) => row[key].credit || row[key].debit);
     if (!movers.length) continue;
 
     const first = movers[0][key];
-    let priorBalance = Math.abs(first.signed - (first.credit - first.debit));
+    let priorBalance = earning(first.signed - (first.credit - first.debit));
     let priorDate = fyStartOf(movers[0].date);
     movers.forEach((row, index) => {
       const fyStart = fyStartOf(row.date);
       const from = priorDate < fyStart ? fyStart : priorDate;
       row[key].interest = toRupeePaise(rateHistory.accrueInterest(priorBalance, from, row.date, timeline));
-      priorBalance = row[key].balance;
+      priorBalance = earning(row[key].signed);
       priorDate = row.date;
 
       const next = movers[index + 1];
@@ -4101,7 +4116,7 @@ function accrueMemberLedgerInterest(allRows, rateTimelines, asOnDate = '', { toF
       if (asOnDate && asOnDate < tailEnd) tailEnd = asOnDate;
       if (!toFyEnd || (!next && !asOnDate)) return;
       if (tailEnd > row.date && (!next || next.date > tailEnd)) {
-        row[key].interest += toRupeePaise(rateHistory.accrueInterest(row[key].balance, row.date, tailEnd, timeline));
+        row[key].interest += toRupeePaise(rateHistory.accrueInterest(earning(row[key].signed), row.date, tailEnd, timeline));
       }
     });
   }
