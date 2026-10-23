@@ -32,7 +32,8 @@ export function MemberLedgerPrintTemplate({ payload, headerActions }) {
     groups.map((g) => {
       const movers = txRows.filter((r) => r[g]?.credit || r[g]?.debit);
       const balance = Number((movers.length ? movers[movers.length - 1] : openingRow)?.[g]?.balance || 0);
-      const interest = interestGroups.includes(g) ? sumField(txRows, g, 'interest') : 0;
+      // The opening row carries the interest of a head nothing moved.
+      const interest = interestGroups.includes(g) ? sumField(rows, g, 'interest') : 0;
       return [g, {
         credit: sumField(rows, g, 'credit'),
         debit: sumField(rows, g, 'debit'),
@@ -155,11 +156,6 @@ export function MemberLedgerPrintTemplate({ payload, headerActions }) {
                 <td className={td}>{formatCarried(r, 'loanAgainstDeposit', 'interest')}</td>
               </tr>
             ))}
-            {txRows.length === 0 && (
-              <tr>
-                <td colSpan={21} className="border border-black p-4 text-center text-[12px]">No transactions found for the selected period.</td>
-              </tr>
-            )}
           </tbody>
           <tfoot>
             <tr className="font-bold bg-slate-50">

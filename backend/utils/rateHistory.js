@@ -123,24 +123,40 @@ function daysBetween(fromDate, toDate) {
 // to `toDate`, applying each rate only to the days it was in force. Returns
 // the unrounded amount; callers round the same way they always have. With a
 // single rate this is exactly balance * (rate / 100) * (days / 365).
-function accrueInterest(balance, fromDate, toDate, timeline) {
+// `roundDaily`: each day's interest is first rounded to a whole unit of
+// `balance` (a paisa, when balance is in paise), as legacy does for loans —
+// 8,41,798 @ 9% for 29 days is 207.57 x 29 = 6,019.53 -> 6,020, not 6,019.47.
+function accrueInterest(balance, fromDate, toDate, timeline, { roundDaily = false } = {}) {
   if (!fromDate || !toDate) return 0;
   const startIndex = periodIndexOnTimeline(timeline, toDay(fromDate));
   const end = toDay(toDate);
+  const span = (rate, from, to) => {
+    const days = daysBetween(from, to);
+    return roundDaily ? roundHalfEven(balance * (rate / 100) / 365) * days : balance * (rate / 100) * (days / 365);
+  };
   // Rate changes that fall strictly inside the span split it.
   const changes = timeline.slice(startIndex + 1).filter((change) => change.from < end);
   let rate = timeline[startIndex].rate;
   if (!changes.length) {
-    return balance * (rate / 100) * (daysBetween(fromDate, toDate) / 365);
+    return span(rate, fromDate, toDate);
   }
   let total = 0;
   let segmentStart = fromDate;
   for (const change of changes) {
-    total += balance * (rate / 100) * (daysBetween(segmentStart, change.from) / 365);
+    total += span(rate, segmentStart, change.from);
     segmentStart = change.from;
     rate = change.rate;
   }
-  return total + balance * (rate / 100) * (daysBetween(segmentStart, toDate) / 365);
+  return total + span(rate, segmentStart, toDate);
+}
+
+// Banker's rounding to a whole number (.NET Math.Round, which legacy used);
+// the epsilon keeps float noise from deciding a tie.
+function roundHalfEven(value) {
+  const floor = Math.floor(value);
+  const diff = value - floor;
+  if (Math.abs(diff - 0.5) < 1e-9) return floor % 2 === 0 ? floor : floor + 1;
+  return Math.round(value);
 }
 
 function periodIndexOnTimeline(timeline, day) {
@@ -202,6 +218,7 @@ module.exports = {
   rateTimeline,
   ratesAsOf,
   removeRatePeriod,
+  roundHalfEven,
   sameRates,
   todayIso
 };

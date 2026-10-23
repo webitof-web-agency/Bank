@@ -2266,13 +2266,74 @@ function compareCodesNumerically(a, b) {
   return String(a ?? '').localeCompare(String(b ?? ''), undefined, { numeric: true, sensitivity: 'base' });
 }
 
-async function getLedgerSnapshots({ dateFrom = '', dateTo = '', uptoDate = '', branchCode = '' } = {}) {
+// The cutover FY (the legacy database the ledgers were migrated from, e.g.
+// JilaSahkariDB2627): each ledger's openingBalance is its balance at cutover,
+// so it already holds that FY's archived vouchers, and only later vouchers
+// have journal lines. For a window in that FY, returns which archived rows
+// fall before it and which in it (the same whole-FY rule as a closed FY: a
+// window from 1 April takes every row of the database); null otherwise.
+async function cutoverFyArchive(ledgers, { dateFrom = '', periodEnd = '' } = {}) {
+  const startYear = fyStartYearOf(periodEnd || dateFrom);
+  if (startYear == null) return null;
+  const { byDb, cutoverDb } = await loadLegacyLedgerEntries(ledgers);
+  if (!cutoverDb || legacyDbForFyStartYear(startYear) !== cutoverDb) return null;
+  const rows = byDb.get(cutoverDb) || [];
+  const fyStart = `${startYear}-04-01`;
+  const fyEnd = `${startYear + 1}-03-31`;
+  const from = cleanText(dateFrom) > fyStart ? cleanText(dateFrom) : '';
+  const to = cleanText(periodEnd) && cleanText(periodEnd) < fyEnd ? cleanText(periodEnd) : '';
+  const isBefore = (row) => Boolean(from) && Boolean(row.date) && row.date < from;
+  const isInWindow = (row) => !isBefore(row) && (!to || !row.date || row.date <= to);
+  return { rows, isBefore, isInWindow, fyStart };
+}
+
+// Live snapshots (cutover balance + journal lines) turned into the window's
+// true figures for the cutover FY: the cutover balance less the FY's archived
+// movement is its 1 April opening; archived rows before the window go into
+// the opening, those inside it into Credit / Debit.
+function applyCutoverFyArchive(snapshots, archive) {
+  const all = sumLegacyMovement(archive.rows);
+  const before = sumLegacyMovement(archive.rows, archive.isBefore);
+  const period = sumLegacyMovement(archive.rows, archive.isInWindow);
+  const round = (value) => Number(value.toFixed(2));
+  return snapshots.map((row) => {
+    const none = { cr: 0, dr: 0 };
+    const a = all.get(row.code) || none;
+    const b = before.get(row.code) || none;
+    const p = period.get(row.code) || none;
+    const openingSigned = (row.openingSide === 'CR' ? row.opening : -row.opening) - (a.cr + a.dr) + (b.cr + b.dr);
+    const totalCr = round(row.totalCr + p.cr);
+    const totalDr = round(row.totalDr - p.dr);
+    const closingSigned = openingSigned + totalCr - totalDr;
+    return {
+      ...row,
+      opening: round(Math.abs(openingSigned)),
+      openingSide: openingSigned < 0 ? 'DR' : 'CR',
+      totalCr,
+      totalDr,
+      balance: round(Math.abs(closingSigned)),
+      closing: round(Math.abs(closingSigned)),
+      closingSide: closingSigned < 0 ? 'DR' : 'CR',
+      signedBalance: round(closingSigned)
+    };
+  });
+}
+
+async function getLedgerSnapshots(options = {}) {
   const ledgers = (await Ledger.find({}).lean()).sort((a, b) => compareCodesNumerically(a.code, b.code));
+  const { dateFrom = '', dateTo = '', uptoDate = '' } = options;
 
   // A closed pre-cutover FY comes from the legacy archive. Ledgers aren't
   // branch-owned (society-wide GL), so this path isn't branch-filtered.
   const legacySnapshots = await getLegacyFyLedgerSnapshots({ dateFrom, periodEnd: dateTo || uptoDate, ledgers });
   if (legacySnapshots) return legacySnapshots;
+
+  const live = await liveLedgerSnapshots(ledgers, options);
+  const archive = await cutoverFyArchive(ledgers, { dateFrom, periodEnd: dateTo || uptoDate });
+  return archive ? applyCutoverFyArchive(live, archive) : live;
+}
+
+async function liveLedgerSnapshots(ledgers, { dateFrom = '', dateTo = '', uptoDate = '', branchCode = '' } = {}) {
 
   const branchFilter = {};
   if (branchCode) {
@@ -2408,7 +2469,8 @@ async function buildLegacyLedgerStatements(ledgers, allLedgers, { dateFrom = '',
 async function buildAllLedgerStatements({ dateFrom = '', dateTo = '', branchCode = '' } = {}) {
   const allLedgers = await Ledger.find({}).lean();
   const ledgers = [...allLedgers].sort((a, b) => cleanText(a.name).localeCompare(cleanText(b.name), undefined, { sensitivity: 'base' }));
-  const legacy = await buildLegacyLedgerStatements(ledgers, allLedgers, { dateFrom, dateTo });
+  const legacy = (await buildLegacyLedgerStatements(ledgers, allLedgers, { dateFrom, dateTo }))
+    || (await buildCutoverFyLedgerStatements(ledgers, allLedgers, { dateFrom, dateTo, branchCode }));
 
   const statements = [];
   for (const ledger of ledgers) {
@@ -2448,8 +2510,78 @@ async function profitAndLossCarriedInto(resetAt, allLedgers = [], branchCode = '
 async function buildLedgerTransactionStatement(ledger, { dateFrom = '', dateTo = '', branchCode = '' } = {}) {
   // A closed pre-cutover FY has no journal lines; its vouchers are archived.
   const allLedgers = await Ledger.find({}).lean();
-  const legacy = await buildLegacyLedgerStatements([ledger], allLedgers, { dateFrom, dateTo });
+  const legacy = (await buildLegacyLedgerStatements([ledger], allLedgers, { dateFrom, dateTo }))
+    || (await buildCutoverFyLedgerStatements([ledger], allLedgers, { dateFrom, dateTo, branchCode }));
   if (legacy) return legacy.get(cleanUpper(ledger.code)) || [];
+  return liveLedgerTransactionStatement(ledger, allLedgers, { dateFrom, dateTo, branchCode });
+}
+
+// Statement rows for a window in the cutover FY (see cutoverFyArchive): the
+// opening Statement of Ledgers shows for it, then the FY's archived vouchers
+// and the app's own, by date. Returns Map(code -> rows), or null when the
+// window isn't in the cutover FY.
+async function buildCutoverFyLedgerStatements(ledgers, allLedgers, { dateFrom = '', dateTo = '', branchCode = '' } = {}) {
+  const archive = await cutoverFyArchive(allLedgers, { dateFrom, periodEnd: dateTo });
+  if (!archive) return null;
+  const snapshots = await getLedgerSnapshots({ dateFrom, dateTo, branchCode });
+  const snapshotByCode = new Map(snapshots.map((row) => [row.code, row]));
+
+  const wanted = new Set(ledgers.map((ledger) => cleanUpper(ledger.code)));
+  const movesByCode = new Map();
+  for (const row of archive.rows.filter(archive.isInWindow)) {
+    const net = new Map();
+    for (const { code, cr, dr } of row.entries) {
+      if (!wanted.has(code)) continue;
+      const entry = net.get(code) || { cr: 0, dr: 0 };
+      entry.cr += cr;
+      entry.dr += dr;
+      net.set(code, entry);
+    }
+    for (const [code, { cr, dr }] of net) {
+      const list = movesByCode.get(code) || [];
+      list.push({ date: row.date, voucherNo: row.voucher.voucherNo, voucherId: null, credit: cr, debit: -dr, narration: row.voucher.narration || '' });
+      movesByCode.set(code, list);
+    }
+  }
+
+  const round = (value) => Number(value.toFixed(2));
+  const result = new Map();
+  for (const ledger of ledgers) {
+    const code = cleanUpper(ledger.code);
+    // The app's own vouchers in the window (its opening row is replaced).
+    const liveRows = (await liveLedgerTransactionStatement(ledger, allLedgers, { dateFrom, dateTo, branchCode })).slice(1)
+      .map((row) => ({ date: cleanText(row.date).slice(0, 10), voucherNo: row.voucherNo, voucherId: row.voucherId, credit: row.credit, debit: row.debit, narration: row.narration }));
+    const snap = snapshotByCode.get(code);
+    let signed = snap ? (snap.openingSide === 'DR' ? -snap.opening : snap.opening) : 0;
+    const rows = [{
+      voucherNo: 'OPENING',
+      voucherId: null,
+      date: cleanText(dateFrom) || archive.fyStart,
+      debit: 0,
+      credit: 0,
+      balance: round(Math.abs(signed)),
+      balanceSide: signed < 0 ? 'DR' : 'CR',
+      narration: 'Opening Balance'
+    }];
+    const moves = (movesByCode.get(code) || []).concat(liveRows).sort((a, b) => (
+      String(a.date).localeCompare(String(b.date)) || compareCodesNumerically(a.voucherNo, b.voucherNo)
+    ));
+    for (const move of moves) {
+      signed += move.credit - move.debit;
+      rows.push({
+        ...move,
+        debit: round(move.debit),
+        credit: round(move.credit),
+        balance: round(Math.abs(signed)),
+        balanceSide: signed < 0 ? 'DR' : 'CR'
+      });
+    }
+    result.set(code, rows);
+  }
+  return result;
+}
+
+async function liveLedgerTransactionStatement(ledger, allLedgers, { dateFrom = '', dateTo = '', branchCode = '' } = {}) {
 
   // A year after the first app year: Income / Expense / P&L restart at its
   // 1 April, and the P&L A/c opens with what they all held before it (as in
@@ -3410,7 +3542,15 @@ async function buildMemberLedgerReport({ memberCode, dateFrom = '', dateTo = '',
   // accrueMemberLedgerInterest). Each day accrues at the rate in force on that
   // day, so a later rate change leaves earlier spans alone.
   const rateTimelines = await getInterestRateTimelines(MEMBER_INTEREST_HEADS);
-  accrueMemberLedgerInterest(allRows, rateTimelines, cleanText(dateTo));
+  // On the no-interest list: interest only up to the day the member was put
+  // on it (legacy saved 5,157 for 1491, listed 10-Jul-2026), none if before.
+  const stopDate = (await getNoInterestStartDates()).get(cleanUpper(member.code)) || '';
+  const interestTo = stopDate && (!cleanText(dateTo) || stopDate < cleanText(dateTo)) ? stopDate : cleanText(dateTo);
+  accrueMemberLedgerInterest(allRows, rateTimelines, interestTo);
+  for (const row of allRows) {
+    if (!interestTo || row.date <= interestTo) continue;
+    for (const key of Object.keys(rateTimelines)) row[key].interest = 0;
+  }
   // The accrual skips rows that move nothing; a settlement row's interest is
   // its own (legacy signs: Interest Received on a loan prints as (317)).
   for (const row of interestOnlyRows) {
@@ -3436,21 +3576,24 @@ async function buildMemberLedgerReport({ memberCode, dateFrom = '', dateTo = '',
   // balance after the last row before it — including a carry-forward on its
   // first day — not with the cutover snapshot.
   const rowsBefore = fromDateStr ? allRows.filter((r) => r.date < fromDateStr || (r.date === fromDateStr && r.isCarryForward)) : [];
+  const openingSigned = {};
   for (const { key, sign, fallback } of BALANCE_GROUPS) {
-    let balance;
+    let signed;
     if (firstVisibleIndex > 0) {
-      balance = allRows[firstVisibleIndex - 1][key].balance;
+      signed = allRows[firstVisibleIndex - 1][key].signed;
     } else if (firstVisibleIndex === 0) {
       const first = visibleRows[0][key];
-      balance = Math.abs(first.signed - (first.credit - first.debit));
+      signed = first.signed - (first.credit - first.debit);
     } else if (rowsBefore.length) {
-      balance = rowsBefore[rowsBefore.length - 1][key].balance;
+      signed = rowsBefore[rowsBefore.length - 1][key].signed;
     } else if (allRows.length) {
       const first = allRows[0][key];
-      balance = Math.abs(first.signed - (first.credit - first.debit));
+      signed = first.signed - (first.credit - first.debit);
     } else {
-      balance = Math.abs(fallback);
+      signed = fallback;
     }
+    openingSigned[key] = signed || 0;
+    const balance = Math.abs(openingSigned[key]);
     // On the opening row, a Cr-nature balance (Share/Special Deposit/
     // Compulsory Deposit) is shown as an opening Credit equal to the balance
     // itself, matching the legacy printout. Loan/LoanAgainstDeposit are
@@ -3459,6 +3602,17 @@ async function buildMemberLedgerReport({ memberCode, dateFrom = '', dateTo = '',
     // Loan/LoanAgainstDeposit (Dr-nature) show it as an opening Debit, as the
     // legacy printout does, so TOTAL Credit/Debit include the opening.
     openingRow[key] = { credit: sign > 0 ? balance : 0, debit: sign < 0 ? balance : 0, balance, interest: 0 };
+  }
+
+  const accrualRows = visibleRows.filter((r) => !interestTo || r.date <= interestTo);
+  for (const [key, paise] of Object.entries(memberOpeningInterest(accrualRows, openingSigned, rateTimelines, fromDateStr, interestTo))) {
+    openingRow[key].interest = paise;
+  }
+  if (stopDate && stopDate <= (fromDateStr || fyStartOf(toDateStr || stopDate))) {
+    for (const row of [openingRow].concat(visibleRows)) {
+      if (row.interestOnly) continue;
+      for (const key of Object.keys(rateTimelines)) row[key].interest = 0;
+    }
   }
 
   // A full FY legacy has closed: make each bucket's FY interest equal
@@ -3478,10 +3632,16 @@ async function buildMemberLedgerReport({ memberCode, dateFrom = '', dateTo = '',
         const movers = visibleRows.filter((r) => r[key].credit || r[key].debit);
         if (!target) {
           movers.forEach((r) => { r[key].interest = 0; });
+          openingRow[key].interest = 0;
+          continue;
+        }
+        // A head that never moved earns it all on its opening balance.
+        if (!movers.length) {
+          openingRow[key].interest = target;
           continue;
         }
         const last = movers[movers.length - 1];
-        if (last) last[key].interest += target - movers.reduce((total, r) => total + (r[key].interest || 0), 0);
+        last[key].interest += target - movers.reduce((total, r) => total + (r[key].interest || 0), 0);
       }
       memberExtras = legacyFy.rows.get(member.code) || {};
     }
@@ -3754,9 +3914,13 @@ async function buildMembersOpeningBalanceReport({ branchCode = '', dateFrom = ''
     getLegacyFyAccountRows('member', members.map((m) => m.code), dateFrom)
   ]);
 
-  return inLegacyFy(periods, legacyFy).map(({ member: row, buckets }) => {
-    // No FY given -> the migrated snapshot (closing with no dateTo), as before.
-    const opening = (key) => toRupees(dateFrom ? buckets[key].opening : buckets[key].closing);
+  // No FY given -> the migrated snapshot (closing with no dateTo), as before.
+  const openingOf = (buckets, key) => toRupees(dateFrom ? buckets[key].opening : buckets[key].closing);
+  // Like legacy (and the closing report), a member with nothing in any head
+  // is left out: FY 2026-27 lists 623 members, not the 40 dismembered at nil.
+  const hasBalance = ({ buckets }) => MEMBER_BALANCE_BUCKETS.some((key) => Math.abs(openingOf(buckets, key)) >= 0.005);
+  return inLegacyFy(periods, legacyFy).filter(hasBalance).map(({ member: row, buckets }) => {
+    const opening = (key) => openingOf(buckets, key);
     const share = opening('share');
     const specialDeposit = opening('specialDeposit');
     const compulsoryDeposit = opening('compulsoryDeposit');
@@ -3783,26 +3947,77 @@ async function buildMembersOpeningBalanceReport({ branchCode = '', dateFrom = ''
 // their interest is printed whatever their status — a member dismembered
 // mid-year who still owes a loan keeps the year's interest (FY 2025-26
 // member 826). Matches legacy's FY 2024-25 and 2025-26 printouts.
+// Each member's interest for [dateFrom, dateTo] (rupees by bucket, a
+// deposit's paid interest and a loan's charged interest positive) with the
+// legacy desktop algorithm the year-end close uses (fyClosing/legacyInterest,
+// verified to the rupee against every member of FY 2024-25 and 2025-26), run
+// to dateTo. Against legacy's Members' Closing Balance of 23-Oct-2026 it
+// matches all 603 members bar 1301 (no interest in legacy). A member on the
+// no-interest list earns up to the day they were put on it (1491, listed
+// 10-Jul-2026: 5,157, as legacy) and nothing if listed before the window.
+async function memberInterestAsLegacy(members, dateFrom = '', dateTo = '') {
+  const yearInterest = require('./fyClosing/yearInterest.service');
+  const { memberYearInterest } = require('./fyClosing/legacyInterest');
+  const start = cleanText(dateFrom) || (dateTo ? fyStartOf(cleanText(dateTo)) : '');
+  const till = cleanText(dateTo) || (start ? fyEndOf(start) : '');
+  const result = new Map();
+  if (!start || !till || till < start) return result;
+  const [timelines, rates, stops] = await Promise.all([
+    buildMemberBalanceTimelines(members),
+    yearInterest.memberRates(till),
+    getNoInterestStartDates()
+  ]);
+  for (const member of members) {
+    const timeline = timelines.get(member.code);
+    if (!timeline) continue;
+    const stop = stops.get(cleanUpper(member.code)) || '';
+    const runTo = stop && stop < till ? stop : till;
+    const { rows } = yearInterest.legacyRowsForYear(timeline, start, runTo);
+    const interest = memberYearInterest(rows, rates, runTo, { noInterest: Boolean(stop) && stop <= start });
+    result.set(member.code, {
+      compulsoryDeposit: interest.cd,
+      specialDeposit: interest.ssa,
+      loan: interest.loan,
+      loanAgainstDeposit: interest.dloan
+    });
+  }
+  return result;
+}
+
 async function buildMembersClosingBalanceReport({ branchCode = '', dateFrom = '', dateTo = '', user = {} } = {}) {
   const members = await findMembersForReport({ branchCode, user });
-  const [periods, legacyFy] = await Promise.all([
+  // A From date inside the year still lists that FY's members.
+  const fyOfRange = (dateFrom || dateTo) ? fyStartOf(cleanText(dateFrom || dateTo)) : '';
+  const [periods, legacyFy, legacyAlgorithm] = await Promise.all([
     computeMemberPeriodBalances({ members, dateFrom, dateTo, user }),
-    getLegacyFyAccountRows('member', members.map((m) => m.code), dateFrom)
+    getLegacyFyAccountRows('member', members.map((m) => m.code), fyOfRange),
+    memberInterestAsLegacy(members, dateFrom, dateTo)
   ]);
   const legacyField = { specialDeposit: 'MSSAIntr', compulsoryDeposit: 'MContryIntr', loan: 'MRLoanIntr', loanAgainstDeposit: 'MDLoanIntr' };
 
   const hasBalance = ({ buckets }) => MEMBER_BALANCE_BUCKETS.some((key) => Math.abs(toRupees(buckets[key].closing)) >= 0.005);
+  const wholeFy = Boolean(fyOfRange) && (!dateFrom || cleanText(dateFrom) <= fyOfRange) && (!dateTo || cleanText(dateTo) >= fyEndOf(fyOfRange));
   return inLegacyFy(periods, legacyFy).filter(hasBalance).map(({ member: row, buckets }) => {
     const share = toRupees(buckets.share.closing);
     const legacyRow = legacyFy.rows.get(row.code);
-    const legacyInterest = legacyFy.closed && legacyRow ? (legacyRow.MbrCBlnc || {}) : null;
+    // Legacy's figure is the whole FY's; a part of the year is accrued here.
+    const legacyInterest = legacyFy.closed && legacyRow && wholeFy ? (legacyRow.MbrCBlnc || {}) : null;
     // Legacy's MbrCBlnc interest keeps its sign (a few are negative, e.g.
     // FY 2025-26 member 1623's LAD -2): it prints unsigned, but Total and the
     // footer add it signed (2.00 DR + -2 = 0.00), so it is passed on signed.
     const closingBucket = (key, naturalSide = 'CR') => {
       const amount = toRupees(buckets[key].closing);
-      const interest = legacyInterest ? toNumber(legacyInterest[legacyField[key]], 0) : Math.abs(toRupees(buckets[key].interest));
-      return { balance: Math.abs(amount), side: balanceSide(amount, naturalSide), interest, total: Number((Math.abs(amount) + interest).toFixed(2)) };
+      const interest = legacyInterest
+        ? toNumber(legacyInterest[legacyField[key]], 0)
+        : toNumber(legacyAlgorithm.get(row.code)?.[key], 0);
+      // Interest is signed in the head's own terms (a deposit's credit, a
+      // loan's amount owed), so on a balance on the head's other side (an
+      // overpaid loan, an overdrawn SSA) it counts the other way: member
+      // 876's loan 8,000.00 CR + 45 = 8,045.00 CR, 1756's SSA 4,500.00 DR
+      // and -47 = 4,547.00 DR, as legacy totals them.
+      const side = balanceSide(amount, naturalSide);
+      const towardSide = side === naturalSide ? interest : -interest;
+      return { balance: Math.abs(amount), side, interest, total: Number((Math.abs(amount) + towardSide).toFixed(2)) };
     };
     return {
       memberCode: row.code,
@@ -3821,7 +4036,57 @@ async function buildMembersClosingBalanceReport({ branchCode = '', dateFrom = ''
 // recovery by memberCode) but issued ONCE across every member with an IN/ANY
 // filter instead of once per member, then grouped in memory. Bulk reports
 // (all ~1000 members) would otherwise run 2 queries per member.
+// Every member's archived rows, read once and reused while the archive is
+// unchanged: they are ~140,000 rows over six FYs, and reading them was most
+// of a bulk report's time (Members' Closing Balance ~1 s of ~1.5 s). The
+// stamp is each archive table's row count and latest update, so any insert,
+// edit or delete (an archived voucher edited, the FY close writing openings)
+// rebuilds it. Callers write balances and interest onto the rows, so each
+// gets its own copies.
+let memberHistoryCache = null;
+let memberHistoryLoading = null;
+
+async function legacyMemberArchiveStamp(database) {
+  const result = await database.query(
+    `SELECT (SELECT count(*) || '/' || coalesce(max("updatedAt")::text, '') FROM legacy_historical_vouchers)
+         || '|' || (SELECT count(*) || '/' || coalesce(max("updatedAt")::text, '') FROM legacy_historical_recovery)
+         || '|' || (SELECT count(*) || '/' || coalesce(max("updatedAt")::text, '') FROM legacy_historical_member_openings) AS stamp`
+  );
+  return result.rows[0]?.stamp || '';
+}
+
+function copyMemberLedgerRow(row) {
+  const copy = { ...row };
+  for (const key of MEMBER_BALANCE_BUCKETS) if (row[key]) copy[key] = { ...row[key] };
+  return copy;
+}
+
 async function getHistoricalMemberLedgerRowsBatch(members) {
+  const database = await initializeDatabase();
+  const stamp = await legacyMemberArchiveStamp(database);
+  if (!memberHistoryCache || memberHistoryCache.stamp !== stamp) {
+    if (!memberHistoryLoading) {
+      memberHistoryLoading = Member.find({}).lean()
+        .then((all) => readHistoricalMemberLedgerRows(all))
+        .then((rowsByMember) => { memberHistoryCache = { stamp, rowsByMember }; })
+        .finally(() => { memberHistoryLoading = null; });
+    }
+    await memberHistoryLoading;
+  }
+  const cached = memberHistoryCache.rowsByMember;
+  // A member the cache was built without (added since): read on its own.
+  const missing = members.filter((m) => !cached.has(m.code));
+  const extra = missing.length ? await readHistoricalMemberLedgerRows(missing) : new Map();
+  return new Map(members.map((m) => [m.code, (cached.get(m.code) || extra.get(m.code) || []).map(copyMemberLedgerRow)]));
+}
+
+// Server start: fill the cache in the background (a failure only means the
+// first report reads it instead).
+function warmMemberHistoryCache() {
+  getHistoricalMemberLedgerRowsBatch([]).catch((error) => console.error('[member-history] warm-up failed:', error.message));
+}
+
+async function readHistoricalMemberLedgerRows(members) {
   const database = await initializeDatabase();
   const accIdToCode = new Map();
   const codes = [];
@@ -4090,13 +4355,60 @@ const MEMBER_INTEREST_BASIS = {
   loan: (signed) => -signed,
   loanAgainstDeposit: (signed) => -signed
 };
+// Legacy rounds the interest per day to the paisa before adding the days up
+// for Special Deposit and the loans (member 1304, FY 2026-27: 6,020 and
+// 4,609), not for Compulsory Deposit; each row's amount is then rounded to
+// the rupee with banker's rounding (.NET Math.Round). Checked against the
+// legacy Members' Closing Balance of 23-Oct-2026, all 603 members.
+const MEMBER_INTEREST_ROUND_DAILY = new Set(['specialDeposit', 'loan', 'loanAgainstDeposit']);
+const toRupeePaiseHalfEven = (paise) => rateHistory.roundHalfEven((paise || 0) / 100) * 100;
+
+// Member code -> the day (YYYY-MM-DD) each member on the no-interest list
+// (legacy EntNoInterestMbr) was put on it: its SetDate as legacy stored it,
+// else the stored date read in IST.
+async function getNoInterestStartDates() {
+  const entries = await NoInterestMember.find({}).lean();
+  const istDay = (value) => {
+    if (!value) return '';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? '' : new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(date);
+  };
+  const result = new Map();
+  for (const entry of entries) {
+    if (entry.deletedAt || (entry.status && cleanUpper(entry.status) !== 'ACTIVE')) continue;
+    const code = cleanUpper(entry.memberCode);
+    const day = cleanText(entry.payload?.raw?.SetDate).slice(0, 10) || istDay(entry.fromDate || entry.setOnDate) || '0000-01-01';
+    if (code && (!result.has(code) || day < result.get(code))) result.set(code, day);
+  }
+  return result;
+}
+
+// A head nothing moves in the window still earns: its opening balance
+// accrues from the window's start to the as-on date (the accrual above only
+// ever charges a row that moves the head). Paise per head, rounded to the
+// rupee; the member ledger shows it on its opening row.
+function memberOpeningInterest(visibleRows, openingSigned, rateTimelines, fromDateStr, toDateStr) {
+  const result = {};
+  const windowStart = fromDateStr || (toDateStr ? fyStartOf(toDateStr) : '');
+  if (!windowStart || !(toDateStr > windowStart)) return result;
+  for (const key of Object.keys(rateTimelines)) {
+    if (visibleRows.some((r) => r[key].credit || r[key].debit)) continue;
+    const basis = MEMBER_INTEREST_BASIS[key] || ((signed) => Math.abs(signed));
+    const from = windowStart < fyStartOf(toDateStr) ? fyStartOf(toDateStr) : windowStart;
+    // A run to the as-on date, so no daily rounding (as the tail above).
+    const paise = rateHistory.accrueInterest(basis(openingSigned[key] || 0), from, toDateStr, rateTimelines[key]);
+    result[key] = toRupeePaiseHalfEven(paise);
+  }
+  return result;
+}
 
 function accrueMemberLedgerInterest(allRows, rateTimelines, asOnDate = '', { toFyEnd = true } = {}) {
-  const toRupeePaise = (paise) => Math.round((paise || 0) / 100) * 100;
+  const toRupeePaise = toRupeePaiseHalfEven;
   for (const key of Object.keys(rateTimelines)) {
     const timeline = rateTimelines[key];
     const basis = MEMBER_INTEREST_BASIS[key] || ((signed) => Math.abs(signed));
     const earning = (signed) => basis(signed || 0);
+    const options = { roundDaily: MEMBER_INTEREST_ROUND_DAILY.has(key) };
     for (const row of allRows) row[key].interest = 0;
     const movers = allRows.filter((row) => row[key].credit || row[key].debit);
     if (!movers.length) continue;
@@ -4107,7 +4419,7 @@ function accrueMemberLedgerInterest(allRows, rateTimelines, asOnDate = '', { toF
     movers.forEach((row, index) => {
       const fyStart = fyStartOf(row.date);
       const from = priorDate < fyStart ? fyStart : priorDate;
-      row[key].interest = toRupeePaise(rateHistory.accrueInterest(priorBalance, from, row.date, timeline));
+      row[key].interest = toRupeePaise(rateHistory.accrueInterest(priorBalance, from, row.date, timeline, options));
       priorBalance = earning(row[key].signed);
       priorDate = row.date;
 
@@ -4116,6 +4428,7 @@ function accrueMemberLedgerInterest(allRows, rateTimelines, asOnDate = '', { toF
       if (asOnDate && asOnDate < tailEnd) tailEnd = asOnDate;
       if (!toFyEnd || (!next && !asOnDate)) return;
       if (tailEnd > row.date && (!next || next.date > tailEnd)) {
+        // The run on to the as-on date has no daily rounding (legacy GetMemberLedger).
         row[key].interest += toRupeePaise(rateHistory.accrueInterest(earning(row[key].signed), row.date, tailEnd, timeline));
       }
     });
@@ -4199,9 +4512,11 @@ async function computeMemberPeriodBalances({ members = [], dateFrom = '', dateTo
     : [];
 
   const historicalByMember = withHistory ? await getHistoricalMemberLedgerRowsBatch(members) : new Map();
+  const interestOnlyByMember = withHistory ? await getLegacyMemberInterestRows(members) : new Map();
   const rateTimelines = await getInterestRateTimelines(MEMBER_INTEREST_HEADS);
   const fromDateStr = cleanText(dateFrom);
   const toDateStr = cleanText(dateTo);
+  const noInterestFrom = await getNoInterestStartDates();
 
   return members.map((member) => {
     const balancesObj = typeof member.balances === 'string' ? JSON.parse(member.balances || '{}') : (member.balances || {});
@@ -4281,9 +4596,17 @@ async function computeMemberPeriodBalances({ members = [], dateFrom = '', dateTo
       balanceBeforeAll[key] = allRows.reduce((running, row) => (row.isHistorical ? running - (row[key].credit - row[key].debit) : running), anchors[key]);
     }
 
-    accrueMemberLedgerInterest(allRows, rateTimelines, toDateStr, { toFyEnd: interestToFyEnd });
+    // A member on the no-interest list earns up to the day they were put on
+    // it and nothing after (legacy: member 1491, listed 10-Jul-2026, earns
+    // its loan interest to that day; one listed before the window, none).
+    const stopDate = noInterestFrom.get(cleanUpper(member.code)) || '';
+    const interestTo = stopDate && (!toDateStr || stopDate < toDateStr) ? stopDate : toDateStr;
+    const noInterest = Boolean(stopDate) && stopDate <= (fromDateStr || fyStartOf(toDateStr || stopDate));
+
+    accrueMemberLedgerInterest(allRows, rateTimelines, interestTo, { toFyEnd: interestToFyEnd });
 
     const visibleRows = allRows.filter((r) => isInMemberWindow(r, fromDateStr, toDateStr));
+    const interestRows = interestTo === toDateStr ? visibleRows : allRows.filter((r) => isInMemberWindow(r, fromDateStr, interestTo));
     // Balance carried by the last row on/before a date. A window with no rows
     // of its own still has a real balance (whatever the previous row left),
     // so this looks across the full timeline, not just visibleRows.
@@ -4297,6 +4620,15 @@ async function computeMemberPeriodBalances({ members = [], dateFrom = '', dateTo
       return balanceBeforeAll[key];
     };
 
+    // As the member ledger: a head nothing moved earns on its opening, and
+    // legacy's interest paid / received vouchers (20 / 21) count, signed.
+    const openingSigned = Object.fromEntries(MEMBER_BALANCE_BUCKETS.map((key) => [key, fromDateStr ? signedBalanceUpTo(key, fromDateStr, false) : balanceBeforeAll[key]]));
+    const openingInterest = memberOpeningInterest(interestRows, openingSigned, rateTimelines, fromDateStr, interestTo);
+    const settled = {};
+    for (const row of (interestOnlyByMember.get(member.code) || []).filter((r) => isInMemberWindow(r, fromDateStr, interestTo))) {
+      for (const [key, amount] of Object.entries(row.interestOnly || {})) settled[key] = (settled[key] || 0) + toPaise(amount);
+    }
+
     const buckets = {};
     for (const key of MEMBER_BALANCE_BUCKETS) {
       buckets[key] = {
@@ -4308,7 +4640,7 @@ async function computeMemberPeriodBalances({ members = [], dateFrom = '', dateTo
           : allRows.reduce((running, r) => (r.isHistorical ? running : running + r[key].credit - r[key].debit), anchors[key]),
         credit: visibleRows.reduce((total, r) => total + (r[key].credit || 0), 0),
         debit: visibleRows.reduce((total, r) => total + (r[key].debit || 0), 0),
-        interest: visibleRows.reduce((total, r) => total + (r[key].interest || 0), 0)
+        interest: noInterest ? 0 : interestRows.reduce((total, r) => total + (r[key].interest || 0), 0) + (openingInterest[key] || 0) + (settled[key] || 0)
       };
       if (statementInterest && rateTimelines[key]) {
         buckets[key].statementInterest = statementOfMemberLedgerInterest(visibleRows, key, buckets[key].opening, fromDateStr, toDateStr, rateTimelines[key]);
@@ -6770,22 +7102,37 @@ async function buildEmployeeLedgerReport({ employeeCode, dateFrom = '', dateTo =
     housingLoan: ['receive', 'houseLoanStaff'],
     vehicleLoan: ['receive', 'vehicleLoanStaff']
   });
-  const interestByRow = new Map(visibleRows.map((row) => [row, {}]));
+  // As on the member ledger, the last movement also accrues on to the as-on
+  // date (within its FY, rounded separately), and a loan nothing moves earns
+  // on its opening balance, shown on the opening row.
+  const interestByRow = new Map([openingRow].concat(visibleRows).map((row) => [row, {}]));
+  // As legacy SaveEmpLedgerInterest (fyClosing/legacyInterest): a housing
+  // loan row rounds each day's interest to the paisa first (employee 2,
+  // 12,25,730 for 28 days: 302.23 x 28 = 8,462, not 8,463), the run on to
+  // the as-on date doesn't; amounts are rounded with banker's rounding.
+  // `balance` is paise, so the daily step is a paisa.
+  const accrue = (balance, from, to, key, { tail = false } = {}) => (from && to > from
+    ? rateHistory.roundHalfEven(rateHistory.accrueInterest(balance, from, to, rateTimelines[key], { roundDaily: key === 'housingLoan' && !tail }) / 100) || 0
+    : 0);
   for (const key of Object.keys(rateTimelines)) {
     let priorBalance = openingRow[key].balance;
     let priorDate = openingRow.date;
+    let lastMover = null;
     for (const row of visibleRows) {
       const cell = row[key];
       if (cell.interestReceived) {
         interestByRow.get(row)[key] = -toRupees(cell.interestReceived);
       } else if (cell.credit || cell.debit) {
-        interestByRow.get(row)[key] = priorDate
-          ? Math.round(rateHistory.accrueInterest(priorBalance / 100, priorDate, row.date, rateTimelines[key])) || 0
-          : 0;
+        interestByRow.get(row)[key] = accrue(priorBalance, priorDate, row.date, key);
         priorBalance = cell.balance;
         priorDate = row.date;
+        lastMover = row;
       }
     }
+    if (!toDateStr || !priorDate) continue;
+    const tailEnd = toDateStr < fyEndOf(priorDate) ? toDateStr : fyEndOf(priorDate);
+    const holder = lastMover || openingRow;
+    interestByRow.get(holder)[key] = (interestByRow.get(holder)[key] || 0) + accrue(priorBalance, priorDate, tailEnd, key, { tail: true });
   }
 
   const toRupeeCells = (row) => Object.fromEntries(GROUPS.map((key) => [key, {
@@ -6929,6 +7276,7 @@ module.exports = {
   buildTrialBalanceReport,
   buildVoucherRows,
   resetLegacyArchiveCaches,
+  warmMemberHistoryCache,
   getCachedVoucherRows,
   getCachedResourceRows,
   filterVouchersBySection,

@@ -15,8 +15,6 @@ const GROUPS = [
   { key: 'housingLoan', label: 'HOUSING LOAN', interest: true },
   { key: 'vehicleLoan', label: 'VEHICLE LOAN', interest: true }
 ];
-const COLUMN_COUNT = 2 + GROUPS.reduce((sum, g) => sum + (g.interest ? 4 : 3), 0);
-
 function voucherLabel(row) {
   if (row.isOpening) return 'Op.';
   return String(row.voucherNo || '');
@@ -27,8 +25,7 @@ export function EmployeeLedgerPrint({ data, filters, headerActions }) {
     return <div className="p-8 text-center text-slate-500">Select an employee to view the ledger.</div>;
   }
 
-  const { employee, balances } = data;
-  const groups = GROUPS.map((g) => g.key);
+  const { employee } = data;
   // Rows that move nothing (no credit, debit or interest in any head) are hidden; opening stays.
   const rows = (data.rows || []).filter((r) => r.isOpening || hasAmount(
     ...GROUPS.flatMap((g) => [r[g.key]?.credit, r[g.key]?.debit, g.interest ? r[g.key]?.interest : 0])
@@ -37,15 +34,32 @@ export function EmployeeLedgerPrint({ data, filters, headerActions }) {
   const openingRow = rows.find((r) => r.isOpening);
   const lastDate = txRows.length ? txRows[txRows.length - 1].date : openingRow?.date;
 
+  // As on the member ledger: TOTAL Credit/Debit include the opening (a loan
+  // opens as a Debit), TOTAL Balance is the closing balance, TOTAL Intrst the
+  // period's interest (opening row included: a loan nothing moved earns
+  // there; interest received is negative), CLOSING BAL = balance + interest.
   const totals = Object.fromEntries(
-    groups.map((g) => [g, { credit: sumField(txRows, g, 'credit'), debit: sumField(txRows, g, 'debit') }])
+    GROUPS.map((group) => {
+      const g = group.key;
+      const movers = txRows.filter((r) => r[g]?.credit || r[g]?.debit);
+      const balance = Number((movers.length ? movers[movers.length - 1] : openingRow)?.[g]?.balance || 0);
+      const interest = group.interest ? sumField(rows, g, 'interest') : 0;
+      return [g, {
+        credit: sumField(txRows, g, 'credit'),
+        debit: sumField(txRows, g, 'debit') + Number(openingRow?.[g]?.balance || 0),
+        balance,
+        interest,
+        closing: balance + interest
+      }];
+    })
   );
 
   const formatMny = (val) => (val === 0 || val == null ? '' : formatMoney(val));
+  // What accrued as is, interest received in brackets, e.g. 8,463.00 / (317.00).
   const formatInterest = (val) => {
-    const num = Math.round(Number(val || 0));
-    if (!num) return '';
-    return num < 0 ? `(${Math.abs(num)})` : String(num);
+    const amount = Number(val || 0);
+    if (!amount) return '';
+    return amount < 0 ? `(${formatMoney(-amount)})` : formatMoney(amount);
   };
   const cellsFor = (row, group) => {
     const cell = row[group.key] || {};
@@ -102,11 +116,6 @@ export function EmployeeLedgerPrint({ data, filters, headerActions }) {
                 {GROUPS.map((g) => cellsFor(r, g))}
               </tr>
             ))}
-            {txRows.length === 0 && (
-              <tr>
-                <td colSpan={COLUMN_COUNT} className="border border-black p-4 text-center text-[12px]">No transactions found for the selected period.</td>
-              </tr>
-            )}
           </tbody>
           <tfoot>
             <tr className="font-bold">
@@ -114,18 +123,19 @@ export function EmployeeLedgerPrint({ data, filters, headerActions }) {
               {GROUPS.map((g) => [
                 <td key={`${g.key}-credit`} className={td}>{formatMoney(totals[g.key].credit)}</td>,
                 <td key={`${g.key}-debit`} className={td}>{formatMoney(totals[g.key].debit)}</td>,
-                <td key={`${g.key}-balance`} className={td} colSpan={g.interest ? 2 : 1}></td>
+                <td key={`${g.key}-balance`} className={td}>{formatMoney(totals[g.key].balance)}</td>,
+                g.interest ? <td key={`${g.key}-interest`} className={td}>{formatInterest(totals[g.key].interest)}</td> : null
               ])}
             </tr>
             <tr className="font-bold">
               <td className={tdText} colSpan={2}>CLOSING BAL :</td>
-              {GROUPS.map((g) => <td key={g.key} className={td} colSpan={g.interest ? 4 : 3}>{formatMoney(balances?.[g.key])}</td>)}
+              {GROUPS.map((g) => <td key={g.key} className={td} colSpan={g.interest ? 4 : 3}>{formatMoney(totals[g.key].closing)}</td>)}
             </tr>
           </tfoot>
         </table>
       </div>
 
-      <p className="mt-1 text-[9px] font-semibold">Intrst : = Interest</p>
+      <p className="mt-1 text-[8px] text-slate-500">Intrst : = Interest (simple interest on each loan's balance since its previous movement; the last movement runs to the as-on date. Interest received is shown in brackets. CLOSING BAL = balance + interest)</p>
 
       <SignatureRow />
     </PrintShell>

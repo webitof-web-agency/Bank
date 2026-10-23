@@ -34,10 +34,15 @@ export function fyCalendarYearForMonth(month, fy = null) {
   return String(Number(month) >= 4 ? startYear : startYear + 1);
 }
 
+// Built once (making one costs far more than using it; reports format
+// thousands of cells).
+const NUMBER_IN = new Intl.NumberFormat('en-IN');
+const AMOUNT_IN = new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 function formatNumber(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) return '0';
-  return new Intl.NumberFormat('en-IN').format(number);
+  return NUMBER_IN.format(number);
 }
 
 function formatMoney(value) {
@@ -50,7 +55,7 @@ function formatMoney(value) {
 function formatAmount(value) {
   const number = Number(value || 0);
   if (!Number.isFinite(number)) return '0.00';
-  return new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(number);
+  return AMOUNT_IN.format(number);
 }
 
 // Section `columnAlign` for the given header indexes.
@@ -185,7 +190,8 @@ export function getReportDefaultFilters(reportKey = '', lookups = {}, user = {},
   }
 
   if (reportKey === 'members-closing-balance' || reportKey === 'members-opening-balance') {
-    // No filters on screen; the FY only dates the title (and the request).
+    // Closing: From / To on screen, from the FY start to today. Opening has
+    // no filters; the FY only dates the request.
     return { dateFrom: fyStart, dateTo: asOnDate };
   }
 
@@ -907,9 +913,10 @@ export function getReportConfig(reportKey = '') {
     'members-closing-balance': {
       label: "Members' Closing Balance",
       description: 'Closing balance and interest-to-date for every member.',
-      filterMode: 'all-members-snapshot',
+      // From / To: interest from From, balances and interest as on To.
+      filterMode: 'date-range',
       load: async (api, token, filters) => {
-        const response = await api.banking.reports.accountStatement(token, { type: 'members-closing-balance', fyStart: filters.dateFrom || '', fyEnd: filters.dateTo || '' });
+        const response = await api.banking.reports.accountStatement(token, { type: 'members-closing-balance', dateFrom: filters.dateFrom || '', dateTo: filters.dateTo || '' });
         const rows = Array.isArray(response.data) ? response.data : [];
         return { title: "Members' Closing Balance", summary: [], sections: [], raw: rows, csvRows: rows };
       }

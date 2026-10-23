@@ -147,8 +147,10 @@ async function employeeOpenings(codes, start) {
 
 // Every employee's FY interest (housing / vehicle loan), legacy algorithm,
 // and the FY closing balances for the next FY's openings.
+// options.till: run to that date instead of 31 March (a mid-year check).
 async function computeEmployeeInterest(fy, options = {}) {
-  const { start, end } = fyBounds(fy);
+  const { start, end: fyEnd } = fyBounds(fy);
+  const end = options.till || fyEnd;
   const rates = options.rates || await memberRates(end);
   const employees = options.employees || await Employee.find({}).lean();
   const openings = await employeeOpenings(employees.map((e) => e.code), start);

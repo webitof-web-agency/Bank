@@ -95,6 +95,9 @@ app.use(errorHandler);
 
 async function start() {
   await ensureDatabase();
+  // Read the member archive into memory now, so the first bulk member
+  // report (Members' Closing Balance) doesn't wait for it.
+  require('./services/banking.service').warmMemberHistoryCache();
   startAutomationScheduler();
   const server = http.createServer(app);
 

@@ -103,7 +103,7 @@ export const REPORT_LINKS = [
     icon: Users,
     category: 'member-reports',
     permission: 'reports.member-ledger.view',
-    description: 'Closing balance and interest-to-date for every member — no per-member filter.',
+    description: 'Closing balance and interest-to-date for every member, for a date range.',
     hidden: true
   },
   {
