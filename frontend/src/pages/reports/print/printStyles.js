@@ -1,13 +1,18 @@
+// Built once: making an Intl.NumberFormat costs far more than using one, and
+// a long report formats thousands of amounts (~8,000 on the closing balance).
+const MONEY_IN = new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const MONEY_US = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 export function formatMoney(value) {
   const num = Number(value || 0);
-  return new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(num);
+  return MONEY_IN.format(num);
 }
 
 // Legacy's own grouping (7,396,149.00 rather than 73,96,149.00), for the
 // reports whose printouts are matched to legacy exports.
 export function formatMoneyLegacy(value) {
   const num = Number(value || 0);
-  return new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(num);
+  return MONEY_US.format(num);
 }
 
 export function formatMoneyOrDash(value) {

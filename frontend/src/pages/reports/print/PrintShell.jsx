@@ -19,6 +19,9 @@ const MARGIN_PX = MARGIN_MM * MM_TO_PX;
 // Space between two sheets in the on-screen preview.
 const SHEET_GAP_PX = 24;
 const STAGE_BG = 'bg-slate-100';
+// Gap around the sheet inside the preview stage; the sheet opens fitted to
+// the stage's width less this on each side.
+const STAGE_PAD_PX = 12;
 
 const PageCountContext = createContext(1);
 // The report's Print / Export permissions (Settings -> Roles), set by the
@@ -53,7 +56,7 @@ function collectAtoms(el, out) {
 // behind the flow and covers over the gaps, so each sheet reads as its own
 // page. Print and PDF don't use the pushes — they are cleared first and the
 // browser / html2pdf paginate the plain flow at the same A4 size and margins.
-function usePagination({ flowRef, fitRef, bodyRef, footerRef, landscape, zoomRef, suspendedRef }) {
+function usePagination({ flowRef, fitRef, bodyRef, footerRef, landscape, zoomRef, suspendedRef, exporting }) {
   const [layout, setLayout] = useState({ pages: 1, covers: [], scale: 1, headers: [] });
   const pushesRef = useRef([]);
   const settledHeightRef = useRef(null);
@@ -216,9 +219,33 @@ function usePagination({ flowRef, fitRef, bodyRef, footerRef, landscape, zoomRef
     setLayout((current) => (JSON.stringify(current) === JSON.stringify(next) ? current : next));
   }, [bodyRef, clear, fitRef, flowRef, footerRef, landscape, suspendedRef, zoomRef]);
 
+  // Paginating measures every row of the report, which on a long one (the
+  // 600-member closing balance) takes about a second, so it runs only when
+  // the layout can have changed: on mount, a new orientation, the end of a
+  // PDF export, and when the report's own content changes (new data) — not
+  // on every render (zoom, page turn, scrolling), which never moves a row.
   useLayoutEffect(() => {
     paginate();
-  });
+  }, [paginate, exporting]);
+
+  useEffect(() => {
+    const body = bodyRef.current;
+    if (!body || typeof MutationObserver === 'undefined') return undefined;
+    // Pagination's own writes are style attributes, which aren't watched.
+    let frame = 0;
+    const observer = new MutationObserver(() => {
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        paginate();
+      });
+    });
+    observer.observe(body, { childList: true, subtree: true, characterData: true });
+    return () => {
+      observer.disconnect();
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, [bodyRef, paginate]);
 
   useEffect(() => {
     const flow = flowRef.current;
@@ -237,14 +264,14 @@ function usePagination({ flowRef, fitRef, bodyRef, footerRef, landscape, zoomRef
 
 function ZoomStage({ zoom, children }) {
   const innerRef = useRef(null);
-  const [height, setHeight] = useState(null);
+  const [size, setSize] = useState(null);
 
   useEffect(() => {
     const el = innerRef.current;
     if (!el || typeof ResizeObserver === 'undefined') return undefined;
     const observer = new ResizeObserver((entries) => {
       const rect = entries[0]?.contentRect;
-      if (rect) setHeight(rect.height);
+      if (rect) setSize({ width: rect.width, height: rect.height });
     });
     observer.observe(el);
     return () => observer.disconnect();
@@ -252,13 +279,18 @@ function ZoomStage({ zoom, children }) {
 
   // The on-screen zoom control uses `transform`, which only repaints and
   // never changes layout, so it doesn't disturb pagination (fitting a wide
-  // report to the page is usePagination's own CSS `zoom`).
+  // report to the page is usePagination's own CSS `zoom`). The outer box
+  // takes the scaled size, so a zoomed-in sheet scrolls to both edges
+  // (scaling from the centre pushed its left part out of scroll reach).
   return (
-    <div className="w-fit min-w-full print:!h-auto print:!w-auto print:block" style={{ height: height ? height * zoom : undefined }}>
+    <div
+      className="mx-auto print:!h-auto print:!w-auto print:block"
+      style={size ? { width: size.width * zoom, height: size.height * zoom } : undefined}
+    >
       <div
         ref={innerRef}
-        className="w-fit mx-auto print:!transform-none print:!w-full"
-        style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }}
+        className="w-fit print:!transform-none print:!w-full"
+        style={{ transform: `scale(${zoom})`, transformOrigin: 'top left' }}
       >
         {children}
       </div>
@@ -324,9 +356,18 @@ export function PrintShell({ headerActions, landscape = false, children }) {
   const footerRef = useRef(null);
   const zoomRef = useRef(zoom);
   const suspendedRef = useRef(false);
+  const stageRef = useRef(null);
+  // A second horizontal scrollbar above the stage, kept in step with its own.
+  const topScrollRef = useRef(null);
+  const [stageScroll, setStageScroll] = useState({ scrollWidth: 0, clientWidth: 0 });
+  // Fit the sheet to the stage width until the zoom is set by hand; Reset
+  // zoom fits it again.
+  const autoFitRef = useRef(true);
+  const exportingRef = useRef(false);
   zoomRef.current = zoom;
+  exportingRef.current = exporting;
 
-  const { layout, paginate, clear } = usePagination({ flowRef, fitRef, bodyRef, footerRef, landscape, zoomRef, suspendedRef });
+  const { layout, paginate, clear } = usePagination({ flowRef, fitRef, bodyRef, footerRef, landscape, zoomRef, suspendedRef, exporting });
 
   const page = A4_MM[landscape ? 'landscape' : 'portrait'];
   const sheetWidth = page.width * MM_TO_PX;
@@ -335,6 +376,54 @@ export function PrintShell({ headerActions, landscape = false, children }) {
   const totalHeight = layout.pages * pitch - SHEET_GAP_PX;
   const lastPage = Math.max(0, layout.pages - 1);
   const shownPage = Math.min(currentPage, lastPage);
+
+  const fitToStage = useCallback(() => {
+    const stage = stageRef.current;
+    if (!stage || exportingRef.current) return;
+    const fit = (stage.clientWidth - 2 * STAGE_PAD_PX) / sheetWidth;
+    if (fit > 0) setZoom(Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.floor(fit * 100) / 100)));
+  }, [sheetWidth]);
+
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage || typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(() => {
+      if (autoFitRef.current) fitToStage();
+    });
+    observer.observe(stage);
+    return () => observer.disconnect();
+  }, [fitToStage]);
+
+  const measureStage = useCallback(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    setStageScroll((prev) => (prev.scrollWidth === stage.scrollWidth && prev.clientWidth === stage.clientWidth
+      ? prev
+      : { scrollWidth: stage.scrollWidth, clientWidth: stage.clientWidth }));
+  }, []);
+
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage || typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(measureStage);
+    observer.observe(stage);
+    if (stage.firstElementChild) observer.observe(stage.firstElementChild);
+    return () => observer.disconnect();
+  }, [measureStage]);
+
+  useLayoutEffect(measureStage, [measureStage, zoom, layout, exporting]);
+
+  const hasTopScroll = stageScroll.scrollWidth > stageScroll.clientWidth + 1;
+
+  // Each bar follows the other (the echo finds them equal and stops).
+  function syncScroll(from, to) {
+    if (from && to && to.scrollLeft !== from.scrollLeft) to.scrollLeft = from.scrollLeft;
+  }
+
+  function zoomBy(step) {
+    autoFitRef.current = false;
+    setZoom((z) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Number((z + step).toFixed(2)))));
+  }
 
   // A new report (or a re-pagination that leaves fewer sheets) never points
   // past the last sheet.
@@ -444,7 +533,7 @@ export function PrintShell({ headerActions, landscape = false, children }) {
               variant="ghost"
               size="icon"
               className="h-7 w-7 rounded-full"
-              onClick={() => setZoom((z) => Math.max(ZOOM_MIN, Number((z - ZOOM_STEP).toFixed(2))))}
+              onClick={() => zoomBy(-ZOOM_STEP)}
               title="Zoom out"
             >
               <Minus size={14} />
@@ -455,7 +544,7 @@ export function PrintShell({ headerActions, landscape = false, children }) {
               variant="ghost"
               size="icon"
               className="h-7 w-7 rounded-full"
-              onClick={() => setZoom((z) => Math.min(ZOOM_MAX, Number((z + ZOOM_STEP).toFixed(2))))}
+              onClick={() => zoomBy(ZOOM_STEP)}
               title="Zoom in"
             >
               <Plus size={14} />
@@ -465,8 +554,8 @@ export function PrintShell({ headerActions, landscape = false, children }) {
               variant="ghost"
               size="icon"
               className="h-7 w-7 rounded-full"
-              onClick={() => setZoom(1)}
-              title="Reset zoom"
+              onClick={() => { autoFitRef.current = true; fitToStage(); }}
+              title="Fit to width"
             >
               <RotateCcw size={13} />
             </Button>
@@ -520,7 +609,21 @@ export function PrintShell({ headerActions, landscape = false, children }) {
           ) : null}
         </div>
 
-        <div className={`w-full rounded-2xl ${STAGE_BG} p-4 sm:p-8 border border-slate-200 overflow-x-auto print:bg-transparent print:p-0 print:border-0 print:overflow-visible`}>
+        {hasTopScroll ? (
+          <div
+            ref={topScrollRef}
+            className="report-scroll mb-1 w-full overflow-x-auto overflow-y-hidden print:hidden"
+            onScroll={() => syncScroll(topScrollRef.current, stageRef.current)}
+          >
+            <div style={{ width: stageScroll.scrollWidth, height: 1 }} />
+          </div>
+        ) : null}
+        <div
+          ref={stageRef}
+          onScroll={() => syncScroll(stageRef.current, topScrollRef.current)}
+          className={`report-scroll w-full max-h-[calc(100vh-11rem)] rounded-2xl ${STAGE_BG} border border-slate-200 overflow-auto print:max-h-none print:bg-transparent print:!p-0 print:border-0 print:overflow-visible`}
+          style={{ padding: STAGE_PAD_PX }}
+        >
           <ZoomStage zoom={zoom}>
             {/* A one-sheet window onto the paginated report: the full flow
                 is laid out as before and shifted up to the current sheet. */}
@@ -628,6 +731,12 @@ export function PrintShell({ headerActions, landscape = false, children }) {
              reads against its row and heading. Unlayered, so it wins over a
              template's own border utilities (e.g. outer-box-only tables). */
           .print-grid table { border-collapse: collapse; }
+          /* Preview scrollbars, darker than the browser's pale default. */
+          .report-scroll { scrollbar-color: #64748b #e2e8f0; }
+          .report-scroll::-webkit-scrollbar { width: 12px; height: 12px; }
+          .report-scroll::-webkit-scrollbar-track { background: #e2e8f0; border-radius: 6px; }
+          .report-scroll::-webkit-scrollbar-thumb { background: #64748b; border-radius: 6px; border: 2px solid #e2e8f0; }
+          .report-scroll::-webkit-scrollbar-thumb:hover { background: #475569; }
           .print-grid table th, .print-grid table td { border: 1px solid #000; }
           /* A group heading row (district, branch, section): one cell from the
              left edge, with no row or column lines of its own. */
