@@ -55,6 +55,27 @@ test('member list: All lists everyone; Active and Branch-wise only current; Dism
   assert.deepEqual(await inFy('active', '2026-04-01', '2027-03-31'), [other.code]);
 });
 
+test('member list: All for a legacy FY lists only that FY\'s legacy roster (plus app members)', async () => {
+  const legacy = { sourceType: 'LEGACY_CUTOVER', sourceDatabase: 'JilaSahkariDB9091' };
+  const kept = await Member.create({ code: `${RUN}K`, name: `Roster ${RUN} K`, branchCode: BRANCH, status: 'INACTIVE', payload: legacy });
+  const dropped = await Member.create({ code: `${RUN}X`, name: `Roster ${RUN} X`, branchCode: BRANCH, status: 'INACTIVE', dismembered: true, dismemberedDate: '2089-05-01', payload: legacy });
+  const database = await initializeDatabase();
+  await database.query(
+    `INSERT INTO legacy_historical_member_openings (id, "createdAt", "updatedAt", "sourceDatabase", "sourceTable", "sourceKey", "memberCode", "fyStart", payload)
+     VALUES (gen_random_uuid(), now(), now(), 'JilaSahkariDB9091', 'MstAccountMaster', $1, $1, '2090-04-01', '{}')`,
+    [kept.code]
+  );
+  try {
+    const all = (await banking.buildAllMemberListReport({ branchCode: BRANCH, listType: 'all', fromDate: '2090-04-01', uptoDate: '2091-03-31' })).map((r) => r.code);
+    assert.ok(all.includes(kept.code), 'on the FY roster');
+    assert.ok(!all.includes(dropped.code), 'dropped at an earlier year end');
+    assert.ok(all.includes(ctx.member.code), 'app-made members are always listed');
+  } finally {
+    await database.query(`DELETE FROM legacy_historical_member_openings WHERE "sourceDatabase" = 'JilaSahkariDB9091'`);
+    await Member.deleteMany({ code: { $in: [kept.code, dropped.code] } });
+  }
+});
+
 test('undoing the dismemberment makes the member Active again and lets them sign in', async () => {
   const updated = await banking.updateResource('members', ctx.member.id, { dismembered: false, status: 'Active' }, admin);
   assert.equal(updated.dismembered, false);

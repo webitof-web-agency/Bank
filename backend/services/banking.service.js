@@ -5880,6 +5880,42 @@ function isDismemberedMember(row = {}) {
   return /dismember|resign|left|closed|inactive/i.test(cleanText(row.status));
 }
 
+function isLegacyCutoverMember(row = {}) {
+  return cleanText(row.payload?.sourceType) === 'LEGACY_CUTOVER';
+}
+
+// Whether a migrated member was on the legacy roster of the FY starting on
+// fyStart (the codes legacy_historical_member_openings holds for that FY's
+// own database). A later FY, which legacy never had, takes the last legacy
+// roster: a member is migrated with the last legacy database they were in.
+// Null when no FY is selected or the archive is not loaded.
+async function getLegacyFyMemberRoster(fyStart = '') {
+  const start = cleanText(fyStart).slice(0, 10);
+  if (!start) return null;
+  const database = await initializeDatabase();
+  let result;
+  try {
+    result = await database.query(
+      `SELECT "memberCode", "sourceDatabase" FROM legacy_historical_member_openings
+       WHERE "sourceDatabase" LIKE 'JilaSahkariDB%' AND "fyStart" = $1`,
+      [start]
+    );
+    if (!result.rows.length) {
+      const latest = await database.query(
+        `SELECT max("sourceDatabase") AS db FROM legacy_historical_member_openings WHERE "sourceDatabase" LIKE 'JilaSahkariDB%' AND "fyStart" < $1`,
+        [start]
+      );
+      const db = latest.rows[0]?.db;
+      return db ? (row) => cleanText(row.payload?.sourceDatabase) === db : null;
+    }
+  } catch (error) {
+    if (error.code === '42P01') return null;
+    throw error;
+  }
+  const codes = new Set(result.rows.map((r) => cleanUpper(r.memberCode)));
+  return (row) => codes.has(cleanUpper(row.code));
+}
+
 async function buildAllMemberListReport({ branchCode = '', fromDate = '', uptoDate = '', listType = 'all', sortBy = 'name', user = {} } = {}) {
   const effectiveBranchCode = resolveBranchCode(user, branchCode);
   const type = String(listType || 'all').toLowerCase();
@@ -5914,7 +5950,13 @@ async function buildAllMemberListReport({ branchCode = '', fromDate = '', uptoDa
     });
   } else if (type === 'inactive') {
     rows = rows.filter((row) => hadLeftBy(row, cutoff));
-  } else if (type !== 'all') {
+  } else if (type === 'all') {
+    // Legacy's ALL MEMBER'S LIST is that FY database's member roster: each
+    // year end drops Inactive members whose closing balance is nil, so a
+    // member who left in an earlier year is not on it.
+    const onRoster = await getLegacyFyMemberRoster(start);
+    if (onRoster) rows = rows.filter((row) => !isLegacyCutoverMember(row) || onRoster(row));
+  } else {
     rows = rows.filter((row) => !hadLeftBy(row, cutoff));
   }
 
