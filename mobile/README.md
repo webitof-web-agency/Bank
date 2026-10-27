@@ -86,7 +86,8 @@ Release certificate SHA-256:
   http to localhost only.
 - The sign-in token is kept in the Android keystore (flutter_secure_storage);
   app data is excluded from backup and device transfer.
-- In-app updates download only from an https link.
+- Updates come only from Google Play (package `com.webitof.thriftrpr`); the
+  app has no self-updater and does not ask to install other apps.
 
 ## Before production
 - Phones with an older test build (signed with the debug key) must uninstall

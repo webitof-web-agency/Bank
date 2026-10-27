@@ -1,5 +1,4 @@
 import '../models/account.dart';
-import '../models/app_release.dart';
 import '../models/branding.dart';
 import '../models/financial_year.dart';
 import '../models/statement.dart';
@@ -16,12 +15,6 @@ class LoginResult {
 class PortalRepository {
   PortalRepository(this._api);
   final ApiClient _api;
-
-  /// Latest app release (public), for the update check on launch.
-  Future<AppRelease> appVersion() async {
-    final res = await _api.get('/app/version');
-    return AppRelease.fromJson((res['data'] as Map<String, dynamic>?) ?? {});
-  }
 
   /// Society details + theme colours (public, before login).
   Future<Branding> appConfig() async {
