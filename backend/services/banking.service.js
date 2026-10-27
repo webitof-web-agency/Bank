@@ -5872,6 +5872,17 @@ async function buildDemandListReport({ month = '', year = '', date = '', fyStart
     }
   }
 
+  // As legacy prints it: by branch code (as a number: 2 before 10), then in
+  // the order the lines were entered (legacy's row id; lines made in the app
+  // follow, by creation time).
+  const byNumber = (a, b) => (Number(cleanText(a).replace(/\D/g, '')) || 0) - (Number(cleanText(b).replace(/\D/g, '')) || 0)
+    || cleanText(a).localeCompare(cleanText(b));
+  const branchOf = (line) => line.postedBranch || listByKey.get(`${line.demandListNo}|${line.postedBranch}`)?.branchCode || '';
+  const legacyRow = (line) => Number(line.payload?.raw?.RowID) || Infinity;
+  lines.sort((a, b) => byNumber(branchOf(a), branchOf(b))
+    || legacyRow(a) - legacyRow(b)
+    || cleanText(a.createdAt).localeCompare(cleanText(b.createdAt)));
+
   return lines.map((line) => {
     const list = listByKey.get(`${line.demandListNo}|${line.postedBranch}`) || {};
     const member = memberByCode.get(cleanUpper(line.memberCode)) || {};

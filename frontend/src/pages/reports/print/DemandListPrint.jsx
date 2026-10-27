@@ -4,6 +4,9 @@ import { formatMoney, hasAmount, th, td, tdText, tdCenter, table } from './print
 
 // Amount cells: one line, never spilling over the cell border.
 const money = `${td} whitespace-nowrap`;
+// The grand totals run to 12 characters: a size smaller, so they stay inside
+// their cells.
+const totalMoney = `${money} !px-1 !text-[9.5px]`;
 
 export function DemandListPrint({ data, filters, branches = [], headerActions }) {
   const rows = (Array.isArray(data) ? data : [])
@@ -95,14 +98,14 @@ export function DemandListPrint({ data, filters, branches = [], headerActions })
           <tfoot>
             <tr className="font-bold">
               <td className={tdText} colSpan={4}>Total</td>
-              <td className={money}>{formatMoney(totals.cd)}</td>
-              <td className={money}>{formatMoney(totals.ssa)}</td>
-              <td className={money}>{formatMoney(totals.regularLoan)}</td>
-              <td className={money}>{formatMoney(totals.loanAgainstDeposit)}</td>
-              <td className={money}>{formatMoney(totals.other)}</td>
-              <td className={money}>{formatMoney(totals.total)}</td>
-              <td className={money}>{formatMoney(totals.recovered)}</td>
-              <td className={money}>{formatMoney(totals.pending)}</td>
+              <td className={totalMoney}>{formatMoney(totals.cd)}</td>
+              <td className={totalMoney}>{formatMoney(totals.ssa)}</td>
+              <td className={totalMoney}>{formatMoney(totals.regularLoan)}</td>
+              <td className={totalMoney}>{formatMoney(totals.loanAgainstDeposit)}</td>
+              <td className={totalMoney}>{formatMoney(totals.other)}</td>
+              <td className={totalMoney}>{formatMoney(totals.total)}</td>
+              <td className={totalMoney}>{formatMoney(totals.recovered)}</td>
+              <td className={totalMoney}>{formatMoney(totals.pending)}</td>
             </tr>
           </tfoot>
         )}
