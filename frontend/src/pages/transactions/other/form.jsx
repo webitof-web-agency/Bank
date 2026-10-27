@@ -30,6 +30,7 @@ import {
 import { toneClassName } from './transactionUtils';
 import { useInDialog } from '../../../components/ui/dialogContext';
 import { FormSectionTitle, HideInDialog, OnlyInDialog } from '../../../components/ui/FormSectionTitle';
+import { membersInFy } from '../../../lib/fyMembers';
 
 function deepClone(value) {
   return JSON.parse(JSON.stringify(value ?? {}));
@@ -65,7 +66,7 @@ function buildGroups(items = [], label = '') {
 
 function getLookupGroups(lookups = {}, partyType = '') {
   if (partyType === 'member') {
-    return buildGroups(lookups.members, 'Members');
+    return buildGroups(membersInFy(lookups.members), 'Members');
   }
 
   if (partyType === 'employee') {

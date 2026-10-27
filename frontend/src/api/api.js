@@ -132,7 +132,7 @@ export async function request(path, { method = 'GET', body, token, headers = {},
   };
 
   let finalPath = path;
-  if (isBrowser() && (path.startsWith('/banking/reports') || path.startsWith('/banking/transactions') || path.startsWith('/banking/dashboard') || path.startsWith('/banking/masters/members'))) {
+  if (isBrowser() && (path.startsWith('/banking/reports') || path.startsWith('/banking/transactions') || path.startsWith('/banking/dashboard') || path.startsWith('/banking/masters/members') || path.startsWith('/banking/masters/no-interest-members') || path.startsWith('/banking/lookups'))) {
     try {
       const stored = window.localStorage.getItem('bank-active-fy');
       if (stored) {

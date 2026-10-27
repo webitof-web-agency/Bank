@@ -17,6 +17,7 @@ import {
   RECOVERY_HEADS, STATUS_LABELS, addDemandLines, addExcelLines, applyExcelHeads, candidateKey, emptyHeads, expectedPaise, fromPaise, lineDifference, lineErrors, lineStatus,
   lineTotal, manualLine, normalizeDraftLines, reconcile, removeLine, toPaise, updateLineHeads, withOutstanding, withWarnings
 } from './recoveryDraft';
+import { membersInFy } from '../../../lib/fyMembers';
 
 function deepClone(value) {
   return JSON.parse(JSON.stringify(value ?? {}));
@@ -63,7 +64,7 @@ function buildGroups(items = [], label = '') {
 }
 
 function getMemberLookupGroups(lookups = {}) {
-  return buildGroups(lookups.members, 'Members');
+  return buildGroups(membersInFy(lookups.members), 'Members');
 }
 
 function getBranchLabel(lookups = {}, code = '') {

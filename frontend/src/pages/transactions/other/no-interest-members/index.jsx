@@ -11,7 +11,7 @@ import { Modal } from '../../../../components/ui/Modal';
 import { ConfirmDialog } from '../../../../components/overlays/ConfirmDialog';
 import { Table } from '../../../../components/ui/Table';
 import { NoInterestMemberForm } from './form';
-import { buildNoInterestMemberPayload, createEmptyNoInterestMemberDraft, createNoInterestMemberDraftFromRecord, getMemberLabel } from './noInterestMemberUtils';
+import { buildNoInterestMemberPayload, createEmptyNoInterestMemberDraft, createNoInterestMemberDraftFromRecord, getEntryMemberLabel } from './noInterestMemberUtils';
 
 function isActive(record) {
   return String(record?.status || 'Active').toLowerCase() !== 'inactive';
@@ -125,7 +125,7 @@ export function NoInterestMembersPage({ basePath = '/app/master/no-interest-memb
       sortable: true,
       render: (row) => {
         const member = memberLookup.get(String(row.memberCode || '').trim().toUpperCase());
-        return <span className="text-slate-700">{getMemberLabel(member) || row.memberCode || '-'}</span>;
+        return <span className="text-slate-700">{getEntryMemberLabel(row, member) || '-'}</span>;
       }
     },
     { key: 'reason', label: 'Reason', sortable: true, render: (row) => <span className="text-slate-700">{row.reason || '-'}</span> },

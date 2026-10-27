@@ -6,6 +6,7 @@ const { Employee, Member, NoInterestMember, RecoveryLine, Voucher } = require('.
 const { initializeDatabase } = require('../../config/postgres');
 const banking = require('../banking.service');
 const rateHistory = require('../../utils/rateHistory');
+const { withoutTestMembers } = require('../../utils/testMember');
 const { memberYearInterest, employeeYearInterest } = require('./legacyInterest');
 
 const BUCKETS = { cd: 'compulsoryDeposit', ssa: 'specialDeposit', loan: 'loan', dloan: 'loanAgainstDeposit' };
@@ -104,7 +105,7 @@ async function memberRates(end) {
 async function computeMemberInterest(fy, options = {}) {
   const { start, end } = fyBounds(fy);
   const rates = options.rates || await memberRates(end);
-  const members = options.members || await Member.find({}).lean();
+  const members = options.members || withoutTestMembers(await Member.find({}).lean());
   const noInterest = options.noInterest || await noInterestMemberCodes();
   const isEligible = options.isEligible || isActiveMember;
   const timelines = await banking.buildMemberBalanceTimelines(members);

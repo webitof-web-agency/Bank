@@ -1,3 +1,5 @@
+import { membersInFy } from '../../lib/fyMembers';
+
 // Local calendar date (not toISOString, which is UTC and rolls back a day
 // before 05:30 IST).
 function todayString() {
@@ -119,7 +121,7 @@ export function getReportDefaultFilters(reportKey = '', lookups = {}, user = {},
 
   if (reportKey === 'member-ledger') {
     return {
-      memberCode: firstCode(lookups.members),
+      memberCode: firstCode(membersInFy(lookups.members)),
       dateFrom: fyStart,
       dateTo: asOnDate
     };
@@ -161,7 +163,7 @@ export function getReportDefaultFilters(reportKey = '', lookups = {}, user = {},
 
   if (reportKey === 'member-ac-status') {
     return {
-      memberCode: firstCode(lookups.members),
+      memberCode: firstCode(membersInFy(lookups.members)),
       dateFrom: fyStart,
       dateTo: asOnDate
     };

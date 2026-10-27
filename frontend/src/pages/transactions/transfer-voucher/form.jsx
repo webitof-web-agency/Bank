@@ -11,6 +11,7 @@ import { SmsCheckbox } from '../../../components/ui/CheckboxLine';
 import {  getTransferVoucherAllocationRows,
   getTransferVoucherAllocationTotal,  toneClassName, transferVoucherFixedSide
 } from './transactionUtils';
+import { membersInFy } from '../../../lib/fyMembers';
 
 function deepClone(value) {
   return JSON.parse(JSON.stringify(value ?? {}));
@@ -104,7 +105,7 @@ export function TransferVoucherTransactionForm({ section, itemKey, lookups = {},
   const items = useMemo(() => (section?.items || []).filter((item) => !itemKey || item.key === itemKey), [section, itemKey]);
   const activeKey = itemKey || value?.details?.key || items[0]?.key || '';
   const activeItem = items.find((item) => item.key === activeKey) || items[0] || null;
-  const memberGroups = useMemo(() => buildGroups(lookups.members, 'Members'), [lookups]);
+  const memberGroups = useMemo(() => buildGroups(membersInFy(lookups.members), 'Members'), [lookups]);
   const memberCode = value?.partyCode || '';
   const memberDetails = readMemberDetails(lookups, memberCode);
   const documentDefs = getTransferVoucherDocumentDefinitions(activeKey);

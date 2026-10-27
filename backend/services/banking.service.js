@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs');
 const { randomBytes } = require('crypto');
 const { normalizeSocialCategory } = require('../utils/socialCategory');
+const { withoutTestMembers } = require('../utils/testMember');
 const { normalizeMobile, isValidMobile } = require('../utils/mobile');
 const { getPasswordHashRounds } = require('../config/security');
 const { ACCOUNTING_ROLES } = require('../config/accountingConstants');
@@ -1548,13 +1549,21 @@ async function seedBankingData() {
 // showed each FY's own membership roster (its own per-year MstAccountMaster
 // copy), without needing to blank out any field to achieve it. Missing dates
 // fail open (never hide a member for lack of data).
-function isMemberVisibleInFY(member, fyStart, fyEnd) {
-  if (!fyStart && !fyEnd) return true;
-  const membershipDate = member.membershipDate ? String(member.membershipDate).slice(0, 10) : '';
-  const dismemberedDate = member.dismemberedDate ? String(member.dismemberedDate).slice(0, 10) : '';
-  if (membershipDate && fyEnd && membershipDate > fyEnd) return false;
-  if (dismemberedDate && fyStart && dismemberedDate < fyStart) return false;
-  return true;
+// No-interest entries with their member's name, branch and designation, so
+// the list shows them whatever members the page itself has loaded.
+async function withNoInterestMemberNames(rows = []) {
+  const codes = [...new Set(rows.map((row) => cleanUpper(row.memberCode)).filter(Boolean))];
+  const members = codes.length ? await Member.find({ code: { $in: codes } }).lean() : [];
+  const byCode = new Map(members.map((member) => [cleanUpper(member.code), member]));
+  return rows.map((row) => {
+    const member = byCode.get(cleanUpper(row.memberCode)) || {};
+    return {
+      ...toResponse(row),
+      memberName: cleanText(member.name),
+      memberBranchCode: cleanText(member.branchCode),
+      memberDesignation: cleanText(member.designation || member.payload?.raw?.Designation)
+    };
+  });
 }
 
 async function listResource(resource, search = '', user = {}, options = {}) {
@@ -1565,9 +1574,14 @@ async function listResource(resource, search = '', user = {}, options = {}) {
   }
   const query = applyBranchScope(buildSearchQuery(def.searchFields, search), resource, user);
   const rows = await def.model.find(query).sort({ updatedAt: -1 }).lean();
-  const filtered = resource === 'members'
-    ? rows.filter((row) => isMemberVisibleInFY(row, cleanText(options.fyStart), cleanText(options.fyEnd)))
-    : rows;
+  // In a FY: only that FY's members (getFyMemberCodes), and only the
+  // no-interest entries of those members.
+  const inFy = (resource === 'members' || resource === 'noInterestMembers')
+    ? await getFyMemberCodes(options.fyStart, options.fyEnd)
+    : null;
+  let filtered = resource === 'members' ? withoutTestMembers(rows) : rows;
+  if (inFy && resource === 'members') filtered = filtered.filter((row) => inFy.has(cleanUpper(row.code)));
+  if (resource === 'noInterestMembers') return withNoInterestMemberNames(inFy ? rows.filter((row) => inFy.has(cleanUpper(row.memberCode))) : rows);
   return filtered.map((row) => {
     if (resource === 'members') return sanitizeMemberResponse(row);
     if (resource === 'society') return sanitizeSocietyResponse(row);
@@ -1593,6 +1607,7 @@ async function getResource(resource, id, user = {}) {
   const record = await def.model.findById(id).lean();
   if (!record || !canAccessBranchRecord(resource, record, user)) return null;
   if (resource === 'members') return { ...sanitizeMemberResponse(record), ...(await memberFinancialResponse(record)), demandDefaults: await getMemberDemandDefaults(record.code) };
+  if (resource === 'noInterestMembers') return (await withNoInterestMemberNames([record]))[0];
   if (resource === 'vouchers') return sanitizeVoucherResponse(record);
   return toResponse(record);
 }
@@ -2695,7 +2710,7 @@ async function getDashboardSummary({ user = {}, fyStart = '', fyEnd = '' } = {})
     headOffice: society ? toResponse(society) : null,
     counts: {
       branches,
-      members: members.filter((member) => !isDismemberedMember(member)).length,
+      members: withoutTestMembers(members).filter((member) => !isDismemberedMember(member)).length,
       employees,
       ledgers: ledgers.length,
       bankAccounts: ledgers.filter((ledger) => /^BANK_/.test(cleanUpper(ledger.semanticRole))).length,
@@ -2814,12 +2829,19 @@ async function buildDashboardAnalytics({ user = {}, fyStart = '', fyEnd = '' } =
 // member screens themselves load the full record (getResource).
 const LOOKUP_MEMBER_OMIT = ['payload', 'documents', 'documentsFolderId', 'photoFileId', 'photoUrl', 'passwordHash'];
 
-async function listMembersForLookup(user = {}) {
+// Every member (vouchers and reports still need the names of those who left),
+// with `inFy` false on one who is not a member of the selected FY, so the
+// pickers leave them out (getFyMemberCodes).
+async function listMembersForLookup(user = {}, fy = {}) {
   const def = getResourceDef('members');
   const query = applyBranchScope(buildSearchQuery(def.searchFields, ''), 'members', user);
-  const rows = await def.model.find(query).sort({ updatedAt: -1 }).lean();
-  return rows.map((row) => {
+  const [rows, inFy] = await Promise.all([
+    def.model.find(query).sort({ updatedAt: -1 }).lean(),
+    getFyMemberCodes(fy.fyStart, fy.fyEnd)
+  ]);
+  return withoutTestMembers(rows).map((row) => {
     const response = toResponse(row);
+    response.inFy = !inFy || inFy.has(cleanUpper(row.code));
     for (const key of LOOKUP_MEMBER_OMIT) delete response[key];
     response.hasPassword = Boolean(row.passwordHash);
     response.mobileNo = normalizeMobile(response.mobileNo || '');
@@ -2833,7 +2855,7 @@ async function listEmployeesForLookup(user = {}) {
   return rows.map((row) => toResponse(row));
 }
 
-async function getLookups(user = {}) {
+async function getLookups(user = {}, fy = {}) {
     const [
       headOffice,
       branches,
@@ -2848,7 +2870,7 @@ async function getLookups(user = {}) {
     ] = await Promise.all([
       getSingle('society'),
       listResource('branches', '', user),
-      listMembersForLookup(user),
+      listMembersForLookup(user, fy),
       listEmployeesForLookup(user),
       listResource('ledgers'),
       listResource('rates'),
@@ -3192,7 +3214,11 @@ async function getCachedResourceRows(resource, user = {}, options = {}) {
   await initializeDatabase();
   const def = getResourceDef(resource);
   const key = JSON.stringify([resource, resolveBranchCode(user), cleanText(options.fyStart), cleanText(options.fyEnd)]);
-  const version = tablesVersion([def.model.tableName]);
+  // A FY's members also depend on their balances (getFyMemberCodes).
+  const tables = (resource === 'members' || resource === 'noInterestMembers') && (options.fyStart || options.fyEnd)
+    ? [def.model.tableName, 'members', 'vouchers', 'recovery_lines']
+    : [def.model.tableName];
+  const version = tablesVersion(tables);
   let rows = readListCache(key, version);
   if (!rows) {
     rows = await listResource(resource, '', user, options);
@@ -4446,7 +4472,7 @@ function previousDay(isoDate = '') {
 async function findMembersForReport({ branchCode = '', search = '', user = {} } = {}) {
   const effectiveBranchCode = resolveBranchCode(user, branchCode);
   const memberQuery = effectiveBranchCode ? { branchCode: effectiveBranchCode } : {};
-  const members = (await Member.find(memberQuery).lean()).sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+  const members = withoutTestMembers(await Member.find(memberQuery).lean()).sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
   return search
     ? members.filter((row) => [row.code, row.name].some((value) => cleanLower(value).includes(cleanLower(search))))
     : members;
@@ -5528,7 +5554,7 @@ async function getDemandEntryMembers({ branchCode = '', month = '', year = '', e
   const effectiveBranchCode = all ? '' : resolveBranchCode(user, branchCode);
   if (!all && !effectiveBranchCode) throw recoveryHttpError('Choose a branch first.');
   const taken = await membersDemandedInMonth(month, year, excludeId);
-  const active = (await Member.find(all ? {} : { branchCode: effectiveBranchCode }).lean())
+  const active = withoutTestMembers(await Member.find(all ? {} : { branchCode: effectiveBranchCode }).lean())
     .filter((member) => !member.dismembered && !cleanLower(member.status).startsWith('inact'));
   const members = active.filter((member) => !taken.has(cleanUpper(member.code)));
   const skipped = active.length - members.length;
@@ -5880,40 +5906,83 @@ function isDismemberedMember(row = {}) {
   return /dismember|resign|left|closed|inactive/i.test(cleanText(row.status));
 }
 
-function isLegacyCutoverMember(row = {}) {
-  return cleanText(row.payload?.sourceType) === 'LEGACY_CUTOVER';
+// The day a member left (their ISO dismembered date), or ''.
+function memberLeftOn(row = {}) {
+  const day = cleanText(row.dismemberedDate).slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : '';
 }
 
-// Whether a migrated member was on the legacy roster of the FY starting on
-// fyStart (the codes legacy_historical_member_openings holds for that FY's
-// own database). A later FY, which legacy never had, takes the last legacy
-// roster: a member is migrated with the last legacy database they were in.
-// Null when no FY is selected or the archive is not loaded.
-async function getLegacyFyMemberRoster(fyStart = '') {
+// Had the member left by `day`? One marked as left without a valid date is
+// taken as having left already.
+function memberHadLeftBy(row = {}, day = '') {
+  return isDismemberedMember(row) && (!day || !memberLeftOn(row) || memberLeftOn(row) <= day);
+}
+
+// The members of the FY [fyStart, fyEnd]: what the member list, the member
+// pickers and the no-interest list show in that FY. A member who joined after
+// fyEnd is not in it. A FY legacy had: its roster, the codes
+// legacy_historical_member_openings holds for that FY's own database (legacy
+// copied them into each new FY's database; app-made members are always in
+// it). A later FY carries the last legacy roster forward (a member is
+// migrated with the last legacy database they were in), then, as legacy's
+// year end did, drops every member who had left before 1 April with nothing
+// left in any head at that day; they stay in the FY they left. Worked out on
+// demand, so nothing has to run at the year end. A Set of upper-cased codes,
+// or null when no FY is given.
+const fyMemberCodesCache = new Map();
+async function getFyMemberCodes(fyStart = '', fyEnd = '') {
   const start = cleanText(fyStart).slice(0, 10);
-  if (!start) return null;
-  const database = await initializeDatabase();
-  let result;
-  try {
-    result = await database.query(
-      `SELECT "memberCode", "sourceDatabase" FROM legacy_historical_member_openings
-       WHERE "sourceDatabase" LIKE 'JilaSahkariDB%' AND "fyStart" = $1`,
-      [start]
-    );
-    if (!result.rows.length) {
-      const latest = await database.query(
-        `SELECT max("sourceDatabase") AS db FROM legacy_historical_member_openings WHERE "sourceDatabase" LIKE 'JilaSahkariDB%' AND "fyStart" < $1`,
+  const end = cleanText(fyEnd).slice(0, 10);
+  if (!start && !end) return null;
+  const version = tablesVersion(['members', 'vouchers', 'recovery_lines']);
+  const key = `${start}|${end}`;
+  const hit = fyMemberCodesCache.get(key);
+  if (hit && hit.version === version && Date.now() - hit.at <= LIST_CACHE_MAX_AGE_MS) return hit.codes;
+
+  const joined = (row) => {
+    const day = cleanText(row.membershipDate).slice(0, 10);
+    return !end || !/^\d{4}-\d{2}-\d{2}$/.test(day) || day <= end;
+  };
+  let members = withoutTestMembers(await Member.find({}).lean()).filter(joined);
+  if (start) {
+    const database = await initializeDatabase();
+    let roster = [];
+    let latest = '';
+    try {
+      roster = (await database.query(
+        `SELECT "memberCode" FROM legacy_historical_member_openings
+         WHERE "sourceDatabase" LIKE 'JilaSahkariDB%' AND "fyStart" = $1`,
         [start]
-      );
-      const db = latest.rows[0]?.db;
-      return db ? (row) => cleanText(row.payload?.sourceDatabase) === db : null;
+      )).rows;
+      if (!roster.length) {
+        latest = (await database.query(
+          `SELECT max("sourceDatabase") AS db FROM legacy_historical_member_openings WHERE "sourceDatabase" LIKE 'JilaSahkariDB%' AND "fyStart" < $1`,
+          [start]
+        )).rows[0]?.db || '';
+      }
+    } catch (error) {
+      // Not loaded yet (tools/legacy-migration/src/load-member-openings.js).
+      if (error.code !== '42P01') throw error;
     }
-  } catch (error) {
-    if (error.code === '42P01') return null;
-    throw error;
+    if (roster.length) {
+      const onRoster = new Set(roster.map((r) => cleanUpper(r.memberCode)));
+      members = members.filter((row) => !isLegacyCutoverMember(row) || onRoster.has(cleanUpper(row.code)));
+    } else {
+      if (latest) members = members.filter((row) => !isLegacyCutoverMember(row) || cleanText(row.payload?.sourceDatabase) === latest);
+      // Balance just before 1 April = the previous FY's closing (with the
+      // interest its close carried forward), over every branch.
+      const dayBefore = previousDay(start);
+      const left = members.filter((row) => memberHadLeftBy(row, dayBefore));
+      const periods = left.length ? await computeMemberPeriodBalances({ members: left, dateFrom: start, dateTo: dayBefore }) : [];
+      const nil = new Set(periods
+        .filter(({ buckets }) => MEMBER_BALANCE_BUCKETS.every((bucket) => Math.abs(toRupees(buckets[bucket].opening)) < 0.005))
+        .map(({ member }) => cleanUpper(member.code)));
+      members = members.filter((row) => !nil.has(cleanUpper(row.code)));
+    }
   }
-  const codes = new Set(result.rows.map((r) => cleanUpper(r.memberCode)));
-  return (row) => codes.has(cleanUpper(row.code));
+  const codes = new Set(members.map((row) => cleanUpper(row.code)));
+  fyMemberCodesCache.set(key, { version, codes, at: Date.now() });
+  return codes;
 }
 
 async function buildAllMemberListReport({ branchCode = '', fromDate = '', uptoDate = '', listType = 'all', sortBy = 'name', user = {} } = {}) {
@@ -5924,7 +5993,7 @@ async function buildAllMemberListReport({ branchCode = '', fromDate = '', uptoDa
   const cutoff = cleanText(uptoDate);
   // Members who had not joined by the selected FY's end are left out. Only
   // ISO-dated membershipDate values are compared; anything else stays listed.
-  let rows = (await Member.find(query).lean()).filter((row) => {
+  let rows = withoutTestMembers(await Member.find(query).lean()).filter((row) => {
     const joined = cleanText(row.membershipDate).slice(0, 10);
     return !cutoff || !/^\d{4}-\d{2}-\d{2}$/.test(joined) || joined <= cutoff;
   });
@@ -5933,14 +6002,11 @@ async function buildAllMemberListReport({ branchCode = '', fromDate = '', uptoDa
   // dismembered = members who left in that period; active / branch-wise =
   // members who had not left by its end (one who left later was still a
   // member then); inactive = every member who had left by its end, in any
-  // year (active's complement); all = every member who had joined. A member
-  // marked as left without a valid date is taken as having left already.
+  // year (active's complement); all = that FY's members. A member marked as
+  // left without a valid date is taken as having left already.
   const start = cleanText(fromDate).slice(0, 10);
-  const leftOn = (row) => {
-    const day = cleanText(row.dismemberedDate).slice(0, 10);
-    return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : '';
-  };
-  const hadLeftBy = (row, day) => isDismemberedMember(row) && (!day || !leftOn(row) || leftOn(row) <= day);
+  const leftOn = memberLeftOn;
+  const hadLeftBy = memberHadLeftBy;
   if (type === 'dismembered') {
     rows = rows.filter((row) => {
       if (!isDismemberedMember(row)) return false;
@@ -5951,11 +6017,9 @@ async function buildAllMemberListReport({ branchCode = '', fromDate = '', uptoDa
   } else if (type === 'inactive') {
     rows = rows.filter((row) => hadLeftBy(row, cutoff));
   } else if (type === 'all') {
-    // Legacy's ALL MEMBER'S LIST is that FY database's member roster: each
-    // year end drops Inactive members whose closing balance is nil, so a
-    // member who left in an earlier year is not on it.
-    const onRoster = await getLegacyFyMemberRoster(start);
-    if (onRoster) rows = rows.filter((row) => !isLegacyCutoverMember(row) || onRoster(row));
+    // Legacy's ALL MEMBER'S LIST is that FY's members (getFyMemberCodes).
+    const inFy = start ? await getFyMemberCodes(start, cutoff) : null;
+    if (inFy) rows = rows.filter((row) => inFy.has(cleanUpper(row.code)));
   } else {
     rows = rows.filter((row) => !hadLeftBy(row, cutoff));
   }

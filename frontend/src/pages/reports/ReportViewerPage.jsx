@@ -32,6 +32,7 @@ import { StatementOfAccountPrint } from './print/StatementOfAccountPrint';
 import { MembersOpeningBalancePrint } from './print/MembersOpeningBalancePrint';
 import { MembersClosingBalancePrint } from './print/MembersClosingBalancePrint';
 import { StatementOfMemberLedgerPrint } from './print/StatementOfMemberLedgerPrint';
+import { membersInFy } from '../../lib/fyMembers';
 
 const NO_FILTER_PANEL_REPORTS = new Set([
   'balance-sheet',
@@ -467,7 +468,7 @@ export function ReportViewerPage() {
               onChange={(value) => setFilters((current) => ({ ...current, memberCode: value }))}
               options={[
                 { label: 'Select member', value: '' },
-                ...members.map((member) => ({ label: `${member.code} - ${member.name}`, value: member.code }))
+                ...membersInFy(members).map((member) => ({ label: `${member.code} - ${member.name}`, value: member.code }))
               ]}
             />
           </div>

@@ -9,6 +9,7 @@ import { getReceiptInterestDocumentDefinitions } from './receiptInterestDocument
 import { formatTransactionAmount, toneClassName } from './transactionUtils';
 import { useInDialog } from '../../../components/ui/dialogContext';
 import { FormSectionTitle, HideInDialog, OnlyInDialog } from '../../../components/ui/FormSectionTitle';
+import { membersInFy } from '../../../lib/fyMembers';
 
 function FieldLabel({ children, required = false }) {
   return (
@@ -39,7 +40,7 @@ export function InterestVoucherForm({ section, lookups = {}, value, setValue, on
   const activeItem = useMemo(() => (section?.items || []).find((item) => item.key === value?.details?.key) || section?.items?.[0] || null, [section, value]);
   const isEmployee = activeItem?.key === 'interest-recv-employee';
 
-  const memberOptions = useMemo(() => buildOptions(lookups.members || [], (item) => ({ value: item.code || '', label: `${item.code || ''}${item.name ? ` - ${item.name}` : ''}`.trim() })), [lookups]);
+  const memberOptions = useMemo(() => buildOptions(membersInFy(lookups.members), (item) => ({ value: item.code || '', label: `${item.code || ''}${item.name ? ` - ${item.name}` : ''}`.trim() })), [lookups]);
   const employeeOptions = useMemo(() => buildOptions(lookups.employees || [], (item) => ({ value: item.code || '', label: `${item.code || ''}${item.name || item.fullName ? ` - ${item.name || item.fullName}` : ''}`.trim() })), [lookups]);
   
   const selectedMember = useMemo(() => (lookups.members || []).find((member) => String(member.code || '').trim().toUpperCase() === String(value.partyCode || '').trim().toUpperCase()) || null, [lookups, value]);

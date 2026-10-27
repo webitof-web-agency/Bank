@@ -73,3 +73,13 @@ export function getMemberLabel(member) {
   if (!member) return '';
   return `${member.code || ''}${member.name ? ` - ${member.name}` : ''}`.trim();
 }
+
+// The entry's member as "code - name": from the loaded members, else the
+// name the server sent with the entry.
+export function getEntryMemberLabel(record = {}, member = null) {
+  const label = getMemberLabel(member);
+  if (label) return label;
+  const code = toString(record.memberCode);
+  const name = toString(record.memberName);
+  return name ? `${code} - ${name}` : code;
+}

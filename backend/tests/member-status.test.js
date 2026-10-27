@@ -7,7 +7,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const banking = require('../services/banking.service');
 const appPortal = require('../services/appPortal.service');
-const { Branch, Member } = require('../models/banking.models');
+const { Branch, Member, NoInterestMember } = require('../models/banking.models');
 const { initializeDatabase, closeDatabase } = require('../config/postgres');
 
 const RUN = `S${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
@@ -73,6 +73,58 @@ test('member list: All for a legacy FY lists only that FY\'s legacy roster (plus
   } finally {
     await database.query(`DELETE FROM legacy_historical_member_openings WHERE "sourceDatabase" = 'JilaSahkariDB9091'`);
     await Member.deleteMany({ code: { $in: [kept.code, dropped.code] } });
+  }
+});
+
+test('member list: All for a FY after legacy drops members who left earlier with nothing left', async () => {
+  const left = await banking.createResource('members', { name: `Nil ${RUN} L`, branchCode: BRANCH, mobileNo: '9876522222', password: 'secret12' }, admin);
+  await banking.updateResource('members', left.id, { dismembered: true, dismemberedDate: '2095-06-01' }, admin);
+  const stays = await banking.createResource('members', { name: `Nil ${RUN} A`, branchCode: BRANCH, mobileNo: '9876533333', password: 'secret12' }, admin);
+  const all = async (fromDate, uptoDate) => (await banking.buildAllMemberListReport({ branchCode: BRANCH, listType: 'all', fromDate, uptoDate })).map((r) => r.code);
+  let entry = null;
+  try {
+    const leftYear = await all('2095-04-01', '2096-03-31');
+    assert.ok(leftYear.includes(left.code), 'still listed in the FY they left');
+    const next = await all('2096-04-01', '2097-03-31');
+    assert.ok(!next.includes(left.code), 'gone the next FY: left before 1 April with a nil balance');
+    assert.ok(next.includes(stays.code), 'an active member with a nil balance stays');
+
+    // The same in the member list, the pickers and the no-interest list.
+    const fy = (y) => ({ fyStart: `${y}-04-01`, fyEnd: `${y + 1}-03-31` });
+    const listed = async (y) => (await banking.listResource('members', '', {}, fy(y))).map((m) => m.code);
+    assert.ok((await listed(2095)).includes(left.code));
+    assert.ok(!(await listed(2096)).includes(left.code));
+    const lookups = await banking.getLookups({}, fy(2096));
+    assert.equal(lookups.members.find((m) => m.code === left.code)?.inFy, false, 'kept for names, not offered');
+    assert.equal(lookups.members.find((m) => m.code === stays.code)?.inFy, true);
+    entry = await NoInterestMember.create({ code: `${RUN}NI`, memberCode: left.code, status: 'Active', fromDate: '2095-04-01' });
+    const entries = async (y) => (await banking.listResource('noInterestMembers', '', {}, fy(y))).filter((e) => e.code === entry.code);
+    assert.equal((await entries(2095))[0]?.memberName, left.name, 'the entry carries its member\'s name');
+    assert.equal((await entries(2096)).length, 0, 'hidden with its member');
+  } finally {
+    if (entry) await NoInterestMember.deleteMany({ code: entry.code });
+    await Member.deleteMany({ code: { $in: [left.code, stays.code] } });
+  }
+});
+
+test('a test member (payload.testAccount) signs in to the app but is in no list, picker or report', async () => {
+  const mobile = '9999999990';
+  const member = await banking.createResource('members', { name: `Test ${RUN}`, branchCode: BRANCH, mobileNo: mobile, password: 'secret12', status: 'ACTIVE' }, admin);
+  await Member.updateOne({ code: member.code }, { $set: { payload: { testAccount: true } } });
+  try {
+    const fy = { fyStart: '2026-04-01', fyEnd: '2027-03-31' };
+    const codes = (rows) => rows.map((r) => r.code || r.memberCode);
+    assert.ok(!codes(await banking.listResource('members', '', {}, fy)).includes(member.code), 'members list');
+    assert.ok(!codes(await banking.listResource('members', '', {}, {})).includes(member.code), 'members list without a FY');
+    assert.ok(!codes((await banking.getLookups({}, fy)).members).includes(member.code), 'lookups');
+    for (const listType of ['all', 'active', 'branch']) {
+      assert.ok(!codes(await banking.buildAllMemberListReport({ branchCode: BRANCH, listType, fromDate: fy.fyStart, uptoDate: fy.fyEnd })).includes(member.code), listType);
+    }
+    const closing = await banking.buildAccountStatementReport({ type: 'members-closing-balance', branchCode: BRANCH, dateFrom: fy.fyStart, dateTo: fy.fyEnd });
+    assert.ok(!JSON.stringify(closing).includes(member.code), 'closing balance report');
+    assert.ok((await appPortal.login(mobile, 'secret12')).token, 'the app login still works');
+  } finally {
+    await Member.deleteMany({ code: member.code });
   }
 });
 

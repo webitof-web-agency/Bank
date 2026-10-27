@@ -9,7 +9,7 @@ import { Button } from '../../../../components/ui/Button';
 import { Card } from '../../../../components/ui/Card';
 import { Modal } from '../../../../components/ui/Modal';
 import { NoInterestMemberForm } from './form';
-import { buildNoInterestMemberPayload, createNoInterestMemberDraftFromRecord, getMemberLabel } from './noInterestMemberUtils';
+import { buildNoInterestMemberPayload, createNoInterestMemberDraftFromRecord, getEntryMemberLabel } from './noInterestMemberUtils';
 
 function DetailRow({ label, value }) {
   return (
@@ -91,8 +91,9 @@ export function NoInterestMemberDetailPage({ basePath = '/app/master/no-interest
   }
 
   const memberLookup = useMemo(() => new Map(members.map((member) => [String(member.code || '').toUpperCase(), member])), [members]);
-  const branchCode = record?.branchCode || record?.payload?.branchCode || member?.branchCode || '—';
-  const designation = record?.designation || record?.payload?.designation || member?.designation || '—';
+  const member = memberLookup.get(String(record?.memberCode || '').trim().toUpperCase()) || null;
+  const branchCode = record?.branchCode || record?.payload?.branchCode || member?.branchCode || record?.memberBranchCode || '—';
+  const designation = record?.designation || record?.payload?.designation || member?.designation || record?.memberDesignation || '—';
   const statusBadge = String(record?.status || 'Active').toLowerCase() === 'active'
     ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
     : 'border-rose-200 bg-rose-50 text-rose-700';
@@ -114,7 +115,6 @@ export function NoInterestMemberDetailPage({ basePath = '/app/master/no-interest
   }
 
   const recordCode = record.code || '—';
-  const member = memberLookup.get(String(record.memberCode || '').trim().toUpperCase());
 
   return (
     <div className="space-y-6">
@@ -142,7 +142,7 @@ export function NoInterestMemberDetailPage({ basePath = '/app/master/no-interest
                 </span>
                 <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[12px] font-semibold text-slate-600">
                   <UserRound size={14} />
-                  {getMemberLabel(member) || record.memberCode}
+                  {getEntryMemberLabel(record, member)}
                 </span>
               </div>
             </div>
@@ -199,7 +199,7 @@ export function NoInterestMemberDetailPage({ basePath = '/app/master/no-interest
             <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm py-2">
               <div className="divide-y divide-slate-100 px-6">
                 <DetailRow label="Record Code" value={recordCode} />
-                <DetailRow label="Member" value={getMemberLabel(member) || record.memberCode} />
+                <DetailRow label="Member" value={getEntryMemberLabel(record, member)} />
                 <DetailRow label="Branch" value={branchCode} />
                 <DetailRow label="Designation" value={designation} />
                 <DetailRow label="Narration" value={record.reason} />
