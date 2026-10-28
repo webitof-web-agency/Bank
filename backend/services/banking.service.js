@@ -6035,13 +6035,16 @@ async function buildAllMemberListReport({ branchCode = '', fromDate = '', uptoDa
     rows = rows.filter((row) => !hadLeftBy(row, cutoff));
   }
 
-  // Sort by member name (default) or code; branch-wise groups by branch first.
+  // Sort by member name (default), member code or branch code (members by
+  // code within a branch); branch-wise groups by branch first.
   const codeNum = (row) => Number(String(row.code || '').replace(/\D/g, '')) || 0;
   const byName = (a, b) => cleanText(a.name).localeCompare(cleanText(b.name));
   const byCode = (a, b) => codeNum(a) - codeNum(b) || byName(a, b);
-  const primary = String(sortBy || 'name').toLowerCase() === 'code' ? byCode : byName;
+  const byBranch = (a, b) => cleanUpper(a.branchCode).localeCompare(cleanUpper(b.branchCode), undefined, { numeric: true }) || byCode(a, b);
+  const sortKey = String(sortBy || 'name').toLowerCase();
+  const primary = sortKey === 'code' ? byCode : sortKey === 'branch' ? byBranch : byName;
   rows.sort((a, b) => {
-    if (type === 'branch') {
+    if (type === 'branch' && sortKey !== 'branch') {
       const branchCmp = cleanUpper(a.branchCode).localeCompare(cleanUpper(b.branchCode));
       if (branchCmp !== 0) return branchCmp;
     }

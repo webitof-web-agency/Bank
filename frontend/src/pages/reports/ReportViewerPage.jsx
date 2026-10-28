@@ -559,7 +559,8 @@ export function ReportViewerPage() {
               onChange={(value) => setFilters((current) => ({ ...current, sortBy: value || 'name' }))}
               options={[
                 { label: 'Member Name', value: 'name' },
-                { label: 'Member Code', value: 'code' }
+                { label: 'Member Code', value: 'code' },
+                { label: 'Branch Code', value: 'branch' }
               ]}
             />
           </div>

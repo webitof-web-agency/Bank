@@ -657,7 +657,7 @@ export function getReportConfig(reportKey = '') {
           dismembered: 'Dismembered Member List',
           inactive: 'Inactive Member List'
         };
-        const sortLabel = sortBy === 'code' ? 'code' : 'name';
+        const sortLabel = sortBy === 'code' ? 'code' : sortBy === 'branch' ? 'branch code' : 'name';
         return {
           title: titles[listType] || 'All Member List',
           subtitle: `${isDismembered ? 'Members who left in the selected financial year' : listType === 'inactive' ? 'Every member who had left by the end of the selected financial year' : listType === 'all' ? 'Every member, active and dismembered' : 'Members as at the end of the selected financial year'} · sorted by ${sortLabel}`,
