@@ -74,17 +74,28 @@ function fallbackNotificationTemplate(notification = {}, appName = 'Bank') {
   };
 }
 
+// The bell carries only these: calendar events, member / staff birthdays,
+// and a balance that went below zero. Everything else (master, voucher, user
+// and role edits, settings, scheduled summaries) is not notified at all, and
+// older notifications of those kinds are no longer listed.
+const NOTIFIED_MODULES = ['calendar', 'birthday', 'balance'];
+
+function isNotifiedModule(module) {
+  return NOTIFIED_MODULES.includes(cleanLower(module));
+}
+
 function defaultNotificationQuery(userId, query = {}) {
   const search = cleanText(query.search);
   const filter = {
-    recipientUserId: userId
+    recipientUserId: userId,
+    module: { $in: NOTIFIED_MODULES }
   };
 
   if (query.unreadOnly === 'true' || query.unreadOnly === true) {
     filter.isRead = false;
   }
   if (query.module) {
-    filter.module = cleanText(query.module);
+    filter.module = isNotifiedModule(query.module) ? cleanLower(query.module) : '__none__';
   }
   if (query.type) {
     filter.type = cleanText(query.type);
@@ -211,7 +222,7 @@ async function createNotification({
   const appName = cleanText(settings.appName, 'Bank');
   const notificationSettings = settings.notifications || {};
 
-  if (notificationSettings.enabled === false) {
+  if (notificationSettings.enabled === false || !isNotifiedModule(module)) {
     return { notifications: [], recipients: [] };
   }
 
@@ -331,7 +342,7 @@ async function listNotifications(userId, query = {}) {
   const [items, total, unreadCount] = await Promise.all([
     Notification.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
     Notification.countDocuments(filter),
-    Notification.countDocuments({ recipientUserId: userId, isRead: false })
+    Notification.countDocuments({ recipientUserId: userId, isRead: false, module: { $in: NOTIFIED_MODULES } })
   ]);
 
   return {
@@ -344,7 +355,7 @@ async function listNotifications(userId, query = {}) {
 }
 
 async function getUnreadCount(userId) {
-  return Notification.countDocuments({ recipientUserId: userId, isRead: false });
+  return Notification.countDocuments({ recipientUserId: userId, isRead: false, module: { $in: NOTIFIED_MODULES } });
 }
 
 async function getNotificationById(notificationId, userId, isSuperAdmin = false) {
@@ -418,6 +429,7 @@ async function purgeOldNotifications(now = new Date()) {
 }
 
 module.exports = {
+  NOTIFIED_MODULES,
   safeActionUrl,
   createNotification,
   purgeOldNotifications,

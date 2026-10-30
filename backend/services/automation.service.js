@@ -1,4 +1,5 @@
-const DemandList = require('../models/banking.models').DemandList;
+const { DemandList, Member, Employee } = require('../models/banking.models');
+const { isTestMember } = require('../utils/testMember');
 const JobState = require('../models/jobState.model');
 const { createNotification, purgeOldNotifications } = require('./notification.service');
 const { buildMonthlySummaryReport } = require('./banking.service');
@@ -188,6 +189,51 @@ async function runMonthlySummary() {
   return { month: monthKey, rowCount: rows.length };
 }
 
+// Today in India (the society's day), as YYYY-MM-DD.
+function indiaDateKey(date = new Date()) {
+  return new Date(date.getTime() + 330 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+// Birthdays today: one notification a day naming every active member and
+// staff member born on this day and month (dates of birth are stored as
+// midnight UTC, so their ISO month-day is the birthday).
+async function runBirthdayNotifications() {
+  const todayKey = indiaDateKey();
+  const stateKey = 'automation:birthdays';
+  if (await hasRunForKey(stateKey, todayKey)) {
+    return { job: 'birthdays', skipped: true, reason: 'already-ran-today' };
+  }
+  const monthDay = todayKey.slice(5);
+  const bornToday = (row) => cleanText(row.dateOfBirth).slice(5, 10) === monthDay;
+  const members = (await Member.find({}).lean())
+    .filter((row) => cleanLower(row.status || 'active') === 'active' && !isTestMember(row) && bornToday(row));
+  const employees = (await Employee.find({}).lean())
+    .filter((row) => row.isActive !== false && cleanLower(row.status || 'active') !== 'inactive' && bornToday(row));
+  const people = [
+    ...members.map((row) => ({ kind: 'Member', code: cleanText(row.code), name: cleanText(row.name) })),
+    ...employees.map((row) => ({ kind: 'Staff', code: cleanText(row.code), name: cleanText(row.name) }))
+  ];
+  if (people.length) {
+    const names = people.map((p) => `${p.name} (${p.kind} ${p.code})`);
+    await createNotification({
+      title: people.length === 1 ? `Birthday today: ${people[0].name}` : `${people.length} birthdays today`,
+      message: names.length > 8 ? `${names.slice(0, 8).join(', ')} and ${names.length - 8} more.` : `${names.join(', ')}.`,
+      type: 'info',
+      severity: 'low',
+      module: 'birthday',
+      action: 'birthday',
+      entityType: 'Birthday',
+      entityCode: todayKey,
+      audience: 'internal',
+      includeActorUserId: false,
+      sendEmail: false,
+      payload: { date: todayKey, people }
+    });
+  }
+  await markRun(stateKey, todayKey, { count: people.length });
+  return { job: 'birthdays', count: people.length };
+}
+
 async function runAutomationCycle() {
   if (automationRunning) {
     return { skipped: true, reason: 'already-running' };
@@ -198,6 +244,10 @@ async function runAutomationCycle() {
     const results = [];
     results.push(await runDemandReminder());
     results.push(await runMonthlySummary());
+    results.push(await runBirthdayNotifications().catch((error) => {
+      console.error('[automation] birthday notifications failed:', error.message);
+      return { job: 'birthdays', error: error.message };
+    }));
     results.push(await retryPendingSms());
     results.push(await runDriveBackup());
     results.push(await runNotificationPurge());
@@ -267,6 +317,7 @@ function stopAutomationScheduler() {
 }
 
 module.exports = {
+  runBirthdayNotifications,
   runAutomationCycle,
   runDemandReminder,
   runMonthlySummary,

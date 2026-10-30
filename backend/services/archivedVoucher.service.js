@@ -401,7 +401,16 @@ function applyInput(type, raw, lines, input) {
   return { raw: next, lines: nextLines };
 }
 
+// After an edit / delete: a balance it left below zero raises a notification
+// (banking.service requires this file, so it is loaded here when needed).
+function checkBalances(delta, meta, source) {
+  if (!delta) return;
+  const { notifyNegativeBalances } = require('./banking.service');
+  void notifyNegativeBalances({ memberCodes: [...delta.members.keys()], employeeCodes: [...delta.employees.keys()] }, { meta, source });
+}
+
 async function updateArchivedVoucher(id, input = {}, meta = {}) {
+  let applied = null;
   const result = await withTransaction(async (tx) => {
     const found = await loadArchived(tx, id, { lock: true });
     if (!found) return null;
@@ -431,6 +440,7 @@ async function updateArchivedVoucher(id, input = {}, meta = {}) {
     const imbalance = imbalanceOf(delta);
     if (Math.abs(imbalance) >= 0.005 && input.acceptImbalance !== true) throw imbalanceError(imbalance, 'changing');
     await applyDelta(tx, delta);
+    applied = { delta, voucherNo: row.voucherNo };
 
     if (partner) {
       await tx.query(
@@ -456,6 +466,7 @@ async function updateArchivedVoucher(id, input = {}, meta = {}) {
     return { id: `legacy:${row.id}`, partner: partnerInfo(partner), imbalance };
   });
   resetCaches();
+  if (applied) checkBalances(applied.delta, meta, `editing voucher ${applied.voucherNo}`);
   return result;
 }
 
@@ -484,6 +495,7 @@ async function removeArchived(tx, { row, raw, lines }, meta, note = {}) {
 
 // Deletes the voucher, and its other side with it when that is found.
 async function deleteArchivedVoucher(id, meta = {}, { acceptImbalance = false } = {}) {
+  let applied = null;
   const result = await withTransaction(async (tx) => {
     const found = await loadArchived(tx, id, { lock: true });
     if (!found) return false;
@@ -499,12 +511,14 @@ async function deleteArchivedVoucher(id, meta = {}, { acceptImbalance = false } 
     const imbalance = imbalanceOf(delta);
     if (Math.abs(imbalance) >= 0.005 && !acceptImbalance) throw imbalanceError(imbalance, 'deleting');
     await applyDelta(tx, delta);
+    applied = { delta, voucherNo: found.row.voucherNo };
 
     await removeArchived(tx, found, meta, { imbalance });
     if (partner) await removeArchived(tx, partner, meta, { deletedWith: `legacy:${found.row.id}` });
     return { partner: partnerInfo(partner), imbalance };
   });
   resetCaches();
+  if (applied) checkBalances(applied.delta, meta, `deleting voucher ${applied.voucherNo}`);
   return result;
 }
 

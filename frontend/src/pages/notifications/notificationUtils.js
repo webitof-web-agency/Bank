@@ -83,6 +83,7 @@ export function getNotificationIconKind(notification = {}) {
   const moduleKey = String(notification.module || '').toLowerCase();
 
   if (severity === 'critical' || type === 'error') return 'error';
+  if (moduleKey === 'birthday') return 'birthday';
   if (type === 'security' || moduleKey === 'auth') return 'security';
   if (type === 'success') return 'success';
   if (type === 'warning' || severity === 'medium') return 'warning';

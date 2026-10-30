@@ -3385,6 +3385,95 @@ async function assertEmployeeRecoveryWithinBalance(payload = {}, previous = null
   if (problems.length) throw recoveryHttpError(`Employee ${code}: ${problems.join(' ')}`);
 }
 
+// A balance below zero is impossible (a deposit paid out beyond what the
+// member holds, or a loan / advance recovered beyond what is owed, e.g. a
+// loan of 1,000 left and 5,000 received). Such an entry still saves, but
+// raises a "balance" notification naming each head that went below zero.
+// Runs after the save has committed and never fails it.
+const NEGATIVE_BALANCE_LABELS = {
+  share: 'Share', compulsoryDeposit: 'Compulsory Deposit', specialDeposit: 'SSA',
+  loan: 'Regular Loan', loanAgainstDeposit: 'Loan Against Deposit',
+  housingLoan: 'Housing Loan', vehicleLoan: 'Vehicle Loan', grainAdvance: 'Grain Advance'
+};
+
+// The members and employees a voucher moves: its party, and every member on
+// its recovery lines (also once the voucher is deleted).
+async function voucherAccountCodes(voucher = {}) {
+  const memberCodes = new Set();
+  const employeeCodes = new Set();
+  const member = getPartyMemberCode(voucher);
+  if (member) memberCodes.add(member);
+  if (cleanLower(voucher.partyType) === 'employee' && cleanUpper(voucher.partyCode)) employeeCodes.add(cleanUpper(voucher.partyCode));
+  const id = String(voucher.id || voucher._id || '');
+  if (id) {
+    const lines = await RecoveryLine.find({ voucherId: id }).withDeleted().lean();
+    lines.forEach((line) => { if (cleanUpper(line.memberCode)) memberCodes.add(cleanUpper(line.memberCode)); });
+  }
+  return { memberCodes: [...memberCodes], employeeCodes: [...employeeCodes] };
+}
+
+// Each head below zero today, as "<label> -<amount>" per member / employee.
+async function findNegativeBalances({ memberCodes = [], employeeCodes = [] } = {}) {
+  const found = [];
+  const members = (await Promise.all(memberCodes.map((code) => Member.findOne({ code: cleanUpper(code) }).lean()))).filter(Boolean);
+  if (members.length) {
+    const periods = await computeMemberPeriodBalances({ members, withHistory: false });
+    members.forEach((member, index) => {
+      const buckets = periods[index]?.buckets || {};
+      const heads = [];
+      for (const bucket of ['share', 'compulsoryDeposit', 'specialDeposit', 'loan', 'loanAgainstDeposit']) {
+        // Closings are signed paise, credit-positive: a deposit below zero is
+        // negative; a loan recovered beyond what is owed turns positive.
+        const closing = Math.round(Number(buckets[bucket]?.closing) || 0);
+        const below = DEPOSIT_BUCKETS.has(bucket) ? -closing : closing;
+        if (below > 0) heads.push(`${NEGATIVE_BALANCE_LABELS[bucket]} -${toRupees(below).toFixed(2)}`);
+      }
+      if (heads.length) found.push({ kind: 'Member', code: member.code, name: member.name || '', heads });
+    });
+  }
+  for (const code of employeeCodes) {
+    const report = await buildEmployeeLedgerReport({ employeeCode: code }).catch(() => null);
+    if (!report) continue;
+    // signedBalances are credit-positive: an advance owed is negative, one
+    // recovered beyond it positive.
+    const heads = ['housingLoan', 'vehicleLoan', 'grainAdvance']
+      .filter((group) => toPaise(report.signedBalances?.[group]) > 0)
+      .map((group) => `${NEGATIVE_BALANCE_LABELS[group]} -${toNumber(report.signedBalances[group], 0).toFixed(2)}`);
+    if (heads.length) found.push({ kind: 'Staff', code: cleanUpper(code), name: report.employee?.name || '', heads });
+  }
+  return found;
+}
+
+async function notifyNegativeBalances(codes = {}, { meta = {}, source = '' } = {}) {
+  try {
+    const found = await findNegativeBalances(codes);
+    for (const entry of found) {
+      await notifySafely({
+        title: `Balance below zero: ${entry.kind} ${entry.code}`,
+        message: `${entry.name ? `${entry.name}: ` : ''}${entry.heads.join(', ')}${source ? ` after ${source}` : ''}. A balance cannot be negative; check the entry.`,
+        type: 'warning',
+        severity: 'high',
+        module: 'balance',
+        action: 'negative-balance',
+        actionUrl: entry.kind === 'Member' ? `/app/reports/member-ledger?memberCode=${encodeURIComponent(entry.code)}` : `/app/reports/employee-ledger?employeeCode=${encodeURIComponent(entry.code)}`,
+        entityType: entry.kind,
+        entityCode: entry.code,
+        actorUserId: meta.actorUserId || meta.actorUser?.id || null,
+        sendEmail: false,
+        payload: { ...entry, source }
+      });
+    }
+    return found;
+  } catch (error) {
+    console.error('[balance] negative balance check failed:', error.message);
+    return [];
+  }
+}
+
+function voucherLabel(voucher = {}) {
+  return `voucher ${cleanText(voucher.voucherNo) || ''}`.trim();
+}
+
 // Legacy loan/CD/SSA payments (TransType 1/2/3) carry the member's AccID
 // directly on the voucher; Recovery (TransType 5) never does (legacy left it
 // "0"), so its component amounts + date come from legacy_historical_recovery
@@ -6764,6 +6853,7 @@ async function createVoucher(data = {}, meta = {}) {
     await notifySafely(buildVoucherNotificationPayload('created', response, meta));
     return { response, smsQueued };
   });
+  void voucherAccountCodes(response).then((codes) => notifyNegativeBalances(codes, { meta, source: voucherLabel(response) }));
   return withSmsResult(response, smsQueued, meta);
 }
 
@@ -6843,9 +6933,13 @@ async function updateVoucher(id, data = {}, meta = {}) {
 
     const response = sanitizeVoucherResponse({ ...current.toObject(), ...payload });
     await notifySafely(buildVoucherNotificationPayload('updated', response, meta));
-    return { response, smsQueued };
+    return { response, smsQueued, previous: current.toObject() };
   });
   if (!result) return null;
+  void Promise.all([voucherAccountCodes(result.response), voucherAccountCodes(result.previous)]).then(([now, before]) => notifyNegativeBalances({
+    memberCodes: [...new Set([...now.memberCodes, ...before.memberCodes])],
+    employeeCodes: [...new Set([...now.employeeCodes, ...before.employeeCodes])]
+  }, { meta, source: voucherLabel(result.response) }));
   return withSmsResult(result.response, result.smsQueued, meta);
 }
 
@@ -6878,7 +6972,8 @@ async function deleteVoucher(id, meta = {}) {
   assertVoucherBranchAccess(existing, meta.actorUser);
   await fyLock.assertDatesOpen([existing.date], { allowFy: meta.allowClosedFy });
   assertNotYearEndVoucher(existing, meta);
-  return withTransaction(async (tx) => {
+  const codes = await voucherAccountCodes(existing);
+  const deleted = await withTransaction(async (tx) => {
     const oldLinks = (await RecoveryLine.find({ voucherId: id }).lean())
       .map((line) => cleanText(line.demandLineId)).filter(Boolean);
     const record = await Voucher.findByIdAndDelete(id).tx(tx);
@@ -6890,6 +6985,8 @@ async function deleteVoucher(id, meta = {}) {
     await deleteDocumentFiles(record.documents || {});
     return true;
   });
+  if (deleted) void notifyNegativeBalances(codes, { meta, source: `deleting ${voucherLabel(existing)}` });
+  return deleted;
 }
 
 // Mirrors deleteVoucher's reach: restoring a voucher must also restore the
@@ -6924,6 +7021,7 @@ async function restoreVoucher(id, meta = {}) {
   for (const line of journalLines) {
     if (line.deletedAt) await restoreMainRow('journal_lines', line.id);
   }
+  void voucherAccountCodes(voucher).then((codes) => notifyNegativeBalances(codes, { meta, source: `restoring ${voucherLabel(voucher)}` }));
   return true;
 }
 
@@ -7511,6 +7609,7 @@ async function buildDividendReport({ mode = 'branchwise-opening', dateFrom = '',
 }
 
 module.exports = {
+  notifyNegativeBalances,
   getGlobalRatesConfig,
   updateGlobalRatesConfig,
   buildAccountStatementReport,

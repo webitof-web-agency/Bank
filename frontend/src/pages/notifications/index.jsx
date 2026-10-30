@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
+  Cake,
   BellRing,
   CheckCheck,
   CheckCircle2,
@@ -48,6 +49,8 @@ function NotificationIcon({ item, size = 18 }) {
   const iconProps = { size, strokeWidth: 1.85 };
 
   switch (kind) {
+    case 'birthday':
+      return <Cake {...iconProps} />;
     case 'success':
       return <CheckCircle2 {...iconProps} />;
     case 'warning':
