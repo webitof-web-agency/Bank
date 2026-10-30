@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarDays, ChevronLeft, ChevronRight, Clock3, ExternalLink, Globe, Lock, MapPin, Paperclip, Palette, PencilLine, Plus, Shield, Sparkles, Trash2, Upload, Users } from 'lucide-react';
+import { CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock3, ExternalLink, Globe, Lock, MapPin, Paperclip, Palette, PencilLine, Plus, Shield, Sparkles, Trash2, Upload, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../api/api';
 import { useAuth } from '../../context/AuthContext';
@@ -396,6 +396,10 @@ export function CalendarPage() {
   const [currentMonth, setCurrentMonth] = useState(() => startOfMonth(new Date()));
   const [selectedDate, setSelectedDate] = useState(() => formatDateKey(new Date()));
   const [isModalOpen, setIsModalOpen] = useState(false);
+  // Mark complete from an event card: the event, and its optional conclusion.
+  const [completeTarget, setCompleteTarget] = useState(null);
+  const [completeNote, setCompleteNote] = useState('');
+  const [completing, setCompleting] = useState(false);
   const [editingId, setEditingId] = useState(null);
   // The open event form: a new event needs Create, an existing one Edit.
   const canSave = editingId ? canEdit : canCreate;
@@ -722,6 +726,24 @@ export function CalendarPage() {
     toast.success('Event marked complete');
   }
 
+  function openCompleteDialog(item) {
+    setCompleteTarget(item);
+    setCompleteNote('');
+  }
+
+  async function submitComplete(event) {
+    event.preventDefault();
+    if (!completeTarget || completing) return;
+    setCompleting(true);
+    try {
+      await handleMarkComplete(completeTarget.id, completeNote);
+      setCompleteTarget(null);
+      setCompleteNote('');
+    } finally {
+      setCompleting(false);
+    }
+  }
+
   function handleReopenEvent(eventId) {
     setEvents((current) => sortEvents(current.map((item) => (
       item.id === eventId ? { ...item, completed: false, conclusion: '', completedAt: '' } : item
@@ -892,11 +914,20 @@ export function CalendarPage() {
 
             <div className="mt-4 space-y-3">
               {selectedEvents.length ? selectedEvents.map((item) => (
-                <button
+                // A div, not a button: it holds the Mark complete button.
+                <div
                   key={item.id}
-                  type="button"
+                  role="button"
+                  tabIndex={0}
                   onClick={() => openEditEvent(item)}
-                  className="group flex w-full items-start gap-3 rounded-[var(--radius-button,1rem)] border border-slate-100 bg-slate-50/50 p-3 text-left transition-all duration-300 hover:-translate-y-0.5 hover:border-slate-200 hover:bg-white hover:shadow-md"
+                  onKeyDown={(event) => {
+                    if (event.target !== event.currentTarget) return;
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      openEditEvent(item);
+                    }
+                  }}
+                  className="group flex w-full cursor-pointer items-start gap-3 rounded-[var(--radius-button,1rem)] border border-slate-100 bg-slate-50/50 p-3 text-left transition-all duration-300 hover:-translate-y-0.5 hover:border-slate-200 hover:bg-white hover:shadow-md"
                   >
                     <span
                       className="mt-1 h-3.5 w-3.5 shrink-0 rounded-full shadow-sm group-hover:scale-110 transition-transform"
@@ -929,13 +960,27 @@ export function CalendarPage() {
                           </span>
                         ) : isEventPastDue(item) ? (
                           <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-700">
-                            Ended — mark complete
+                            Ended
                           </span>
+                        ) : null}
+                        {!item.completed && canEdit ? (
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              openCompleteDialog(item);
+                            }}
+                            className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-700 transition-colors hover:bg-emerald-50"
+                          >
+                            <CheckCircle2 size={11} />
+                            Mark complete
+                          </button>
                         ) : null}
                       </span>
                       {item.notes ? <span className="mt-1 block line-clamp-2 text-[12px] leading-5 text-slate-500">{item.notes}</span> : null}
+                      {item.completed && item.conclusion ? <span className="mt-1 block line-clamp-2 text-[12px] leading-5 text-emerald-700">{item.conclusion}</span> : null}
                     </span>
-                  </button>
+                  </div>
               )) : (
                 <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-5 text-center">
                   <CalendarDays className="mx-auto text-slate-300" size={28} />
@@ -1347,6 +1392,37 @@ export function CalendarPage() {
               ) : null}
             </div>
           </div>
+        </form>
+      </Modal>
+
+      <Modal
+        open={Boolean(completeTarget)}
+        onClose={() => { if (!completing) setCompleteTarget(null); }}
+        title="Mark event complete"
+        subtitle={completeTarget?.title || ''}
+        footer={(
+          <div className="flex items-center justify-end gap-2">
+            <Button type="button" variant="outline" disabled={completing} onClick={() => setCompleteTarget(null)}>
+              Cancel
+            </Button>
+            <Button type="submit" form="complete-event-form" disabled={completing}>
+              <CheckCircle2 size={15} />
+              {completing ? 'Completing...' : 'Mark complete'}
+            </Button>
+          </div>
+        )}
+      >
+        <form id="complete-event-form" className="space-y-2" onSubmit={submitComplete}>
+          <label htmlFor="complete-event-note" className="text-sm font-medium text-slate-700">Remark / conclusion (optional)</label>
+          <Textarea
+            id="complete-event-note"
+            value={completeNote}
+            onChange={(event) => setCompleteNote(event.target.value)}
+            placeholder="What happened, outcome, follow-ups..."
+            rows={4}
+            autoFocus
+          />
+          <p className="text-[12px] text-slate-500">The event is closed and its reminder leaves the notifications.</p>
         </form>
       </Modal>
     </div>
