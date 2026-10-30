@@ -1323,7 +1323,7 @@ export function CalendarPage() {
                             type="button"
                             variant="outline"
                             size="sm"
-                            onClick={() => window.open(attachment.viewUrl || api.files.viewUrl(fileId), '_blank', 'noopener,noreferrer')}
+                            onClick={() => window.open(api.files.viewUrl(fileId, attachment.viewUrl), '_blank', 'noopener,noreferrer')}
                           >
                             <ExternalLink size={14} />
                             Open

@@ -73,7 +73,7 @@ async function getController(req, res, next) {
 
 async function createController(req, res, next) {
   try {
-    const result = await createUser(req.body || {});
+    const result = await createUser(req.body || {}, { actorUser: req.user });
     res.status(201).json({ success: true, data: result });
   } catch (error) {
     next(error);
@@ -112,7 +112,7 @@ async function deleteController(req, res, next) {
 
 async function restoreController(req, res, next) {
   try {
-    const ok = await restoreUser(req.params.id);
+    const ok = await restoreUser(req.params.id, { actorUser: req.user });
     if (!ok) {
       return res.status(404).json({ success: false, message: 'Deleted employee not found' });
     }

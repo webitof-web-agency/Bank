@@ -5,7 +5,7 @@ const { randomUUID } = require('crypto');
 const FileAsset = require('../models/fileAsset.model');
 const FileFolder = require('../models/fileFolder.model');
 const { toResponse } = require('../utils/response');
-const { buildFileViewUrl } = require('../utils/file-url');
+const { buildFileViewUrl, extractFileIdFromViewUrl } = require('../utils/file-url');
 const StorageService = require('./storage/storage.service');
 const { buildStorageKey } = require('../utils/uploadPath');
 
@@ -71,6 +71,12 @@ async function ensureUploadRoot() {
 async function ensureFolderPath(folderId = null) {
   await ensureUploadRoot();
   const storagePath = folderId ? path.join(UPLOAD_ROOT, 'folders', String(folderId)) : path.join(UPLOAD_ROOT, 'root');
+  // A folder id like "../../x" must not make directories outside the upload root.
+  if (!path.resolve(storagePath).startsWith(path.resolve(UPLOAD_ROOT) + path.sep)) {
+    const error = new Error('Invalid folder');
+    error.statusCode = 400;
+    throw error;
+  }
   await fsp.mkdir(storagePath, { recursive: true });
   return storagePath;
 }
@@ -87,6 +93,37 @@ function getDocumentFileIds(documents = {}) {
       .filter(Boolean)
       .map((fileId) => String(fileId))
   )];
+}
+
+// A record may only point at files that are already its own or that this
+// actor uploaded. Pointing it at someone else's file (a voucher scan, a
+// member's KYC) would let a later edit or delete of the record remove that
+// file. Without an actor (internal calls) nothing is checked.
+// A *Url field holding "/api/files/<id>/view" counts too: responses sign a
+// fresh view link for the id in it.
+const RECORD_FILE_KEYS = ['avatarFileId', 'photoFileId', 'logoFileId', 'watermarkFileId'];
+const RECORD_FILE_URL_KEYS = ['avatarUrl', 'photoUrl', 'logoUrl', 'watermarkUrl'];
+
+function recordFileIds(record = {}) {
+  return [
+    ...getDocumentFileIds(record?.documents || {}),
+    ...RECORD_FILE_KEYS.map((key) => record?.[key]).filter(Boolean).map(String),
+    ...RECORD_FILE_URL_KEYS.map((key) => extractFileIdFromViewUrl(record?.[key] || '')).filter(Boolean)
+  ];
+}
+
+async function assertFilesAttachable(next = {}, current = {}, actorUserId = null) {
+  if (!actorUserId) return;
+  const owned = new Set(recordFileIds(current));
+  for (const fileId of new Set(recordFileIds(next))) {
+    if (owned.has(fileId)) continue;
+    const file = await FileAsset.findById(fileId).lean();
+    if (!file || String(file.createdBy || '') !== String(actorUserId)) {
+      const error = new Error('Only files you uploaded can be attached');
+      error.statusCode = 403;
+      throw error;
+    }
+  }
 }
 
 async function deleteDocumentFiles(documents = {}) {
@@ -354,6 +391,12 @@ async function saveUploads(files = [], { folderId = null, moduleName = 'general'
     throw error;
   }
 
+  if (folderId && !(await getFolderById(String(folderId)))) {
+    const error = new Error('Folder not found');
+    error.statusCode = 400;
+    throw error;
+  }
+
   const folderPath = await ensureFolderPath(folderId || null);
   const saved = [];
   const { voucherKey, code } = await resolveUploadTarget(moduleName, entityId);
@@ -456,6 +499,7 @@ async function readFileStream(fileId) {
 }
 
 module.exports = {
+  assertFilesAttachable,
   archiveFile,
   createFolder,
   deleteDocumentFiles,

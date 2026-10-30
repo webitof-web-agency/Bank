@@ -75,7 +75,8 @@ async function updateSettings(req, res, next) {
       configurationSource: 'site_settings',
       activeProvider,
       local: {
-        uploadDir: String(local?.uploadDir || currentConfig.local?.uploadDir || './uploads').trim(),
+        // Not taken from the request: an admin must not point uploads at any server directory.
+        uploadDir: String(currentConfig.local?.uploadDir || './uploads').trim(),
         prefix: String(local?.prefix ?? currentConfig.local?.prefix ?? 'images').trim()
       }
     };
@@ -122,6 +123,11 @@ async function testConnection(req, res, next) {
       } else if (currentConfig.s3?.encryptedSessionToken) {
         candidateConfig.encryptedSessionToken = currentConfig.s3.encryptedSessionToken;
       }
+    }
+
+    if (provider === 'local') {
+      // The saved directory only: a request must not choose where the test writes.
+      candidateConfig = { ...candidateConfig, uploadDir: String(currentConfig.local?.uploadDir || './uploads').trim() };
     }
 
     const result = await StorageService.testConnection(provider, candidateConfig);

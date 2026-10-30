@@ -8,9 +8,10 @@ function errorHandler(error, req, res, next) {
   // An error with `expose: true` carries a message written for the user.
   const fromMulter = error && error.name === 'MulterError';
   const statusCode = error.statusCode || error.status || (fromMulter ? 400 : 500);
-  // Details (internal text, stack) only where they are asked for: a server
-  // with NODE_ENV unset or misspelt is treated as production, not as a dev box.
-  const showDetails = ['development', 'test'].includes(String(process.env.NODE_ENV || '').trim().toLowerCase());
+  // Details (internal text, stack) only when explicitly switched on with
+  // EXPOSE_ERROR_DETAILS=1, never from NODE_ENV alone: a live server started
+  // with a copied development .env must not send stack traces to clients.
+  const showDetails = String(process.env.EXPOSE_ERROR_DETAILS || '').trim() === '1';
 
   if (statusCode >= 500) {
     recordServerError(error, req);

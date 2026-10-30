@@ -240,6 +240,8 @@ function enteredByOf(type) {
 
 const TYPE_LABELS = { 1: 'Loan Paid to Member', 3: 'SSA Paid to Member', 5: 'Recovery From Member', 8: 'Deposit in Bank', 9: 'Cheque Issue' };
 
+const PARTNER_TYPES = { 1: [9], 3: [9], 9: [1, 3], 5: [8], 8: [5] };
+
 // The voucher's other side, when it can be found. In the old software only a
 // cash voucher balances on its own (it carries the cash leg); a cheque / DD
 // voucher has no pay-mode leg, and its bank side is a separate voucher with
@@ -257,7 +259,12 @@ async function findPartner(tx, row, raw, options = {}) {
        AND coalesce((payload->'raw'->>'PayModeAccID')::numeric, 0) = 0`,
     [row.sourceDatabase, row.id, cheque, legacyNumber(raw.TotalAmt)]
   );
-  return rows.length === 1 ? loadArchived(tx, rows[0].id, options) : null;
+  if (rows.length !== 1) return null;
+  const partner = await loadArchived(tx, rows[0].id, options);
+  // Only the real pairs: a voucher of another type with the same cheque no.
+  // and amount is not this one's other side (and editing it here would skip
+  // that type's own permission).
+  return partner && (PARTNER_TYPES[typeOf(row)] || []).includes(typeOf(partner.row)) ? partner : null;
 }
 
 function partnerInfo(partner) {

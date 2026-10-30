@@ -46,6 +46,7 @@ const {
 } = require('../models/banking.models');
 const User = require('../models/user.model');
 const {
+  assertFilesAttachable,
   deleteFileById,
   deleteFolder,
   ensureEntityFolder
@@ -57,7 +58,7 @@ const { getSettings, updateSettings, mergeDeep } = require('./settings.service')
 const { toResponse } = require('../utils/response');
 const { getNextSequenceValue, syncSequence } = require('./sequence.service');
 const { buildFileViewUrl } = require('../utils/file-url');
-const { withTransaction, restoreMainRow, initializeDatabase, getTableVersion } = require('../config/postgres');
+const { withTransaction, restoreMainRow, initializeDatabase, getTableVersion, redactAuditChanges } = require('../config/postgres');
 const { buildJournalLinesForVoucher } = require('./posting.service');
 const rateHistory = require('../utils/rateHistory');
 const dividendRates = require('../utils/dividendRates');
@@ -789,6 +790,20 @@ function memberBalanceTotals(balances = {}) {
 function isLegacyCutoverMember(member = {}) {
   const payload = typeof member.payload === 'string' ? JSON.parse(member.payload || '{}') : (member.payload || {});
   return payload?.sourceType === 'LEGACY_CUTOVER';
+}
+
+// Server-owned keys of a member's payload: the legacy cutover marker (it
+// locks the opening balances), the legacy row and its source, and the test
+// flag (it hides a member from every list, report and the year-end close).
+// A request never sets or clears them; other keys merge onto the stored ones.
+const MEMBER_SERVER_PAYLOAD_KEY = /^(source|legacy|raw$|testAccount$|membershipNoSource$)/;
+
+function protectMemberPayload(requested = {}, current = {}) {
+  const parse = (value) => (typeof value === 'string' ? JSON.parse(value || '{}') : (value || {}));
+  const stored = parse(current);
+  const fromRequest = Object.entries(parse(requested)).filter(([key]) => !MEMBER_SERVER_PAYLOAD_KEY.test(key));
+  const serverOwned = Object.entries(stored).filter(([key]) => MEMBER_SERVER_PAYLOAD_KEY.test(key));
+  return { ...stored, ...Object.fromEntries(fromRequest), ...Object.fromEntries(serverOwned) };
 }
 
 // Positive amounts as of today: the opening plus every movement since
@@ -1650,8 +1665,10 @@ async function createResource(resource, data = {}, meta = {}) {
     throw error;
   }
 
+  await assertFilesAttachable(data, {}, meta.actorUserId || actorUser.id);
+
   if (resource === 'employees') {
-    return authService.createUser({ ...data, branchCode: resolveBranchCode(actorUser, data.branchCode) });
+    return authService.createUser({ ...data, branchCode: resolveBranchCode(actorUser, data.branchCode) }, { actorUser: meta.actorUser || null });
   }
 
   const payload = def.normalize ? def.normalize(data) : clone(data);
@@ -1685,6 +1702,7 @@ async function createResource(resource, data = {}, meta = {}) {
   }
   if (resource === 'members') {
     await applyMemberCredentials(payload, data, { requirePassword: true });
+    payload.payload = protectMemberPayload(payload.payload, {});
     // Checked before the member is written, so a bad amount saves nothing.
     const demandDefaults = normalizeDemandDefaults(data.demandDefaults);
     const openingBalances = applyMemberOpeningBalances(payload.balances, data.openingBalances);
@@ -1751,6 +1769,13 @@ async function updateResource(resource, id, data = {}, meta = {}) {
     throw error;
   }
 
+  if (resource !== 'employees') {
+    const stored = def.singleton
+      ? await def.model.findOne(def.uniqueQuery || { key: 'default' }).lean()
+      : await def.model.findById(id).lean();
+    await assertFilesAttachable(data, stored || {}, meta.actorUserId || actorUser.id);
+  }
+
   if (resource === 'employees') {
     const current = await User.findById(id).lean();
     if (!current || !canAccessBranchRecord(resource, current, actorUser)) return null;
@@ -1765,6 +1790,7 @@ async function updateResource(resource, id, data = {}, meta = {}) {
     const payload = def.normalize ? def.normalize({ ...current.toObject(), ...data }) : clone({ ...current.toObject(), ...data });
     payload.branchCode = resolveBranchCode(actorUser, current.branchCode);
     payload.code = payload.code || current.code;
+    payload.payload = protectMemberPayload(data.payload, current.toObject().payload);
     // Mobile stays required; password is only rehashed when a new one is sent
     // (an absent/blank password leaves the existing hash in place).
     await applyMemberCredentials(payload, data, { requirePassword: false });
@@ -1911,7 +1937,7 @@ async function restoreResource(resource, id, meta = {}) {
     const current = await User.findById(id).withDeleted().lean();
     if (!current || !current.deletedAt) return false;
     if (!canAccessBranchRecord(resource, current, actorUser)) return false;
-    return authService.restoreUser(id);
+    return authService.restoreUser(id, { actorUser: meta.actorUser || null });
   }
 
   const current = await def.model.findById(id).withDeleted().lean();
@@ -1943,7 +1969,8 @@ async function listAuditLog({ tableName = '', recordId = '', dateFrom = '', date
   const start = (safePage - 1) * safePageSize;
   const rows = all.slice(start, start + safePageSize).map((row) => ({
     ...toResponse(row),
-    changes: typeof row.changes === 'string' ? JSON.parse(row.changes) : row.changes
+    // Older rows were written before secrets were redacted.
+    changes: redactAuditChanges(typeof row.changes === 'string' ? JSON.parse(row.changes) : row.changes)
   }));
 
   return { rows, total: all.length, page: safePage, pageSize: safePageSize };
@@ -6599,6 +6626,7 @@ async function assertPartyMemberAccess(payload = {}, user = {}) {
 // the save. `sms` on the response is the queued state (PENDING, or SKIPPED
 // with a reason); the page follows the send with GET .../vouchers/:id/sms.
 async function createVoucher(data = {}, meta = {}) {
+  await assertFilesAttachable(data, {}, meta.actorUserId || meta.actorUser?.id);
   const { response, smsQueued } = await withTransaction(async (tx) => {
     const branchCode = resolveBranchCode(meta.actorUser || {}, data.branchCode);
     const voucherNo = cleanText(data.voucherNo) || await getNextVoucherNo(branchCode);
@@ -6668,6 +6696,7 @@ async function updateVoucher(id, data = {}, meta = {}) {
     if (!current) return null;
     // Another branch's voucher: 403, as for create, delete and restore.
     assertVoucherBranchAccess(current.toObject(), meta.actorUser);
+    await assertFilesAttachable(data, current.toObject(), meta.actorUserId || meta.actorUser?.id);
     const payload = normalizeVoucher({ ...current.toObject(), ...data });
     assertVoucherBasics(payload, { ...current.toObject(), ...data });
     // Neither the old date nor the new one may be in a closed FY.
@@ -6804,6 +6833,7 @@ async function restoreVoucher(id, meta = {}) {
 }
 
 async function createBankTransaction(data = {}, meta = {}) {
+  await assertFilesAttachable(data, {}, meta.actorUserId || meta.actorUser?.id);
   const branchCode = resolveBranchCode(meta.actorUser || {}, data.branchCode);
   const transactionNo = cleanText(data.transactionNo) || await getNextTransactionNo(branchCode);
   const payload = normalizeBankTransaction({ ...data, transactionNo, branchCode });
@@ -6820,6 +6850,7 @@ async function createBankTransaction(data = {}, meta = {}) {
 async function updateBankTransaction(id, data = {}, meta = {}) {
   const current = await BankTransaction.findById(id);
   if (!current) return null;
+  await assertFilesAttachable(data, current.toObject(), meta.actorUserId || meta.actorUser?.id);
   const payload = normalizeBankTransaction({ ...current.toObject(), ...data });
   payload.branchCode = resolveBranchCode(meta.actorUser || {}, current.branchCode);
   if (meta.actorUserId) {

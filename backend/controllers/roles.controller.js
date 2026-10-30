@@ -30,7 +30,7 @@ async function getController(req, res, next) {
 
 async function createController(req, res, next) {
   try {
-    const result = await createRole(req.body || {});
+    const result = await createRole(req.body || {}, { actorUser: req.user });
     res.status(201).json({ success: true, data: result });
   } catch (error) {
     next(error);
@@ -39,7 +39,7 @@ async function createController(req, res, next) {
 
 async function updateController(req, res, next) {
   try {
-    const result = await updateRole(req.params.id, req.body || {});
+    const result = await updateRole(req.params.id, req.body || {}, { actorUser: req.user });
     if (!result) {
       return res.status(404).json({ success: false, message: 'Role not found' });
     }
@@ -51,7 +51,7 @@ async function updateController(req, res, next) {
 
 async function deleteController(req, res, next) {
   try {
-    const ok = await deleteRole(req.params.id);
+    const ok = await deleteRole(req.params.id, { actorUser: req.user });
     if (!ok) {
       return res.status(404).json({ success: false, message: 'Role not found' });
     }
@@ -64,7 +64,7 @@ async function deleteController(req, res, next) {
 async function updatePermissionsController(req, res, next) {
   try {
     const permissionCodes = req.body?.permissionCodes || req.body?.permissions || [];
-    const result = await updateRolePermissions(req.params.id, permissionCodes);
+    const result = await updateRolePermissions(req.params.id, permissionCodes, { actorUser: req.user });
     if (!result) {
       return res.status(404).json({ success: false, message: 'Role not found' });
     }

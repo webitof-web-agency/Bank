@@ -6,7 +6,7 @@ const { normalizeMobile, isValidMobile } = require('../utils/mobile');
 const User = require('../models/user.model');
 const Role = require('../models/role.model');
 const { Employee } = require('../models/banking.models');
-const { restoreMainRow } = require('../config/postgres');
+const { restoreMainRow, getUserRoles } = require('../config/postgres');
 const {
   DEFAULT_ROLE_DEFINITIONS,
   DEMO_ROLE_DEFINITIONS,
@@ -23,6 +23,7 @@ const { getPasswordHashRounds } = require('../config/security');
 const { sendPasswordResetOtpEmail } = require('./mailer.service');
 const { createNotification } = require('./notification.service');
 const {
+  assertFilesAttachable,
   deleteDocumentFiles,
   deleteFileById,
   deleteFolder,
@@ -793,7 +794,7 @@ async function updateStaff(code, data = {}, options = {}) {
   if (linkedUser) return updateUser(String(linkedUser._id), data, options);
 
   const wantsLogin = ['username', 'email', 'password'].some((key) => String(data[key] || '').trim());
-  if (wantsLogin) return createUser({ ...data, code });
+  if (wantsLogin) return createUser({ ...data, code }, { ...options, existing: employee });
 
   await syncLinkedEmployee(code, data);
   return buildStaffProfile(await Employee.findOne({ code }).lean());
@@ -989,7 +990,10 @@ async function seedUserDefinition(definition = {}) {
   throw new Error('Unable to seed user definition');
 }
 
-async function createUser(data = {}) {
+// `existing`: the staff record a login is being added to (its files are its own).
+async function createUser(data = {}, { actorUser = null, existing = {} } = {}) {
+  await assertMayChangeAccess(null, data, actorUser, 'create');
+  await assertFilesAttachable(data, existing, actorUser?.id);
   const fullName = String(data.fullName || data.name || '').trim();
   const username = normalizeUsername(data.username || data.email);
   const email = normalizeEmail(data.email || data.username);
@@ -1070,10 +1074,95 @@ async function createUser(data = {}) {
 async function assertMayManageUser(user, actorUser) {
   if (!actorUser || actorUser.isSuperAdmin || String(actorUser.id || '') === String(user._id)) return;
   const hidden = await Role.findOne({ code: HIDDEN_ROLE_CODE }).select('_id').lean();
-  if (hidden && (user.roles || []).some((id) => String(id?._id || id) === String(hidden._id))) {
+  if (hidden && roleIdsOf(user).some((id) => String(id?._id || id) === String(hidden._id))) {
     const error = new Error('Only an administrator can change this account');
     error.statusCode = 403;
     throw error;
+  }
+}
+
+// A user's role ids. Roles live in user_roles; a loaded user row only has
+// them when they were set on it in this request.
+function roleIdsOf(user) {
+  if (Array.isArray(user?.roles) && user.roles.length) return user.roles.map((id) => String(id?._id || id));
+  const id = user?._id || user?.id;
+  return id ? getUserRoles(String(id)) : [];
+}
+
+function deny(message) {
+  const error = new Error(message);
+  error.statusCode = 403;
+  throw error;
+}
+
+function actorPermissionSet(actorUser) {
+  return new Set(expandPermissionCodes(Array.isArray(actorUser?.permissions) ? actorUser.permissions : []));
+}
+
+// Existing (not deleted) roles among these ids, with their permissions.
+async function findRoles(roleIds = []) {
+  const ids = roleIds.map((id) => String(id?._id || id)).filter(Boolean);
+  if (!ids.length) return [];
+  return Role.find({ _id: { $in: ids } }).select('_id permissions').lean();
+}
+
+async function firstPermissionLacking(roleIds, granted) {
+  const roles = await findRoles(roleIds);
+  return roles.flatMap((role) => expandPermissionCodes(role.permissions || [])).find((code) => !granted.has(code)) || '';
+}
+
+// Logins and roles are access control. Changing them (roles, password,
+// username, email, active status) needs the Users permission, not just the
+// Employees page; nobody but a super admin changes their own roles; no one
+// grants a role holding a permission they lack, or takes over (password,
+// login, status) an account that can do more than they can. Without an actor
+// (internal calls) nothing is checked.
+async function assertMayChangeAccess(user, data, actorUser, action) {
+  if (!actorUser || actorUser.isSuperAdmin) return;
+  const roleKey = (roles) => roles.map((role) => String(role._id)).sort().join(',');
+  const nextRoles = Array.isArray(data.roleIds) ? await findRoles(await stripHiddenRoleIds(data.roleIds)) : null;
+  const currentRoles = user ? await findRoles(await stripHiddenRoleIds(roleIdsOf(user))) : [];
+  const rolesChanged = nextRoles !== null && roleKey(nextRoles) !== roleKey(currentRoles);
+  const changed = (key, normalize) => data[key] !== undefined && normalize(data[key]) !== normalize(user?.[key]);
+  const loginChanged = Boolean(user) && (
+    Boolean(data.password)
+    || changed('username', normalizeUsername)
+    || changed('email', normalizeEmail)
+    || (data.status !== undefined && isActiveFromStatus(data.status, user.isActive) !== Boolean(user.isActive))
+    || (data.isActive !== undefined && Boolean(data.isActive) !== Boolean(user.isActive))
+  );
+  if (!rolesChanged && !loginChanged) return;
+
+  const granted = actorPermissionSet(actorUser);
+  const isSelf = Boolean(user) && String(actorUser.id || '') === String(user._id);
+  if (!granted.has(`admin.users.${action}`)) deny('Only a user manager can change logins and roles');
+  if (rolesChanged && isSelf) deny('You cannot change your own roles');
+  if (rolesChanged && await firstPermissionLacking(nextRoles, granted)) deny('You cannot grant a role with permissions you do not have');
+  if ((loginChanged || rolesChanged) && !isSelf && await firstPermissionLacking(currentRoles, granted)) deny('You cannot change the login or roles of an account with more access than yours');
+}
+
+// Deleting or restoring a login: the same limits as changing it.
+async function assertMayRemoveOrRestoreUser(user, actorUser) {
+  await assertMayManageUser(user, actorUser);
+  if (!actorUser || actorUser.isSuperAdmin) return;
+  const roles = await findRoles(await stripHiddenRoleIds(roleIdsOf(user)));
+  if (!roles.length) return;
+  const granted = actorPermissionSet(actorUser);
+  if (!granted.has('admin.users.delete')) deny('Only a user manager can delete or restore a login with roles');
+  if (await firstPermissionLacking(roles, granted)) deny('You cannot delete or restore an account with more access than yours');
+}
+
+// Roles: no one but a super admin edits a role they hold, or puts into a role
+// a permission they lack themselves (that would be granting it to themselves
+// or to whoever holds the role).
+async function assertMayEditRole(role, permissionCodes, actorUser) {
+  if (!actorUser || actorUser.isSuperAdmin) return;
+  if (role) {
+    if (roleIdsOf({ _id: actorUser.id }).includes(String(role._id))) deny('You cannot edit a role you hold');
+  }
+  if (permissionCodes) {
+    const granted = actorPermissionSet(actorUser);
+    if (expandPermissionCodes(permissionCodes).some((code) => !granted.has(code))) deny('You cannot give a role permissions you do not have');
   }
 }
 
@@ -1081,6 +1170,8 @@ async function updateUser(userId, data = {}, { actorUser = null } = {}) {
   const user = await User.findById(userId);
   if (!user) return null;
   await assertMayManageUser(user, actorUser);
+  await assertMayChangeAccess(user, data, actorUser, 'edit');
+  await assertFilesAttachable(data, user, actorUser?.id);
 
   const previousAvatarFileId = user.avatarFileId ? String(user.avatarFileId) : '';
 
@@ -1105,7 +1196,7 @@ async function updateUser(userId, data = {}, { actorUser = null } = {}) {
   if (Array.isArray(data.roleIds)) {
     // The admin role can't be picked in the app, so keep it if the user has it.
     const hidden = await Role.findOne({ code: HIDDEN_ROLE_CODE }).select('_id').lean();
-    const hadHidden = hidden && (user.roles || []).some((id) => String(id?._id || id) === String(hidden._id));
+    const hadHidden = hidden && roleIdsOf(user).some((id) => String(id?._id || id) === String(hidden._id));
     const next = await stripHiddenRoleIds(data.roleIds);
     user.roles = hadHidden ? [hidden._id, ...next] : next;
   }
@@ -1152,7 +1243,7 @@ async function updateUser(userId, data = {}, { actorUser = null } = {}) {
 async function deleteUser(userId, { actorUser = null } = {}) {
   const user = await User.findById(userId);
   if (!user) return false;
-  await assertMayManageUser(user, actorUser);
+  await assertMayRemoveOrRestoreUser(user, actorUser);
 
   await deleteDocumentFiles(user.documents || {});
   if (user.avatarFileId) {
@@ -1192,9 +1283,10 @@ async function deleteUser(userId, { actorUser = null } = {}) {
 // Mirrors deleteUser's reach — restoring a login must also restore its linked
 // HR record together (same pattern as restoreVoucher in banking.service.js
 // restoring a voucher's journal_lines/recovery_lines together).
-async function restoreUser(userId) {
+async function restoreUser(userId, { actorUser = null } = {}) {
   const user = await User.findById(userId).withDeleted().lean();
   if (!user || !user.deletedAt) return false;
+  await assertMayRemoveOrRestoreUser(user, actorUser);
 
   const restored = await restoreMainRow('users', userId);
   if (!restored) return false;
@@ -1208,7 +1300,7 @@ async function restoreUser(userId) {
   return true;
 }
 
-async function createRole(data = {}) {
+async function createRole(data = {}, { actorUser = null } = {}) {
   const code = String(data.code || data.name || '').trim().toLowerCase().replace(/\s+/g, '-');
   const name = String(data.name || '').trim();
 
@@ -1219,6 +1311,7 @@ async function createRole(data = {}) {
   }
 
   const permissions = normalizePermissionCodes(data.permissionCodes || data.permissions || []);
+  await assertMayEditRole(null, permissions, actorUser);
 
   const role = await Role.create({
     code,
@@ -1246,9 +1339,11 @@ async function createRole(data = {}) {
   return getRoleById(role.id);
 }
 
-async function updateRole(roleId, data = {}) {
+async function updateRole(roleId, data = {}, { actorUser = null } = {}) {
   const role = await Role.findById(roleId);
   if (!role || isHiddenRole(role)) return null;
+  const nextCodes = Array.isArray(data.permissionCodes) ? data.permissionCodes : Array.isArray(data.permissions) ? data.permissions : null;
+  await assertMayEditRole(role, nextCodes && normalizePermissionCodes(nextCodes), actorUser);
 
   if (data.code !== undefined) role.code = String(data.code || '').trim().toLowerCase().replace(/\s+/g, '-');
   if (data.name !== undefined) role.name = String(data.name || '').trim();
@@ -1278,9 +1373,10 @@ async function updateRole(roleId, data = {}) {
   return getRoleById(role.id);
 }
 
-async function updateRolePermissions(roleId, permissionCodes = []) {
+async function updateRolePermissions(roleId, permissionCodes = [], { actorUser = null } = {}) {
   const role = await Role.findById(roleId);
   if (!role || isHiddenRole(role)) return null;
+  await assertMayEditRole(role, normalizePermissionCodes(permissionCodes), actorUser);
 
   role.permissions = normalizePermissionCodes(permissionCodes);
   await role.save();
@@ -1299,9 +1395,10 @@ async function updateRolePermissions(roleId, permissionCodes = []) {
   return getRoleById(role.id);
 }
 
-async function deleteRole(roleId) {
+async function deleteRole(roleId, { actorUser = null } = {}) {
   const role = await Role.findById(roleId);
   if (!role || isHiddenRole(role)) return false;
+  await assertMayEditRole(role, role.permissions || [], actorUser);
   if (role.isSystem) {
     const error = new Error('System roles cannot be deleted');
     error.statusCode = 400;

@@ -103,5 +103,14 @@ test('errors with NODE_ENV unset are treated as production: no stack, no interna
   const login = runErrorHandler(clientError, '');
   assert.equal(login.body.message, 'Invalid mobile number or password');
   assert.equal(login.body.stack, undefined);
-  assert.ok(runErrorHandler(new Error('x'), 'development').body.stack, 'development still shows it');
+});
+
+test('errors with NODE_ENV=development still hide the stack unless EXPOSE_ERROR_DETAILS=1', () => {
+  assert.equal(runErrorHandler(new Error('x'), 'development').body.stack, undefined);
+  process.env.EXPOSE_ERROR_DETAILS = '1';
+  try {
+    assert.ok(runErrorHandler(new Error('x'), 'development').body.stack, 'opt-in shows it');
+  } finally {
+    delete process.env.EXPOSE_ERROR_DETAILS;
+  }
 });

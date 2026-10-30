@@ -9,6 +9,7 @@ const router = express.Router();
 const view = requirePermission('workspace.notifications.view');
 router.get('/', view, controller.listController);
 router.get('/unread-count', view, controller.unreadCountController);
+router.post('/stream-ticket', view, controller.streamTicketController);
 router.post('/', requirePermission('workspace.notifications.create'), controller.createController);
 router.patch('/read-all', view, controller.markAllReadController);
 router.patch('/:id/read', view, controller.markReadController);

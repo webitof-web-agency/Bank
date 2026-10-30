@@ -201,36 +201,23 @@ export function Topbar({ title, subtitle, onMenuClick }) {
     refreshUnreadCount(mounted);
     window.addEventListener('notifications:changed', handleNotificationChange);
 
-    let eventSource;
-    let fallbackTimer;
-    if (token) {
-      try {
-        eventSource = new EventSource(api.notifications.streamUrl(token));
-        eventSource.onmessage = (event) => {
-          if (!mounted) return;
-          try {
-            const payload = JSON.parse(event.data || '{}');
-            if (payload?.type === 'connected') return;
-          } catch {
-            // Ignore malformed messages and just refresh unread count.
-          }
-          refreshUnreadCount(mounted);
-        };
-        eventSource.onerror = () => {
-          if (eventSource && eventSource.readyState === EventSource.CLOSED) {
-            eventSource.close();
-          }
-        };
-      } catch {
-        fallbackTimer = window.setInterval(() => refreshUnreadCount(mounted), 30000);
-      }
-    }
+    const closeStream = token
+      ? api.notifications.openStream(token, (event) => {
+        if (!mounted) return;
+        try {
+          const payload = JSON.parse(event.data || '{}');
+          if (payload?.type === 'connected') return;
+        } catch {
+          // Ignore malformed messages and just refresh unread count.
+        }
+        refreshUnreadCount(mounted);
+      })
+      : null;
 
     return () => {
       mounted = false;
       window.removeEventListener('notifications:changed', handleNotificationChange);
-      if (eventSource) eventSource.close();
-      if (fallbackTimer) window.clearInterval(fallbackTimer);
+      if (closeStream) closeStream();
     };
   }, [token, user, location.pathname]);
 

@@ -50,7 +50,7 @@ app.use(express.urlencoded({ extended: false, limit: '1mb' }));
 app.use(rejectUnsafeKeys);
 // Request log without secrets: signed file links, OAuth codes and the like
 // carry them in the query string.
-const SECRET_QUERY_PARAMS = /^(token|access_token|refresh_token|id_token|code|state|password|secret|key|sig|signature)$/i;
+const SECRET_QUERY_PARAMS = /^(token|ticket|access_token|refresh_token|id_token|code|state|password|secret|key|sig|signature)$/i;
 morgan.token('url', (req) => {
   const raw = req.originalUrl || req.url;
   const queryAt = raw.indexOf('?');

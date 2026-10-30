@@ -224,7 +224,12 @@ function ReportTableSection({ section, headerActions }) {
 }
 
 function buildCsv(sections = []) {
-  const escape = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+  // Text starting with = + - @ would run as a formula in Excel; numbers stay as they are.
+  const escape = (value) => {
+    let text = String(value ?? '');
+    if (/^[=+\-@\t\r]/.test(text) && !/^[+-]?\d[\d,]*(\.\d+)?$/.test(text)) text = `'${text}`;
+    return `"${text.replace(/"/g, '""')}"`;
+  };
   const lines = [];
   sections.forEach((section, sectionIndex) => {
     if (sectionIndex > 0) lines.push('');

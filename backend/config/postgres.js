@@ -700,6 +700,18 @@ async function closeDatabase() {
 // (see isSoftDeleteEnabled in ./tableSchemas) — never called directly by
 // application code. `changes` is `{before, after}`; before=null on CREATE,
 // after=null on DELETE.
+// Password hashes, reset OTPs, tokens and secrets never go into the audit log
+// (anyone with audit-trail access could crack them offline).
+const AUDIT_SECRET_KEY = /password|otp|token|secret|credential|encrypted|apikey|api_key/i;
+
+function redactAuditChanges(value) {
+  if (Array.isArray(value)) return value.map(redactAuditChanges);
+  if (!value || typeof value !== 'object' || value instanceof Date) return value;
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => (
+    AUDIT_SECRET_KEY.test(key) && !/At$/.test(key) && item != null && item !== '' ? [key, '[redacted]'] : [key, redactAuditChanges(item)]
+  )));
+}
+
 async function writeAuditLog(database, { tableName, recordId, action, changes }, tx = null) {
   const auditRow = {
     id: crypto.randomUUID(),
@@ -707,7 +719,7 @@ async function writeAuditLog(database, { tableName, recordId, action, changes },
     recordId: String(recordId),
     action,
     actorUserId: getCurrentActorId(),
-    changes: JSON.stringify(changes),
+    changes: JSON.stringify(redactAuditChanges(changes)),
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
@@ -961,6 +973,7 @@ function getCacheStats() {
 
 module.exports = {
   closeDatabase,
+  redactAuditChanges,
   getCacheStats,
   pingDatabase,
   getDatabaseUrl,

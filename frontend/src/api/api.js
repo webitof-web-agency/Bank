@@ -5,34 +5,9 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? PRO
 const CACHE_PREFIX = 'bank-api-cache:v2';
 const CACHE_TTL_MS = 15 * 60 * 1000;
 const memoryCache = new Map();
-const AUTH_TOKEN_KEYS = ['bank-auth-token', 'webitof-auth-token'];
 
 function isBrowser() {
   return typeof window !== 'undefined';
-}
-
-function readStoredAuthToken() {
-  if (!isBrowser()) return '';
-  for (const key of AUTH_TOKEN_KEYS) {
-    const value = window.localStorage.getItem(key);
-    if (value) return value;
-  }
-  return '';
-}
-
-function appendFileAccessToken(url, token = '') {
-  const safeUrl = String(url || '').trim();
-  if (!safeUrl || safeUrl.includes('token=')) {
-    return safeUrl;
-  }
-
-  const accessToken = String(token || readStoredAuthToken() || '').trim();
-  if (!accessToken) {
-    return safeUrl;
-  }
-
-  const separator = safeUrl.includes('?') ? '&' : '?';
-  return `${safeUrl}${separator}token=${encodeURIComponent(accessToken)}`;
 }
 
 function getCacheKey(method, path, token) {
@@ -214,7 +189,39 @@ export const api = {
     markRead: (token, id) => request(`/notifications/${id}/read`, { method: 'PATCH', token }),
     markAllRead: (token) => request('/notifications/read-all', { method: 'PATCH', token }),
     remove: (token, id) => request(`/notifications/${id}`, { method: 'DELETE', token }),
-    streamUrl: (token) => `${API_BASE_URL}/notifications/stream?token=${encodeURIComponent(token || '')}`
+    // Live updates. The stream URL carries a short-lived, stream-only ticket,
+    // never the session token (URLs end up in proxy logs and history). A
+    // ticket expires, so a closed stream asks for a new one. Returns close().
+    openStream: (token, onMessage) => {
+      let source = null;
+      let retryTimer = null;
+      let stopped = false;
+      const retry = () => {
+        if (!stopped) retryTimer = window.setTimeout(connect, 30000);
+      };
+      async function connect() {
+        try {
+          const response = await request('/notifications/stream-ticket', { method: 'POST', token });
+          if (stopped) return;
+          source = new EventSource(`${API_BASE_URL}/notifications/stream?ticket=${encodeURIComponent(response.data?.ticket || '')}`);
+          source.onmessage = onMessage;
+          source.onerror = () => {
+            if (source.readyState === EventSource.CLOSED) {
+              source.close();
+              retry();
+            }
+          };
+        } catch {
+          retry();
+        }
+      }
+      connect();
+      return () => {
+        stopped = true;
+        window.clearTimeout(retryTimer);
+        if (source) source.close();
+      };
+    }
   },
   permissions: {
     list: (token) => request('/permissions/flat', { token }),
@@ -240,6 +247,7 @@ export const api = {
     recoveryDemandCandidates: (token, query = {}) => request(`/banking/transactions/recovery/demand-candidates${buildQuery(query)}`, { token, skipCache: true }),
     recoveryMemberOutstanding: (token, query = {}) => request(`/banking/transactions/recovery/member-outstanding${buildQuery(query)}`, { token, skipCache: true }),
     listTransactionVouchers: (token, query = {}) => request(`/banking/transactions/vouchers${buildQuery(query)}`, { token, skipCache: true }),
+    getMemberInterestDue: (token, query = {}) => request(`/banking/transactions/interest-due${buildQuery(query)}`, { token, skipCache: true }),
     getNextVoucherNo: (token, branchCode = '') => request(`/banking/transactions/vouchers/next?branchCode=${encodeURIComponent(branchCode)}`, { token, skipCache: true }),
     getTransactionVoucher: (token, id) => request(`/banking/transactions/vouchers/${id}`, { token, skipCache: true }),
     // The voucher's SMS as it stands now: { status, reason? } or null.
@@ -348,7 +356,9 @@ export const api = {
     createFolder: (token, payload) => request('/files/folders', { method: 'POST', token, body: payload }),
     renameFolder: (token, folderId, name) => request(`/files/folders/${folderId}`, { method: 'PUT', token, body: { name } }),
     deleteFolder: (token, folderId) => request(`/files/folders/${folderId}`, { method: 'DELETE', token }),
-    viewUrl: (id, token = readStoredAuthToken()) => appendFileAccessToken(`${API_BASE_URL}/files/${id}/view`, token)
+    // The server signs a file-only token into each file's viewUrl; prefer that.
+    // Never put the session token in a URL (it ends up in logs and history).
+    viewUrl: (id, signedUrl = '') => (signedUrl ? getImageUrl(signedUrl) : `${API_BASE_URL}/files/${id}/view`)
   },
   resources: {
     // One page of the list: { data, meta: { total, page, limit, summary } }.
@@ -388,9 +398,6 @@ export function getImageUrl(url) {
   if (url.startsWith('http')) return url;
   if (url.startsWith('/api')) {
     const base = API_BASE_URL.endsWith('/api') ? API_BASE_URL.slice(0, -4) : API_BASE_URL;
-    if (/^\/api\/files\/[^/]+\/view(?:\?.*)?$/i.test(url)) {
-      return appendFileAccessToken(`${base}${url}`);
-    }
     return `${base}${url}`;
   }
   return url;

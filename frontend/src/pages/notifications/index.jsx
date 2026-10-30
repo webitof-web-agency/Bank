@@ -98,40 +98,25 @@ function useNotificationStream(token, onChange) {
     if (!token) return undefined;
 
     let mounted = true;
-    let eventSource = null;
-    let fallbackTimer = null;
-
     const notify = () => {
       if (!mounted) return;
       onChange?.();
     };
 
-    try {
-      eventSource = new EventSource(api.notifications.streamUrl(token));
-      eventSource.onmessage = (event) => {
-        if (!mounted) return;
-        try {
-          const payload = JSON.parse(event.data || '{}');
-          if (payload?.type === 'connected') return;
-        } catch {
-          // Ignore malformed payloads and still refresh the inbox.
-        }
-        notify();
-      };
-      eventSource.onerror = () => {
-        if (!mounted) return;
-        if (eventSource?.readyState === EventSource.CLOSED) {
-          eventSource.close();
-        }
-      };
-    } catch {
-      fallbackTimer = window.setInterval(notify, 30000);
-    }
+    const closeStream = api.notifications.openStream(token, (event) => {
+      if (!mounted) return;
+      try {
+        const payload = JSON.parse(event.data || '{}');
+        if (payload?.type === 'connected') return;
+      } catch {
+        // Ignore malformed payloads and still refresh the inbox.
+      }
+      notify();
+    });
 
     return () => {
       mounted = false;
-      if (eventSource) eventSource.close();
-      if (fallbackTimer) window.clearInterval(fallbackTimer);
+      closeStream();
     };
   }, [onChange, token]);
 }

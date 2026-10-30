@@ -15,7 +15,7 @@ class LocalStorageProvider {
     const absolutePath = path.resolve(this.uploadDir, normalizedKey);
     
     const rootPath = path.resolve(this.uploadDir);
-    if (!absolutePath.startsWith(rootPath)) {
+    if (absolutePath !== rootPath && !absolutePath.startsWith(rootPath + path.sep)) {
       throw new Error('Path traversal detected');
     }
     

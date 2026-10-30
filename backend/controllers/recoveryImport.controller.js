@@ -54,7 +54,7 @@ async function getBatches(req, res) {
     res.json({ success: true, data: batches });
   } catch (error) {
     console.error('Error in getBatches:', error);
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({ success: false, error: 'Could not load the import batches' });
   }
 }
 
@@ -68,7 +68,7 @@ async function getBatchRows(req, res) {
     res.json({ success: true, data: { batch, rows } });
   } catch (error) {
     console.error('Error in getBatchRows:', error);
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({ success: false, error: 'Could not load the import batches' });
   }
 }
 

@@ -359,7 +359,7 @@ export function FileBrowser({
                               if (allowSelect) onSelectFile?.(file);
                               else if (selectable) onSelectionChange(isSelected ? selectedIds.filter((id) => id !== file.id) : [...selectedIds, file.id]);
                               else if (onViewFile) onViewFile(file);
-                              else window.open(api.files.viewUrl(file.id), '_blank');
+                              else window.open(api.files.viewUrl(file.id, file.viewUrl), '_blank');
                             }}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter' || e.key === ' ') {
@@ -367,7 +367,7 @@ export function FileBrowser({
                                 if (allowSelect) onSelectFile?.(file);
                                 else if (selectable) onSelectionChange(isSelected ? selectedIds.filter((id) => id !== file.id) : [...selectedIds, file.id]);
                                 else if (onViewFile) onViewFile(file);
-                                else window.open(api.files.viewUrl(file.id), '_blank');
+                                else window.open(api.files.viewUrl(file.id, file.viewUrl), '_blank');
                               }
                             }}
                             className={cn(
@@ -377,7 +377,7 @@ export function FileBrowser({
                           >
                             <div className="flex h-32 items-center justify-center overflow-hidden rounded-xl bg-slate-50">
                               {preview ? (
-                                <img src={api.files.viewUrl(file.id)} alt={file.originalName} className="h-full w-full object-cover" />
+                                <img src={api.files.viewUrl(file.id, file.viewUrl)} alt={file.originalName} className="h-full w-full object-cover" />
                               ) : (
                                 <Icon size={34} className="text-slate-400" />
                               )}
@@ -432,7 +432,7 @@ export function FileBrowser({
                                 if (allowSelect) onSelectFile?.(file);
                                 else if (selectable) onSelectionChange(isSelected ? selectedIds.filter((id) => id !== file.id) : [...selectedIds, file.id]);
                                 else if (onViewFile) onViewFile(file);
-                                else window.open(api.files.viewUrl(file.id), '_blank');
+                                else window.open(api.files.viewUrl(file.id, file.viewUrl), '_blank');
                               }}
                               className={cn('cursor-pointer transition hover:bg-slate-50', isSelected && 'bg-[color-mix(in_srgb,var(--primary)_6%,white)]')}
                             >
