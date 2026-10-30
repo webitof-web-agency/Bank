@@ -113,6 +113,29 @@ async function getCounterLedger(voucher, tx) {
     : getPaymentLedger(voucher, tx);
 }
 
+// Payment Voucher / Receipt Voucher (legacy TransType 18 / 19): one ledger
+// (legacy's ParticularAccID), debited by a Payment and credited by a Receipt.
+// Pay mode Cash-In-Hand: Cash-in-Hand takes the other side, as legacy posts it.
+// Cheque: legacy posts it one-sided (PayModeAccID 0) and enters the bank side
+// as a second voucher (a Cheque Issue on the Bank Saving A/c, or a Receipt
+// Voucher from the bank), so here it goes to the Transfer Adjustment account.
+async function buildGeneralVoucherLines(voucher, tx, kind) {
+  const amount = Number((Number(voucher.amount) || 0).toFixed(2));
+  if (!(amount > 0)) throw new PostingError('Enter the amount.', 'FAILURE');
+  const code = String(voucher.partyCode || '').trim().toUpperCase();
+  if (!code) throw new PostingError('Select the ledger.', 'FAILURE');
+  const ledger = (await Ledger.find({ code }).tx(tx).exec())[0];
+  if (!ledger) throw new PostingError(`Ledger ${code} was not found.`, 'FAILURE');
+  const ledgerId = ledger.id || ledger._id;
+  const counterId = await getCounterLedger(voucher, tx);
+  if (String(ledgerId) === String(counterId)) throw new PostingError(`Choose another ledger: ${ledger.name} is the pay mode account itself.`, 'FAILURE');
+  const payment = kind === 'payment';
+  return [
+    { ledgerId, dr: payment ? amount : 0, cr: payment ? 0 : amount },
+    { ledgerId: counterId, dr: payment ? 0 : amount, cr: payment ? amount : 0 }
+  ];
+}
+
 // Member interest vouchers (legacy TransType 20 / 21): the A/C picks the
 // head and its interest ledger, by name as the migrated ledgers carry them.
 const MEMBER_INTEREST_HEADS = {
@@ -413,6 +436,14 @@ const POSTING_REGISTRY = {
   'transfer-voucher-receipt': {
     status: 'PROVEN',
     build: (voucher, { tx }) => buildTransferLedgerLines(voucher, tx, 'receipt')
+  },
+  'payment-voucher': {
+    status: 'PROVEN',
+    build: (voucher, { tx }) => buildGeneralVoucherLines(voucher, tx, 'payment')
+  },
+  'receipt-voucher': {
+    status: 'PROVEN',
+    build: (voucher, { tx }) => buildGeneralVoucherLines(voucher, tx, 'receipt')
   }
 };
 

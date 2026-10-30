@@ -219,3 +219,40 @@ test('Cache test - tx operations bypass cache until commit', async () => {
   const cacheAfterRollback = getCachedRows('vouchers').find(v => v.voucherNo === testVoucherNo);
   assert.equal(cacheAfterRollback, undefined);
 });
+
+// Payment / Receipt Voucher (legacy TransType 18 / 19): the ledger Dr / Cr,
+// Cash-in-Hand the other side in cash; a cheque is one-sided in legacy, so its
+// other side is the Transfer Adjustment account.
+async function generalVoucherLedgers() {
+  await initializeDatabase();
+  if (!(await Ledger.findOne({ code: 'TEST-PV-EXP' }))) await Ledger.create({ code: 'TEST-PV-EXP', name: 'Test Contingent A/c' });
+  return {
+    cash: await Ledger.findOne({ semanticRole: ACCOUNTING_ROLES.CASH }),
+    adjustment: await Ledger.findOne({ semanticRole: ACCOUNTING_ROLES.TRANSFER_ADJUSTMENT }),
+    expense: await Ledger.findOne({ code: 'TEST-PV-EXP' })
+  };
+}
+
+const sides = (lines) => lines.map((l) => [l.ledgerId, l.debitAmount, l.creditAmount]);
+
+test('Payment Voucher - ledger Dr; Cash-In-Hand Cr in cash, Transfer Adjustment Cr by cheque', async () => {
+  const { cash, adjustment, expense } = await generalVoucherLedgers();
+  const voucher = { voucherNo: 'PV-1', amount: 280, partyCode: expense.code, details: { key: 'payment-voucher' } };
+  assert.deepEqual(sides(await buildJournalLinesForVoucher({ ...voucher, mode: 'Cash-In-Hand' })), [[String(expense.id), 280, 0], [String(cash.id), 0, 280]]);
+  assert.deepEqual(sides(await buildJournalLinesForVoucher({ ...voucher, mode: 'Cheque' })), [[String(expense.id), 280, 0], [String(adjustment.id), 0, 280]]);
+});
+
+test('Receipt Voucher - ledger Cr; Cash-In-Hand Dr in cash, Transfer Adjustment Dr by cheque', async () => {
+  const { cash, adjustment, expense } = await generalVoucherLedgers();
+  const voucher = { voucherNo: 'RV-1', amount: 500, partyCode: expense.code, details: { key: 'receipt-voucher' } };
+  assert.deepEqual(sides(await buildJournalLinesForVoucher({ ...voucher, mode: 'Cash-In-Hand' })), [[String(expense.id), 0, 500], [String(cash.id), 500, 0]]);
+  assert.deepEqual(sides(await buildJournalLinesForVoucher({ ...voucher, mode: 'Cheque' })), [[String(expense.id), 0, 500], [String(adjustment.id), 500, 0]]);
+});
+
+test('Payment / Receipt Voucher - refuse no ledger, no amount, or the pay mode ledger itself', async () => {
+  const { cash, expense } = await generalVoucherLedgers();
+  const base = { voucherNo: 'PV-2', amount: 100, mode: 'Cash-In-Hand', details: { key: 'payment-voucher' } };
+  await assert.rejects(buildJournalLinesForVoucher(base), /ledger/);
+  await assert.rejects(buildJournalLinesForVoucher({ ...base, partyCode: expense.code, amount: 0 }), /amount/);
+  await assert.rejects(buildJournalLinesForVoucher({ ...base, partyCode: cash.code }), /pay mode account/);
+});

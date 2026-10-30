@@ -6678,7 +6678,7 @@ function recoveryLineRows(lines, voucherId, voucherNo) {
 // mode on the member forms. Without a date a voucher drops out of every
 // date-based report (Day Book, Cash Book, ledgers), so it is refused here,
 // whatever screen or API call sends it.
-const MODE_REQUIRED_KEYS = new Set(['loan-paid-member', 'deposit-paid-member', 'insurance-paid-member', 'ssa-paid-member', RECOVERY_KEY]);
+const MODE_REQUIRED_KEYS = new Set(['loan-paid-member', 'deposit-paid-member', 'insurance-paid-member', 'ssa-paid-member', 'payment-voucher', 'receipt-voucher', RECOVERY_KEY]);
 
 // `submitted` is the request as sent: normalizeVoucher fills an empty mode
 // with the catalog's description ("Cash / Transfer", "Cash / Cheque"), which

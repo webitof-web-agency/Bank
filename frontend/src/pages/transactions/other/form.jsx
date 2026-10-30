@@ -303,6 +303,9 @@ function setDetailsValue(setValue, path, nextValue) {
   });
 }
 
+// Legacy Paymode of a Payment / Receipt Voucher.
+const PAY_MODES = ['Cash-In-Hand', 'Cheque'];
+
 function setRootValue(setValue, key, nextValue) {
   setValue((current) => ({
     ...(current || {}),
@@ -352,6 +355,7 @@ export function OtherTransactionForm({ section, lookups = {}, value, setValue, o
   const partyType = value?.partyType || derivedPartyType;
   const partyGroups = useMemo(() => getPartyGroupsForSelection(partyType, lookups), [lookups, partyType]);
   const accountGroups = useMemo(() => getPartyGroupsForSelection('ledger', lookups), [lookups]);
+  const ledgerGroups = useMemo(() => buildGroups(lookups.ledgers, 'Ledgers'), [lookups]);
   const branches = Array.isArray(lookups.branches) ? lookups.branches : [];
   const members = Array.isArray(lookups.members) ? lookups.members : [];
   const employees = Array.isArray(lookups.employees) ? lookups.employees : [];
@@ -419,52 +423,48 @@ export function OtherTransactionForm({ section, lookups = {}, value, setValue, o
                 />
               </div>
 
-              {activeKey === 'payment-voucher' ? (
-                <>
+              {/* Legacy Payment / Receipt Voucher: one ledger (the particular),
+                  paid in Cash-In-Hand or by Cheque. */}
+              <div className="space-y-1.5">
+                <FieldLabel required>{activeKey === 'payment-voucher' ? 'Payment To (Ledger)' : 'Receipt From (Ledger)'}</FieldLabel>
+                <LookupSelect
+                  label=""
+                  value={value.partyCode || ''}
+                  onChange={(next) => setRootValue(setValue, 'partyCode', next.toUpperCase())}
+                  placeholder="Search or select ledger"
+                  groups={ledgerGroups}
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <FieldLabel required>Pay Mode</FieldLabel>
+                <CustomSelect
+                  value={PAY_MODES.includes(value.mode) ? value.mode : ''}
+                  onChange={(next) => setRootValue(setValue, 'mode', next)}
+                  placeholder="Select mode"
+                  options={PAY_MODES.map((mode) => ({ value: mode, label: mode }))}
+                />
+              </div>
+
+              {value.mode === 'Cheque' && (
+                <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-1.5">
-                    <FieldLabel required>Payment By</FieldLabel>
-                    <LookupSelect
-                      label=""
-                      value={value.partyCode || ''}
-                      onChange={(next) => setRootValue(setValue, 'partyCode', next.toUpperCase())}
-                      placeholder="Search or select ledger"
-                      groups={accountGroups}
+                    <FieldLabel>Cheque No</FieldLabel>
+                    <Input
+                      value={value.instrumentNo || ''}
+                      onChange={(e) => setRootValue(setValue, 'instrumentNo', e.target.value)}
+                      placeholder="Cheque number"
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <FieldLabel required>Payment To</FieldLabel>
-                    <LookupSelect
-                      label=""
-                      value={value.details?.ledgerTarget || ''}
-                      onChange={(next) => updateDetails('ledgerTarget', next.toUpperCase())}
-                      placeholder="Search or select ledger"
-                      groups={accountGroups}
+                    <FieldLabel>Cheque Date</FieldLabel>
+                    <Input
+                      type="date"
+                      value={value.instrumentDate || ''}
+                      onChange={(e) => setRootValue(setValue, 'instrumentDate', e.target.value)}
                     />
                   </div>
-                </>
-              ) : (
-                <>
-                  <div className="space-y-1.5">
-                    <FieldLabel required>Receipt By</FieldLabel>
-                    <LookupSelect
-                      label=""
-                      value={value.details?.receiptBy || ''}
-                      onChange={(next) => updateDetails('receiptBy', next.toUpperCase())}
-                      placeholder="Search or select ledger"
-                      groups={accountGroups}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <FieldLabel required>Receipt To</FieldLabel>
-                    <LookupSelect
-                      label=""
-                      value={value.partyCode || ''}
-                      onChange={(next) => setRootValue(setValue, 'partyCode', next.toUpperCase())}
-                      placeholder="Search or select ledger"
-                      groups={accountGroups}
-                    />
-                  </div>
-                </>
+                </div>
               )}
 
               <div className="space-y-1.5">
