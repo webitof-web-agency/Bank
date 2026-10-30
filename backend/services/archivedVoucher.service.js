@@ -238,17 +238,39 @@ function enteredByOf(type) {
   return type === 5 ? 'lines' : HEADS_BY_TYPE[type] ? 'heads' : 'total';
 }
 
-const TYPE_LABELS = { 1: 'Loan Paid to Member', 3: 'SSA Paid to Member', 5: 'Recovery From Member', 8: 'Deposit in Bank', 9: 'Cheque Issue' };
+const TYPE_LABELS = {
+  1: 'Loan Paid to Member',
+  3: 'SSA Paid to Member',
+  5: 'Recovery From Member',
+  6: 'Loan Receive By Cash-Credit A/c',
+  8: 'Deposit In Bank',
+  9: 'Cheque Issue',
+  14: 'Transfer Voucher Paid to Member',
+  16: 'Transfer Voucher Payment',
+  17: 'Transfer Voucher Receipt',
+  18: 'Payment Voucher'
+};
 
+// Pairs that share a cheque no. and amount.
 const PARTNER_TYPES = { 1: [9], 3: [9], 9: [1, 3], 5: [8], 8: [5] };
+
+// Pairs legacy entered on the same day for the same amount without a shared
+// cheque no. (checked in every FY database): a cash-credit draw and its
+// Deposit in Bank to savings (6 + 8); a Cheque Issue from savings and the
+// voucher it pays: a Payment Voucher, a transfer voucher (settlement, PF),
+// or a Deposit in Bank to the cash credit (9 + 18 / 17 / 16 / 14 / 8).
+const DATE_PARTNER_TYPES = { 6: [8], 8: [6, 9], 9: [8, 14, 16, 17, 18], 14: [9], 16: [9], 17: [9], 18: [9] };
 
 // The voucher's other side, when it can be found. In the old software only a
 // cash voucher balances on its own (it carries the cash leg); a cheque / DD
-// voucher has no pay-mode leg, and its bank side is a separate voucher with
-// the same cheque no. and amount — a Loan / SSA Paid by cheque and its Cheque
-// Issue, a recovery by DD and its Deposit in Bank. Only a single match counts.
-async function findPartner(tx, row, raw, options = {}) {
-  if (legacyNumber(raw.PayModeAccID) > 0) return null;
+// voucher has no pay-mode leg, and its bank side is a separate voucher: with
+// the same cheque no. and amount (a Loan / SSA Paid by cheque and its Cheque
+// Issue, a recovery by DD and its Deposit in Bank), else on the same day for
+// the same amount (DATE_PARTNER_TYPES). Only a single match counts, and a
+// same-day match never takes a voucher that has its own cheque partner.
+// `matchedBy` says which, so an edit copies the cheque no. only to a cheque
+// partner.
+async function findChequePartner(tx, row, raw, options = {}) {
   const cheque = String(raw.ChequeNo ?? '').trim();
   if (!cheque) return null;
   const { rows } = await tx.query(
@@ -262,9 +284,37 @@ async function findPartner(tx, row, raw, options = {}) {
   if (rows.length !== 1) return null;
   const partner = await loadArchived(tx, rows[0].id, options);
   // Only the real pairs: a voucher of another type with the same cheque no.
-  // and amount is not this one's other side (and editing it here would skip
-  // that type's own permission).
+  // and amount is not this one's other side.
   return partner && (PARTNER_TYPES[typeOf(row)] || []).includes(typeOf(partner.row)) ? partner : null;
+}
+
+async function findPartner(tx, row, raw, options = {}) {
+  if (legacyNumber(raw.PayModeAccID) > 0) return null;
+  const byCheque = await findChequePartner(tx, row, raw, options);
+  if (byCheque) return { ...byCheque, matchedBy: 'cheque' };
+  const types = DATE_PARTNER_TYPES[typeOf(row)];
+  const day = String(raw.VoucherDate ?? '').slice(0, 10);
+  if (!types || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
+  const { rows } = await tx.query(
+    `SELECT id FROM legacy_historical_vouchers
+     WHERE "sourceDatabase" = $1 AND id <> $2
+       AND "voucherCategory" = ANY($3::text[])
+       AND left(payload->'raw'->>'VoucherDate', 10) = $4
+       AND (payload->'raw'->>'TotalAmt')::numeric = $5::numeric
+       AND coalesce((payload->'raw'->>'PayModeAccID')::numeric, 0) = 0`,
+    [row.sourceDatabase, row.id, types.map(String), day, legacyNumber(raw.TotalAmt)]
+  );
+  if (rows.length !== 1) return null;
+  const partner = await loadArchived(tx, rows[0].id, options);
+  if (!partner || await findChequePartner(tx, partner.row, partner.raw)) return null;
+  return { ...partner, matchedBy: 'date' };
+}
+
+// A partner on a page the user may not change is left alone (the edit then
+// asks to confirm the Trial Balance difference, as with no partner).
+async function partnerIfAllowed(partner, meta, action) {
+  if (!partner || typeof meta.mayChangePartner !== 'function') return partner;
+  return (await meta.mayChangePartner(partner.row, action)) ? partner : null;
 }
 
 function partnerInfo(partner) {
@@ -276,7 +326,9 @@ function partnerInfo(partner) {
     transType: type,
     label: TYPE_LABELS[type] || `voucher type ${type}`,
     // Its amount follows an edit only when it is entered by its total.
-    followsAmount: enteredByOf(type) === 'total'
+    followsAmount: enteredByOf(type) === 'total',
+    // 'cheque' (same cheque no.) or 'date' (same day and amount).
+    matchedBy: partner.matchedBy || 'cheque'
   };
 }
 
@@ -314,7 +366,7 @@ function imbalanceError(amount, action) {
 }
 
 // For the edit dialog: the fields the voucher is entered with.
-async function getArchivedVoucher(id) {
+async function getArchivedVoucher(id, meta = {}) {
   const { initializeDatabase } = require('../config/postgres');
   const database = await initializeDatabase();
   const found = await loadArchived(database, id);
@@ -325,7 +377,7 @@ async function getArchivedVoucher(id) {
     ? new Map((await database.query('SELECT code, name FROM members WHERE code = ANY($1)', [lines.map((line) => line.memberCode)])).rows.map((m) => [m.code, m.name]))
     : new Map();
   const range = fyRangeOf(row.sourceDatabase);
-  const partner = await findPartner(database, row, raw);
+  const partner = await partnerIfAllowed(await findPartner(database, row, raw), meta, 'edit');
   return {
     id: `legacy:${row.id}`,
     // A cash voucher balances on its own; otherwise its other side, if found.
@@ -429,10 +481,13 @@ async function updateArchivedVoucher(id, input = {}, meta = {}) {
 
     // Its other side follows the date and cheque, and the amount when that
     // voucher is entered by its total (a Cheque Issue, a Deposit in Bank).
-    const partner = await findPartner(tx, row, raw, { lock: true });
+    const partner = await partnerIfAllowed(await findPartner(tx, row, raw, { lock: true }), meta, 'edit');
     let partnerRaw = null;
     if (partner) {
-      partnerRaw = { ...partner.raw, VoucherDate: next.raw.VoucherDate, ChequeNo: next.raw.ChequeNo, ChequeDate: next.raw.ChequeDate };
+      // A same-day partner keeps its own cheque no.
+      partnerRaw = partner.matchedBy === 'cheque'
+        ? { ...partner.raw, VoucherDate: next.raw.VoucherDate, ChequeNo: next.raw.ChequeNo, ChequeDate: next.raw.ChequeDate }
+        : { ...partner.raw, VoucherDate: next.raw.VoucherDate };
       if (enteredByOf(typeOf(partner.row)) === 'total') partnerRaw.TotalAmt = next.raw.TotalAmt;
       const partnerType = typeOf(partner.row);
       delta = sumDeltas(delta, deltaOf(effectOf(partnerType, partner.raw, partner.lines, parties), effectOf(partnerType, partnerRaw, partner.lines, parties)));
@@ -500,7 +555,7 @@ async function deleteArchivedVoucher(id, meta = {}, { acceptImbalance = false } 
     const found = await loadArchived(tx, id, { lock: true });
     if (!found) return false;
     await fyLock.assertDatesOpen([fyRangeOf(found.row.sourceDatabase)?.from]);
-    const partner = await findPartner(tx, found.row, found.raw, { lock: true });
+    const partner = await partnerIfAllowed(await findPartner(tx, found.row, found.raw, { lock: true }), meta, 'delete');
 
     const parties = await loadParties(tx, found.row.sourceDatabase);
     const nothing = { members: new Map(), employees: new Map(), ledgers: new Map() };

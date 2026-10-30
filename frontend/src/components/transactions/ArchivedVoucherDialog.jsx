@@ -175,7 +175,9 @@ export function ArchivedVoucherDialog({ voucher, onClose, onSaved }) {
           ) : null}
           {data.editable && data.partner ? (
             <p className="rounded-lg bg-blue-50 px-3 py-2 text-[13px] text-blue-800">
-              Its other side is {data.partner.label} voucher {data.partner.voucherNo} (same cheque): it takes the new date and cheque{data.partner.followsAmount ? ' and amount' : ''} too.
+              {data.partner.matchedBy === 'date'
+                ? <>Its other side is {data.partner.label} voucher {data.partner.voucherNo} (same day and amount): it takes the new date{data.partner.followsAmount ? ' and amount' : ''} too.</>
+                : <>Its other side is {data.partner.label} voucher {data.partner.voucherNo} (same cheque): it takes the new date and cheque{data.partner.followsAmount ? ' and amount' : ''} too.</>}
               {data.partner.followsAmount ? '' : ' Its amount is entered by heads, so change it there as well.'}
             </p>
           ) : null}

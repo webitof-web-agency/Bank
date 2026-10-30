@@ -20,6 +20,15 @@ function canVoucher(user, voucher, action) {
   return hasPermission(user, action === 'view' ? 'transactions.read' : 'transactions.write');
 }
 
+// For an archived voucher's partner (archivedVoucher.service): whether this
+// user may also change that voucher's type, which is often another page's.
+function partnerPermission(user) {
+  return async (partnerRow, action) => {
+    const partner = await bankingService.getHistoricalVoucherById(String(partnerRow.id), user || {});
+    return Boolean(partner) && canVoucher(user || {}, partner, action);
+  };
+}
+
 function voucherForbidden(res, action) {
   const verb = { view: 'view', create: 'create', edit: 'edit', delete: 'delete' }[action] || action;
   return res.status(403).json({ success: false, message: `You do not have permission to ${verb} this type of voucher.` });
@@ -311,7 +320,7 @@ const transactions = {
         : null;
       if (!current) return res.status(404).json({ success: false, message: 'Voucher not found' });
       if (!canVoucher(req.user || {}, current, 'view')) return voucherForbidden(res, 'view');
-      res.json({ success: true, data: await archivedVoucherService.getArchivedVoucher(req.params.id) });
+      res.json({ success: true, data: await archivedVoucherService.getArchivedVoucher(req.params.id, { mayChangePartner: partnerPermission(req.user) }) });
     } catch (error) {
       next(error);
     }
@@ -323,7 +332,7 @@ const transactions = {
         const current = await bankingService.getHistoricalVoucherById(req.params.id.slice('legacy:'.length), req.user || {});
         if (!current) return res.status(404).json({ success: false, message: 'Voucher not found' });
         if (!canVoucher(req.user || {}, current, 'edit')) return voucherForbidden(res, 'edit');
-        const record = await archivedVoucherService.updateArchivedVoucher(req.params.id, req.body || {}, { actorUserId: req.user?.id || null, actorUser: req.user || null });
+        const record = await archivedVoucherService.updateArchivedVoucher(req.params.id, req.body || {}, { actorUserId: req.user?.id || null, actorUser: req.user || null, mayChangePartner: partnerPermission(req.user) });
         return res.json({ success: true, data: record });
       }
       const current = await bankingService.findVoucherForAccess(req.params.id);
@@ -352,7 +361,7 @@ const transactions = {
         if (!canVoucher(req.user || {}, current, 'delete')) return voucherForbidden(res, 'delete');
         const removed = await archivedVoucherService.deleteArchivedVoucher(
           req.params.id,
-          { actorUserId: req.user?.id || null, actorUser: req.user || null },
+          { actorUserId: req.user?.id || null, actorUser: req.user || null, mayChangePartner: partnerPermission(req.user) },
           { acceptImbalance: req.query.acceptImbalance === '1' }
         );
         return res.json({ success: true, message: removed?.partner ? `Deleted, with its ${removed.partner.label} voucher ${removed.partner.voucherNo}` : 'Deleted successfully', data: removed });
