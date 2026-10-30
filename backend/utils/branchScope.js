@@ -10,8 +10,7 @@ const BRANCH_SCOPED_RESOURCES = new Set([
   'members',
   'demandLists',
   'noInterestMembers',
-  'vouchers',
-  'bankTransactions'
+  'vouchers'
 ]);
 
 function cleanUpper(value) {

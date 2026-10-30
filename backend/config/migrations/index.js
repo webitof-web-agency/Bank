@@ -312,6 +312,20 @@ const MIGRATIONS = [
       );
       return { code: String(next), created: true };
     }
+  },
+  {
+    // The bank_transactions table had no screen, no API caller and no rows:
+    // the Bank pages save vouchers (posted to the ledgers like every other
+    // voucher). Dropped only while it is empty; one holding rows is kept.
+    name: '2026-10-30-drop-unused-bank-transactions',
+    async run(db) {
+      const exists = (await db.query(`SELECT to_regclass('public.bank_transactions') IS NOT NULL AS ok`)).rows[0].ok;
+      if (!exists) return { dropped: false, reason: 'absent' };
+      const rows = (await db.query('SELECT count(*)::int AS n FROM bank_transactions')).rows[0].n;
+      if (rows > 0) return { dropped: false, kept: rows };
+      await db.query('DROP TABLE bank_transactions');
+      return { dropped: true };
+    }
   }
 ];
 

@@ -7,7 +7,6 @@ const { getPasswordHashRounds } = require('../config/security');
 const { ACCOUNTING_ROLES } = require('../config/accountingConstants');
 const {
   BANK_ACCOUNT_SEEDS,
-  BANK_TRANSACTION_SEEDS,
   BRANCH_SEEDS,
   COMMITTEE_SEED,
   COMMITTEE_DIRECTOR_SEEDS,
@@ -25,7 +24,6 @@ const {
 } = require('../config/bankingSeed');
 const {
   BankAccount,
-  BankTransaction,
   Branch,
   Committee,
   CommitteeDirector,
@@ -358,11 +356,6 @@ function summarizeRecord(resource, record = {}) {
               code: record.code || '',
               name: record.bankName || ''
             }
-          : resource === 'bankTransactions'
-            ? {
-                code: record.transactionNo || '',
-                name: record.transactionType || ''
-              }
             : resource === 'vouchers'
               ? {
                   code: record.voucherNo || '',
@@ -471,14 +464,6 @@ function getResourceMeta(resource) {
       severity: 'medium',
       listUrl: '/app/master/no-interest-members',
       detailUrl: (record) => `/app/master/no-interest-members/${record.id}`
-    },
-    bankTransactions: {
-      label: 'Bank Transaction',
-      module: 'transactions',
-      type: 'transaction',
-      severity: 'high',
-      listUrl: '/app/transactions/bank',
-      detailUrl: (record) => `/app/transactions/bank/${record.id}`
     }
   };
 
@@ -587,34 +572,6 @@ function buildVoucherNotificationPayload(action, voucher = {}, meta = {}) {
     }
   };
 }
-
-function buildBankTransactionNotificationPayload(action, transaction = {}, meta = {}) {
-  const actionLabel = action === 'created' ? 'created' : action === 'deleted' ? 'deleted' : action === 'updated' ? 'updated' : action;
-  const summary = summarizeRecord('bankTransactions', transaction);
-  const actionUrl = action === 'deleted' ? '/app/transactions/bank' : `/app/transactions/bank/${transaction.id}`;
-
-  return {
-    title: `Bank Transaction ${titleCase(actionLabel)}`,
-    message: `Bank transaction ${summary} was ${humanizeLabel(actionLabel)}.`,
-    type: 'transaction',
-    severity: action === 'deleted' ? 'high' : 'medium',
-    module: 'transactions',
-    action: actionLabel,
-    actionUrl,
-    entityType: 'Bank Transaction',
-    entityId: transaction.id || transaction._id || '',
-    entityCode: transaction.transactionNo || '',
-    actorUserId: meta.actorUserId || null,
-    payload: {
-      bankAccountCode: transaction.bankAccountCode || '',
-      transactionType: transaction.transactionType || '',
-      amount: toNumber(transaction.amount, 0),
-      status: transaction.status || ''
-    }
-  };
-}
-
-
 
 function getEmployeePasswordHash(data = {}) {
   // No shared default: without a password the login gets a random one
@@ -1388,27 +1345,6 @@ const RESOURCE_DEFS = {
       };
     }
   },
-  bankTransactions: {
-    model: BankTransaction,
-    searchFields: ['transactionNo', 'bankAccountCode', 'transactionType', 'branchCode', 'linkedClientCode', 'linkedProjectCode', 'linkedInvoiceNo', 'linkedExpenseCode', 'notes', 'voucherNo'],
-    normalize(data = {}) {
-      return {
-        transactionNo: cleanUpper(data.transactionNo),
-        date: cleanText(data.date),
-        bankAccountCode: cleanUpper(data.bankAccountCode),
-        transactionType: cleanText(data.transactionType),
-        amount: toNumber(data.amount, 0),
-        branchCode: cleanUpper(data.branchCode),
-        linkedClientCode: cleanText(data.linkedClientCode),
-        linkedProjectCode: cleanText(data.linkedProjectCode),
-        linkedInvoiceNo: cleanText(data.linkedInvoiceNo),
-        linkedExpenseCode: cleanText(data.linkedExpenseCode),
-        notes: cleanText(data.notes),
-        voucherNo: cleanUpper(data.voucherNo),
-        payload: toMixed(data.payload, {})
-      };
-    }
-  },
   demandLists: {
     model: DemandList,
     searchFields: ['demandListNo', 'month', 'branchCode', 'status', 'remarks'],
@@ -1556,7 +1492,6 @@ async function seedBankingData() {
   await syncSequence('demand_lists', 'demandListNo');
   await syncSequence('no_interest_members', 'code');
   await syncSequence('vouchers', 'voucherNo');
-  await syncSequence('bank_transactions', 'transactionNo');
 
   console.log('Default data seeding completed successfully');
   return true;
@@ -1630,12 +1565,6 @@ async function getResource(resource, id, user = {}) {
   return toResponse(record);
 }
 
-// Bank transactions are accounting entries: none may be written, changed,
-// deleted or restored in a closed FY.
-async function assertResourceDatesOpen(resource, dates = []) {
-  if (resource === 'bankTransactions') await fyLock.assertDatesOpen(dates);
-}
-
 // A branch's head office must be a branch marked as head office (not the
 // branch itself); a head office still linked to branches can't be unmarked.
 async function assertBranchHeadOffice(payload = {}, ownId = null) {
@@ -1679,12 +1608,10 @@ async function createResource(resource, data = {}, meta = {}) {
   if (isBranchScopedResource(resource)) {
     payload.branchCode = resolveBranchCode(actorUser, payload.branchCode);
   }
-  await assertResourceDatesOpen(resource, [payload.date]);
   
   const getSequenceField = () => {
     if (['members', 'employees', 'branches', 'ledgers', 'bankAccounts', 'noInterestMembers'].includes(resource)) return 'code';
     if (resource === 'vouchers') return 'voucherNo';
-    if (resource === 'bankTransactions') return 'transactionNo';
     if (resource === 'demandLists') return 'demandListNo';
     return null;
   };
@@ -1692,7 +1619,6 @@ async function createResource(resource, data = {}, meta = {}) {
   const sequenceField = getSequenceField();
   if (sequenceField && !payload[sequenceField]) {
     const tableName = resource === 'bankAccounts' ? 'bank_accounts' 
-                    : resource === 'bankTransactions' ? 'bank_transactions'
                     : resource === 'demandLists' ? 'demand_lists'
                     : resource === 'noInterestMembers' ? 'no_interest_members'
                     : resource;
@@ -1866,7 +1792,6 @@ async function updateResource(resource, id, data = {}, meta = {}) {
   if (!current || !canAccessBranchRecord(resource, current.toObject(), actorUser)) return null;
   const payload = def.normalize ? def.normalize({ ...current.toObject(), ...data }) : clone({ ...current.toObject(), ...data });
   if (resource === 'branches') await assertBranchHeadOffice(payload, id);
-  await assertResourceDatesOpen(resource, [current.date, payload.date]);
   if (isBranchScopedResource(resource)) {
     payload.branchCode = resolveBranchCode(actorUser, current.branchCode);
   }
@@ -1906,7 +1831,6 @@ async function deleteResource(resource, id, meta = {}) {
 
   const current = await def.model.findById(id).lean();
   if (!current || !canAccessBranchRecord(resource, current, actorUser)) return false;
-  await assertResourceDatesOpen(resource, [current.date]);
   if (resource === 'members') {
     await deleteDocumentFiles(current.documents || {});
     if (current.photoFileId) {
@@ -1923,7 +1847,7 @@ async function deleteResource(resource, id, meta = {}) {
 }
 
 // Un-deletes a row soft-deleted by deleteResource (or by the generic
-// deleteVoucher/deleteBankTransaction/deleteUser/deleteRole paths, which all
+// deleteVoucher/deleteUser/deleteRole paths, which all
 // route through the same deleteMainRow — see config/postgres.js). Mirrors
 // deleteResource's shape/branch-access checks.
 async function restoreResource(resource, id, meta = {}) {
@@ -1946,7 +1870,6 @@ async function restoreResource(resource, id, meta = {}) {
   const current = await def.model.findById(id).withDeleted().lean();
   if (!current || !current.deletedAt) return false;
   if (!canAccessBranchRecord(resource, current, actorUser)) return false;
-  await assertResourceDatesOpen(resource, [current.date]);
 
   const restored = await restoreMainRow(def.model._tableName, id);
   if (!restored) return false;
@@ -3272,30 +3195,6 @@ async function getCachedResourceRows(resource, user = {}, options = {}) {
   return { rows, searchFields: def.searchFields || [] };
 }
 
-async function buildBankTransactionRows(filter = {}) {
-  const query = {};
-  if (filter.search) {
-    Object.assign(query, buildSearchQuery(RESOURCE_DEFS.bankTransactions.searchFields, filter.search));
-  }
-  if (filter.status) {
-    query.status = cleanText(filter.status);
-  }
-  if (filter.bankAccountCode) {
-    query.bankAccountCode = cleanUpper(filter.bankAccountCode);
-  }
-  const branchCode = resolveBranchCode(filter.user, filter.branchCode);
-  if (branchCode) {
-    query.branchCode = branchCode;
-  }
-  if (filter.dateFrom || filter.dateTo) {
-    query.date = {};
-    if (filter.dateFrom) query.date.$gte = cleanText(filter.dateFrom);
-    if (filter.dateTo) query.date.$lte = cleanText(filter.dateTo);
-  }
-
-  const rows = await BankTransaction.find(query).sort({ date: -1, createdAt: -1 }).lean();
-  return rows.map((row) => toResponse(row));
-}
 function getPartyMemberCode(voucher) {
   if (cleanLower(voucher.partyType) === 'member') {
     return cleanUpper(voucher.partyCode);
@@ -6359,10 +6258,6 @@ async function getNextVoucherNo(branchCode = '') {
   return await getNextSequenceValue('vouchers', 'voucherNo');
 }
 
-async function getNextTransactionNo(branchCode = '') {
-  return await getNextSequenceValue('bank_transactions', 'transactionNo');
-}
-
 // Server-side copy of the transaction pages' row filter
 // (frontend transactionUtils.filterTransactionRows): a voucher belongs to a
 // catalog item by its stored key, else by its category label.
@@ -6469,22 +6364,6 @@ function normalizeVoucher(data = {}) {
     createdBy: cleanText(data.createdBy),
     journalLines: toArray(data.journalLines),
     details,
-    documents: toMixed(data.documents, {}),
-    payload: toMixed(data.payload, {})
-  };
-}
-
-function normalizeBankTransaction(data = {}) {
-  return {
-    transactionNo: cleanText(data.transactionNo),
-    date: cleanText(data.date),
-    voucherCategory: cleanText(data.voucherCategory),
-    transactionType: cleanText(data.transactionType),
-    accent: cleanText(data.accent),
-    bankAccountCode: cleanUpper(data.bankAccountCode),
-    branchCode: cleanUpper(data.branchCode),
-    amount: toNumber(data.amount, 0),
-    narration: cleanText(data.narration),
     documents: toMixed(data.documents, {}),
     payload: toMixed(data.payload, {})
   };
@@ -7024,46 +6903,6 @@ async function restoreVoucher(id, meta = {}) {
   void voucherAccountCodes(voucher).then((codes) => notifyNegativeBalances(codes, { meta, source: `restoring ${voucherLabel(voucher)}` }));
   return true;
 }
-
-async function createBankTransaction(data = {}, meta = {}) {
-  await assertFilesAttachable(data, {}, meta.actorUserId || meta.actorUser?.id);
-  const branchCode = resolveBranchCode(meta.actorUser || {}, data.branchCode);
-  const transactionNo = cleanText(data.transactionNo) || await getNextTransactionNo(branchCode);
-  const payload = normalizeBankTransaction({ ...data, transactionNo, branchCode });
-  if (meta.actorUserId) {
-    payload.createdByUserId = meta.actorUserId;
-    payload.updatedByUserId = meta.actorUserId;
-  }
-  const record = await BankTransaction.create(payload);
-  const response = toResponse(record);
-  await notifySafely(buildBankTransactionNotificationPayload('created', response, meta));
-  return response;
-}
-
-async function updateBankTransaction(id, data = {}, meta = {}) {
-  const current = await BankTransaction.findById(id);
-  if (!current) return null;
-  await assertFilesAttachable(data, current.toObject(), meta.actorUserId || meta.actorUser?.id);
-  const payload = normalizeBankTransaction({ ...current.toObject(), ...data });
-  payload.branchCode = resolveBranchCode(meta.actorUser || {}, current.branchCode);
-  if (meta.actorUserId) {
-    payload.updatedByUserId = meta.actorUserId;
-  }
-  current.set(payload);
-  await current.save();
-  const response = toResponse(current.toObject());
-  await notifySafely(buildBankTransactionNotificationPayload('updated', response, meta));
-  return response;
-}
-
-async function deleteBankTransaction(id) {
-  const record = await BankTransaction.findByIdAndDelete(id).lean();
-  if (!record) return false;
-  await deleteDocumentFiles(record.documents || {});
-  return true;
-}
-
-
 
 async function buildMemberAccountStatement({ memberId, dateFrom, dateTo, user }) {
   const member = await Member.findOne({ code: cleanUpper(memberId) }).lean();
@@ -7615,7 +7454,6 @@ module.exports = {
   buildAccountStatementReport,
   buildAllMemberListReport,
   buildBalanceSheetReport,
-  buildBankTransactionRows,
   buildBranchListReport,
   buildCashBookReport,
   buildDayBookReport,
@@ -7644,10 +7482,8 @@ module.exports = {
   filterVouchersBySection,
   getHistoricalVoucherById,
   buildVoucherSummaryReport,
-  createBankTransaction,
   createResource,
   createVoucher,
-  deleteBankTransaction,
   deleteResource,
   restoreResource,
   listAuditLog,
@@ -7657,7 +7493,6 @@ module.exports = {
   getLedgerSnapshots,
   getLegacyFyLedgerSnapshots,
   getLookups,
-  getNextTransactionNo,
   getNextVoucherNo,
   getTransactionCatalog,
   getVoucherPermissionPage,
@@ -7672,7 +7507,6 @@ module.exports = {
   listResource,
   normalizeResourcePayload,
   seedBankingData,
-  updateBankTransaction,
   updateResource,
   updateVoucher
 };

@@ -59,7 +59,6 @@ registerCrud('/masters/demand-lines', banking.resources.demandLines, demands);
 registerCrud('/masters/member-demand-defaults', banking.resources.memberDemandDefaults, demands);
 registerCrud('/masters/recovery-lines', banking.resources.recoveryLines, demands);
 registerCrud('/masters/no-interest-members', banking.resources.noInterestMembers, page('master', 'no-interest-members'));
-registerCrud('/masters/bank-transactions', banking.resources.bankTransactions, page('transactions', 'bank'));
 
 router.get(
   '/transactions/catalog',

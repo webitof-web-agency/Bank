@@ -202,8 +202,7 @@ const resources = {
   demandLines: buildCrudControllers('demandLines'),
   memberDemandDefaults: buildCrudControllers('memberDemandDefaults'),
   recoveryLines: buildCrudControllers('recoveryLines'),
-  noInterestMembers: buildCrudControllers('noInterestMembers'),
-  bankTransactions: buildCrudControllers('bankTransactions')
+  noInterestMembers: buildCrudControllers('noInterestMembers')
 };
 
 const transactions = {

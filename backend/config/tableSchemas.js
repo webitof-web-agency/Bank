@@ -476,29 +476,6 @@ const TABLE_SCHEMAS = {
     deletedAt: T.date
   }, ['voucherNo']),
 
-  // Referenced throughout banking.service.js (createBankTransaction,
-  // normalizeBankTransaction, syncSequence('bank_transactions', ...)) but the
-  // table/model never actually existed — the whole bankTransactions resource
-  // was unusable (any create/list/delete, and even server startup itself via
-  // the sequence sync in seedBankingData, would throw "relation does not
-  // exist"). Field shape matches normalizeBankTransaction's exact fields.
-  bank_transactions: schema({
-    transactionNo: T.string(120),
-    date: T.date,
-    voucherCategory: T.string(191),
-    transactionType: T.string(80),
-    accent: T.string(40),
-    bankAccountCode: T.string(80),
-    branchCode: T.string(40),
-    amount: T.money,
-    narration: T.text,
-    status: T.string(40),
-    documents: T.json,
-    payload: T.json,
-    createdByUserId: T.string(40),
-    updatedByUserId: T.string(40),
-    deletedAt: T.date
-  }, ['transactionNo']),
 
   recovery_lines: schema({
     voucherNo: T.string(120),
