@@ -16,6 +16,8 @@ export function RolesPage() {
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  // Why a role cannot be deleted: it is still given to someone.
+  const [inUseMessage, setInUseMessage] = useState('');
 
   const { canCreate, canEdit, canDelete } = pageAccess('admin', 'roles');
 
@@ -48,6 +50,17 @@ export function RolesPage() {
     navigate(`/app/roles/${role.id}`);
   }
 
+  // A role given to employees is not offered for deletion: say whose role
+  // to change first (the server refuses it as well).
+  function requestDelete(row) {
+    const count = Number(row.userCount) || 0;
+    if (count > 0) {
+      setInUseMessage(`The ${row.name || row.code} role is given to ${count} employee${count === 1 ? '' : 's'}. Change their role (Masters > Employees) to delete this one.`);
+      return;
+    }
+    setDeleteTarget(row);
+  }
+
   async function confirmDelete() {
     if (!deleteTarget) return;
     try {
@@ -55,7 +68,8 @@ export function RolesPage() {
       setRows((current) => current.filter((row) => row.id !== deleteTarget.id));
       toast.success('Role deleted');
     } catch (error) {
-      toast.error(error.message || 'Unable to delete role');
+      if (error.payload?.code === 'ROLE_IN_USE') setInUseMessage(error.message);
+      else toast.error(error.message || 'Unable to delete role');
     } finally {
       setDeleteTarget(null);
     }
@@ -73,6 +87,9 @@ export function RolesPage() {
     { key: 'name', label: 'Name', sortable: true, render: (row) => <span className="text-slate-700">{row.name}</span> },
     { key: 'description', label: 'Description', sortable: true, render: (row) => <span className="text-slate-700">{row.description || '—'}</span> },
     { key: 'permissions', label: 'Permissions', sortable: true, sortValue: (row) => (row.permissions || []).length, render: (row) => <span className="text-slate-700">{(row.permissions || []).length}</span> },
+    { key: 'userCount', label: 'Users', sortable: true, sortValue: (row) => Number(row.userCount) || 0, render: (row) => (
+      <span className="inline-flex items-center gap-1.5 text-slate-700"><Users size={14} className="text-slate-400" />{Number(row.userCount) || 0}</span>
+    ) },
     { key: 'isSystem', label: 'System', sortable: true, render: (row) => (
       row.isSystem 
         ? <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-[11px] font-medium text-emerald-700">Yes</span>
@@ -92,7 +109,7 @@ export function RolesPage() {
         ) : null}
         {/* A system role cannot be deleted (the server refuses it too). */}
         {canDelete && !row.isSystem ? (
-          <button type="button" onClick={() => setDeleteTarget(row)} className="rounded-full p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600">
+          <button type="button" onClick={() => requestDelete(row)} className="rounded-full p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600">
             <Trash2 size={16} />
           </button>
         ) : null}
@@ -163,6 +180,16 @@ export function RolesPage() {
         confirmVariant="danger"
         onConfirm={confirmDelete}
         onClose={() => setDeleteTarget(null)}
+      />
+
+      <ConfirmDialog
+        open={Boolean(inUseMessage)}
+        title="Role is in use"
+        description={inUseMessage}
+        confirmLabel="OK"
+        tone="default"
+        onConfirm={() => setInUseMessage('')}
+        onClose={() => setInUseMessage('')}
       />
     </div>
   );

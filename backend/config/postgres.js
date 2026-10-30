@@ -982,6 +982,7 @@ module.exports = {
   getCachedRows,
   getCachedRowsShared,
   getTableVersion,
+  getUserRoleRows,
   getUserRoles,
   getUserRolesForUsers,
   initializeDatabase,

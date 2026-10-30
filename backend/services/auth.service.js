@@ -6,7 +6,7 @@ const { normalizeMobile, isValidMobile } = require('../utils/mobile');
 const User = require('../models/user.model');
 const Role = require('../models/role.model');
 const { Employee } = require('../models/banking.models');
-const { restoreMainRow, getUserRoles } = require('../config/postgres');
+const { restoreMainRow, getUserRoles, getUserRoleRows } = require('../config/postgres');
 const {
   DEFAULT_ROLE_DEFINITIONS,
   DEMO_ROLE_DEFINITIONS,
@@ -820,6 +820,21 @@ async function getRoleById(roleId) {
   return role ? mapRoleForResponse(role) : null;
 }
 
+// The users (not deleted) each role is given to, by role id.
+async function usersByRole() {
+  const users = new Map((await User.find({}).select('_id fullName name username').lean())
+    .map((user) => [String(user._id), user.fullName || user.name || user.username || '']));
+  const byRole = new Map();
+  for (const link of getUserRoleRows()) {
+    const name = users.get(String(link.userId));
+    if (name === undefined) continue;
+    const key = String(link.roleId);
+    if (!byRole.has(key)) byRole.set(key, []);
+    byRole.get(key).push(name);
+  }
+  return byRole;
+}
+
 async function listRoles(search = '') {
   const term = String(search || '').trim();
   const query = term
@@ -834,7 +849,8 @@ async function listRoles(search = '') {
   query.code = { $ne: HIDDEN_ROLE_CODE };
 
   const roles = await Role.find(query).sort({ updatedAt: -1 }).lean();
-  return roles.map((role) => mapRoleForResponse(role));
+  const byRole = await usersByRole();
+  return roles.map((role) => ({ ...mapRoleForResponse(role), userCount: (byRole.get(String(role._id)) || []).length }));
 }
 
 async function listPermissions() {
@@ -1402,6 +1418,16 @@ async function deleteRole(roleId, { actorUser = null } = {}) {
   if (role.isSystem) {
     const error = new Error('System roles cannot be deleted');
     error.statusCode = 400;
+    throw error;
+  }
+  // A role still given to someone stays: their role must be changed first.
+  const holders = (await usersByRole()).get(String(role._id)) || [];
+  if (holders.length) {
+    const names = holders.slice(0, 5).join(', ') + (holders.length > 5 ? ` and ${holders.length - 5} more` : '');
+    const error = new Error(`The ${role.name} role is given to ${holders.length} employee${holders.length === 1 ? '' : 's'} (${names}). Change their role to delete this one.`);
+    error.statusCode = 409;
+    error.code = 'ROLE_IN_USE';
+    error.details = { userCount: holders.length, users: holders };
     throw error;
   }
   await role.deleteOne();
