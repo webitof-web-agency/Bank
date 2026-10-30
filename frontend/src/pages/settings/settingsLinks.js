@@ -36,7 +36,7 @@ const ALL_SETTINGS_LINKS = [
     label: 'Manage Roles',
     path: '/app/roles',
     icon: ShieldCheck,
-    permission: 'roles.manage',
+    permission: 'admin.roles.view',
     description: 'Role and permission control center.',
     group: 'Administration',
     tone: 'emerald'

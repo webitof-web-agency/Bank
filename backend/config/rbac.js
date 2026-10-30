@@ -137,6 +137,11 @@ const ROLE_TEMPLATES = [
   }
 ];
 
+// Every page and action except the Settings page (SMS, Google Drive,
+// storage, backup, system settings): the Developer and Clerk system roles.
+const ALL_BUT_SETTINGS = require('./permissionCatalog').PAGE_PERMISSION_CODES
+  .filter((code) => !code.startsWith('admin.settings.'));
+
 const DEFAULT_ROLE_DEFINITIONS = [
   {
     code: 'admin',
@@ -186,6 +191,20 @@ const DEFAULT_ROLE_DEFINITIONS = [
       'files.write',
       'files.delete'
     ]
+  },
+  {
+    code: 'developer',
+    name: 'Developer',
+    description: 'Full create, edit and delete access everywhere except the Settings page.',
+    isSystem: true,
+    permissions: ALL_BUT_SETTINGS
+  },
+  {
+    code: 'clerk',
+    name: 'Clerk',
+    description: 'Full create, edit and delete access everywhere except the Settings page.',
+    isSystem: true,
+    permissions: ALL_BUT_SETTINGS
   },
   {
     code: 'viewer',

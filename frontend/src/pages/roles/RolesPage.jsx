@@ -90,7 +90,8 @@ export function RolesPage() {
             <Edit2 size={16} />
           </button>
         ) : null}
-        {canDelete ? (
+        {/* A system role cannot be deleted (the server refuses it too). */}
+        {canDelete && !row.isSystem ? (
           <button type="button" onClick={() => setDeleteTarget(row)} className="rounded-full p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600">
             <Trash2 size={16} />
           </button>
