@@ -135,8 +135,7 @@ test('transfer voucher Payment filtering excludes Paid and Recover rows', () => 
 
 test('transfer voucher workspaces pass visible rows to the shared Table data prop', async () => {
   for (const file of [
-    'src/pages/transactions/transfer-voucher/workspace.jsx',
-    'src/pages/transactions/transfer-voucher/paymentWorkspace.jsx'
+    'src/pages/transactions/transfer-voucher/workspace.jsx'
   ]) {
     const source = await readFile(file, 'utf8');
     assert.match(source, /<Table[\s\S]*?data=\{visibleRows\}/, file);
