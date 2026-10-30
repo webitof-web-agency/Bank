@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowRight,
@@ -370,18 +370,16 @@ export function DashboardPage() {
                   </div>
                 </div>
 
-                <div className="flex-1 w-full space-y-4">
+                <div className="grid w-full min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto_2.75rem] items-center gap-x-3 gap-y-4 text-[12px]">
                   {selectedFundPosition.map(item => (
-                    <div key={item.name} className="flex items-center justify-between text-[12px]">
-                      <div className="flex items-center gap-2">
-                        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: item.color }}></span>
+                    <Fragment key={item.name}>
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: item.color }}></span>
                         <span className="font-medium text-slate-600">{item.name}</span>
                       </div>
-                      <div className="flex items-center gap-4">
-                        <span className="font-bold text-slate-900">{formatCurrency(item.amount)}</span>
-                        <span className="w-8 text-right font-medium text-slate-400">{item.pct}</span>
-                      </div>
-                    </div>
+                      <span className="whitespace-nowrap text-right font-bold tabular-nums text-slate-900">{formatCurrency(item.amount)}</span>
+                      <span className="text-right font-medium tabular-nums text-slate-400">{item.pct}</span>
+                    </Fragment>
                   ))}
                 </div>
               </div>
