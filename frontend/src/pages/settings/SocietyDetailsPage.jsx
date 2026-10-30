@@ -6,6 +6,7 @@ import { useAuth } from '../../context/AuthContext';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
+import { clearSocietyCache } from '../reports/print/useSociety';
 
 // The location line under the society name on every report letterhead;
 // kept short enough to fit on one line (same limit on the server).
@@ -21,6 +22,8 @@ const EMPTY_FORM = {
   watermarkEnabled: false,
   watermarkUrl: '',
   watermarkFileId: '',
+  watermarkOpacity: 12,
+  watermarkGrayscale: false,
   address: '',
   footerText: ''
 };
@@ -117,6 +120,8 @@ export function SocietyDetailsPage() {
           watermarkEnabled: Boolean(record.watermarkEnabled),
           watermarkUrl: record.watermarkUrl || '',
           watermarkFileId: record.watermarkFileId || '',
+          watermarkOpacity: Number(record.watermarkOpacity) || 12,
+          watermarkGrayscale: Boolean(record.watermarkGrayscale),
           address: record.address || '',
           footerText: record.footerText || ''
         });
@@ -211,6 +216,8 @@ export function SocietyDetailsPage() {
       setLogoCleared(false);
       setWatermarkFile(null);
       setWatermarkCleared(false);
+      // Open reports pick the new letterhead / watermark up straight away.
+      clearSocietyCache();
       toast.success('Society details saved');
     } catch (error) {
       toast.error(error.message || 'Unable to save society details');
@@ -274,15 +281,63 @@ export function SocietyDetailsPage() {
               onClear={clearWatermark}
               disabled={!canEdit}
             />
-            <label className="flex items-center gap-2 self-end pb-2 text-[13px] font-semibold text-slate-700">
-              <input
-                type="checkbox"
-                checked={draft.watermarkEnabled}
-                onChange={(event) => setDraft((current) => ({ ...current, watermarkEnabled: event.target.checked }))}
-                className="h-4 w-4 rounded border-slate-300"
-              />
-              Show watermark on printed reports
-            </label>
+            <div className="space-y-3 md:col-span-2">
+              <label className="flex items-center gap-2 text-[13px] font-semibold text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={draft.watermarkEnabled}
+                  disabled={!canEdit}
+                  onChange={(event) => setDraft((current) => ({ ...current, watermarkEnabled: event.target.checked }))}
+                  className="h-4 w-4 rounded border-slate-300"
+                />
+                Show watermark on printed reports
+              </label>
+              <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                <div className="space-y-3">
+                  <div>
+                    <div className="mb-1 flex items-center justify-between text-[13px] font-semibold text-slate-700">
+                      <label htmlFor="watermark-opacity">Watermark opacity</label>
+                      <span className="tabular-nums text-slate-500">{draft.watermarkOpacity}%</span>
+                    </div>
+                    <input
+                      id="watermark-opacity"
+                      type="range"
+                      min={5}
+                      max={100}
+                      step={1}
+                      value={draft.watermarkOpacity}
+                      disabled={!canEdit}
+                      onChange={(event) => setDraft((current) => ({ ...current, watermarkOpacity: Number(event.target.value) }))}
+                      className="w-full accent-[var(--primary)]"
+                    />
+                  </div>
+                  <label className="flex items-center gap-2 text-[13px] font-semibold text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={draft.watermarkGrayscale}
+                      disabled={!canEdit}
+                      onChange={(event) => setDraft((current) => ({ ...current, watermarkGrayscale: event.target.checked }))}
+                      className="h-4 w-4 rounded border-slate-300"
+                    />
+                    Black &amp; white watermark
+                  </label>
+                </div>
+                {/* How it sits behind report text, at the chosen settings. */}
+                <div className="relative flex h-28 w-24 items-center justify-center overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm" aria-label="Watermark preview">
+                  {watermarkPreview ? (
+                    <img
+                      src={watermarkPreview}
+                      alt=""
+                      className="h-16 w-16 object-contain"
+                      style={{ opacity: draft.watermarkOpacity / 100, filter: draft.watermarkGrayscale ? 'grayscale(1)' : undefined }}
+                    />
+                  ) : null}
+                  <div className="absolute inset-x-2 top-3 space-y-1.5">
+                    {[0, 1, 2, 3, 4, 5, 6].map((line) => <div key={line} className="h-1 rounded bg-slate-300/80" />)}
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[13px] text-slate-600">

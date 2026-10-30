@@ -19,6 +19,13 @@ function freshCache() {
   return cachedSociety;
 }
 
+// After Society Details is saved, so the next report reads the new values.
+export function clearSocietyCache() {
+  cachedSociety = null;
+  cachedAt = 0;
+  inflightPromise = null;
+}
+
 export function useSociety() {
   const { token } = useAuth();
   const [society, setSociety] = useState(freshCache);

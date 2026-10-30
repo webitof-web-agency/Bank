@@ -189,6 +189,8 @@ const TABLE_SCHEMAS = {
     watermarkEnabled: T.boolean,
     watermarkUrl: T.text,
     watermarkFileId: T.string(40),
+    watermarkOpacity: T.number,
+    watermarkGrayscale: T.boolean,
     footerText: T.text,
     payload: T.json,
     createdByUserId: T.string(40),

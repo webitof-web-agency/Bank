@@ -1226,6 +1226,9 @@ const RESOURCE_DEFS = {
         watermarkEnabled: Boolean(data.watermarkEnabled),
         watermarkUrl: cleanText(data.watermarkUrl, ''),
         watermarkFileId: cleanText(data.watermarkFileId, ''),
+        // Percent, 5-100 (a faint 12% unless set); black & white on request.
+        watermarkOpacity: Math.min(100, Math.max(5, Math.round(toNumber(data.watermarkOpacity, 12)))),
+        watermarkGrayscale: Boolean(data.watermarkGrayscale),
         footerText: cleanText(data.footerText, SOCIETY_SEED.footerText),
         payload: toMixed(data.payload, {})
       };

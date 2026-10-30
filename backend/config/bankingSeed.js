@@ -11,6 +11,8 @@ const SOCIETY_SEED = {
   logoUrl: '',
   watermarkEnabled: false,
   watermarkUrl: '',
+  watermarkOpacity: 12,
+  watermarkGrayscale: false,
   footerText: 'Raipur Co-operative Employees Thrift Society Ltd.'
 };
 

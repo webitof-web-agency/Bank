@@ -310,6 +310,59 @@ function withTimeout(promise, ms) {
   ]).finally(() => clearTimeout(timer));
 }
 
+// The Society Details watermark, when it is switched on and an image is set:
+// its URL, opacity (0-1) and whether it prints in black & white.
+function useWatermark() {
+  const society = useSociety();
+  if (!society.watermarkEnabled || !society.watermarkUrl) return null;
+  const percent = Number(society.watermarkOpacity);
+  return {
+    src: getImageUrl(society.watermarkUrl),
+    opacity: Math.min(100, Math.max(5, Number.isFinite(percent) && percent > 0 ? percent : 12)) / 100,
+    grayscale: Boolean(society.watermarkGrayscale)
+  };
+}
+
+// Centred on the sheet at 60% of its width, above the text but faint enough
+// to read through (the preview's page-break covers would hide it if it sat
+// behind them).
+function WatermarkImage({ watermark }) {
+  return (
+    <img
+      src={watermark.src}
+      alt=""
+      aria-hidden="true"
+      className="max-h-[60%] w-[60%] object-contain"
+      style={{ opacity: watermark.opacity, filter: watermark.grayscale ? 'grayscale(1)' : undefined }}
+    />
+  );
+}
+
+// The watermark as a PNG data URL for the PDF, in black & white if set.
+// Loaded through fetch so the canvas stays readable (the file is served with
+// CORS, as the logo is for html2canvas).
+async function loadWatermarkForPdf(watermark) {
+  const blob = await (await fetch(watermark.src)).blob();
+  const bitmap = await createImageBitmap(blob);
+  const canvas = document.createElement('canvas');
+  canvas.width = bitmap.width;
+  canvas.height = bitmap.height;
+  const context = canvas.getContext('2d');
+  context.drawImage(bitmap, 0, 0);
+  if (watermark.grayscale) {
+    const image = context.getImageData(0, 0, canvas.width, canvas.height);
+    const { data } = image;
+    for (let i = 0; i < data.length; i += 4) {
+      const grey = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+      data[i] = grey;
+      data[i + 1] = grey;
+      data[i + 2] = grey;
+    }
+    context.putImageData(image, 0, 0);
+  }
+  return { dataUrl: canvas.toDataURL('image/png'), width: bitmap.width, height: bitmap.height };
+}
+
 export function PrintLetterhead({ title, meta }) {
   const society = useSociety();
   const logoSrc = society.logoUrl ? getImageUrl(society.logoUrl) : placeholderLogo;
@@ -342,6 +395,7 @@ export function PrintLetterhead({ title, meta }) {
 // The preview shows the report split onto A4 sheets as it will print.
 export function PrintShell({ headerActions, landscape = false, children }) {
   const { canPrint, canExport } = useContext(ReportActionsContext);
+  const watermark = useWatermark();
   const [zoom, setZoom] = useState(1);
   const [exporting, setExporting] = useState(false);
   // The preview shows one sheet at a time (0-based); print / PDF still get
@@ -481,6 +535,11 @@ export function PrintShell({ headerActions, landscape = false, children }) {
     try {
       const { default: html2pdf } = await import('html2pdf.js');
       const filenameBase = (document.title || 'report').trim().replace(/[^a-z0-9-_]+/gi, '-').toLowerCase() || 'report';
+      // A watermark that cannot be loaded leaves the PDF without it, not unmade.
+      const pdfWatermark = watermark ? await loadWatermarkForPdf(watermark).catch((error) => {
+        console.error('[pdf] watermark could not be loaded:', error);
+        return null;
+      }) : null;
       // html2pdf's chain does not always pass a failure on, which left the
       // button on "Preparing PDF..." for good: give up after a time limit.
       await withTimeout(html2pdf()
@@ -503,6 +562,15 @@ export function PrintShell({ headerActions, landscape = false, children }) {
           pdf.setFontSize(7);
           for (let i = 1; i <= total; i += 1) {
             pdf.setPage(i);
+            if (pdfWatermark) {
+              // Same place and size as on screen: centred, 60% of the page.
+              const scale = Math.min((width * 0.6) / pdfWatermark.width, (height * 0.6) / pdfWatermark.height);
+              const w = pdfWatermark.width * scale;
+              const h = pdfWatermark.height * scale;
+              pdf.setGState(new pdf.GState({ opacity: watermark.opacity }));
+              pdf.addImage(pdfWatermark.dataUrl, 'PNG', (width - w) / 2, (height - h) / 2, w, h);
+              pdf.setGState(new pdf.GState({ opacity: 1 }));
+            }
             pdf.text(`Page ${i} of ${total}`, width - MARGIN_MM, height - MARGIN_MM / 3, { align: 'right' });
           }
         })
@@ -704,6 +772,17 @@ export function PrintShell({ headerActions, landscape = false, children }) {
                 </div>
               ))}
 
+              {/* Watermark in the middle of every sheet. */}
+              {!exporting && watermark && Array.from({ length: layout.pages }, (_, i) => (
+                <div
+                  key={`watermark-${i}`}
+                  className="pointer-events-none absolute inset-x-0 z-[15] flex items-center justify-center print:hidden"
+                  style={{ top: i * pitch, height: sheetHeight }}
+                >
+                  <WatermarkImage watermark={watermark} />
+                </div>
+              ))}
+
               {/* Page number at the foot of every sheet, in the bottom margin. */}
               {!exporting && Array.from({ length: layout.pages }, (_, i) => (
                 <div
@@ -718,6 +797,13 @@ export function PrintShell({ headerActions, landscape = false, children }) {
             </div>
           </ZoomStage>
         </div>
+
+        {/* Print: a fixed element is repeated on every printed page. */}
+        {watermark ? (
+          <div className="pointer-events-none fixed inset-0 z-[15] hidden items-center justify-center print:flex">
+            <WatermarkImage watermark={watermark} />
+          </div>
+        ) : null}
 
         <style>{`
           /* Not scoped to @media print: html2pdf's 'css' pagebreak mode reads
