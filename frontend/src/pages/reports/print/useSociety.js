@@ -19,6 +19,14 @@ function freshCache() {
   return cachedSociety;
 }
 
+// A page with no web login (the app's ledger view) gets the society from its
+// own response and hands it to the letterhead this way.
+export function setSocietyCache(society) {
+  cachedSociety = society || {};
+  cachedAt = Date.now();
+  inflightPromise = null;
+}
+
 // After Society Details is saved, so the next report reads the new values.
 export function clearSocietyCache() {
   cachedSociety = null;

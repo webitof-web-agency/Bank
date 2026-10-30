@@ -13,6 +13,9 @@ const { comparePassword, hashPassword, signToken } = require('./auth.service');
 const { getSettings } = require('./settings.service');
 const { normalizeMobile, isValidMobile } = require('../utils/mobile');
 const { createHash } = require('crypto');
+const jwt = require('jsonwebtoken');
+const { getJwtSecret } = require('../config/security');
+const { isSessionRevoked } = require('./session.service');
 
 // ---- Financial-year helpers (Indian FY: 1 Apr → 31 Mar) -------------------
 const FIRST_FY_START_YEAR = 2021; // FY 2021-22 is the earliest archive we hold.
@@ -331,6 +334,11 @@ async function getStatement(account, ledgerKey, startYear) {
 // colours from Settings -> Branding, so the app shows the same name, logo and
 // colours as the web app. logoUrl is a signed path under /api (2h token): the
 // app re-reads this on every launch.
+function webAppUrl() {
+  const first = String(process.env.WEB_APP_URL || process.env.CORS_ORIGINS || process.env.FRONTEND_URL || '').split(',')[0].trim();
+  return /^https?:\/\/[^\s/]+/i.test(first) ? first.replace(/\/+$/, '') : '';
+}
+
 async function getAppConfig() {
   const [society, settings] = await Promise.all([bankingService.getSingle('society'), getSettings()]);
   const branding = settings?.payload?.branding || {};
@@ -346,6 +354,9 @@ async function getAppConfig() {
       phone: society?.phone || '',
       logoUrl: society?.logoUrl || ''
     },
+    // The website (its ledger page opens in the app): WEB_APP_URL, else the
+    // first allowed web origin.
+    webUrl: webAppUrl(),
     theme: {
       primaryColor: hex(branding.primaryColor, '#1661F6'),
       accentColor: hex(branding.accentColor, '#1661F6'),
@@ -372,7 +383,46 @@ async function getAppVersion() {
   };
 }
 
+// ---- Ledger view (the website's ledger template, opened by the app) -------
+// The app asks for a ticket with its own token; the ledger page (a website
+// page shown in the app's web view) trades the ticket for the ledger. The
+// ticket is short-lived, carries no app token, names one account and FY, and
+// dies with the app session (revoked, or the password changed).
+const LEDGER_TICKET_SCOPE = 'ledger-view';
+const LEDGER_TICKET_TTL = '10m';
+
+async function ledgerTicket(principal, startYear) {
+  const account = await resolveAccount(principal);
+  const year = allowedStartYear(account, startYear);
+  const ticket = jwt.sign(
+    { scope: LEDGER_TICKET_SCOPE, acct: account.type, sub: account.code, pwv: principal.pwv, sid: principal.jti || '', fy: year },
+    getJwtSecret(),
+    { expiresIn: LEDGER_TICKET_TTL }
+  );
+  return { ticket, fy: fyLabel(year) };
+}
+
+async function ledgerView(ticket) {
+  let decoded;
+  try {
+    decoded = jwt.verify(String(ticket || ''), getJwtSecret(), { algorithms: ['HS256'] });
+  } catch {
+    throw unauthorized('This ledger link has expired. Open the ledger again from the app.');
+  }
+  if (decoded?.scope !== LEDGER_TICKET_SCOPE || !decoded.sid || await isSessionRevoked(decoded.sid)) {
+    throw unauthorized('This ledger link has expired. Open the ledger again from the app.');
+  }
+  const account = await resolveAccount({ ...decoded, scope: 'app' });
+  const { data } = await ledgerFor(account, decoded.fy);
+  if (!data) throw unauthorized('Account not found');
+  // The letterhead (name, address, logo, watermark) as the website prints it.
+  const society = await bankingService.getSingle('society');
+  return { type: account.type, fy: fyLabel(decoded.fy), ledger: data, society: society || {} };
+}
+
 module.exports = {
+  ledgerTicket,
+  ledgerView,
   getAppConfig,
   getAppVersion,
   login,

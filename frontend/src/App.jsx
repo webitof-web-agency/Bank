@@ -30,6 +30,7 @@ import { RatesPage } from './pages/master/rates';
 import { SettingsHomePage } from './pages/settings/SettingsHomePage';
 import { BusinessIdentityPage } from './pages/settings/BusinessIdentityPage';
 import { SocietyDetailsPage } from './pages/settings/SocietyDetailsPage';
+import { LedgerViewPage } from './pages/ledger-view/LedgerViewPage';
 import { HeadOfficeDetailsPage } from './pages/settings/HeadOfficeDetailsPage';
 import { ChangePasswordPage } from './pages/settings/ChangePasswordPage';
 import { BackupRestorePage } from './pages/settings/BackupRestorePage';
@@ -119,6 +120,8 @@ function AppRoutes() {
   return <Routes>
       <Route path="/" element={<Navigate to="/app/dashboard" replace />} />
       <Route path="/member/*" element={<MemberAppRedirect />} />
+      {/* The member app's ledger view: its own short-lived ticket, no web login. */}
+      <Route path="/ledger-view" element={<LedgerViewPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />

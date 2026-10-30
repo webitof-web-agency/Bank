@@ -44,5 +44,15 @@ router.get('/me/financial-years', controller.financialYears);
 router.get('/me/profile', controller.profile);
 router.get('/me/summary', controller.summary);
 router.get('/me/statement/:ledger', controller.statement);
+// A short-lived ticket for the ledger page (the website's ledger template in
+// the app's web view), and that page's data for the ticket alone.
+router.post('/me/ledger-ticket', controller.ledgerTicket);
+const ledgerViewRateLimit = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  keyGenerator: (req) => `app-ledger-view:${req.ip || 'unknown'}`,
+  message: 'Too many ledger requests. Please try again later.'
+});
+router.get('/ledger-view', ledgerViewRateLimit, controller.ledgerView);
 
 module.exports = router;

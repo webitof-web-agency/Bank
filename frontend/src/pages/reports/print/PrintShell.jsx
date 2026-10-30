@@ -393,7 +393,18 @@ export function PrintLetterhead({ title, meta }) {
 
 // Every report prints on A4 — portrait unless `landscape` (the wide ledgers).
 // The preview shows the report split onto A4 sheets as it will print.
-export function PrintShell({ headerActions, landscape = false, children }) {
+// `availableHeight` (px): the height the report may take, when it is not the
+// window's (the app's ledger view, upright or rotated); a taller sheet scrolls.
+// Set for a whole subtree through PrintViewContext (the app's ledger view),
+// as the templates render PrintShell themselves.
+export const PrintViewContext = createContext({});
+
+export function PrintShell({ headerActions, landscape = false, children, ...props }) {
+  const view = useContext(PrintViewContext);
+  const availableHeight = props.availableHeight ?? view.availableHeight ?? null;
+  // A small screen's toolbar (the app's ledger view): no paper-size chip, and
+  // no page buttons for a one-page report.
+  const compact = props.compact ?? view.compact ?? false;
   const { canPrint, canExport } = useContext(ReportActionsContext);
   const watermark = useWatermark();
   const [zoom, setZoom] = useState(1);
@@ -411,6 +422,10 @@ export function PrintShell({ headerActions, landscape = false, children }) {
   const zoomRef = useRef(zoom);
   const suspendedRef = useRef(false);
   const stageRef = useRef(null);
+  const rootRef = useRef(null);
+  // The stage's height limit when `availableHeight` is given: that height
+  // less the toolbar above the stage.
+  const [stageMaxHeight, setStageMaxHeight] = useState(null);
   // A second horizontal scrollbar above the stage, kept in step with its own.
   const topScrollRef = useRef(null);
   const [stageScroll, setStageScroll] = useState({ scrollWidth: 0, clientWidth: 0 });
@@ -437,6 +452,18 @@ export function PrintShell({ headerActions, landscape = false, children }) {
     const fit = (stage.clientWidth - 2 * STAGE_PAD_PX) / sheetWidth;
     if (fit > 0) setZoom(Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.floor(fit * 100) / 100)));
   }, [sheetWidth]);
+
+  useLayoutEffect(() => {
+    const stage = stageRef.current;
+    const root = rootRef.current;
+    if (!availableHeight || !stage || !root) {
+      setStageMaxHeight(null);
+      return;
+    }
+    // offsetTop, not the on-screen box: the view may be rotated.
+    const toolbar = stage.offsetTop - root.offsetTop;
+    setStageMaxHeight(Math.max(120, Math.floor(availableHeight - toolbar - 8)));
+  }, [availableHeight]);
 
   useEffect(() => {
     const stage = stageRef.current;
@@ -590,7 +617,7 @@ export function PrintShell({ headerActions, landscape = false, children }) {
 
   return (
     <PageCountContext.Provider value={layout.pages}>
-      <div className="w-full text-black">
+      <div ref={rootRef} className="w-full text-black">
         {/* One toolbar for every report: all controls 36px high with the same
             border and corners as the buttons. */}
         <div className="print:hidden mb-4 flex flex-wrap items-center justify-end gap-2">
@@ -628,6 +655,7 @@ export function PrintShell({ headerActions, landscape = false, children }) {
               <RotateCcw size={13} />
             </Button>
           </div>
+          {compact && layout.pages <= 1 ? null : (
           <div className="flex h-9 items-center gap-0.5 rounded-[var(--radius-button,1rem)] border border-slate-200 bg-white px-1 shadow-sm">
             <Button type="button" variant="ghost" size="icon" className="h-7 w-7 rounded-full" onClick={() => goToPage(0)} disabled={shownPage === 0} title="First page">
               <ChevronsLeft size={14} />
@@ -660,9 +688,12 @@ export function PrintShell({ headerActions, landscape = false, children }) {
               <ChevronsRight size={14} />
             </Button>
           </div>
-          <span className="flex h-9 items-center rounded-[var(--radius-button,1rem)] border border-slate-200 bg-slate-50 px-3 text-[12px] font-semibold text-slate-500">
-            A4 {landscape ? 'landscape' : 'portrait'}
-          </span>
+          )}
+          {compact ? null : (
+            <span className="flex h-9 items-center rounded-[var(--radius-button,1rem)] border border-slate-200 bg-slate-50 px-3 text-[12px] font-semibold text-slate-500">
+              A4 {landscape ? 'landscape' : 'portrait'}
+            </span>
+          )}
           {canPrint ? (
             <Button type="button" variant="outline" className="gap-2 h-9 px-3 text-[13px]" onClick={() => window.print()}>
               <Printer size={14} />
@@ -690,7 +721,7 @@ export function PrintShell({ headerActions, landscape = false, children }) {
           ref={stageRef}
           onScroll={() => syncScroll(stageRef.current, topScrollRef.current)}
           className={`report-scroll w-full max-h-[calc(100vh-11rem)] rounded-2xl ${STAGE_BG} border border-slate-200 overflow-auto print:max-h-none print:bg-transparent print:!p-0 print:border-0 print:overflow-visible`}
-          style={{ padding: STAGE_PAD_PX }}
+          style={{ padding: STAGE_PAD_PX, ...(stageMaxHeight ? { maxHeight: stageMaxHeight } : {}) }}
         >
           <ZoomStage zoom={zoom}>
             {/* A one-sheet window onto the paginated report: the full flow

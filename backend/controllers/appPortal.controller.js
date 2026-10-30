@@ -104,6 +104,23 @@ module.exports = {
     }
   },
 
+  async ledgerTicket(req, res, next) {
+    try {
+      res.json({ success: true, data: await appPortal.ledgerTicket(req.principal, resolveStartYear(req.query)) });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async ledgerView(req, res, next) {
+    try {
+      res.set('Cache-Control', 'no-store');
+      res.json({ success: true, data: await appPortal.ledgerView(req.query.ticket) });
+    } catch (error) {
+      next(error);
+    }
+  },
+
   async statement(req, res, next) {
     try {
       const account = await withAccount(req);
