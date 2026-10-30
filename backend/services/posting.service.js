@@ -102,6 +102,9 @@ async function buildTransferLedgerLines(voucher, tx, kind) {
 
 // Transfer (no cash) goes to the Transfer Adjustment account, as legacy posts
 // such a voucher one-sided; Cash to the payment ledger (Cash-in-Hand).
+// The same for a cheque / DD (Loan / Deposit / SSA Paid, Advance Paid,
+// Recovery): legacy posted only the member's side (PayModeAccID 0) and the
+// bank side as a separate Cheque Issue / Deposit in Bank, which clears it.
 function isTransferMode(voucher = {}) {
   if (voucher?.details?.paymentLedgerId) return false;
   return !/cash/i.test(String(voucher.mode || voucher?.details?.payMode || ''));
@@ -133,6 +136,60 @@ async function buildGeneralVoucherLines(voucher, tx, kind) {
   return [
     { ledgerId, dr: payment ? amount : 0, cr: payment ? 0 : amount },
     { ledgerId: counterId, dr: payment ? 0 : amount, cr: payment ? amount : 0 }
+  ];
+}
+
+// Bank vouchers (legacy TransType 6-11, Bank Saving A/c 982 / Bank Cash
+// Credit A/c 983), as legacy VwLedgerTransaction posts them: the bank ledger
+// takes the voucher's direction (Receipt Cr, Payment Dr). The other side is
+// Cash-in-Hand only where legacy carried a cash leg (a cash Deposit in Bank,
+// a Cheque Issue for self use); everything else is one-sided in legacy, its
+// other side a separate voucher (the Recovery a deposit banks, the Loan Paid /
+// Payment Voucher a cheque pays, the CCA draw a deposit moves), so here the
+// Transfer Adjustment account, which that voucher clears.
+const BANK_ACCOUNT_ROLES = {
+  // Deposit In: the form's account, old codes (L002 / L013) too.
+  saving: ACCOUNTING_ROLES.BANK_SAVING,
+  BANK_SAVING: ACCOUNTING_ROLES.BANK_SAVING,
+  L013: ACCOUNTING_ROLES.BANK_SAVING,
+  cc: ACCOUNTING_ROLES.BANK_CC,
+  BANK_CC: ACCOUNTING_ROLES.BANK_CC,
+  L002: ACCOUNTING_ROLES.BANK_CC
+};
+
+const BANK_VOUCHERS = {
+  // 6 Loan Receive By CCA (Receipt): the society draws on its cash credit.
+  'loan-recv-cash': { bank: () => ACCOUNTING_ROLES.BANK_CC, receipt: true },
+  // 7 Loan Receive To SA (Payment): a loan received into the saving account.
+  'loan-recv-saving': { bank: () => ACCOUNTING_ROLES.BANK_SAVING, receipt: false },
+  // 8 Deposit In Bank (Payment): into Saving or Cash Credit; cash has its leg.
+  'deposit-in-bank': {
+    bank: (voucher) => BANK_ACCOUNT_ROLES[String(voucher?.details?.depositIn || 'BANK_SAVING').trim()] || null,
+    receipt: false,
+    cash: (voucher) => /cash/i.test(String(voucher?.details?.depositBy || ''))
+  },
+  // 9 Cheque Issue By SA (Receipt): a cheque from savings; self use = cash
+  // withdrawn (legacy: Cash-In-Hand as its pay mode).
+  'cheque-issue-saving': { bank: () => ACCOUNTING_ROLES.BANK_SAVING, receipt: true, cash: (voucher) => voucher?.details?.selfUse === true },
+  // 10 Amount Transfer By SA (Receipt): money out of savings.
+  'transfer-saving': { bank: () => ACCOUNTING_ROLES.BANK_SAVING, receipt: true },
+  // 11 Amount Transfer To CCA (Payment): paid into the cash credit.
+  'transfer-cashcredit': { bank: () => ACCOUNTING_ROLES.BANK_CC, receipt: false }
+};
+
+async function buildBankVoucherLines(voucher, tx) {
+  const rule = BANK_VOUCHERS[voucher?.details?.key];
+  const amount = Number((Number(voucher.amount) || 0).toFixed(2));
+  if (!(amount > 0)) throw new PostingError('Enter the amount.', 'FAILURE');
+  const role = rule.bank(voucher);
+  if (!role) throw new PostingError('Choose the bank account (Saving A/c or Cash Credit A/c).', 'FAILURE');
+  const bankId = await resolveLedgerId(role, tx);
+  const otherId = rule.cash && rule.cash(voucher)
+    ? await resolveLedgerId(ACCOUNTING_ROLES.CASH, tx)
+    : await resolveLedgerId(ACCOUNTING_ROLES.TRANSFER_ADJUSTMENT, tx);
+  return [
+    { ledgerId: bankId, dr: rule.receipt ? 0 : amount, cr: rule.receipt ? amount : 0 },
+    { ledgerId: otherId, dr: rule.receipt ? amount : 0, cr: rule.receipt ? 0 : amount }
   ];
 }
 
@@ -188,7 +245,7 @@ const POSTING_REGISTRY = {
       if (hasSplit && loanPaise + ladPaise !== Math.round((Number(voucher.amount) || 0) * 100)) {
         throw new PostingError('Total Amount must equal Regular Loan Amount + Loan Against Deposit Amount.', 'FAILURE');
       }
-      const paymentLedgerId = await getPaymentLedger(voucher, tx);
+      const paymentLedgerId = await getCounterLedger(voucher, tx);
       const lines = [];
       if (loanPaise > 0) lines.push({ ledgerId: await resolveLedgerId(ACCOUNTING_ROLES.REGULAR_LOAN, tx), dr: loanPaise / 100, cr: 0, memberId: voucher.partyCode });
       if (ladPaise > 0) lines.push({ ledgerId: await resolveLedgerId(ACCOUNTING_ROLES.LOAN_AGAINST_DEPOSIT, tx), dr: ladPaise / 100, cr: 0, memberId: voucher.partyCode });
@@ -201,7 +258,7 @@ const POSTING_REGISTRY = {
     status: 'PROVEN',
     build: async (voucher, { tx }) => {
       const amount = Number(voucher.amount) || 0;
-      const paymentLedgerId = await getPaymentLedger(voucher, tx);
+      const paymentLedgerId = await getCounterLedger(voucher, tx);
       const depLedgerId = await resolveLedgerId(ACCOUNTING_ROLES.COMPULSORY_DEPOSIT, tx);
       return [
         { ledgerId: depLedgerId, dr: amount, cr: 0, memberId: voucher.partyCode },
@@ -216,7 +273,7 @@ const POSTING_REGISTRY = {
     status: 'PROVEN',
     build: async (voucher, { tx }) => {
       const amount = Number(voucher.amount) || 0;
-      const paymentLedgerId = await getPaymentLedger(voucher, tx);
+      const paymentLedgerId = await getCounterLedger(voucher, tx);
       const ssaLedgerId = await resolveLedgerId(ACCOUNTING_ROLES.SPECIAL_DEPOSIT, tx);
       return [
         { ledgerId: ssaLedgerId, dr: amount, cr: 0, memberId: voucher.partyCode },
@@ -227,7 +284,7 @@ const POSTING_REGISTRY = {
   'advance-paid-emp': {
     status: 'HIGH',
     build: async (voucher, { tx }) => {
-      const paymentLedgerId = await getPaymentLedger(voucher, tx);
+      const paymentLedgerId = await getCounterLedger(voucher, tx);
       const components = voucher?.details?.components || {};
       const house = Number(components.house) || 0;
       const vehicle = Number(components.vehicle) || 0;
@@ -336,7 +393,7 @@ const POSTING_REGISTRY = {
         throw new PostingError('Recovery voucher has no recovered amount.', 'FAILURE');
       }
 
-      const paymentLedgerId = await getPaymentLedger(voucher, tx);
+      const paymentLedgerId = await getCounterLedger(voucher, tx);
       
       return [
         { ledgerId: paymentLedgerId, dr: totalDr, cr: 0 },
@@ -402,7 +459,10 @@ const POSTING_REGISTRY = {
       ];
     }
   },
-  'bank-deposit': { status: 'BLOCKED_LEGACY_UNKNOWN' },
+  ...Object.fromEntries(Object.keys(BANK_VOUCHERS).map((key) => [key, {
+    status: 'PROVEN',
+    build: (voucher, { tx }) => buildBankVoucherLines(voucher, tx)
+  }])),
   // Interest Paid To Member (legacy TransType 20): the member's CD / SSA
   // interest, Intrest Paid (CD / SSA) Dr. Legacy always posts it by Transfer:
   // a Transfer Voucher Receipt From Member credits it into the deposit.

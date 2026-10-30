@@ -51,8 +51,9 @@ test('Deposit In offers only Cash Credit and Saving accounts', async () => {
   const source = await readFile('src/pages/transactions/bank/form.jsx', 'utf8');
   const optionsBlock = source.match(/const BANK_DEPOSIT_IN_OPTIONS = \[([\s\S]*?)\];/)?.[1] || '';
 
-  assert.doesNotMatch(optionsBlock, /Cash-in-hand|L001/);
-  assert.match(optionsBlock, /value: 'L002', label: 'Cash Credit A\/c'/);
-  assert.match(optionsBlock, /value: 'L013', label: 'Saving A\/c'/);
+  // Real ledger roles (posting resolves BANK_SAVING / BANK_CC), not codes.
+  assert.doesNotMatch(optionsBlock, /Cash-in-hand|L001|CASH'/);
+  assert.match(optionsBlock, /value: 'BANK_CC', label: 'Cash Credit A\/c'/);
+  assert.match(optionsBlock, /value: 'BANK_SAVING', label: 'Saving A\/c'/);
   assert.equal((optionsBlock.match(/value:/g) || []).length, 2);
 });

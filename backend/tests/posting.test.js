@@ -231,7 +231,7 @@ const generalRun = { created: null, restored: [] };
 async function generalVoucherLedgers() {
   const db = await initializeDatabase();
   if (!generalRun.created) {
-    for (const role of [ACCOUNTING_ROLES.CASH, ACCOUNTING_ROLES.TRANSFER_ADJUSTMENT]) {
+    for (const role of [ACCOUNTING_ROLES.CASH, ACCOUNTING_ROLES.TRANSFER_ADJUSTMENT, ACCOUNTING_ROLES.BANK_SAVING, ACCOUNTING_ROLES.BANK_CC, ACCOUNTING_ROLES.REGULAR_LOAN]) {
       if (await Ledger.findOne({ semanticRole: role })) continue;
       const deleted = (await db.query(`SELECT id FROM ledgers WHERE "semanticRole" = $1 AND "deletedAt" IS NOT NULL ORDER BY "deletedAt" DESC LIMIT 1`, [role])).rows[0];
       if (deleted && await restoreMainRow('ledgers', deleted.id)) generalRun.restored.push(deleted.id);
@@ -274,4 +274,37 @@ test('Payment / Receipt Voucher - refuse no ledger, no amount, or the pay mode l
   await assert.rejects(buildJournalLinesForVoucher(base), /ledger/);
   await assert.rejects(buildJournalLinesForVoucher({ ...base, partyCode: expense.code, amount: 0 }), /amount/);
   await assert.rejects(buildJournalLinesForVoucher({ ...base, partyCode: cash.code }), /pay mode account/);
+});
+
+// Bank vouchers (legacy TransType 6-11): the bank ledger in the voucher's
+// legacy direction; Cash-in-Hand only for a cash deposit / self-use cheque,
+// otherwise the Transfer Adjustment account (legacy posted them one-sided).
+test('Bank vouchers post as legacy VwLedgerTransaction does', async () => {
+  const { cash, adjustment } = await generalVoucherLedgers();
+  const saving = String((await Ledger.findOne({ semanticRole: ACCOUNTING_ROLES.BANK_SAVING })).id);
+  const cc = String((await Ledger.findOne({ semanticRole: ACCOUNTING_ROLES.BANK_CC })).id);
+  const ta = String(adjustment.id);
+  const cashId = String(cash.id);
+  const post = async (details) => sides(await buildJournalLinesForVoucher({ voucherNo: 'BK', amount: 500, details }));
+  assert.deepEqual(await post({ key: 'loan-recv-cash' }), [[cc, 0, 500], [ta, 500, 0]]);
+  assert.deepEqual(await post({ key: 'loan-recv-saving' }), [[saving, 500, 0], [ta, 0, 500]]);
+  assert.deepEqual(await post({ key: 'deposit-in-bank', depositIn: 'BANK_SAVING', depositBy: 'CASH' }), [[saving, 500, 0], [cashId, 0, 500]]);
+  assert.deepEqual(await post({ key: 'deposit-in-bank', depositIn: 'BANK_CC', depositBy: 'DD/CHEQUE' }), [[cc, 500, 0], [ta, 0, 500]]);
+  assert.deepEqual(await post({ key: 'cheque-issue-saving' }), [[saving, 0, 500], [ta, 500, 0]]);
+  assert.deepEqual(await post({ key: 'cheque-issue-saving', selfUse: true }), [[saving, 0, 500], [cashId, 500, 0]]);
+  assert.deepEqual(await post({ key: 'transfer-saving' }), [[saving, 0, 500], [ta, 500, 0]]);
+  assert.deepEqual(await post({ key: 'transfer-cashcredit' }), [[cc, 500, 0], [ta, 0, 500]]);
+});
+
+test('A member voucher paid by cheque leaves its bank side to the Cheque Issue', async () => {
+  const { cash, adjustment } = await generalVoucherLedgers();
+  const loanPaid = (mode) => buildJournalLinesForVoucher({ voucherNo: 'LP', amount: 700, partyCode: 'M-1', mode, details: { key: 'loan-paid-member' } });
+  assert.equal((await loanPaid('CASH')).find((l) => l.creditAmount === 700).ledgerId, String(cash.id));
+  assert.equal((await loanPaid('CHEQUE')).find((l) => l.creditAmount === 700).ledgerId, String(adjustment.id));
+  // With its Cheque Issue the Transfer Adjustment account nets to zero.
+  const issue = await buildJournalLinesForVoucher({ voucherNo: 'CI', amount: 700, details: { key: 'cheque-issue-saving' } });
+  const net = [...(await loanPaid('CHEQUE')), ...issue]
+    .filter((l) => l.ledgerId === String(adjustment.id))
+    .reduce((sum, l) => sum + l.debitAmount - l.creditAmount, 0);
+  assert.equal(net, 0);
 });

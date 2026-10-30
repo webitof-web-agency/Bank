@@ -328,9 +328,10 @@ function getPartyGroupsForSelection(partyType, lookups) {
 }
 
 // Cash goes into one of the society's two bank accounts.
+// The bank account a deposit goes into (posting resolves it by ledger role).
 const BANK_DEPOSIT_IN_OPTIONS = [
-  { value: 'L002', label: 'Cash Credit A/c' },
-  { value: 'L013', label: 'Saving A/c' }
+  { value: 'BANK_SAVING', label: 'Saving A/c' },
+  { value: 'BANK_CC', label: 'Cash Credit A/c' }
 ];
 
 const BANK_DEPOSIT_BY_OPTIONS = [
@@ -393,9 +394,9 @@ export function BankTransactionForm({ section, lookups = {}, value, setValue, on
       };
 
       if (!next.mode) {
-        if (isLoanRecvCash) { next.mode = 'Cash / Credit'; changed = true; }
-        else if (isLoanRecvSaving) { next.mode = 'Saving A/c'; changed = true; }
-        else if (isDepositInBank) { next.mode = 'Bank Deposit'; changed = true; }
+        if (isLoanRecvCash) { next.mode = 'Cheque'; changed = true; }
+        else if (isLoanRecvSaving) { next.mode = 'Cheque'; changed = true; }
+        else if (isDepositInBank) { next.mode = 'Cash'; changed = true; }
         else if (isChequeIssueSaving || isChequeIssueLoan) { next.mode = 'Cheque'; changed = true; }
         else if (isTransferSaving || isTransferCashCredit) { next.mode = 'Transfer'; changed = true; }
       }
@@ -403,7 +404,8 @@ export function BankTransactionForm({ section, lookups = {}, value, setValue, on
       if (isLoanRecvCash) { setIfEmpty('fixedSettlement', 'L002'); }
       if (isLoanRecvSaving) { setIfEmpty('fixedSettlement', 'L013'); }
       if (isDepositInBank) {
-        setIfEmpty('depositIn', 'L002');
+        // Legacy deposited into the saving account almost always.
+        setIfEmpty('depositIn', 'BANK_SAVING');
         setIfEmpty('depositBy', 'CASH');
       }
       if (isChequeIssueSaving) { setIfEmpty('fixedSettlement', 'L013'); }
@@ -515,7 +517,11 @@ export function BankTransactionForm({ section, lookups = {}, value, setValue, on
             <FieldLabel required>Deposit By</FieldLabel>
             <CustomSelect
               value={draft.details?.depositBy || ''}
-              onChange={(next) => updateDetails('depositBy', next)}
+              onChange={(next) => {
+                updateDetails('depositBy', next);
+                // The voucher's mode, as legacy's Paymode: Cash or DD/Cheque.
+                setRootValue(setValue, 'mode', next === 'CASH' ? 'Cash' : 'DD/Cheque');
+              }}
               options={BANK_DEPOSIT_BY_OPTIONS}
               placeholder="Select mode"
               searchable={false}
@@ -557,7 +563,17 @@ export function BankTransactionForm({ section, lookups = {}, value, setValue, on
             <FieldLabel>Cheque Date</FieldLabel>
             <Input type="date" value={draft.instrumentDate || ''} onChange={(event) => setRootValue(setValue, 'instrumentDate', event.target.value)} />
           </div>
-          <CheckboxLine className="md:col-span-4" checked={draft.details?.selfUse} onChange={(checked) => updateDetails('selfUse', checked)}>Withdrawal for self use</CheckboxLine>
+          {/* Self use: cash withdrawn from the bank (legacy pay mode Cash-In-Hand). */}
+          <CheckboxLine
+            className="md:col-span-4"
+            checked={draft.details?.selfUse}
+            onChange={(checked) => {
+              updateDetails('selfUse', checked);
+              setRootValue(setValue, 'mode', checked ? 'Cash' : 'Cheque');
+            }}
+          >
+            Withdrawal for self use
+          </CheckboxLine>
           {renderCommonNarration()}
         </div>
       </Card>
