@@ -4,7 +4,7 @@ const { buildJournalLinesForVoucher, PostingError } = require('../services/posti
 const { createVoucher, updateVoucher } = require('../services/banking.service');
 const { Voucher, JournalLine, RecoveryLine, Ledger, Member } = require('../models/banking.models');
 const { ACCOUNTING_ROLES } = require('../config/accountingConstants');
-const { initializeDatabase, withTransaction, getCachedRows } = require('../config/postgres');
+const { initializeDatabase, withTransaction, getCachedRows, restoreMainRow } = require('../config/postgres');
 const crypto = require('crypto');
 
 async function seedLedgers() {
@@ -223,15 +223,34 @@ test('Cache test - tx operations bypass cache until commit', async () => {
 // Payment / Receipt Voucher (legacy TransType 18 / 19): the ledger Dr / Cr,
 // Cash-in-Hand the other side in cash; a cheque is one-sided in legacy, so its
 // other side is the Transfer Adjustment account.
+// Its own ledger is created for this run and removed afterwards; a shared
+// Cash / Transfer Adjustment ledger another suite soft-deleted is brought back
+// for the run and deleted again after it.
+const generalRun = { created: null, restored: [] };
+
 async function generalVoucherLedgers() {
-  await initializeDatabase();
-  if (!(await Ledger.findOne({ code: 'TEST-PV-EXP' }))) await Ledger.create({ code: 'TEST-PV-EXP', name: 'Test Contingent A/c' });
+  const db = await initializeDatabase();
+  if (!generalRun.created) {
+    for (const role of [ACCOUNTING_ROLES.CASH, ACCOUNTING_ROLES.TRANSFER_ADJUSTMENT]) {
+      if (await Ledger.findOne({ semanticRole: role })) continue;
+      const deleted = (await db.query(`SELECT id FROM ledgers WHERE "semanticRole" = $1 AND "deletedAt" IS NOT NULL ORDER BY "deletedAt" DESC LIMIT 1`, [role])).rows[0];
+      if (deleted && await restoreMainRow('ledgers', deleted.id)) generalRun.restored.push(deleted.id);
+    }
+    generalRun.created = await Ledger.create({ code: `TEST-PV-${crypto.randomUUID().slice(0, 8)}`, name: 'Test Contingent A/c' });
+  }
   return {
     cash: await Ledger.findOne({ semanticRole: ACCOUNTING_ROLES.CASH }),
     adjustment: await Ledger.findOne({ semanticRole: ACCOUNTING_ROLES.TRANSFER_ADJUSTMENT }),
-    expense: await Ledger.findOne({ code: 'TEST-PV-EXP' })
+    expense: generalRun.created
   };
 }
+
+test.after(async () => {
+  if (!generalRun.created) return;
+  const db = await initializeDatabase();
+  await db.query('DELETE FROM ledgers WHERE id = $1', [String(generalRun.created.id || generalRun.created._id)]);
+  for (const id of generalRun.restored) await Ledger.findByIdAndDelete(id);
+});
 
 const sides = (lines) => lines.map((l) => [l.ledgerId, l.debitAmount, l.creditAmount]);
 
