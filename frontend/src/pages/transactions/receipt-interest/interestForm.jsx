@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { FileText } from 'lucide-react';
 import { Button } from '../../../components/ui/Button';
 import { Card } from '../../../components/ui/Card';
@@ -10,6 +10,8 @@ import { formatTransactionAmount, toneClassName } from './transactionUtils';
 import { useInDialog } from '../../../components/ui/dialogContext';
 import { FormSectionTitle, HideInDialog, OnlyInDialog } from '../../../components/ui/FormSectionTitle';
 import { membersInFy } from '../../../lib/fyMembers';
+import { api } from '../../../api/api';
+import { useAuth } from '../../../context/AuthContext';
 
 function FieldLabel({ children, required = false }) {
   return (
@@ -34,7 +36,7 @@ function LookupSelect({ label, value, onChange, options = [], placeholder = 'Sel
   );
 }
 
-export function InterestVoucherForm({ section, lookups = {}, value, setValue, onSubmit, onDocumentRemove }) {
+export function InterestVoucherForm({ section, lookups = {}, value, setValue, onSubmit, onDocumentRemove, isEditing = false }) {
   // Inside a dialog its title already names the voucher type.
   const inDialog = useInDialog();
   const activeItem = useMemo(() => (section?.items || []).find((item) => item.key === value?.details?.key) || section?.items?.[0] || null, [section, value]);
@@ -75,6 +77,48 @@ export function InterestVoucherForm({ section, lookups = {}, value, setValue, on
     setValue((current) => ({ ...(current || {}), details: { ...(current?.details || {}), [key]: nextValue } }));
   }
 
+  const { token } = useAuth();
+  const isPaidMember = activeItem?.key === 'interest-paid-member';
+  const [dueState, setDueState] = useState('');
+
+  // The A/C picks the head and its interest ledger: never left blank.
+  useEffect(() => {
+    if (!value.details?.accountType && accountTypeOptions[0]) setDetail('accountType', accountTypeOptions[0].value);
+  }, [accountTypeOptions]);
+
+  // The interest is the voucher's amount (legacy TotalAmt); there is no
+  // separate Amount to enter.
+  useEffect(() => {
+    const interest = value.details?.interestAmount ?? '';
+    // An older voucher saved with the amount only: that amount is its interest.
+    if (interest === '' && Number(value.amount) > 0) {
+      setDetail('interestAmount', value.amount);
+      return;
+    }
+    if (String(value.amount ?? '') !== String(interest)) setRoot('amount', interest);
+  }, [value.details?.interestAmount]);
+
+  // Interest Paid To Member, as legacy: the CD / SSA interest accrued up to
+  // the voucher date, filled in for a new voucher (it can still be changed).
+  const memberCode = value.partyCode || '';
+  const accountType = value.details?.accountType || '';
+  const voucherDate = value.date || '';
+  useEffect(() => {
+    // Only once the date is a whole one (the field reports each typed year).
+    if (!isPaidMember || isEditing || !token || !memberCode || !accountType || !/^(19|20)\d{2}-\d{2}-\d{2}$/.test(voucherDate)) return undefined;
+    let cancelled = false;
+    setDueState('loading');
+    api.banking.getMemberInterestDue(token, { memberCode, accountType, date: voucherDate })
+      .then((response) => {
+        if (cancelled) return;
+        const due = response?.data ?? response;
+        setDetail('interestAmount', Number(due?.interest || 0));
+        setDueState('done');
+      })
+      .catch(() => { if (!cancelled) setDueState('failed'); });
+    return () => { cancelled = true; };
+  }, [isPaidMember, isEditing, token, memberCode, accountType, voucherDate]);
+
   return (
     <form id="transaction-voucher-form" className="mx-auto w-full space-y-3" onSubmit={onSubmit}>
       <Card className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -82,7 +126,7 @@ export function InterestVoucherForm({ section, lookups = {}, value, setValue, on
           <div className="mb-5 border-b border-slate-100 pb-4">
             <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-rose-500">Interest Payment</p>
             <h3 className="mt-1 text-2xl font-bold text-slate-900">{activeItem?.label || 'Interest Paid to Member'}</h3>
-            <p className="mt-1 text-sm text-slate-500">Member interest posting with account head, amount, and narration.</p>
+            <p className="mt-1 text-sm text-slate-500">Interest posting with account head, interest and narration.</p>
           </div>
         )}
         {inDialog && <div className="mb-3"><FormSectionTitle>Voucher</FormSectionTitle></div>}
@@ -159,19 +203,7 @@ export function InterestVoucherForm({ section, lookups = {}, value, setValue, on
           </div>
 
           <div className="space-y-1.5">
-            <FieldLabel required>Amount</FieldLabel>
-            <Input
-              type="number"
-              min="0"
-              step="0.01"
-              value={value.amount ?? ''}
-              onChange={(e) => setRoot('amount', e.target.value)}
-              placeholder="0.00"
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <FieldLabel>Interest</FieldLabel>
+            <FieldLabel required>Interest</FieldLabel>
             <Input
               type="number"
               min="0"
@@ -180,13 +212,20 @@ export function InterestVoucherForm({ section, lookups = {}, value, setValue, on
               onChange={(e) => setDetail('interestAmount', e.target.value)}
               placeholder="0.00"
             />
+            {isPaidMember && !isEditing ? (
+              <p className="text-[12px] text-slate-500">
+                {dueState === 'loading' ? 'Working out the interest…'
+                  : dueState === 'failed' ? 'Could not work out the interest; enter it.'
+                    : 'Interest accrued from 1 April to the voucher date; you can change it.'}
+              </p>
+            ) : null}
           </div>
 
           <div className="space-y-1.5">
             <FieldLabel>Total Amount</FieldLabel>
             <Input
               type="number"
-              value={value.amount ?? ''}
+              value={value.details?.interestAmount ?? ''}
               readOnly
               className="bg-slate-50 text-slate-500"
               placeholder="0.00"

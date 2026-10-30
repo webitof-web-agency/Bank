@@ -28,6 +28,11 @@ import {
   getTransactionVoucherTitle
 } from './transactionUtils';
 
+// Interest Receive From Employee is an employee's voucher; the others a member's.
+function partyTypeFor(key = '') {
+  return key === 'interest-recv-employee' ? 'employee' : 'member';
+}
+
 export function InterestVoucherWorkspacePage({ sectionKey, itemKey, detailPathBase }) {
   const navigate = useNavigate();
   const { token, pageAccess } = useAuth();
@@ -98,11 +103,12 @@ export function InterestVoucherWorkspacePage({ sectionKey, itemKey, detailPathBa
     setActiveRecord(null);
     setDraft({
       ...next,
-      partyType: 'member',
+      partyType: partyTypeFor(activeItem?.key),
       voucherCategory: activeItem?.label || next.voucherCategory,
       transactionType: activeItem?.transactionType || next.transactionType,
       accent: activeItem?.accent || next.accent,
-      mode: activeItem?.mode || 'Interest',
+      // Legacy posts these by Transfer (Paid To Member always); Cash is a choice.
+      mode: 'Transfer',
       details: { ...(next.details || {}), key: activeItem?.key || next.details?.key || '' }
     });
     setEditorOpen(true);
@@ -111,7 +117,7 @@ export function InterestVoucherWorkspacePage({ sectionKey, itemKey, detailPathBa
   function openEdit(record) {
     setActiveRecord(record);
     const next = createTransactionDraftFromRecord(record, sectionItems, sectionKey);
-    setDraft({ ...next, partyType: 'member' });
+    setDraft({ ...next, partyType: partyTypeFor(next.details?.key || activeItem?.key) });
     setEditorOpen(true);
   }
 
@@ -361,17 +367,17 @@ export function InterestVoucherWorkspacePage({ sectionKey, itemKey, detailPathBa
       <Modal
         open={editorOpen}
         onClose={closeEditor}
-        title={activeRecord ? 'Edit Interest' : 'Create Interest'}
+        title={`${activeRecord ? 'Edit' : 'Create'} ${activeItem?.label || 'Interest'}`}
         footer={
           <div className="flex w-full justify-end gap-3">
             <Button variant="outline" type="button" onClick={closeEditor}>Cancel</Button>
             <Button type="submit" form="transaction-voucher-form" disabled={saving || !(activeRecord ? canEdit : canCreate)} className="bg-[var(--primary,#1661F6)] text-white hover:opacity-90">
-              {saving ? 'Saving...' : activeRecord ? 'Save Changes' : 'Create Interest'}
+              {saving ? 'Saving...' : activeRecord ? 'Save Changes' : 'Create Entry'}
             </Button>
           </div>
         }
       >
-        <InterestVoucherForm section={section} lookups={lookups} value={draft} setValue={setDraft} onSubmit={saveVoucher} onDocumentRemove={handleDocumentRemove} />
+        <InterestVoucherForm section={section} lookups={lookups} value={draft} setValue={setDraft} onSubmit={saveVoucher} onDocumentRemove={handleDocumentRemove} isEditing={Boolean(activeRecord)} />
       </Modal>
 
       <ArchivedVoucherDialog voucher={archiveTarget} onClose={() => setArchiveTarget(null)} onSaved={() => list.reload()} />

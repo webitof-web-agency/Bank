@@ -154,7 +154,8 @@ const LEDGER_SEEDS = [
   { code: '18', name: 'General Reserve / Capital Fund', nature: 'LIABILITY', group: 'GENERAL', openingBalance: 492700, balanceSide: 'CR' },
   { code: '33', name: 'Housing Loan To Employee', nature: 'ASSET', group: 'LOANS', semanticRole: 'EMPLOYEE_HOUSING_LOAN', openingBalance: 0, balanceSide: 'DR' },
   { code: '34', name: 'Vehicle Loan To Employee', nature: 'ASSET', group: 'LOANS', semanticRole: 'EMPLOYEE_VEHICLE_LOAN', openingBalance: 0, balanceSide: 'DR' },
-  { code: '35', name: 'Grain Advance To Employee', nature: 'ASSET', group: 'LOANS', semanticRole: 'EMPLOYEE_GRAIN_ADVANCE', openingBalance: 0, balanceSide: 'DR' }
+  { code: '35', name: 'Grain Advance To Employee', nature: 'ASSET', group: 'LOANS', semanticRole: 'EMPLOYEE_GRAIN_ADVANCE', openingBalance: 0, balanceSide: 'DR' },
+  { code: '36', name: 'Transfer Adjustment A/c', nature: 'LIABILITY', group: 'SUSPENSE', semanticRole: 'TRANSFER_ADJUSTMENT', openingBalance: 0, balanceSide: 'CR' }
 ];
 
 const RATE_SEEDS = [

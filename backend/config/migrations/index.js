@@ -286,6 +286,32 @@ const MIGRATIONS = [
          WHERE coalesce(btrim("memberCode"), '') = '' AND "deletedAt" IS NULL`)).rows[0].n;
       return { linked, leftByName: left };
     }
+  },
+  {
+    // Legacy posts a transfer voucher (Paid To / Receipt From Member,
+    // Payment, Receipt) and a Transfer interest voucher one-sided, with no
+    // cash leg: its other side is a companion voucher (e.g. CD paid out +
+    // Interest Received on the loan). The app's journal must balance, so that
+    // missing side goes to this account; once both halves are entered it nets
+    // to zero, and a balance left on it is a half-entered pair. A fresh,
+    // empty database gets it from the ledger seed instead.
+    name: '2026-10-29-transfer-adjustment-ledger',
+    async run(db) {
+      const existing = (await db.query(`SELECT id, code, "deletedAt" FROM ledgers WHERE "semanticRole" = 'TRANSFER_ADJUSTMENT' ORDER BY "deletedAt" NULLS FIRST`)).rows[0];
+      if (existing) {
+        if (existing.deletedAt) await db.query('UPDATE ledgers SET "deletedAt" = NULL, "updatedAt" = now() WHERE id = $1', [existing.id]);
+        return { code: existing.code, created: false, restored: Boolean(existing.deletedAt) };
+      }
+      const count = (await db.query('SELECT count(*)::int AS n FROM ledgers')).rows[0].n;
+      if (!count) return { created: false, emptyDatabase: true };
+      const next = (await db.query(`SELECT coalesce(max(code::int), 0) + 1 AS code FROM ledgers WHERE code ~ '^[0-9]+$'`)).rows[0].code;
+      await db.query(
+        `INSERT INTO ledgers (id, "createdAt", "updatedAt", code, name, nature, "group", "semanticRole", "openingBalance", "balanceSide", "sortOrder", "isBankAccount", "isActive", payload)
+         VALUES (gen_random_uuid(), now(), now(), $1, 'Transfer Adjustment A/c', 'LIABILITY', 'LIABILITY', 'TRANSFER_ADJUSTMENT', 0, 'CR', 12, false, true, '{}'::jsonb)`,
+        [String(next)]
+      );
+      return { code: String(next), created: true };
+    }
   }
 ];
 

@@ -46,15 +46,20 @@ function isVehicleLoanInterest(voucher = {}) {
   return /vehicle/i.test(String(voucher?.details?.accountType || ''));
 }
 
-// The member heads each transfer voucher moves. The other side is Cash-in-
-// Hand, as for the other member vouchers (the mode is only recorded).
-const TRANSFER_VOUCHER_HEADS = {
-  paid: { roles: { share: ACCOUNTING_ROLES.SHARE, cd: ACCOUNTING_ROLES.COMPULSORY_DEPOSIT, ssa: ACCOUNTING_ROLES.SPECIAL_DEPOSIT }, names: 'Share, Compulsory Deposit and SSA' },
-  recover: { roles: { loan: ACCOUNTING_ROLES.REGULAR_LOAN, lad: ACCOUNTING_ROLES.LOAN_AGAINST_DEPOSIT }, names: 'Regular Loan and Loan Against Deposit' }
+// The member heads a transfer voucher moves: every head, as legacy
+// TransType 14 / 15 carry Share, CD, SSA, Loan and LAD alike. Legacy posts
+// them one-sided (no cash leg); the other side is a companion voucher
+// (Cheque Issue, Interest Received / Paid, or the opposite transfer), so here
+// it goes to the Transfer Adjustment account, which those companions clear.
+const TRANSFER_VOUCHER_ROLES = {
+  share: ACCOUNTING_ROLES.SHARE,
+  cd: ACCOUNTING_ROLES.COMPULSORY_DEPOSIT,
+  ssa: ACCOUNTING_ROLES.SPECIAL_DEPOSIT,
+  loan: ACCOUNTING_ROLES.REGULAR_LOAN,
+  lad: ACCOUNTING_ROLES.LOAN_AGAINST_DEPOSIT
 };
 
 async function buildTransferVoucherLines(voucher, tx, kind) {
-  const { roles, names } = TRANSFER_VOUCHER_HEADS[kind];
   const paid = kind === 'paid';
   const memberId = String(voucher.partyCode || '').trim().toUpperCase();
   if (!memberId) throw new PostingError('Select the member.', 'FAILURE');
@@ -64,15 +69,86 @@ async function buildTransferVoucherLines(voucher, tx, kind) {
     const head = String(row?.head || row?.key || '').trim().toLowerCase();
     const paise = Math.round((Number(row?.amount) || 0) * 100);
     if (paise <= 0) continue;
-    if (!roles[head]) throw new PostingError(`This voucher takes ${names} only; remove the ${row?.label || head} amount.`, 'FAILURE');
+    if (!TRANSFER_VOUCHER_ROLES[head]) throw new PostingError(`Unknown head ${row?.label || head}.`, 'FAILURE');
     const amount = paise / 100;
-    lines.push({ ledgerId: await resolveLedgerId(roles[head], tx), dr: paid ? amount : 0, cr: paid ? 0 : amount, memberId });
+    lines.push({ ledgerId: await resolveLedgerId(TRANSFER_VOUCHER_ROLES[head], tx), dr: paid ? amount : 0, cr: paid ? 0 : amount, memberId });
     totalPaise += paise;
   }
-  if (!totalPaise) throw new PostingError(`Enter the amount for ${names}.`, 'FAILURE');
+  if (!totalPaise) throw new PostingError('Enter the amount for at least one head.', 'FAILURE');
   const total = totalPaise / 100;
-  lines.push({ ledgerId: await getPaymentLedger(voucher, tx), dr: paid ? 0 : total, cr: paid ? total : 0 });
+  lines.push({ ledgerId: await resolveLedgerId(ACCOUNTING_ROLES.TRANSFER_ADJUSTMENT, tx), dr: paid ? 0 : total, cr: paid ? total : 0 });
   return lines;
+}
+
+// Transfer Voucher Payment / Receipt (legacy TransType 16 / 17): one ledger,
+// debited by a Payment and credited by a Receipt, as legacy posts them; they
+// pair into journals (Loan to Members Dr / Interest Received Cr at year end).
+async function buildTransferLedgerLines(voucher, tx, kind) {
+  const amount = Number((Number(voucher.amount) || 0).toFixed(2));
+  if (!(amount > 0)) throw new PostingError('Enter the amount.', 'FAILURE');
+  const code = String(voucher.partyCode || '').trim().toUpperCase();
+  if (!code) throw new PostingError('Select the ledger.', 'FAILURE');
+  const ledger = (await Ledger.find({ code }).tx(tx).exec())[0];
+  if (!ledger) throw new PostingError(`Ledger ${code} was not found.`, 'FAILURE');
+  const adjustmentId = await resolveLedgerId(ACCOUNTING_ROLES.TRANSFER_ADJUSTMENT, tx);
+  const ledgerId = ledger.id || ledger._id;
+  if (String(ledgerId) === String(adjustmentId)) throw new PostingError('Choose another ledger: this one is the Transfer Adjustment account itself.', 'FAILURE');
+  const payment = kind === 'payment';
+  return [
+    { ledgerId, dr: payment ? amount : 0, cr: payment ? 0 : amount },
+    { ledgerId: adjustmentId, dr: payment ? 0 : amount, cr: payment ? amount : 0 }
+  ];
+}
+
+// Transfer (no cash) goes to the Transfer Adjustment account, as legacy posts
+// such a voucher one-sided; Cash to the payment ledger (Cash-in-Hand).
+function isTransferMode(voucher = {}) {
+  if (voucher?.details?.paymentLedgerId) return false;
+  return !/cash/i.test(String(voucher.mode || voucher?.details?.payMode || ''));
+}
+
+async function getCounterLedger(voucher, tx) {
+  return isTransferMode(voucher)
+    ? resolveLedgerId(ACCOUNTING_ROLES.TRANSFER_ADJUSTMENT, tx)
+    : getPaymentLedger(voucher, tx);
+}
+
+// Member interest vouchers (legacy TransType 20 / 21): the A/C picks the
+// head and its interest ledger, by name as the migrated ledgers carry them.
+const MEMBER_INTEREST_HEADS = {
+  'interest-paid-member': [
+    { match: /saving|ssa|s\.s\.a/i, head: 'specialDeposit', ledger: /intre?s?t\s*paid.*s\.?\s*s\.?\s*a/i, label: 'Intrest Paid (Members S.S.A.)' },
+    { match: /./, head: 'compulsoryDeposit', ledger: /intre?s?t\s*paid.*compulsory/i, label: 'Intrest Paid (Member Compulsory Deposit)' }
+  ],
+  'interest-recv-member': [
+    { match: /deposit/i, head: 'loanAgainstDeposit', ledger: /intre?s?t\s*rec\w*.*deposit\s*loan/i, label: 'Intrest Received (Members Deposit Loan)' },
+    { match: /./, head: 'loan', ledger: /intre?s?t\s*rec\w*.*members\s*loan/i, label: 'Intrest Received (Members Loan)' }
+  ]
+};
+
+// Which head a member interest voucher moves ('compulsoryDeposit',
+// 'specialDeposit', 'loan' or 'loanAgainstDeposit'); null for other vouchers.
+function memberInterestHead(voucher = {}) {
+  const heads = MEMBER_INTEREST_HEADS[voucher?.details?.key];
+  if (!heads) return null;
+  return heads.find((entry) => entry.match.test(String(voucher?.details?.accountType || ''))) || null;
+}
+
+async function buildMemberInterestLines(voucher, tx) {
+  const head = memberInterestHead(voucher);
+  const amount = employeeInterestReceived(voucher);
+  if (!(amount > 0)) throw new PostingError('Enter the interest amount.', 'FAILURE');
+  const memberId = String(voucher.partyCode || '').trim().toUpperCase();
+  if (!memberId) throw new PostingError('Select the member.', 'FAILURE');
+  const interestLedger = (await Ledger.find({}).tx(tx).exec()).find((ledger) => head.ledger.test(String(ledger.name || '')));
+  if (!interestLedger) throw new PostingError(`No "${head.label}" ledger was found.`, 'FAILURE');
+  const counterId = await getCounterLedger(voucher, tx);
+  const paid = voucher.details.key === 'interest-paid-member';
+  // Paid: the interest expense Dr. Received: the interest income Cr.
+  return [
+    { ledgerId: interestLedger.id || interestLedger._id, dr: paid ? amount : 0, cr: paid ? 0 : amount, memberId },
+    { ledgerId: counterId, dr: paid ? 0 : amount, cr: paid ? amount : 0 }
+  ];
 }
 
 const POSTING_REGISTRY = {
@@ -157,10 +233,12 @@ const POSTING_REGISTRY = {
       return lines;
     }
   },
+  // Advance Recovery From Employee (legacy TransType 13). By Transfer (from
+  // salary) legacy posts no cash leg: the Transfer Adjustment account here.
   'advance-recovery-emp': {
     status: 'HIGH',
     build: async (voucher, { tx }) => {
-      const paymentLedgerId = await getPaymentLedger(voucher, tx);
+      const paymentLedgerId = await getCounterLedger(voucher, tx);
       const components = voucher?.details?.components || {};
       const house = Number(components.house) || 0;
       const vehicle = Number(components.vehicle) || 0;
@@ -302,24 +380,40 @@ const POSTING_REGISTRY = {
     }
   },
   'bank-deposit': { status: 'BLOCKED_LEGACY_UNKNOWN' },
-  'interest-paid-member': { status: 'BLOCKED_LEGACY_UNKNOWN' },
-  // Transfer Voucher Paid to Member: a member's saved Share / CD / SSA paid
-  // out to them in one entry (a dismembered member's settlement, or any
-  // excess left in a head). Each head is debited for the member, Cash-in-
-  // Hand credited.
+  // Interest Paid To Member (legacy TransType 20): the member's CD / SSA
+  // interest, Intrest Paid (CD / SSA) Dr. Legacy always posts it by Transfer:
+  // a Transfer Voucher Receipt From Member credits it into the deposit.
+  'interest-paid-member': {
+    status: 'PROVEN',
+    build: (voucher, { tx }) => buildMemberInterestLines(voucher, tx)
+  },
+  // Interest Receive From Member (legacy TransType 21): interest on the Loan /
+  // LAD, Intrest Received (Members Loan / Deposit Loan) Cr. By Transfer it is
+  // paid from the member's deposit (a Transfer Voucher Paid To Member); in
+  // cash, Cash-in-Hand Dr.
+  'interest-recv-member': {
+    status: 'PROVEN',
+    build: (voucher, { tx }) => buildMemberInterestLines(voucher, tx)
+  },
+  // Transfer Voucher Paid To Member (legacy TransType 14): each head debited
+  // for the member, the Transfer Adjustment account credited.
   'transfer-voucher-paid': {
     status: 'PROVEN',
     build: (voucher, { tx }) => buildTransferVoucherLines(voucher, tx, 'paid')
   },
-  // Transfer Voucher Recover From Member, the reverse: the member pays the
-  // society towards their Regular Loan / LAD outside a recovery. Each loan is
-  // credited for the member, Cash-in-Hand debited.
+  // Transfer Voucher Receipt From Member (legacy TransType 15), the reverse.
   'transfer-voucher-recover': {
     status: 'PROVEN',
     build: (voucher, { tx }) => buildTransferVoucherLines(voucher, tx, 'recover')
   },
-  'transfer-voucher-payment': { status: 'BLOCKED_LEGACY_UNKNOWN' },
-  'transfer-voucher-receipt': { status: 'BLOCKED_LEGACY_UNKNOWN' }
+  'transfer-voucher-payment': {
+    status: 'PROVEN',
+    build: (voucher, { tx }) => buildTransferLedgerLines(voucher, tx, 'payment')
+  },
+  'transfer-voucher-receipt': {
+    status: 'PROVEN',
+    build: (voucher, { tx }) => buildTransferLedgerLines(voucher, tx, 'receipt')
+  }
 };
 
 async function buildJournalLinesForVoucher(voucher, meta = {}) {
@@ -379,6 +473,7 @@ async function buildJournalLinesForVoucher(voucher, meta = {}) {
 
 module.exports = {
   employeeInterestReceived,
+  memberInterestHead,
   isEmployeeInterestCharged,
   isVehicleLoanInterest,
   buildJournalLinesForVoucher,

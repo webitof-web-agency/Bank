@@ -86,12 +86,14 @@ export const TRANSFER_VOUCHER_HEADS = [
   { key: 'lad', label: 'Loan Against Deposit' }
 ];
 
-// Paid to Member pays out what the member deposited (Share, CD, SSA, always
-// DR); Recover From Member is the member paying towards their loans (Loan,
-// LAD, always CR). Other transfer vouchers keep every head and either side.
+// As legacy TransType 14 / 15, both take every head: Paid To Member is
+// always DR (deposits paid out, or a loan raised), Receipt From Member always
+// CR (interest credited into CD / SSA, or a loan paid off). Other transfer
+// vouchers keep every head and either side.
+const ALL_HEADS = new Set(['share', 'cd', 'ssa', 'loan', 'lad']);
 const FIXED_HEADS = {
-  'transfer-voucher-paid': { keys: new Set(['share', 'cd', 'ssa']), side: 'DR' },
-  'transfer-voucher-recover': { keys: new Set(['loan', 'lad']), side: 'CR' }
+  'transfer-voucher-paid': { keys: ALL_HEADS, side: 'DR' },
+  'transfer-voucher-recover': { keys: ALL_HEADS, side: 'CR' }
 };
 
 // The fixed side of a voucher type ('' when either side is allowed).

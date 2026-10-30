@@ -82,6 +82,7 @@ router.get('/transactions/recovery/member-outstanding', requirePermission(member
 router.get('/transactions/vouchers/next', requirePermission('transactions.read'), banking.transactions.getNextVoucher);
 // Vouchers: any transaction page here; the controller then checks the page
 // of the voucher's own type (Member, Bank, Employee, ...).
+router.get('/transactions/interest-due', requirePermission('transactions.read'), banking.transactions.memberInterestDue);
 router.get('/transactions/vouchers', requirePermission('transactions.read'), banking.transactions.listVouchers);
 router.post('/transactions/vouchers', requirePermission('transactions.write'), banking.transactions.createVoucher);
 router.get('/transactions/vouchers/:id', requirePermission('transactions.read'), banking.transactions.getVoucher);

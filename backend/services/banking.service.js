@@ -2363,6 +2363,21 @@ function applyCutoverFyArchive(snapshots, archive) {
 
 async function getLedgerSnapshots(options = {}) {
   const ledgers = (await Ledger.find({}).lean()).sort((a, b) => compareCodesNumerically(a.code, b.code));
+  const adjustmentCodes = new Set(ledgers.filter((l) => l.semanticRole === 'TRANSFER_ADJUSTMENT').map((l) => cleanUpper(l.code)));
+  return withoutIdleAdjustment(await readLedgerSnapshots(ledgers, options), adjustmentCodes);
+}
+
+// The Transfer Adjustment account (the other side of legacy's one-sided
+// transfer vouchers) is not a legacy ledger: the reports leave it out while
+// nothing is on it, so they stay line for line legacy's. A balance or
+// movement on it (a half-entered pair) shows.
+function withoutIdleAdjustment(snapshots = [], adjustmentCodes = new Set()) {
+  if (!adjustmentCodes.size) return snapshots;
+  return snapshots.filter((row) => !adjustmentCodes.has(cleanUpper(row.code))
+    || Number(row.opening) || Number(row.totalDr) || Number(row.totalCr) || Number(row.closing));
+}
+
+async function readLedgerSnapshots(ledgers, options = {}) {
   const { dateFrom = '', dateTo = '', uptoDate = '' } = options;
 
   // A closed pre-cutover FY comes from the legacy archive. Ledgers aren't
@@ -3285,17 +3300,19 @@ function getPartyMemberCode(voucher) {
   return '';
 }
 
-// Transfer vouchers, outside recovery, in one entry per member:
-//   - Paid to Member: the member's saved Share / CD / SSA paid out to them
-//     (a dismembered member's settlement, or an excess left in a head), so
-//     each allocation comes off that head — a debit;
-//   - Recover From Member: the member pays the society towards their Loan /
-//     LAD, so each allocation comes off what they owe — a credit.
+// Transfer vouchers, outside recovery, in one entry per member, as legacy
+// TransType 14 / 15 (VwMbrTransData): every head on either voucher.
+//   - Paid To Member debits each head: Share / CD / SSA paid out (a
+//     settlement, or CD / SSA used for loan interest), or a loan raised;
+//   - Receipt From Member credits each head: interest credited into CD /
+//     SSA, or a Loan / LAD paid off from the member's deposits.
 // Paise per member bucket, for the ledger rows and the balances.
+const TRANSFER_VOUCHER_HEADS_TO_BUCKETS = { share: 'share', cd: 'compulsoryDeposit', ssa: 'specialDeposit', loan: 'loan', lad: 'loanAgainstDeposit' };
 const TRANSFER_VOUCHER_BUCKETS = {
-  'transfer-voucher-paid': { share: 'share', cd: 'compulsoryDeposit', ssa: 'specialDeposit' },
-  'transfer-voucher-recover': { loan: 'loan', lad: 'loanAgainstDeposit' }
+  'transfer-voucher-paid': TRANSFER_VOUCHER_HEADS_TO_BUCKETS,
+  'transfer-voucher-recover': TRANSFER_VOUCHER_HEADS_TO_BUCKETS
 };
+const DEPOSIT_BUCKETS = new Set(['share', 'compulsoryDeposit', 'specialDeposit']);
 function transferVoucherAmounts(voucher = {}) {
   const buckets = TRANSFER_VOUCHER_BUCKETS[cleanLower(voucher.details?.key)] || {};
   const amounts = Object.fromEntries(Object.values(buckets).map((bucket) => [bucket, 0]));
@@ -3306,34 +3323,65 @@ function transferVoucherAmounts(voucher = {}) {
   return amounts;
 }
 
-// Save check: Paid to Member can't take a head below 0, and Recover From
-// Member can't cut more than the loan outstanding. The balance is today's
-// (every live movement), with this voucher's own earlier version added back
-// when it is being edited (`previous`).
+// Save check: Paid To Member can't take a deposit head below 0, and Receipt
+// From Member can't cut a loan below 0 (a loan raised by Paid, or a deposit
+// credited by Receipt, has no limit). The balance is today's (every live
+// movement), with this voucher's own earlier version added back when it is
+// being edited (`previous`).
 async function assertTransferVoucherWithinBalance(payload = {}, previous = null) {
   const key = cleanLower(payload.details?.key);
   if (!TRANSFER_VOUCHER_BUCKETS[key]) return;
   const code = cleanUpper(payload.partyCode);
   const member = code ? await Member.findOne({ code }).lean() : null;
   if (!member) throw recoveryHttpError('Select the member.');
+  const paid = key === 'transfer-voucher-paid';
+  const reduces = (bucket) => (paid ? DEPOSIT_BUCKETS.has(bucket) : !DEPOSIT_BUCKETS.has(bucket));
+  const amounts = Object.entries(transferVoucherAmounts(payload)).filter(([bucket, paise]) => paise > 0 && reduces(bucket));
+  if (!amounts.length) return;
   const [period] = await computeMemberPeriodBalances({ members: [member], withHistory: false });
   const own = previous && cleanLower(previous.details?.key) === key && cleanUpper(previous.partyCode) === code ? transferVoucherAmounts(previous) : {};
   const labels = { share: 'Share', compulsoryDeposit: 'Compulsory Deposit', specialDeposit: 'SSA', loan: 'Regular Loan', loanAgainstDeposit: 'Loan Against Deposit' };
   const problems = [];
-  for (const [bucket, paise] of Object.entries(transferVoucherAmounts(payload))) {
-    if (paise <= 0) continue;
+  for (const [bucket, paise] of amounts) {
     // Closings are signed paise, credit-positive: a deposit's balance is the
     // closing, a loan's outstanding is minus the closing.
     const closing = Math.round(Number(period?.buckets?.[bucket]?.closing) || 0);
-    const available = (key === 'transfer-voucher-paid' ? closing : -closing) + (own[bucket] || 0);
+    const available = (paid ? closing : -closing) + (own[bucket] || 0);
     if (paise > available) {
-      problems.push(key === 'transfer-voucher-paid'
+      problems.push(paid
         ? `${labels[bucket]} paid ${toRupees(paise)} is more than the ${toRupees(Math.max(0, available))} the member has in it.`
         : `${labels[bucket]} recovered ${toRupees(paise)} is more than the ${toRupees(Math.max(0, available))} outstanding.`);
     }
   }
   if (problems.length) throw recoveryHttpError(`Member ${code}: ${problems.join(' ')}`);
 }
+
+// Save check: Advance Recovery From Employee can't recover more than the
+// housing / vehicle loan or grain advance outstanding today, this voucher's
+// own earlier version added back when it is being edited (`previous`).
+async function assertEmployeeRecoveryWithinBalance(payload = {}, previous = null) {
+  if (payload.details?.key !== 'advance-recovery-emp') return;
+  const code = cleanUpper(payload.partyCode);
+  const components = payload.details?.components || {};
+  const heads = [
+    ['house', 'housingLoan', 'Housing Loan'],
+    ['vehicle', 'vehicleLoan', 'Vehicle Loan'],
+    ['grain', 'grainAdvance', 'Grain Advance']
+  ].filter(([component]) => toPaise(components[component]) > 0);
+  if (!heads.length) return;
+  const report = code ? await buildEmployeeLedgerReport({ employeeCode: code }) : null;
+  if (!report) throw recoveryHttpError('Select the employee.');
+  const own = previous?.details?.key === 'advance-recovery-emp' && cleanUpper(previous.partyCode) === code ? previous.details?.components || {} : {};
+  const problems = [];
+  for (const [component, group, label] of heads) {
+    // signedBalances are credit-positive: an advance owed is negative.
+    const available = toPaise(-(report.signedBalances?.[group] || 0)) + toPaise(own[component]);
+    const paise = toPaise(components[component]);
+    if (paise > available) problems.push(`${label} recovered ${toRupees(paise)} is more than the ${toRupees(Math.max(0, available))} outstanding.`);
+  }
+  if (problems.length) throw recoveryHttpError(`Employee ${code}: ${problems.join(' ')}`);
+}
+
 // Legacy loan/CD/SSA payments (TransType 1/2/3) carry the member's AccID
 // directly on the voucher; Recovery (TransType 5) never does (legacy left it
 // "0"), so its component amounts + date come from legacy_historical_recovery
@@ -3357,6 +3405,8 @@ function liveMemberLedgerRows(member, vouchers = [], recoveryLinesAll = []) {
     if (!isPartyMatch && !lineMatch) {
       continue;
     }
+    // Member interest vouchers move only the Intrst column (interest-only rows).
+    if (MEMBER_INTEREST_KEYS.has(voucher.details?.key)) continue;
 
     const row = {
       voucherNo: voucher.voucherNo,
@@ -3452,18 +3502,56 @@ function memberBalanceAnchors(member = {}) {
 // Every member's full balance timeline: archived legacy rows (with the
 // year-end carry-forwards) and live vouchers, sorted, each row carrying its
 // signed balances. Used by the year-end close.
+const MEMBER_INTEREST_KEYS = new Set(['interest-paid-member', 'interest-recv-member']);
+
+// Live Interest Paid To / Receive From Member vouchers, as the interest-only
+// rows legacy's 20 / 21 make (same signs): Paid takes the interest off the CD
+// / SSA Intrst column (a Transfer Voucher Receipt credits it into the
+// deposit), Received is shown bracketed against the Loan / LAD.
+async function getLiveMemberInterestRows(members = [], byMember = new Map()) {
+  const codes = new Set(members.map((m) => cleanUpper(m.code)));
+  if (!codes.size) return byMember;
+  const posting = require('./posting.service');
+  const vouchers = (await Voucher.find({}).lean()).filter((v) => MEMBER_INTEREST_KEYS.has(v.details?.key) && codes.has(cleanUpper(v.partyCode)));
+  for (const voucher of vouchers) {
+    const head = posting.memberInterestHead(voucher);
+    const amount = posting.employeeInterestReceived(voucher);
+    const date = isoDay(voucher.date);
+    if (!head || !(amount > 0) || !date) continue;
+    const code = cleanUpper(voucher.partyCode);
+    const interestOnly = { compulsoryDeposit: 0, specialDeposit: 0, loan: 0, loanAgainstDeposit: 0 };
+    interestOnly[head.head] = -amount;
+    const row = {
+      voucherNo: String(voucher.voucherNo ?? ''),
+      date,
+      share: { credit: 0, debit: 0, balance: 0 },
+      specialDeposit: { credit: 0, debit: 0, balance: 0, interest: 0 },
+      compulsoryDeposit: { credit: 0, debit: 0, balance: 0, interest: 0 },
+      loan: { credit: 0, debit: 0, balance: 0, interest: 0 },
+      loanAgainstDeposit: { credit: 0, debit: 0, balance: 0, interest: 0 },
+      fyStart: fyStartOf(date),
+      narration: voucher.narration || '',
+      interestOnly
+    };
+    if (!byMember.has(code)) byMember.set(code, []);
+    byMember.get(code).push(row);
+  }
+  return byMember;
+}
+
 // Legacy interest settlement vouchers (TransType 20 Interest Paid / 21
 // Interest Received, posted when a loan closes or a member is paid out):
 // interest only, no principal. Signed as legacy VwMbrTransData has them,
-// which is how the legacy year-end interest adds them in.
-async function getLegacyMemberInterestRows(members = []) {
+// which is how the legacy year-end interest adds them in. The live ones
+// follow (getLiveMemberInterestRows); `legacy: false` leaves out the archive.
+async function getLegacyMemberInterestRows(members = [], { legacy = true } = {}) {
   const accIdToCode = new Map();
   for (const m of members) {
     const accId = m?.payload?.raw?.AccID != null ? String(m.payload.raw.AccID) : '';
-    if (accId) accIdToCode.set(accId, m.code);
+    if (legacy && accId) accIdToCode.set(accId, m.code);
   }
   const byMember = new Map();
-  if (!accIdToCode.size) return byMember;
+  if (!accIdToCode.size) return getLiveMemberInterestRows(members, byMember);
   const database = await initializeDatabase();
   const result = await database.query(
     `SELECT "voucherNo", "voucherCategory", payload, "sourceDatabase"
@@ -3500,7 +3588,7 @@ async function getLegacyMemberInterestRows(members = []) {
     if (!byMember.has(code)) byMember.set(code, []);
     byMember.get(code).push(row);
   }
-  return byMember;
+  return getLiveMemberInterestRows(members, byMember);
 }
 
 async function buildMemberBalanceTimelines(members = []) {
@@ -4565,7 +4653,7 @@ async function computeMemberPeriodBalances({ members = [], dateFrom = '', dateTo
     : [];
 
   const historicalByMember = withHistory ? await getHistoricalMemberLedgerRowsBatch(members) : new Map();
-  const interestOnlyByMember = withHistory ? await getLegacyMemberInterestRows(members) : new Map();
+  const interestOnlyByMember = await getLegacyMemberInterestRows(members, { legacy: withHistory });
   const rateTimelines = await getInterestRateTimelines(MEMBER_INTEREST_HEADS);
   const fromDateStr = cleanText(dateFrom);
   const toDateStr = cleanText(dateTo);
@@ -4590,6 +4678,8 @@ async function computeMemberPeriodBalances({ members = [], dateFrom = '', dateTo
         && (line.voucherId === vId || (!line.voucherId && line.voucherNo === voucher.voucherNo)));
 
       if (!isPartyMatch && !lineMatch) continue;
+      // Member interest vouchers move only the Intrst column (interest-only rows).
+      if (MEMBER_INTEREST_KEYS.has(voucher.details?.key)) continue;
 
       const row = {
         date: voucher.date,
@@ -6641,6 +6731,7 @@ async function createVoucher(data = {}, meta = {}) {
     
     const recovery = await prepareRecoveryLines(payload, data);
     await assertTransferVoucherWithinBalance(payload);
+    await assertEmployeeRecoveryWithinBalance(payload);
     const journalLines = await buildJournalLinesForVoucher(payload, { ...meta, tx, recoveryLines: recovery.lines });
 
     const record = await Voucher.create(payload, { tx });
@@ -6710,6 +6801,7 @@ async function updateVoucher(id, data = {}, meta = {}) {
     
     const recovery = await prepareRecoveryLines(payload, data, { voucherId: id });
     await assertTransferVoucherWithinBalance(payload, current.toObject());
+    await assertEmployeeRecoveryWithinBalance(payload, current.toObject());
     const journalLines = await buildJournalLinesForVoucher(payload, { ...meta, tx, recoveryLines: recovery.lines });
     // Demand lines this voucher held before the edit (its own recovery_lines).
     const oldLinks = (await RecoveryLine.find({ voucherId: id }).lean())
@@ -6906,6 +6998,8 @@ async function buildMemberAccountStatement({ memberId, dateFrom, dateTo, user })
     const isPartyMatch = voucherMember && voucherMember === member.code;
 
     if (!isPartyMatch && !lineMatch) continue;
+    // Member interest vouchers move only the Intrst column (interest-only rows).
+    if (MEMBER_INTEREST_KEYS.has(voucher.details?.key)) continue;
 
     const isOpening = fromDateStr && voucher.date < fromDateStr;
 
@@ -7325,6 +7419,20 @@ async function buildEmployeeLedgerReport({ employeeCode, dateFrom = '', dateTo =
 }
 
 
+// Interest Paid To Member's amount, as legacy fills it (TransType 20): the
+// CD / SSA interest accrued from 1 April up to the voucher date, net of any
+// interest already paid that year; the member ledger's own Intrst column.
+async function computeMemberInterestDue({ memberCode = '', accountType = '', date = '', user = {} } = {}) {
+  const day = cleanText(date).slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw recoveryHttpError('Enter the voucher date.');
+  const posting = require('./posting.service');
+  const head = posting.memberInterestHead({ details: { key: 'interest-paid-member', accountType } });
+  const report = await buildMemberLedgerReport({ memberCode, dateFrom: fyStartOf(day), dateTo: day, user });
+  if (!report) throw recoveryHttpError('Select the member.', 404);
+  const interest = report.rows.reduce((sum, row) => sum + (Number(row[head.head]?.interest) || 0), 0);
+  return { memberCode: cleanUpper(memberCode), head: head.head, date: day, interest: Math.max(0, Number(interest.toFixed(2))) };
+}
+
 // Legacy "Dividend Report" (ReportData @TAG 'DIVIDENT'): every member with
 // share > 0, dividend = share / 100 x the paid dividend rate. "Opening" uses
 // the share at the FY's 1 April (legacy MstAccountMaster.Share), "Closing" the
@@ -7422,6 +7530,7 @@ module.exports = {
   buildMonthlySummaryReport,
   buildEmployeeLedgerReport,
   buildMemberLedgerReport,
+  computeMemberInterestDue,
   buildPaymentReceiptStatementReport,
   buildProfitLossReport,
   buildTrialBalanceReport,

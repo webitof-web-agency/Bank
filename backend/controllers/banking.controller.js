@@ -215,6 +215,19 @@ const transactions = {
       next(error);
     }
   },
+  async memberInterestDue(req, res, next) {
+    try {
+      const data = await bankingService.computeMemberInterestDue({
+        memberCode: req.query.memberCode || '',
+        accountType: req.query.accountType || '',
+        date: req.query.date || '',
+        user: req.user || {}
+      });
+      res.json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  },
   async listVouchers(req, res, next) {
     try {
       const paging = wantsPaging(req.query);
