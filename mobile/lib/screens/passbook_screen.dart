@@ -118,7 +118,8 @@ class _TxnCard extends StatelessWidget {
         ? 'Opening Balance'
         : (line.particular.isNotEmpty
               ? line.particular
-              : 'Voucher ${line.voucherNo}');
+              // The voucher number is already on the line below.
+              : (amount == 0 ? 'Entry' : (hasCredit ? 'Credited' : 'Debited')));
 
     return Card(
       child: Padding(

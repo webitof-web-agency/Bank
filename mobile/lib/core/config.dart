@@ -19,6 +19,20 @@ String resolveApiBaseUrl({
   return _liveApiBaseUrl;
 }
 
+/// The website's ledger page for [ticket]: in the web copy (served by the
+/// website itself) on this same site; in the phone app on [webUrl], the
+/// website address the server reports. '' when there is none.
+String ledgerPageUrl({
+  required String ticket,
+  required String webUrl,
+  required bool isWeb,
+  required Uri page,
+}) {
+  final base = isWeb ? page.origin : webUrl.replaceAll(RegExp(r'/+$'), '');
+  if (base.isEmpty || ticket.isEmpty) return '';
+  return '$base/ledger-view?ticket=${Uri.encodeQueryComponent(ticket)}';
+}
+
 /// App-wide configuration. See [resolveApiBaseUrl] for the API; for the
 /// phone against a local backend run with e.g.
 /// `--dart-define=API_BASE_URL=http://localhost:8001/api` (plus

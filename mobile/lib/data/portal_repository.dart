@@ -83,6 +83,12 @@ class PortalRepository {
     );
   }
 
+  /// A short-lived ticket for the website's ledger page (Ledger tab).
+  Future<String> ledgerTicket(int startYear) async {
+    final res = await _api.post('/app/me/ledger-ticket?startYear=$startYear');
+    return ((res['data'] as Map?)?['ticket'] ?? '').toString();
+  }
+
   Future<Statement> statement(String ledgerKey, int startYear) async {
     final res = await _api.get(
       '/app/me/statement/$ledgerKey',

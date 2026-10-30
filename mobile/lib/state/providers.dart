@@ -115,6 +115,13 @@ final transactionsProvider = FutureProvider<List<Transaction>>((ref) async {
   return list;
 });
 
+/// A fresh ledger-page ticket for the selected FY (Ledger tab). Auto-disposed,
+/// so opening the tab again asks for a new one (they last 10 minutes).
+final ledgerTicketProvider = FutureProvider.autoDispose<String>((ref) async {
+  final startYear = await _resolveStartYear(ref);
+  return ref.watch(portalRepositoryProvider).ledgerTicket(startYear);
+});
+
 /// The installed app's version, e.g. "1.0.0 (1)".
 final appVersionLabelProvider = FutureProvider<String>((ref) async {
   final info = await PackageInfo.fromPlatform();

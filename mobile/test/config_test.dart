@@ -60,4 +60,37 @@ void main() {
       'http://localhost:8001/api',
     );
   });
+
+  test(
+    'the ledger page: same site in a browser, the reported website on a phone',
+    () {
+      expect(
+        ledgerPageUrl(
+          ticket: 'a b',
+          webUrl: '',
+          isWeb: true,
+          page: Uri.parse('http://localhost:5173/member/index.html'),
+        ),
+        'http://localhost:5173/ledger-view?ticket=a+b',
+      );
+      expect(
+        ledgerPageUrl(
+          ticket: 't',
+          webUrl: 'https://bank.example.com/',
+          isWeb: false,
+          page: Uri.parse('file:///'),
+        ),
+        'https://bank.example.com/ledger-view?ticket=t',
+      );
+      expect(
+        ledgerPageUrl(
+          ticket: 't',
+          webUrl: '',
+          isWeb: false,
+          page: Uri.parse('file:///'),
+        ),
+        '',
+      );
+    },
+  );
 }

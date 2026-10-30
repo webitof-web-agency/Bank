@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -8,6 +9,7 @@ import '../widgets/fy_dropdown.dart';
 import '../widgets/marquee_text.dart';
 import '../widgets/page_list_view.dart';
 import '../widgets/society_logo.dart';
+import 'ledger_screen.dart';
 import 'profile_screen.dart';
 import 'transactions_screen.dart';
 import 'summary_screen.dart';
@@ -22,26 +24,36 @@ class HomeShell extends ConsumerStatefulWidget {
 class _HomeShellState extends ConsumerState<HomeShell> {
   int _index = 0;
 
-  static const _titles = ['Summary', 'Transactions', 'Profile'];
+  static const _titles = ['Summary', 'Transactions', 'Ledger', 'Profile'];
+  static const _profileIndex = 3;
 
   // (icon, selected icon, label): the bottom bar on a phone, a side rail on
   // a wide (tablet / desktop browser) screen.
   static const _destinations = [
     (Icons.dashboard_outlined, Icons.dashboard, 'Summary'),
     (Icons.receipt_long_outlined, Icons.receipt_long, 'Transactions'),
+    (Icons.menu_book_outlined, Icons.menu_book, 'Ledger'),
     (Icons.person_outline, Icons.person, 'Profile'),
   ];
 
   @override
   Widget build(BuildContext context) {
     final account = ref.watch(authControllerProvider.select((s) => s.account));
-    final showFy = _index != 2; // hide FY picker on Profile
+    final showFy = _index != _profileIndex; // hide FY picker on Profile
+    // Log out: on every tab in a browser, on Profile in the phone app.
+    final showLogout = kIsWeb || _index == _profileIndex;
     final society = ref.watch(brandingProvider.select((b) => b.society));
     final width = MediaQuery.sizeOf(context).width;
     final wide = width >= kWideLayoutWidth;
     final pages = IndexedStack(
       index: _index,
-      children: const [SummaryScreen(), TransactionsScreen(), ProfileScreen()],
+      // The ledger page is only built while its tab is open (a web view).
+      children: [
+        const SummaryScreen(),
+        const TransactionsScreen(),
+        _index == 2 ? const LedgerScreen() : const SizedBox.shrink(),
+        const ProfileScreen(),
+      ],
     );
 
     return Scaffold(
@@ -74,13 +86,13 @@ class _HomeShellState extends ConsumerState<HomeShell> {
         ),
         actions: [
           if (showFy) const FyDropdown(),
-          if (_index == 2) // Profile tab only
+          if (showLogout)
             IconButton(
               tooltip: 'Log out',
               icon: const Icon(Icons.logout, color: AppColors.debit, size: 22),
               onPressed: _confirmLogout,
             ),
-          if (_index == 2) const SizedBox(width: 4),
+          if (showLogout) const SizedBox(width: 4),
         ],
       ),
       body: wide
@@ -133,67 +145,71 @@ class _HomeShellState extends ConsumerState<HomeShell> {
       context: context,
       builder: (context) => Dialog(
         insetPadding: const EdgeInsets.symmetric(horizontal: 32),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: AppColors.debit.withValues(alpha: 0.1),
-                  shape: BoxShape.circle,
+        // A phone-sized card on a wide (browser) screen too.
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 400),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    color: AppColors.debit.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.logout, color: AppColors.debit),
                 ),
-                child: const Icon(Icons.logout, color: AppColors.debit),
-              ),
-              const SizedBox(height: 14),
-              Text(
-                'Log out?',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleLarge?.copyWith(fontSize: 18),
-              ),
-              const SizedBox(height: 6),
-              const Text(
-                'You will need your mobile number and password to sign in again.',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 13, color: AppColors.textMuted),
-              ),
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.pop(context, false),
-                      style: OutlinedButton.styleFrom(
-                        minimumSize: const Size(0, 44),
-                        foregroundColor: AppColors.textMain,
-                        side: const BorderSide(color: AppColors.border),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
+                const SizedBox(height: 14),
+                Text(
+                  'Log out?',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontSize: 18),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'You will need your mobile number and password to sign in again.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 13, color: AppColors.textMuted),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size(0, 44),
+                          foregroundColor: AppColors.textMain,
+                          side: const BorderSide(color: AppColors.border),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
                         ),
+                        child: const Text('Cancel'),
                       ),
-                      child: const Text('Cancel'),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: FilledButton(
-                      onPressed: () => Navigator.pop(context, true),
-                      style: FilledButton.styleFrom(
-                        minimumSize: const Size(0, 44),
-                        backgroundColor: AppColors.debit,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size(0, 44),
+                          backgroundColor: AppColors.debit,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
                         ),
+                        child: const Text('Log out'),
                       ),
-                      child: const Text('Log out'),
                     ),
-                  ),
-                ],
-              ),
-            ],
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),

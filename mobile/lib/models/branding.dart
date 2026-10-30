@@ -97,9 +97,13 @@ class Branding {
   final Society society;
   final BrandColors colors;
 
+  /// The website, whose ledger page the Ledger tab opens ('' if not set).
+  final String webUrl;
+
   const Branding({
     this.society = Society.builtIn,
     this.colors = const BrandColors(),
+    this.webUrl = '',
   });
 
   factory Branding.fromJson(Map<String, dynamic> json) => Branding(
@@ -109,11 +113,13 @@ class Branding {
     colors: BrandColors.fromJson(
       (json['theme'] as Map?)?.cast<String, dynamic>() ?? {},
     ),
+    webUrl: (json['webUrl'] ?? '').toString().trim(),
   );
 
   Map<String, dynamic> toJson() => {
     'society': society.toJson(),
     'theme': colors.toJson(),
+    'webUrl': webUrl,
   };
 }
 
