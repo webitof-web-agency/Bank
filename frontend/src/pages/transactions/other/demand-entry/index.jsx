@@ -23,8 +23,11 @@ export function DemandStatusPill({ status = 'PENDING' }) {
   return <span className={`inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${STATUS_CLASS[status] || STATUS_CLASS.PENDING}`}>{STATUS_LABELS[status] || status}</span>;
 }
 
+// One formatter for every cell (toLocaleString with options builds one per call).
+const MONEY = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
+
 export function formatAmount(value) {
-  return Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+  return MONEY.format(Number(value || 0));
 }
 
 const monthLabel = (month) => MONTH_OPTIONS.find((option) => option.value === String(month))?.label || month || '-';

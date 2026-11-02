@@ -278,6 +278,9 @@ export const api = {
   recoveryImport: {
     analyze: (token, formData) => request('/recovery-import/analyze', { method: 'POST', token, formData, skipCache: true }),
     upload: (token, formData) => request('/recovery-import/upload', { method: 'POST', token, formData, skipCache: true }),
+    // Background upload: returns { jobId }; uploadJob reports its progress.
+    uploadStart: (token, formData) => request('/recovery-import/upload?async=1', { method: 'POST', token, formData, skipCache: true }),
+    uploadJob: (token, id) => request(`/recovery-import/upload-jobs/${id}`, { token, skipCache: true }),
     getBatches: (token) => request('/recovery-import/batches', { token, skipCache: true }),
     getBatchRows: (token, id) => request(`/recovery-import/batches/${id}`, { token, skipCache: true }),
     revalidate: (token, id) => request(`/recovery-import/batches/${id}/revalidate`, { method: 'POST', token, skipCache: true }),

@@ -149,9 +149,12 @@ const MONTH_OPTIONS = ['January', 'February', 'March', 'April', 'May', 'June', '
   .map((label, index) => ({ label, value: String(index + 1) }));
 
 
+// One formatter for every cell (toLocaleString with options builds a new one
+// per call: thousands per render on a full month's recovery).
+const HEAD_FORMAT = new Intl.NumberFormat('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 function formatHead(value) {
   const number = Number(value || 0);
-  return number ? number.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '-';
+  return number ? HEAD_FORMAT.format(number) : '-';
 }
 
 // Add Record / Edit: one member line. Editing keeps the line's demand or
@@ -296,15 +299,19 @@ const RECOVERY_FIELDS = [
   ['suspense', 'Suspense A/C']
 ];
 
-// Add From Demand List: Branch + Month + Year -> that month's demand, loaded
-// as soon as the dialog opens: each member's pending demand line (Demand
-// Entry), else their Monthly Demand Data. Then Load Excel (shown once the
-// demand is loaded) imports the bank's file for the month: each member's
-// Excel amount is split over their demand and fitted to it (short or over),
-// keeping loan cuts within the balance left. Add copies the ticked demand
-// lines (and the Excel, when loaded) into the draft, where they can still be
-// edited before Save. With no Excel, the demand total is the amount expected.
-// Demand stays pending until the recovery is saved.
+// Add From Demand List: Branch + Month + Year -> that month's demand: each
+// member's pending demand line (Demand Entry), else their Monthly Demand
+// Data. One button: when Demand Entry already has the month, the dialog
+// loads it on opening and the button is Load Excel; otherwise it is Load
+// Demand, and turns into Load Excel once the demand is loaded (back to Load
+// Demand when the branch / month / year change). Load Excel imports the
+// bank's file for the month: each member's Excel amount fills their demand
+// CD -> SSA -> Reg. Loan -> LAD; more than the demand is red (the extra is
+// left to allocate), and a member with nothing in the Excel gets no entry.
+// Add copies the ticked demand lines (and the Excel, when loaded) into the
+// draft, where they can still be edited before Save. With no Excel, the
+// demand total is the amount expected. Demand stays pending until the
+// recovery is saved.
 function DemandPickerDialog({ open, onClose, onAdd, lookups = {}, voucherDate = '', voucherId = '', draftLines = [], excluded = [] }) {
   const { token } = useAuth();
   const { activeFY } = useFY();
@@ -322,16 +329,18 @@ function DemandPickerDialog({ open, onClose, onAdd, lookups = {}, voucherDate = 
   const [excel, setExcel] = useState(null);
   const members = Array.isArray(lookups.members) ? lookups.members : [];
   const already = new Set(draftLines.map((row) => row.demandLineId || (row.demandSource === 'MEMBER_DEMAND' ? `member:${row.member}:${row.demandYear}-${row.demandMonth}` : '')).filter(Boolean));
-  const chosen = rows.filter((row) => selected.has(candidateKey(row)));
+  // Memoised: the Excel preview below re-runs only when these change.
+  const chosen = useMemo(() => rows.filter((row) => selected.has(candidateKey(row))), [rows, selected]);
   // What Add will do with the Excel, worked out on the ticked demand lines.
   const preview = useMemo(() => (excel ? addExcelLines(draftLines, excel, {
     candidates: chosen, members, excluded, outstanding: excel.outstanding, branchCode: loaded?.branchCode || ''
   }) : null), [excel, draftLines, chosen, members, excluded, loaded]);
 
-  // Opening the dialog loads the month's demand straight away, so demand
-  // just entered in Demand Entry is listed without a click.
+  // Opening the dialog: if Demand Entry already has this month's demand it is
+  // loaded straight away (the button is then Load Excel); otherwise nothing
+  // is loaded until Load Demand.
   useEffect(() => {
-    if (open && month && year) loadDemand();
+    if (open && month && year) loadDemand({ demandEntryOnly: true });
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!open) return null;
@@ -349,9 +358,9 @@ function DemandPickerDialog({ open, onClose, onAdd, lookups = {}, voucherDate = 
   const excelTotal = (excel?.rows || []).reduce((sum, row) => sum + toPaise(row.importedTotalAmount), 0);
   const newlyExcluded = preview ? preview.excluded.length - excluded.length : 0;
 
-  async function loadDemand() {
+  async function loadDemand({ demandEntryOnly = false } = {}) {
     if (!month || !year) {
-      toast.error('Choose the demand month and year.');
+      if (!demandEntryOnly) toast.error('Choose the demand month and year.');
       return;
     }
     setLoading(true);
@@ -360,6 +369,8 @@ function DemandPickerDialog({ open, onClose, onAdd, lookups = {}, voucherDate = 
         branchCode, month, year, fyStart: activeFY?.start || '', fyEnd: activeFY?.end || ''
       });
       const next = Array.isArray(response.data) ? response.data : [];
+      // On opening, only Demand Entry's demand counts as already loaded.
+      if (demandEntryOnly && !next.some((row) => row.source === 'DEMAND')) return;
       setRows(next);
       setSelected(new Set(next.filter((row) => !already.has(candidateKey(row))).map(candidateKey)));
       setLoaded({ branchCode, month, year });
@@ -373,14 +384,16 @@ function DemandPickerDialog({ open, onClose, onAdd, lookups = {}, voucherDate = 
   }
 
   // The uploaded Excel, with each of its members' loan balance left, to fit
-  // the amounts on.
-  async function excelUploaded(batch) {
-    setUploadOpen(false);
+  // the amounts on. report(percent, label) moves the upload dialog's progress
+  // bar; that dialog closes when this finishes.
+  async function excelUploaded(batch, report = () => {}) {
     setLoading(true);
     try {
+      report(93, 'Reading the imported rows…');
       const response = await api.recoveryImport.getBatchRows(token, batch.id);
       const excelRows = Array.isArray(response.data?.rows) ? response.data.rows : [];
       const codes = [...new Set(excelRows.map((row) => memberCodeById.get(String(row.memberId || ''))).filter(Boolean))];
+      report(97, `Fetching the loan balances of ${codes.length} member(s)…`);
       const outstanding = codes.length
         ? (await api.banking.recoveryMemberOutstanding(token, { codes: codes.join(','), excludeVoucherId: voucherId || '' }))?.data || {}
         : {};
@@ -400,6 +413,8 @@ function DemandPickerDialog({ open, onClose, onAdd, lookups = {}, voucherDate = 
     });
   }
 
+  // The loaded demand still matches the filters: the button is Load Excel.
+  const demandReady = Boolean(loaded) && loaded.branchCode === branchCode && String(loaded.month) === String(month) && String(loaded.year) === String(year);
   const selectable = rows.filter((row) => !already.has(candidateKey(row)));
   const allSelected = selectable.length > 0 && selectable.every((row) => selected.has(candidateKey(row)));
   const fromMemberData = rows.filter((row) => row.source === 'MEMBER_DEMAND').length;
@@ -408,7 +423,7 @@ function DemandPickerDialog({ open, onClose, onAdd, lookups = {}, voucherDate = 
     <Modal
       open
       title="Add From Demand List"
-      subtitle="The month's demand is loaded (Demand Entry, else each member's Monthly Demand Data). Load the bank's Excel for the month, then Add: each member's Excel amount is split over their demand. Lines can still be corrected before Save."
+      subtitle="Load the month's demand (Demand Entry, else each member's Monthly Demand Data), then Load Excel: each member's Excel amount fills their demand CD → SSA → Reg. Loan → LAD. More than the demand is red; nothing in the Excel means no entry for the month. Lines can still be corrected before Save."
       onClose={onClose}
       wide
       footer={(
@@ -440,27 +455,31 @@ function DemandPickerDialog({ open, onClose, onAdd, lookups = {}, voucherDate = 
             <FieldLabel required>Year</FieldLabel>
             <Input type="number" value={year} onChange={(e) => setYear(e.target.value)} placeholder="2026" />
           </div>
-          <button type="button" onClick={loadDemand} disabled={loading} className="h-10 rounded-lg bg-[var(--primary,#2563eb)] px-4 text-sm font-medium text-white disabled:opacity-50">
-            {loading ? 'Loading...' : 'Load Demand'}
-          </button>
+          {demandReady ? (
+            <button type="button" onClick={() => setUploadOpen(true)} disabled={loading} className="h-10 rounded-lg bg-emerald-600 px-4 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
+              {excel ? 'Load a different Excel' : 'Load Excel'}
+            </button>
+          ) : (
+            <button type="button" onClick={() => loadDemand()} disabled={loading} className="h-10 rounded-lg bg-[var(--primary,#2563eb)] px-4 text-sm font-medium text-white disabled:opacity-50">
+              {loading ? 'Loading...' : 'Load Demand'}
+            </button>
+          )}
         </div>
 
-        {loaded ? (
-          <div className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border px-3 py-2 text-[13px] ${excel ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-slate-200 bg-slate-50 text-slate-700'}`}>
+        {demandReady ? (
+          <div className={`rounded-xl border px-3 py-2 text-[13px] ${excel ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-slate-200 bg-slate-50 text-slate-700'}`}>
             {excel ? (
               <span>
                 Excel <span className="font-semibold">{excel.batch.fileName || ''}</span>: {excel.rows.length} row(s) · ₹{formatHead(fromPaise(excelTotal))}.
                 {' '}{preview.matched} match the selected demand, {preview.added} not in it (split over the member's demand set-up), {preview.unmatched} with no member
                 {newlyExcluded ? `, ${newlyExcluded} excluded (0 amount, no membership date or another branch)` : ''}.
-                {' '}{preview.adjusted} member(s) adjusted so their heads equal the Excel amount.
+                {preview.noEntry ? ` ${preview.noEntry} demand member(s) have nothing in the Excel: no entry for them this month.` : ''}
+                {preview.overDemand ? <span className="font-semibold text-red-700"> {preview.overDemand} member(s) have more than their demand (red): put the extra into a head after Add.</span> : null}
                 {excel.batch?.payload?.footerTotal != null && !excel.batch.payload.footerMatches ? ` WARNING: the file's total line ₹${formatHead(excel.batch.payload.footerTotal)} differs from its member rows.` : ''}
               </span>
             ) : (
-              <span>Load the bank Excel for {String(loaded.month).padStart(2, '0')}/{loaded.year}: each member's Excel amount is split over the demand below. Without it, Add takes the demand total as the amount received.</span>
+              <span>Demand for {String(loaded.month).padStart(2, '0')}/{loaded.year} loaded. Load Excel: each member's Excel amount fills their demand CD → SSA → Reg. Loan → LAD. Without it, Add takes the demand total as the amount received.</span>
             )}
-            <button type="button" onClick={() => setUploadOpen(true)} disabled={loading} className="h-9 rounded-lg border border-emerald-500 bg-white px-3 text-sm font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-50">
-              {excel ? 'Load a different Excel' : 'Load Excel'}
-            </button>
           </div>
         ) : null}
 
@@ -508,9 +527,10 @@ function DemandPickerDialog({ open, onClose, onAdd, lookups = {}, voucherDate = 
                     <td className="px-2 py-1.5 text-right font-semibold">{formatHead(row.totalAmount)}</td>
                     {excel ? (() => {
                       const amount = excelByCode.get(code);
-                      if (amount == null) return <td className="px-2 py-1.5 text-right text-slate-400">not in Excel</td>;
-                      const same = Math.round(amount * 100) === Math.round(Number(row.totalAmount || 0) * 100);
-                      return <td className={`px-2 py-1.5 text-right font-semibold ${same ? 'text-emerald-700' : 'text-amber-700'}`}>{formatHead(amount)}</td>;
+                      if (!amount) return <td className="px-2 py-1.5 text-right text-slate-400">no entry</td>;
+                      // Less than the demand is normal; only more is red.
+                      const over = Math.round(amount * 100) > Math.round(Number(row.totalAmount || 0) * 100);
+                      return <td className={`px-2 py-1.5 text-right font-semibold ${over ? 'bg-red-50 text-red-700' : 'text-slate-800'}`}>{formatHead(amount)}</td>;
                     })() : null}
                     {excel ? (
                       <td className="px-2 py-1.5 text-[11px] text-slate-600">
@@ -523,7 +543,7 @@ function DemandPickerDialog({ open, onClose, onAdd, lookups = {}, voucherDate = 
                 );
               })}
               {!rows.length ? (
-                <tr><td colSpan={excel ? 14 : 12} className="px-3 py-6 text-center text-slate-500">{loading ? 'Loading the month\'s demand...' : loaded ? 'No pending demand and no member Monthly Demand Data for this branch and month.' : 'Choose a branch, month and year, then Load Demand: every member\'s demand for that month is listed.'}</td></tr>
+                <tr><td colSpan={excel ? 14 : 12} className="px-3 py-6 text-center text-slate-500">{loading ? 'Loading the month\'s demand...' : demandReady ? 'No pending demand and no member Monthly Demand Data for this branch and month.' : 'No Demand Entry for this month yet. Choose a branch, month and year, then Load Demand: every member\'s demand for that month is listed.'}</td></tr>
               ) : null}
             </tbody>
           </table>

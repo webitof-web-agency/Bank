@@ -18,9 +18,12 @@ function FieldLabel({ children, required }) {
   );
 }
 
+// One formatter for every cell (toLocaleString with options builds one per call).
+const MONEY = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
+
 function money(value) {
   const number = Number(value || 0);
-  return number ? number.toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '-';
+  return number ? MONEY.format(number) : '-';
 }
 
 // Demand Entry: header (FY, branch, month, year, list no, date) and member

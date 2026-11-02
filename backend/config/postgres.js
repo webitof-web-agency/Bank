@@ -785,6 +785,87 @@ async function persistMainRow(tableName, row, tx = null, { isNew = false } = {})
   return payload;
 }
 
+// Many new rows at once (an Excel import, a recovery's lines): multi-row
+// INSERTs in chunks, the audit entries likewise, and one cache update —
+// instead of persistMainRow's lookup + insert + audit insert per row. Rows
+// must be new (fresh ids) and share the same columns (as dataToRow makes
+// them). Inside `tx` the caller's transaction refreshes the cache; on its own
+// it is one transaction, then the cache takes the rows.
+async function insertRowsInChunks(database, tableName, rows) {
+  const columns = Object.keys(rows[0]).filter((key) => rows[0][key] !== undefined);
+  const chunkSize = Math.max(1, Math.min(500, Math.floor(60000 / Math.max(1, columns.length))));
+  for (let start = 0; start < rows.length; start += chunkSize) {
+    const chunk = rows.slice(start, start + chunkSize);
+    const values = [];
+    const tuples = chunk.map((row) => `(${columns.map((column) => {
+      values.push(row[column] === undefined ? null : row[column]);
+      return `$${values.length}`;
+    }).join(', ')})`);
+    await database.query(
+      `INSERT INTO ${quoteIdentifier(tableName)} (${columns.map(quoteIdentifier).join(', ')}) VALUES ${tuples.join(', ')}`,
+      values
+    );
+  }
+}
+
+function updateCachedRows(tableName, rows) {
+  if (!CACHED_TABLE_SET.has(tableName) || !rows.length) return;
+  const cached = tableCache.get(tableName) || [];
+  const indexById = new Map(cached.map((item, index) => [String(item.id), index]));
+  for (const row of rows) {
+    const next = clone(row);
+    const index = indexById.get(String(next.id));
+    if (index != null) cached[index] = next;
+    else {
+      indexById.set(String(next.id), cached.length);
+      cached.push(next);
+    }
+  }
+  tableCache.set(tableName, cached);
+}
+
+async function insertMainRows(tableName, rows = [], tx = null) {
+  if (!rows.length) return [];
+  const payloads = rows.map((row) => clone(row) || {});
+  if (payloads.some((row) => !row.id)) throw new Error(`insertMainRows requires an id on every row for ${tableName}`);
+  const auditEnabled = isSoftDeleteEnabled(tableName) && tableName !== 'audit_log';
+  const now = new Date().toISOString();
+  const actorUserId = getCurrentActorId();
+  const audits = auditEnabled ? payloads.map((row) => ({
+    id: crypto.randomUUID(),
+    tableName,
+    recordId: String(row.id),
+    action: 'CREATE',
+    actorUserId,
+    changes: JSON.stringify(redactAuditChanges({ before: null, after: row })),
+    createdAt: now,
+    updatedAt: now
+  })) : [];
+  const write = async (database) => {
+    await insertRowsInChunks(database, tableName, payloads);
+    if (audits.length) await insertRowsInChunks(database, 'audit_log', audits);
+  };
+  if (tx) {
+    await write(tx);
+    return payloads;
+  }
+  const database = await initializeDatabase();
+  const client = await database.connect();
+  try {
+    await client.query('BEGIN');
+    await write(client);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+  updateCachedRows(tableName, payloads);
+  updateCachedRows('audit_log', audits);
+  return payloads;
+}
+
 // For soft-delete-enabled tables (see isSoftDeleteEnabled in ./tableSchemas),
 // this marks the row deleted instead of removing it — the row, and its full
 // history, always stays recoverable. Only tables without a `deletedAt` field
@@ -987,6 +1068,7 @@ module.exports = {
   getUserRolesForUsers,
   initializeDatabase,
   persistMainRow,
+  insertMainRows,
   replaceUserRoles,
   restoreMainRow,
   withTransaction

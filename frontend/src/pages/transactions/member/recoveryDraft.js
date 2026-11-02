@@ -147,7 +147,9 @@ export function addDemandLines(lines = [], candidates = [], { withExpected = fal
   return { lines: withWarnings([...lines, ...added]), added: added.length, skipped: candidates.length - added.length };
 }
 
-const formatRupees = (value) => new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 }).format(Number(value || 0));
+// One formatter for every note (building one per call made 600 lines slow).
+const RUPEES = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
+const formatRupees = (value) => RUPEES.format(Number(value || 0));
 
 // The Excel row as kept on a draft line.
 function excelOf(row = {}, batchId = '') {
@@ -183,22 +185,25 @@ function excelOf(row = {}, batchId = '') {
 
 const HEAD_NAMES = Object.fromEntries(RECOVERY_HEADS);
 
-// Load Excel: the bank's amount for one member, split over their demand so
-// the heads add up exactly to it. The demand is the starting split; a loan
-// head never passes what is still owed (outstanding, when known).
-//   - Excel short of the demand: the shortfall comes off LAD, then Regular
-//     Loan, then CD, then SSA, then Share (the import's fill order, reversed).
-//   - Excel over the demand: the extra goes to Regular Loan, then LAD, up to
-//     the balance left on each, and the rest to CD.
+// Load Excel: the bank's amount for one member, split over their demand.
+// The amount fills the demand head by head — CD, then SSA, then Regular
+// Loan, then LAD (then Share) — each up to its demand; a loan head never
+// passes what is still owed (outstanding, when known).
+//   - Excel short of the demand: the later heads get less (or nothing). The
+//     line is valid: a short deduction is normal.
+//   - Excel over the demand: the demand is filled and the rest is `extra`,
+//     left unallocated: the line is red ("More than demand") until the
+//     operator puts it into a head (Edit).
 // Premium and Suspense have no posting rule, and Admission is not a monthly
 // demand: none of them is part of the split.
-// Returns { heads, note } — note says what was changed from the demand.
+// Returns { heads, demandTotal, extra, note } — note says what was changed.
+export const FILL_ORDER = ['cd', 'ssa', 'loan', 'lad', 'share'];
+
 export function fitHeadsToAmount(amount, demand = {}, outstanding = null) {
   const target = toPaise(amount);
   const base = normalizeHeads(demand);
-  const keys = ['share', 'cd', 'ssa', 'loan', 'lad'];
-  const paise = Object.fromEntries(keys.map((key) => [key, Math.max(0, toPaise(base[key]))]));
-  const demandTotal = keys.reduce((sum, key) => sum + paise[key], 0);
+  const want = Object.fromEntries(FILL_ORDER.map((key) => [key, Math.max(0, toPaise(base[key]))]));
+  const demandTotal = FILL_ORDER.reduce((sum, key) => sum + want[key], 0);
   const dropped = ['ins', 'admfee', 'suspense'].filter((key) => toPaise(base[key]) > 0);
   const owed = {
     loan: outstanding ? Math.max(0, toPaise(outstanding.regularLoan)) : null,
@@ -206,43 +211,26 @@ export function fitHeadsToAmount(amount, demand = {}, outstanding = null) {
   };
   const notes = [];
   for (const key of ['loan', 'lad']) {
-    if (owed[key] != null && paise[key] > owed[key]) {
-      notes.push(`${HEAD_NAMES[key]} ${formatRupees(fromPaise(paise[key]))} cut to the ${formatRupees(fromPaise(owed[key]))} outstanding`);
-      paise[key] = owed[key];
+    if (owed[key] != null && want[key] > owed[key]) {
+      notes.push(`${HEAD_NAMES[key]} ${formatRupees(fromPaise(want[key]))} cut to the ${formatRupees(fromPaise(owed[key]))} outstanding`);
+      want[key] = owed[key];
     }
   }
-  let left = target - keys.reduce((sum, key) => sum + paise[key], 0);
-  const moved = [];
-  if (left < 0) {
-    for (const key of ['lad', 'loan', 'cd', 'ssa', 'share']) {
-      const cut = Math.min(paise[key], -left);
-      if (cut <= 0) continue;
-      paise[key] -= cut;
-      left += cut;
-      moved.push(`-${formatRupees(fromPaise(cut))} ${HEAD_NAMES[key]}`);
-    }
+  const paise = {};
+  let left = target;
+  for (const key of FILL_ORDER) {
+    paise[key] = Math.min(want[key], Math.max(0, left));
+    left -= paise[key];
   }
-  if (left > 0) {
-    for (const key of ['loan', 'lad']) {
-      if (owed[key] == null) continue;
-      const add = Math.min(owed[key] - paise[key], left);
-      if (add <= 0) continue;
-      paise[key] += add;
-      left -= add;
-      moved.push(`+${formatRupees(fromPaise(add))} ${HEAD_NAMES[key]}`);
-    }
-    if (left > 0) {
-      paise.cd += left;
-      moved.push(`+${formatRupees(fromPaise(left))} ${HEAD_NAMES.cd}`);
-      left = 0;
-    }
-  }
+  const extra = Math.max(0, left);
   if (target !== demandTotal) notes.unshift(`Excel ₹${formatRupees(fromPaise(target))} vs demand ₹${formatRupees(fromPaise(demandTotal))}`);
-  if (moved.length) notes.push(moved.join(', '));
+  if (target < demandTotal) notes.push('filled CD → SSA → Reg. Loan → LAD');
+  if (extra > 0) notes.push(`₹${formatRupees(fromPaise(extra))} more than the demand left to allocate`);
   if (dropped.length) notes.push(`${dropped.map((key) => HEAD_NAMES[key]).join(' / ')} in the demand left out of the split`);
   return {
-    heads: { ...emptyHeads(), ...Object.fromEntries(keys.map((key) => [key, paise[key] ? fromPaise(paise[key]) : ''])) },
+    heads: { ...emptyHeads(), ...Object.fromEntries(FILL_ORDER.map((key) => [key, paise[key] ? fromPaise(paise[key]) : ''])) },
     demandTotal: fromPaise(demandTotal),
+    extra: fromPaise(extra),
     note: notes.length ? `Adjusted to the Excel: ${notes.join('; ')}.` : ''
   };
 }
@@ -252,9 +240,10 @@ export function fitHeadsToAmount(amount, demand = {}, outstanding = null) {
 // draft, and each Excel row joins its member's line with the heads fitted
 // to its Excel amount. The demand is the split to start from and stays
 // linked, so Save marks it recovered; a member in the Excel with no demand
-// line starts from the demand the import used. A demand line with no Excel
-// row stays red ("Not in the Excel"). Lines already in the draft keep their
-// own heads as the start. `branchCode` limits the Excel to one branch
+// line starts from the demand the import used. A ticked demand member with
+// no Excel amount (not in the file, or 0) gets no line: nothing is recovered
+// from them for the month and their demand stays pending (counted in
+// noEntry). Lines already in the draft keep their own heads as the start. `branchCode` limits the Excel to one branch
 // (others excluded on record); '' takes every branch. Only lines of this
 // batch are refitted.
 export function addExcelLines(lines = [], excel = {}, { candidates = [], members = [], excluded = [], outstanding = {}, branchCode = '' } = {}) {
@@ -263,15 +252,25 @@ export function addExcelLines(lines = [], excel = {}, { candidates = [], members
   const demand = addDemandLines(lines, candidates);
   const merged = mergeImportRows(demand.lines, rows, members, batchId, excluded, { branchCodes: branchCode ? [String(branchCode).toUpperCase()] : [] });
   const batchRowIds = new Set(rows.map((row) => row.id).filter(Boolean));
+  // The demand lines this Add brings in (not those already in the draft).
+  const before = lines.length;
+  let noEntry = 0;
+  const kept = merged.lines.filter((line, index) => {
+    if (index < before || index >= demand.lines.length || line.excel) return true;
+    noEntry += 1;
+    return false;
+  });
   let adjusted = 0;
-  const fitted = withOutstanding(merged.lines, outstanding).map((line) => {
+  let overDemand = 0;
+  const fitted = withOutstanding(kept, outstanding).map((line) => {
     if (line.unmatched || !line.excel || !batchRowIds.has(line.excel.rowId)) return line;
     const start = line.source === 'EXCEL' ? line.excel.demandHeads : line.heads;
     const fit = fitHeadsToAmount(line.excel.amount, start, line.outstanding || null);
     if (fit.note) adjusted += 1;
+    if (fit.extra > 0) overDemand += 1;
     return { ...line, heads: fit.heads, demandAmount: fit.demandTotal, fitNote: fit.note, needsReview: false, reviewNote: '' };
   });
-  return { ...merged, lines: withWarnings(fitted), demandMatched: demand.added, adjusted };
+  return { ...merged, lines: withWarnings(fitted), demandMatched: demand.added - noEntry, adjusted, overDemand, noEntry };
 }
 
 // "Use Excel": the line takes the Excel split, which matches the Excel total
@@ -393,6 +392,7 @@ export const STATUS_LABELS = {
   UNSUPPORTED: 'Unsupported head',
   NO_EXPECTED: 'No expected amount',
   NOT_IN_EXCEL: 'Not in the Excel',
+  OVER_DEMAND: 'More than demand',
   NO_MEMBER: 'No member',
   OVER_BALANCE: 'Cut over balance'
 };
@@ -416,10 +416,23 @@ export function balanceErrors(line = {}) {
   return errors;
 }
 
+// What the whole draft holds, worked out once per draft array (every line's
+// status asks; scanning the draft each time made a 600-line grid slow).
+const draftFlagCache = new WeakMap();
+function draftFlags(lines = []) {
+  if (!Array.isArray(lines)) return { excel: false, demand: false };
+  let flags = draftFlagCache.get(lines);
+  if (!flags || flags.length !== lines.length) {
+    flags = { length: lines.length, excel: lines.some((entry) => entry?.excel), demand: lines.some((entry) => entry?.source === 'DEMAND') };
+    draftFlagCache.set(lines, flags);
+  }
+  return flags;
+}
+
 // VALID only when the heads add up exactly to the expected amount.
 export function lineStatus(line = {}, lines = []) {
   if (line.unmatched) return 'NO_MEMBER';
-  const excelImported = lines.some((entry) => entry.excel);
+  const excelImported = draftFlags(lines).excel;
   if (excelImported && line.source === 'DEMAND' && !line.excel) return 'NOT_IN_EXCEL';
   const expected = expectedPaise(line);
   if (expected == null || expected <= 0) return 'NO_EXPECTED';
@@ -427,9 +440,17 @@ export function lineStatus(line = {}, lines = []) {
   if (UNSUPPORTED_HEADS.some(([key]) => toPaise(heads[key]) > 0)) return 'UNSUPPORTED';
   if (balanceErrors(line).length) return 'OVER_BALANCE';
   const difference = expected - lineTotalPaise(line);
+  if (difference > 0 && overDemandPaise(line) > 0) return 'OVER_DEMAND';
   if (difference > 0) return 'UNDER';
   if (difference < 0) return 'OVER';
   return 'VALID';
+}
+
+// How much a line's Excel amount is over the demand it was split from
+// (paise; 0 when not over, or not an Excel-fitted line).
+export function overDemandPaise(line = {}) {
+  if (!line.excel || line.demandAmount == null || line.demandAmount === '') return 0;
+  return Math.max(0, toPaise(line.excel.amount) - toPaise(line.demandAmount));
 }
 
 // expected - allocated, in rupees (0 when there is no expected amount).
@@ -446,6 +467,7 @@ export function lineErrors(line = {}, lines = []) {
   if (status === 'NOT_IN_EXCEL') return ['In the demand but not in the Excel: the bank deducted nothing. Remove this line.'];
   if (status === 'NO_EXPECTED') return ['Enter the expected amount (the amount actually received) — Edit.'];
   if (status === 'UNSUPPORTED') return ['Premium / Suspense have no confirmed posting rule yet: move the amount to another head.'];
+  if (status === 'OVER_DEMAND') return [`Excel ₹${formatRupees(line.excel.amount)} is ₹${formatRupees(fromPaise(overDemandPaise(line)))} more than the demand ₹${formatRupees(line.demandAmount)}: put the ₹${formatRupees(lineDifference(line))} not yet allocated into a head (Edit).`];
   const difference = lineDifference(line);
   if (status === 'OVER_BALANCE') {
     const mismatch = difference === 0 ? [] : [`Expected ₹${formatRupees(fromPaise(expectedPaise(line)))}, allocated ₹${formatRupees(lineTotal(line))}: ${difference > 0 ? 'under' : 'over'} by ₹${formatRupees(Math.abs(difference))}.`];
@@ -456,7 +478,7 @@ export function lineErrors(line = {}, lines = []) {
 
 // Information only (never blocks Save).
 export function lineNotes(line = {}, lines = []) {
-  const demandLoaded = lines.some((entry) => entry.source === 'DEMAND');
+  const demandLoaded = draftFlags(lines).demand;
   const notes = [];
   if (line.excel?.nameDiffers) notes.push(`Excel name "${line.excel.name}" differs from the member`);
   if (line.excel?.branchDiffers) notes.push(`Excel branch "${line.excel.branch}" differs from the member`);

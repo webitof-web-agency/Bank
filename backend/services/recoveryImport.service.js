@@ -263,20 +263,24 @@ function calculateAllocation(importedTotalAmount, demand) {
   const demandRegularLoan = toPaise(demand.regularLoan);
   const demandLoanAgainstDeposit = toPaise(demand.loanAgainstDeposit);
 
-  const allocatedShare = Math.min(remaining, demandShare);
-  remaining -= allocatedShare;
+  // Filled head by head, as the Recovery screen does: CD, then SSA, then
+  // Regular Loan, then LAD, then Share, each up to its demand. A short amount
+  // leaves the later heads short; an amount over the demand leaves the extra
+  // unallocated (status EXTRA) for the operator.
+  const allocatedCompulsoryDeposit = Math.min(remaining, demandCompulsoryDeposit);
+  remaining -= allocatedCompulsoryDeposit;
 
   const allocatedSpecialDeposit = Math.min(remaining, demandSpecialDeposit);
   remaining -= allocatedSpecialDeposit;
-
-  const allocatedCompulsoryDeposit = Math.min(remaining, demandCompulsoryDeposit);
-  remaining -= allocatedCompulsoryDeposit;
 
   const allocatedRegularLoan = Math.min(remaining, demandRegularLoan);
   remaining -= allocatedRegularLoan;
 
   const allocatedLoanAgainstDeposit = Math.min(remaining, demandLoanAgainstDeposit);
   remaining -= allocatedLoanAgainstDeposit;
+
+  const allocatedShare = Math.min(remaining, demandShare);
+  remaining -= allocatedShare;
 
   const allocatedTotal = allocatedShare + allocatedSpecialDeposit + allocatedCompulsoryDeposit + allocatedRegularLoan + allocatedLoanAgainstDeposit;
   
@@ -473,11 +477,15 @@ function summarizeBatch(rows) {
   };
 }
 
-async function uploadAndParseBatch(fileName, buffer, colMap, uploadedBy) {
+// onProgress({ stage: 'check' | 'save', done, total }): called as the rows
+// are checked and then saved, for the import's progress bar.
+async function uploadAndParseBatch(fileName, buffer, colMap, uploadedBy, onProgress = () => {}) {
   const parsedRows = parseImportFile(buffer, colMap);
   if (!parsedRows.length) {
     throw new Error('No valid rows found in file');
   }
+  const total = parsedRows.length;
+  onProgress({ stage: 'check', done: 0, total });
 
   const pfNos = [...new Set(parsedRows.map(r => r.pfNo).filter(Boolean))];
   const { members, membersByPf } = await findMembersByPf(pfNos);
@@ -503,6 +511,7 @@ async function uploadAndParseBatch(fileName, buffer, colMap, uploadedBy) {
     const built = await validateAndBuildRow(batchId, pr, membersByPf, demandsByMemberCode, pfCounts);
     built.id = randomUUID();
     builtRows.push(built);
+    onProgress({ stage: 'check', done: builtRows.length, total });
   }
 
   const summary = summarizeBatch(builtRows);
@@ -523,10 +532,13 @@ async function uploadAndParseBatch(fileName, buffer, colMap, uploadedBy) {
 
   await RecoveryImportBatch.create(batchRecord);
   
-  if (builtRows.length > 0) {
-    for (const row of builtRows) {
-      await RecoveryImportRow.create(row);
-    }
+  // Saved in bulk, a chunk at a time so the progress bar moves.
+  const SAVE_CHUNK = 100;
+  onProgress({ stage: 'save', done: 0, total });
+  for (let start = 0; start < builtRows.length; start += SAVE_CHUNK) {
+    const chunk = builtRows.slice(start, start + SAVE_CHUNK);
+    await RecoveryImportRow.insertMany(chunk);
+    onProgress({ stage: 'save', done: start + chunk.length, total });
   }
 
   return batchRecord;

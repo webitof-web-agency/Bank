@@ -233,26 +233,42 @@ test('fit: Excel equal to the demand keeps the demand split', () => {
   assert.equal(fit.note, '');
 });
 
-test('fit: Excel short of the demand comes off LAD first, then Regular Loan', () => {
-  const fit = fitHeadsToAmount(2000, { cd: 1000, ssa: 500, loan: 1000, lad: 500 }, { regularLoan: 50000, loanAgainstDeposit: 5000 });
-  assert.deepEqual([fit.heads.cd, fit.heads.ssa, fit.heads.loan, fit.heads.lad], [1000, 500, 500, '']);
-  assert.match(fit.note, /Excel ₹2,000 vs demand ₹3,000/);
+test('fit: Excel short of the demand fills CD, then SSA, then Regular Loan, then LAD', () => {
+  const fit = fitHeadsToAmount(1200, { cd: 1000, ssa: 500, loan: 1000, lad: 500 }, { regularLoan: 50000, loanAgainstDeposit: 5000 });
+  assert.deepEqual([fit.heads.cd, fit.heads.ssa, fit.heads.loan, fit.heads.lad], [1000, 200, '', '']);
+  assert.equal(fit.extra, 0);
+  const more = fitHeadsToAmount(2800, { cd: 1000, ssa: 500, loan: 1000, lad: 500 }, { regularLoan: 50000, loanAgainstDeposit: 5000 });
+  assert.deepEqual([more.heads.cd, more.heads.ssa, more.heads.loan, more.heads.lad], [1000, 500, 1000, 300]);
 });
 
-test('fit: Excel over the demand fills the loans up to the balance left, the rest goes to CD', () => {
+test('fit: a short Excel amount is a valid line (not red)', () => {
+  const line = { member: '1473', source: 'DEMAND', excel: { amount: 1200 }, demandAmount: 3000, ...fitHeadsToAmount(1200, { cd: 1000, ssa: 500, loan: 1000, lad: 500 }, null) };
+  assert.equal(lineStatus(line, [line]), 'VALID');
+});
+
+test('fit: Excel over the demand fills the demand and leaves the extra for the operator (red, blocks Save)', () => {
   const fit = fitHeadsToAmount(5000, { cd: 1000, loan: 2000, lad: 0 }, { regularLoan: 2500, loanAgainstDeposit: 1000 });
-  assert.deepEqual([fit.heads.cd, fit.heads.loan, fit.heads.lad], [1500, 2500, 1000]);
+  assert.deepEqual([fit.heads.cd, fit.heads.loan, fit.heads.lad], [1000, 2000, '']);
+  assert.equal(fit.extra, 2000);
+  const line = { member: '1473', source: 'DEMAND', excel: { amount: 5000 }, demandAmount: fit.demandTotal, heads: fit.heads };
+  assert.equal(lineStatus(line, [line]), 'OVER_DEMAND');
+  assert.match(lineErrors(line, [line])[0], /₹2,000 more than the demand/);
+  assert.equal(reconcile([line]).canSave, false);
+  // The operator puts the extra into a head: valid.
+  const fixed = { ...line, heads: { ...line.heads, cd: 3000 } };
+  assert.equal(lineStatus(fixed, [fixed]), 'VALID');
 });
 
-test('fit: a loan cut past the outstanding is capped and the Excel amount still fits', () => {
+test('fit: a loan cut past the outstanding is capped; what it frees is extra for the operator', () => {
   const fit = fitHeadsToAmount(3000, { cd: 1000, loan: 2000 }, { regularLoan: 0, loanAgainstDeposit: 0 });
-  assert.deepEqual([fit.heads.cd, fit.heads.loan], [3000, '']);
+  assert.deepEqual([fit.heads.cd, fit.heads.loan], [1000, '']);
+  assert.equal(fit.extra, 2000);
   assert.match(fit.note, /cut to the 0 outstanding/);
 });
 
 test('fit: Premium in the demand is not part of the split', () => {
-  const fit = fitHeadsToAmount(1200, { cd: 1000, ins: 200 }, null);
-  assert.deepEqual([fit.heads.cd, fit.heads.ins], [1200, '']);
+  const fit = fitHeadsToAmount(1000, { cd: 1000, ins: 200 }, null);
+  assert.deepEqual([fit.heads.cd, fit.heads.ins], [1000, '']);
   assert.match(fit.note, /Premium/);
 });
 
@@ -275,12 +291,16 @@ test('Load Excel: each row is split over the member\'s demand of the month and f
   const [a, b, c, none] = result.lines;
   assert.equal(a.demandLineId, 'D101');
   assert.deepEqual([a.heads.cd, a.heads.ssa, a.heads.loan], [1000, 500, 1500]);
+  assert.equal(lineStatus(a, result.lines), 'VALID');
+  // More than the demand: the demand is filled, the extra waits (red).
   assert.equal(b.demandSource, 'MEMBER_DEMAND');
-  assert.equal(b.heads.cd, 1000);
+  assert.equal(b.heads.cd, 800);
+  assert.equal(lineStatus(b, result.lines), 'OVER_DEMAND');
   assert.equal(c.source, 'EXCEL');
-  assert.equal(c.heads.cd, 600);
+  assert.equal(c.heads.cd, 500);
+  assert.equal(lineStatus(c, result.lines), 'OVER_DEMAND');
   assert.equal(none.unmatched, true);
-  for (const line of [a, b, c]) assert.equal(lineStatus(line, result.lines), 'VALID');
+  assert.equal(result.overDemand, 2);
   assert.equal(result.adjusted, 3);
   assert.equal(result.demandMatched, 2);
 });
@@ -294,10 +314,13 @@ test('Load Excel with a branch chosen: rows of other branches are excluded on re
   assert.equal(result.excluded[0].importRowId, 'r2');
 });
 
-test('Load Demand then Load Excel: a ticked demand member missing from the Excel stays red', () => {
-  const excel = { batch: { id: 'B9' }, rows: [{ id: 'r1', memberId: 'm1', importedTotalAmount: 3500 }] };
-  const result = addExcelLines([], excel, { candidates: [demand, { ...demand, demandLineId: 'D102', memberCode: '1474' }], members });
-  const [a, b] = result.lines;
-  assert.equal(lineStatus(a, result.lines), 'VALID');
-  assert.equal(lineStatus(b, result.lines), 'NOT_IN_EXCEL');
+test('Load Demand then Load Excel: a demand member with nothing in the Excel gets no entry for the month', () => {
+  const excel = { batch: { id: 'B9' }, rows: [{ id: 'r1', memberId: 'm1', importedTotalAmount: 3500 }, { id: 'r2', memberId: 'm3', importedTotalAmount: 0 }] };
+  const ticked = [demand, { ...demand, demandLineId: 'D102', memberCode: '1474' }, { ...demand, demandLineId: 'D103', memberCode: '1475' }];
+  const result = addExcelLines([], excel, { candidates: ticked, members });
+  assert.deepEqual(result.lines.map((line) => line.member), ['1473']);
+  assert.equal(lineStatus(result.lines[0], result.lines), 'VALID');
+  // 1474 not in the Excel, 1475 with 0: no line, their demand stays pending.
+  assert.equal(result.noEntry, 2);
+  assert.equal(result.excluded.length, 1);
 });

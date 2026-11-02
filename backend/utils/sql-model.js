@@ -8,6 +8,7 @@ const {
   getUserRolesForUsers,
   initializeDatabase,
   persistMainRow,
+  insertMainRows,
   replaceUserRoles
 } = require('../config/postgres');
 
@@ -799,12 +800,22 @@ function createSqlModel(tableName, options = {}) {
     return new SqlDocument(model, saved);
   }
 
+  // A model with no create hooks or unique fields inserts the rows in bulk
+  // (insertMainRows); otherwise each goes through create().
   async function insertMany(docs = [], options = {}) {
-    const created = [];
-    for (const doc of docs) {
-      created.push(await create(doc, options));
+    const list = Array.isArray(docs) ? docs : [];
+    const bulk = !beforeCreate && !afterSave && !uniqueFields.length && tableName !== 'users' && list.length > 1;
+    if (!bulk) {
+      const created = [];
+      for (const doc of list) {
+        created.push(await create(doc, options));
+      }
+      return created;
     }
-    return created;
+    await initializeDatabase();
+    const rows = list.map((doc) => dataToRow(clone(doc) || {}));
+    await insertMainRows(tableName, rows, options.tx);
+    return rows.map((row) => new SqlDocument(model, rowToData({ ...row })));
   }
 
   function mergeUpdate(target, update) {
