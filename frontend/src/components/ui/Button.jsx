@@ -6,7 +6,7 @@ const variants = {
   secondary:
     'border border-white/10 bg-white/5 text-[var(--text)] hover:bg-white/10 focus-visible:ring-white/30',
   outline:
-    'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:text-slate-900 focus-visible:ring-slate-300',
+    'border border-[var(--border-input)] bg-white text-slate-700 hover:bg-slate-50 hover:text-slate-900 focus-visible:ring-slate-300',
   ghost:
     'bg-transparent text-[var(--text-muted)] hover:bg-white/5 hover:text-[var(--text)] focus-visible:ring-white/20',
   destructive:

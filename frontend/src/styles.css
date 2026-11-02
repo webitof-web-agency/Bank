@@ -56,6 +56,10 @@
 
   /* Borders and Shadows */
   --border: rgba(15, 23, 42, 0.09);
+  /* Form fields and outline buttons: darker than card borders so they read
+     as controls on white and slate backgrounds alike. */
+  --border-input: rgba(15, 23, 42, 0.26);
+  --border-input-hover: rgba(15, 23, 42, 0.4);
   --shadow-custom: 0 24px 70px rgba(15, 23, 42, 0.08);
 
   /* Typography Setup */
@@ -137,7 +141,7 @@ a {
   width: 100% !important;
   height: 48px !important;
   border-radius: 0.75rem !important;
-  border: 1px solid var(--border) !important;
+  border: 1px solid var(--border-input) !important;
   background: var(--surface) !important;
   color: var(--text-main) !important;
   font-size: 0.875rem !important;
@@ -225,4 +229,16 @@ a {
 }
 @media (min-width: 768px) {
   [data-dialog="form"] :is(.grid-cols-4, .grid-cols-5, .grid-cols-6, .sm\:grid-cols-4, .sm\:grid-cols-5, .sm\:grid-cols-6, .sm\:grid-cols-7, .sm\:grid-cols-8, .sm\:grid-cols-9, .sm\:grid-cols-10, .sm\:grid-cols-11, .sm\:grid-cols-12, .md\:grid-cols-4, .md\:grid-cols-5, .md\:grid-cols-6, .md\:grid-cols-7, .md\:grid-cols-8, .md\:grid-cols-9, .md\:grid-cols-10, .md\:grid-cols-11, .md\:grid-cols-12, .lg\:grid-cols-4, .lg\:grid-cols-5, .lg\:grid-cols-6, .lg\:grid-cols-7, .lg\:grid-cols-8, .lg\:grid-cols-9, .lg\:grid-cols-10, .lg\:grid-cols-11, .lg\:grid-cols-12, .xl\:grid-cols-4, .xl\:grid-cols-5, .xl\:grid-cols-6, .xl\:grid-cols-7, .xl\:grid-cols-8, .xl\:grid-cols-9, .xl\:grid-cols-10, .xl\:grid-cols-11, .xl\:grid-cols-12, .\32 xl\:grid-cols-4, .\32 xl\:grid-cols-5, .\32 xl\:grid-cols-6, .\32 xl\:grid-cols-7, .\32 xl\:grid-cols-8, .\32 xl\:grid-cols-9, .\32 xl\:grid-cols-10, .\32 xl\:grid-cols-11, .\32 xl\:grid-cols-12) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+/* Fields and bordered buttons written by hand on the pages (border-slate-200 /
+   300 utility classes) get the same visible border as the shared Input.
+   Unlayered on purpose so it beats the utility class; a focused field keeps
+   its focus colour, and buttons whose border only shows on hover are left
+   alone. */
+:is(input, select, textarea)[class*="border-slate-200"]:not(:focus),
+:is(input, select, textarea)[class*="border-slate-300"]:not(:focus),
+button[class*="border-slate-200"]:not([class*="border-transparent"]),
+button[class*="border-slate-300"]:not([class*="border-transparent"]) {
+  border-color: var(--border-input);
 }

@@ -203,7 +203,7 @@ export function Select({
         } ${
           isOpen
             ? 'border-[var(--primary,#1661F6)] ring-1 ring-[var(--primary,#1661F6)]'
-            : 'border-slate-200 hover:border-slate-300'
+            : 'border-[var(--border-input)] hover:border-[var(--border-input-hover)]'
         } ${disabled ? 'opacity-50 cursor-not-allowed bg-slate-50 text-slate-500' : 'cursor-pointer text-slate-700'}`}
       >
         <span className="truncate">{selectedOption ? selectedOption.label : placeholder}</span>

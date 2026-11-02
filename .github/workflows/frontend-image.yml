@@ -9,8 +9,9 @@
 # Variable (Settings -> Secrets and variables -> Actions -> Variables):
 #   VITE_API_URL  the backend API the website calls; baked into the bundle.
 #                 Defaults to https://api.thriftrpr.in/api.
-# Secrets:
-#   DOKPLOY_URL, DOKPLOY_API_KEY  (shared with the backend workflow)
+# Secrets: either
+#   DOKPLOY_FRONTEND_WEBHOOK      the app's deploy webhook URL (Deployments tab), or
+#   DOKPLOY_URL, DOKPLOY_API_KEY  (shared with the backend workflow) and
 #   DOKPLOY_FRONTEND_APP_ID       the frontend application's id
 # Without the secrets the image is still built and pushed; only the deploy is skipped.
 name: Frontend image
@@ -70,30 +71,37 @@ jobs:
 
       - name: Deploy on Dokploy
         env:
+          WEBHOOK: ${{ secrets.DOKPLOY_FRONTEND_WEBHOOK }}
           DOKPLOY_URL: ${{ secrets.DOKPLOY_URL }}
           DOKPLOY_API_KEY: ${{ secrets.DOKPLOY_API_KEY }}
           APP_ID: ${{ secrets.DOKPLOY_FRONTEND_APP_ID }}
         run: |
-          if [ -z "$DOKPLOY_URL" ] || [ -z "$DOKPLOY_API_KEY" ] || [ -z "$APP_ID" ]; then
-            echo "::warning::Dokploy secrets not set: image pushed, deploy skipped."
+          # Preferred: the app's deploy webhook (Dokploy -> app -> Deployments
+          # -> Webhook URL), kept as the secret DOKPLOY_FRONTEND_WEBHOOK.
+          # Otherwise Dokploy's API with an API key and the application id.
+          WEBHOOK="$(echo "$WEBHOOK" | tr -d '[:space:]')"
+          if [ -n "$WEBHOOK" ]; then
+            code=$(curl -sS --retry 3 -o response.txt -w '%{http_code}' -X POST "$WEBHOOK" -H "Content-Type: application/json" -d '{}')
+          elif [ -n "$DOKPLOY_URL" ] && [ -n "$DOKPLOY_API_KEY" ] && [ -n "$APP_ID" ]; then
+            APP_ID="$(echo "$APP_ID" | tr -d '[:space:]')"
+            URL="${DOKPLOY_URL%/}"
+            URL="${URL%/api}"
+            code=$(curl -sS --retry 3 -o response.txt -w '%{http_code}' -X POST "$URL/api/application.deploy" \
+              -H "x-api-key: $DOKPLOY_API_KEY" \
+              -H "Content-Type: application/json" \
+              -d "{\"applicationId\":\"$APP_ID\"}")
+          else
+            echo "::warning::No Dokploy webhook / API secrets: image pushed, deploy skipped."
             exit 0
           fi
-          APP_ID="$(echo "$APP_ID" | tr -d '[:space:]')"
-          URL="${DOKPLOY_URL%/}"
-          URL="${URL%/api}"
           # Dokploy's own answer is printed, so a wrong id or key is visible.
-          # Only network / 5xx errors are retried.
-          code=$(curl -sS --retry 3 -o response.txt -w '%{http_code}' -X POST "$URL/api/application.deploy" \
-            -H "x-api-key: $DOKPLOY_API_KEY" \
-            -H "Content-Type: application/json" \
-            -d "{\"applicationId\":\"$APP_ID\"}")
           echo "Dokploy answered HTTP $code:"
           cat response.txt; echo
           if [ "$code" = "401" ] || [ "$code" = "403" ]; then
-            echo "::error::Dokploy refused the API key: check DOKPLOY_API_KEY."; exit 1
+            echo "::error::Dokploy refused the request: check the webhook URL / API key."; exit 1
           fi
           if [ "$code" = "404" ]; then
-            echo "::error::Dokploy has no application with this id: DOKPLOY_*_APP_ID must be the last part of the app's Dokploy address (.../services/application/<id>), not the project or environment id."; exit 1
+            echo "::error::Dokploy did not find the app: check DOKPLOY_FRONTEND_WEBHOOK (or DOKPLOY_FRONTEND_APP_ID)."; exit 1
           fi
           if [ "$code" -ge 300 ]; then echo "::error::Dokploy deploy failed (HTTP $code)."; exit 1; fi
           echo "Dokploy deploy queued for $IMAGE:latest"
