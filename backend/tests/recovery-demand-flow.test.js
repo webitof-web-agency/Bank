@@ -26,9 +26,19 @@ const FY = { fyStart: '2026-04-01', fyEnd: '2027-03-31' };
 // Demand list numbers are plain digits, as in the real data.
 const LIST4 = String(700000 + Math.floor(Math.random() * 99999));
 const LIST3 = String(Number(LIST4) + 100000);
+// A May list, for the inactive-member test only.
+const LISTX = String(Number(LIST4) + 200000);
 const ids = {};
 
-test.after(async () => { if (closeDatabase) await closeDatabase(); });
+test.after(async () => {
+  const db = await initializeDatabase();
+  const own = [code(7), code(8)];
+  await db.query('DELETE FROM demand_lines WHERE "memberCode" = ANY($1)', [own]);
+  await db.query('DELETE FROM demand_lists WHERE "demandListNo" = $1', [LISTX]);
+  await db.query('DELETE FROM member_demand_defaults WHERE "memberCode" = ANY($1)', [own]);
+  await db.query('DELETE FROM members WHERE code = ANY($1)', [own]);
+  if (closeDatabase) await closeDatabase();
+});
 
 async function ensureLedgers() {
   for (const role of ['CASH', 'SHARE', 'COMPULSORY_DEPOSIT', 'SPECIAL_DEPOSIT', 'REGULAR_LOAN', 'LOAN_AGAINST_DEPOSIT', 'ADMISSION']) {
@@ -95,6 +105,29 @@ test('1-4, AK: Add From Demand List offers this month\'s pending lines only, rea
   assert.equal(await status(ids.d101), 'PENDING');
   // A month of a closed FY is never offered for a current-FY recovery.
   assert.equal((await banking.buildRecoveryDemandCandidates({ branchCode: BRANCH, month: '3', year: '2026', ...FY })).length, 0);
+});
+
+test('Load Demand never loads an inactive or dismembered member, even with a pending demand line', async () => {
+  // Codes 7, 8 and list LISTX (May) are this test's own; removed in test.after.
+  await Member.create({ code: code(7), name: 'Inactive Member', branchCode: BRANCH, status: 'INACTIVE', dismembered: false, membershipDate: '2020-04-01' });
+  await Member.create({ code: code(8), name: 'Left Member', branchCode: BRANCH, status: 'ACTIVE', dismembered: true, dismemberedDate: '2026-05-01', membershipDate: '2020-04-01' });
+  await MemberDemandDefault.create({ memberCode: code(7), compulsoryDeposit: 500 });
+  const may = { raw: { DMonth: '05', DYear: '2026' } };
+  await DemandList.create({ demandListNo: LISTX, branchCode: BRANCH, month: '5', year: '2026', status: 'PENDING', payload: may });
+  for (const n of [7, 8]) {
+    await DemandLine.create({
+      demandListNo: LISTX, memberCode: code(n), memberName: `Member ${n}`, postedBranch: BRANCH,
+      compulsoryDeposit: 1000, specialDeposit: 0, regularLoan: 0, loanAgainstDeposit: 0, insurancePremium: 0, other: 0,
+      totalAmount: 1000, recoveredAmount: 0, recoveryStatus: 'PENDING', payload: may
+    });
+  }
+  // Recovery -> Load Demand.
+  const rows = await banking.buildRecoveryDemandCandidates({ branchCode: BRANCH, month: '5', year: '2026', ...FY });
+  assert.deepEqual(rows.map((r) => r.memberCode), []);
+  // Demand Entry -> Load Demand.
+  const entry = await banking.getDemandEntryMembers({ branchCode: BRANCH, month: '6', year: '2026', user: { isSuperAdmin: true } });
+  assert.ok(entry.some((r) => r.memberCode === code(1)), 'active members still load');
+  assert.ok(!entry.some((r) => [code(7), code(8)].includes(r.memberCode)));
 });
 
 test('18-20, 14-15, 4: save is one unit — voucher, recovery_lines, journal_lines, exact demand links', async () => {

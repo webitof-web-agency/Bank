@@ -5389,7 +5389,8 @@ function demandPeriod(list = {}, line = {}) {
 // Only months inside the active FY are offered, so demand from a closed
 // year never enters a current recovery.
 // Load Demand on the recovery screen, for one month (and branch): a line for
-// every member to recover from —
+// every active member to recover from (inactive / dismembered members are
+// never loaded) —
 //   - the member's PENDING demand line of that month (Demand Entry / legacy),
 //     kept linked so Save marks it recovered;
 //   - otherwise the member's Monthly Demand Data (member form), for active
@@ -5416,11 +5417,14 @@ async function buildRecoveryDemandCandidates({ branchCode = '', month = '', year
     ? (await DemandLine.find({ demandListNo: { $in: [...new Set(lists.map((list) => list.demandListNo))] } }).lean())
       .filter((line) => listByKey.has(`${line.demandListNo}|${cleanUpper(line.postedBranch)}`))
     : [];
-  const lines = monthLines.filter((line) => cleanUpper(line.recoveryStatus) === DEMAND_PENDING);
   const branches = await Branch.find({}).lean();
   const branchByCode = new Map(branches.map((branch) => [cleanUpper(branch.code), branch]));
   const allMembers = await Member.find({}).lean();
   const memberByCode = new Map(allMembers.map((member) => [cleanUpper(member.code), member]));
+  // An inactive / dismembered member is never loaded, even with a pending
+  // (e.g. legacy) demand line for the month.
+  const lines = monthLines.filter((line) => cleanUpper(line.recoveryStatus) === DEMAND_PENDING
+    && !isDismemberedMember(memberByCode.get(cleanUpper(line.memberCode)) || {}));
 
   const candidates = lines.map((line) => {
     const list = listByKey.get(`${line.demandListNo}|${cleanUpper(line.postedBranch)}`);
@@ -5663,7 +5667,7 @@ async function getDemandEntryMembers({ branchCode = '', month = '', year = '', e
   if (!all && !effectiveBranchCode) throw recoveryHttpError('Choose a branch first.');
   const taken = await membersDemandedInMonth(month, year, excludeId);
   const active = withoutTestMembers(await Member.find(all ? {} : { branchCode: effectiveBranchCode }).lean())
-    .filter((member) => !member.dismembered && !cleanLower(member.status).startsWith('inact'));
+    .filter((member) => !isDismemberedMember(member));
   const members = active.filter((member) => !taken.has(cleanUpper(member.code)));
   const skipped = active.length - members.length;
   const defaults = members.length ? await MemberDemandDefault.find({ memberCode: { $in: members.map((member) => member.code) } }).lean() : [];

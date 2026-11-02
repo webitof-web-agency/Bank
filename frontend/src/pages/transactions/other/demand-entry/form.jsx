@@ -4,6 +4,7 @@ import { api } from '../../../../api/api';
 import { Input, Textarea } from '../../../../components/ui/Input';
 import { Select } from '../../../../components/ui/Select';
 import { useAuth } from '../../../../context/AuthContext';
+import { isDismemberedMember } from '../../../master/members/memberUtils';
 import {
   DEMAND_HEADS, MONTH_OPTIONS, demandLineTotal, demandTotals, isRecoveredLine, listNoForMonth, mergeLoadedMembers, removeDemandLine, updateDemandLine
 } from './demandEntryDraft';
@@ -42,9 +43,11 @@ export function DemandForm({ value, setValue, onSubmit, branches = [], members =
   });
   const setLines = (next) => setValue((current) => ({ ...current, lines: typeof next === 'function' ? next(current.lines || []) : next }));
   const allBranches = value.branchCode === 'ALL';
+  // Inactive / dismembered members are never offered (as Load Demand).
+  const activeMembers = members.filter((member) => !isDismemberedMember(member));
   const branchMembers = allBranches
-    ? members
-    : members.filter((member) => String(member.branchCode || '').toUpperCase() === String(value.branchCode || '').toUpperCase());
+    ? activeMembers
+    : activeMembers.filter((member) => String(member.branchCode || '').toUpperCase() === String(value.branchCode || '').toUpperCase());
 
   async function loadMembers() {
     if (!value.branchCode) {
