@@ -856,7 +856,7 @@ export function MemberTransactionDetailPage({
         title="Edit"
         subtitle={section?.description || 'Update transaction voucher details.'}
         onClose={closeEditor}
-        wide={isRecovery}
+        fill={isRecovery}
         footer={
           <div className="flex w-full justify-end gap-3">
             <Button variant="outline" type="button" onClick={closeEditor}>Cancel</Button>

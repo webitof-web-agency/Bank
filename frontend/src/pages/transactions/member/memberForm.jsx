@@ -12,6 +12,7 @@ import { useInDialog } from '../../../components/ui/dialogContext';
 import { useFY } from '../../../context/FYContext';
 import UploadModal from './recovery-import/UploadModal';
 import { toast } from 'sonner';
+import { ClipboardList, FileSpreadsheet, Info, Paperclip, Pencil, Plus, X } from 'lucide-react';
 import { SmsCheckbox } from '../../../components/ui/CheckboxLine';
 import {
   RECOVERY_HEADS, STATUS_LABELS, addDemandLines, excelVsDemand, addExcelLines, applyExcelHeads, candidateKey, emptyHeads, expectedPaise, fromPaise, lineDifference, lineErrors, lineStatus,
@@ -111,6 +112,16 @@ function getPaymentOptions(activeKey = '') {
 
 function FieldLabel({ children, required = false }) {
   return <label className="text-[13px] font-semibold text-slate-700">{children}{required ? <span className="text-rose-500"> *</span> : null}</label>;
+}
+
+// A small label over a compact field (the recovery voucher strip).
+function MiniField({ label, required = false, className = '', children }) {
+  return (
+    <div className={`space-y-1 ${className}`}>
+      <div className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-slate-500">{label}{required ? <span className="text-rose-500"> *</span> : null}</div>
+      {children}
+    </div>
+  );
 }
 
 function SectionTitle({ children, subtitle = '' }) {
@@ -700,118 +711,152 @@ function RecoveryLinesEditor({ rows = [], excluded = [], onChange, onOutstanding
     setNotice('The row was taken off the excluded list. Import the Excel again to bring it back into the recovery.');
   }
 
+  // Share, Premium, Admission and Suspense are shown only when some line has
+  // them; the four demand heads always are.
+  const visibleHeads = RECOVERY_HEADS.filter(([key]) => ['cd', 'ssa', 'loan', 'lad'].includes(key) || Number(summary.heads[key] || 0) !== 0);
+  const columnCount = visibleHeads.length + 7;
+  const openDemand = () => setDemandOpen(true);
+  const openManual = () => setMemberDialog({ index: null, heads: emptyHeads() });
+
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <SectionTitle subtitle="1. Add From Demand List: the month's demand loads, then Load Excel  2. Correct every red row until the difference is 0, then Save.">Member Recovery</SectionTitle>
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={() => setDemandOpen(true)}>Add From Demand List</Button>
-          <Button type="button" size="sm" onClick={() => setMemberDialog({ index: null, heads: emptyHeads() })}>+ Add Record</Button>
-        </div>
-      </div>
-      {notice ? <p className="rounded-lg bg-slate-50 px-3 py-2 text-[13px] text-slate-700">{notice}</p> : null}
-      {hasExcel || noEntry.length ? <ExcelFilterChips value={excelFilter} onChange={setExcelFilter} counts={excelCounts} /> : null}
-
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-        <table className="min-w-full text-left text-[12px]">
-          <thead className="bg-slate-50 text-[11px] font-semibold uppercase tracking-[0.06em] text-slate-500">
-            <tr>
-              <th className="px-2 py-2">Member</th>
-              <th className="px-2 py-2">Branch / Designation</th>
-              <th className="px-2 py-2 text-right">Expected</th>
-              {RECOVERY_HEADS.map(([key, label]) => <th key={key} className="px-2 py-2 text-right">{label}</th>)}
-              <th className="px-2 py-2 text-right">Allocated</th>
-              <th className="px-2 py-2 text-right">Difference</th>
-              <th className="px-2 py-2">Status</th>
-              <th className="px-2 py-2"></th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {shownRows.map(({ row, index }) => {
-              const record = getMemberRecord(lookups, row.member);
-              const status = lineStatus(row, safeRows);
-              const bad = status !== 'VALID';
-              const errors = lineErrors(row, safeRows);
-              const notes = row.warnings || [];
-              const expected = expectedPaise(row);
-              const difference = lineDifference(row);
-              return (
-                <tr
-                  key={`${row.demandLineId || row.importRowId || 'line'}-${index}`}
-                  className={bad ? 'bg-red-50 shadow-[inset_4px_0_0_0_#dc2626]' : ''}
-                >
-                  <td className="px-2 py-1.5 align-top">
-                    {row.unmatched
-                      ? <span className="font-medium text-red-700">PF {row.excel?.pfNo || '—'} <span className="font-normal">{row.memberName}</span></span>
-                      : <><span className="font-medium text-slate-800">{row.member}</span> <span className="text-slate-600">{row.memberName || record?.name || ''}</span></>}
-                    {errors.length ? <ul className="mt-1 space-y-0.5 text-[11px] font-semibold text-red-700">{errors.map((text) => <li key={text}>{text}</li>)}</ul> : null}
-                    {notes.length ? <ul className="mt-1 space-y-0.5 text-[11px] text-amber-700">{notes.map((text) => <li key={text}>ⓘ {text}</li>)}</ul> : null}
-                  </td>
-                  <td className="px-2 py-1.5 align-top text-slate-600">{row.branchName || getBranchLabel(lookups, record?.branchCode) || ''}<div className="text-[11px] text-slate-500">{row.designation || getDesignationLabel(record)}</div></td>
-                  <td className="px-2 py-1.5 text-right font-semibold text-slate-800">{expected == null ? '—' : formatHead(fromPaise(expected))}</td>
-                  {RECOVERY_HEADS.map(([key]) => <td key={key} className="px-2 py-1.5 text-right text-slate-700">{formatHead(row.heads?.[key])}</td>)}
-                  <td className="px-2 py-1.5 text-right font-semibold text-slate-800">{formatHead(lineTotal(row))}</td>
-                  <td className={`px-2 py-1.5 text-right font-semibold ${difference === 0 ? 'text-slate-400' : 'text-red-700'}`}>{difference === 0 ? '0' : formatHead(difference)}</td>
-                  <td className="px-2 py-1.5">
-                    <span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold ${bad ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>{STATUS_LABELS[status]}</span>
-                  </td>
-                  <td className="whitespace-nowrap px-2 py-1.5 text-right">
-                    {row.excel && !row.unmatched && bad ? (
-                      <button type="button" onClick={() => onChange(applyExcelHeads(safeRows, index))} className="mr-3 font-medium text-emerald-700 hover:underline" title="Split the Excel amount over the member's monthly demand heads">Use Excel split</button>
-                    ) : null}
-                    {!row.unmatched ? <button type="button" onClick={() => setMemberDialog({ index, ...row })} className="mr-3 font-medium text-[var(--primary,#2563eb)] hover:underline">Edit</button> : null}
-                    <button type="button" onClick={() => remove(index)} className="font-medium text-rose-600 hover:text-rose-700">{row.excel?.rowId ? 'Exclude' : 'Remove'}</button>
-                  </td>
-                </tr>
-              );
-            })}
-            {excelFilter === 'ZERO' ? noEntry.map((item) => (
-              <tr key={`no-entry-${item.member}`} className="bg-slate-50 text-slate-500">
-                <td className="px-2 py-1.5"><span className="font-medium">{item.member}</span> {item.memberName}</td>
-                <td className="px-2 py-1.5">{item.branchName}<div className="text-[11px]">{item.designation}</div></td>
-                <td className="px-2 py-1.5 text-right">0</td>
-                <td colSpan={RECOVERY_HEADS.length + 2} className="px-2 py-1.5 text-[12px]">Nothing in the Excel (demand ₹{formatHead(item.demandAmount)}): no entry this month, demand stays pending.</td>
-                <td className="px-2 py-1.5"><span className="whitespace-nowrap rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-semibold text-slate-600">No entry</span></td>
-                <td></td>
-              </tr>
-            )) : null}
-            {safeRows.length && excelFilter !== 'ALL' && !shownRows.length && !(excelFilter === 'ZERO' && noEntry.length) ? (
-              <tr><td colSpan={RECOVERY_HEADS.length + 7} className="px-3 py-6 text-center text-slate-500">No members in this filter.</td></tr>
-            ) : null}
-            {!safeRows.length ? (
-              <tr><td colSpan={RECOVERY_HEADS.length + 7} className="px-3 py-6 text-center text-slate-500">No members yet — Add From Demand List (the month's demand, then its Excel), or Add Record.</td></tr>
-            ) : null}
-          </tbody>
-          {safeRows.length ? (
-            <tfoot className="bg-slate-50 font-semibold text-slate-800">
-              <tr>
-                <td className="px-2 py-2" colSpan={2}>Total ({safeRows.length} members)</td>
-                <td className="px-2 py-2 text-right">{formatHead(summary.excelTotal)}</td>
-                {RECOVERY_HEADS.map(([key]) => <td key={key} className="px-2 py-2 text-right">{formatHead(summary.heads[key])}</td>)}
-                <td className="px-2 py-2 text-right">{formatHead(summary.recoveryTotal)}</td>
-                <td className={`px-2 py-2 text-right ${summary.difference === 0 ? '' : 'text-red-700'}`}>{summary.difference === 0 ? '0' : formatHead(summary.difference)}</td>
-                <td colSpan={2}></td>
-              </tr>
-            </tfoot>
-          ) : null}
-        </table>
-      </div>
-
+    <div className="space-y-2">
       {safeRows.length ? (
-        <div className={`grid gap-3 rounded-xl border p-4 sm:grid-cols-3 lg:grid-cols-6 ${summary.canSave ? 'border-emerald-200 bg-emerald-50' : 'border-red-200 bg-red-50'}`}>
-          <SummaryFigure label={hasExcel ? 'Excel Total' : 'Expected Total'} value={formatHead(summary.excelTotal)} />
-          <SummaryFigure label="Recovery Total" value={formatHead(summary.recoveryTotal)} />
-          <SummaryFigure label="Difference" value={summary.difference === 0 ? '0' : formatHead(summary.difference)} tone={summary.difference === 0 ? 'ok' : 'bad'} />
-          <SummaryFigure label="Valid Rows" value={summary.validRows} />
-          <SummaryFigure label="Error Rows" value={summary.errorRows} tone={summary.errorRows ? 'bad' : 'ok'} />
-          <SummaryFigure label="Status" value={summary.canSave ? 'Ready to Save' : 'Not reconciled'} tone={summary.canSave ? 'ok' : 'bad'} />
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-2 py-1.5 shadow-sm">
+          <button type="button" onClick={openDemand} className="inline-flex h-9 items-center gap-2 rounded-lg bg-[var(--primary,#2563eb)] px-3.5 text-[13px] font-semibold text-white shadow-sm hover:opacity-90">
+            <ClipboardList size={16} /> Add From Demand List
+          </button>
+          <button type="button" onClick={openManual} className="inline-flex h-9 items-center gap-1 rounded-lg px-2.5 text-[13px] font-medium text-slate-600 hover:bg-slate-100">
+            <Plus size={15} /> Add Record
+          </button>
+          {hasExcel || noEntry.length ? <><span className="mx-1 h-6 w-px bg-slate-200" /><ExcelFilterChips value={excelFilter} onChange={setExcelFilter} counts={excelCounts} /></> : null}
+          <div className="ml-auto flex flex-wrap items-center gap-x-5 gap-y-1 pr-1 text-[12px]">
+            <ToolbarFigure label={hasExcel ? 'Excel' : 'Expected'} value={formatHead(summary.excelTotal)} />
+            <ToolbarFigure label="Recovery" value={formatHead(summary.recoveryTotal)} />
+            <ToolbarFigure label="Difference" value={summary.difference === 0 ? '0' : formatHead(summary.difference)} tone={summary.difference === 0 ? 'ok' : 'bad'} />
+            <span className={`rounded-full px-2.5 py-1 text-[12px] font-semibold ${summary.canSave ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-700'}`}>
+              {summary.canSave ? 'Ready to save' : `${summary.errorRows} row(s) to fix`}
+            </span>
+          </div>
+        </div>
+      ) : null}
+      {notice ? (
+        <div className="flex items-start gap-2 rounded-lg bg-slate-50 px-3 py-1.5 text-[12px] text-slate-600">
+          <span className="flex-1">{notice}</span>
+          <button type="button" onClick={() => setNotice('')} className="text-slate-400 hover:text-slate-700" aria-label="Dismiss"><X size={14} /></button>
         </div>
       ) : null}
 
+      {!safeRows.length ? (
+        <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border-2 border-dashed border-blue-200 bg-gradient-to-b from-blue-50/70 to-white px-6 py-10 text-center" style={{ minHeight: 'calc(96vh - 290px)' }}>
+          <div className="grid h-14 w-14 place-items-center rounded-2xl bg-[var(--primary,#2563eb)] text-white shadow-md"><ClipboardList size={28} /></div>
+          <div className="space-y-1">
+            <h3 className="text-lg font-semibold text-slate-900">Start with this month's demand</h3>
+            <p className="mx-auto max-w-lg text-[13px] text-slate-500">Load the month's demand (Demand Entry, else each member's Monthly Demand Data), then the bank's Excel: each member's amount fills CD → SSA → Reg. Loan → LAD.</p>
+          </div>
+          <button type="button" onClick={openDemand} className="inline-flex h-12 items-center gap-2 rounded-xl bg-[var(--primary,#2563eb)] px-6 text-[15px] font-semibold text-white shadow-lg shadow-blue-600/20 hover:opacity-90">
+            <ClipboardList size={18} /> Add From Demand List
+          </button>
+          <ol className="flex flex-wrap items-center justify-center gap-2 text-[12px] text-slate-500">
+            {['Load Demand', 'Load Excel', 'Fix red rows', 'Save'].map((step, i) => (
+              <li key={step} className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1"><span className="grid h-4 w-4 place-items-center rounded-full bg-slate-800 text-[10px] font-bold text-white">{i + 1}</span>{step}</span>
+                {i < 3 ? <span className="text-slate-300">→</span> : null}
+              </li>
+            ))}
+          </ol>
+          <button type="button" onClick={openManual} className="text-[12px] font-medium text-slate-500 underline-offset-2 hover:text-slate-800 hover:underline">or add one member by hand</button>
+        </div>
+      ) : (
+        <div className="overflow-auto rounded-xl border border-slate-200 bg-white" style={{ maxHeight: 'calc(96vh - 250px)', minHeight: 240 }}>
+          <table className="min-w-full text-left text-[12px]">
+            <thead className="sticky top-0 z-10 bg-slate-100 text-[10.5px] font-semibold uppercase tracking-[0.06em] text-slate-500 shadow-[0_1px_0_0_#e2e8f0]">
+              <tr>
+                <th className="px-2 py-1.5">Member</th>
+                <th className="px-2 py-1.5">Branch · Designation</th>
+                <th className="px-2 py-1.5 text-right">Expected</th>
+                {visibleHeads.map(([key, label]) => <th key={key} className="px-2 py-1.5 text-right">{label}</th>)}
+                <th className="px-2 py-1.5 text-right">Allocated</th>
+                <th className="px-2 py-1.5 text-right">Diff.</th>
+                <th className="px-2 py-1.5">Status</th>
+                <th className="sticky right-0 bg-slate-100 px-2 py-1.5"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {shownRows.map(({ row, index }) => {
+                const record = getMemberRecord(lookups, row.member);
+                const status = lineStatus(row, safeRows);
+                const bad = status !== 'VALID';
+                const errors = lineErrors(row, safeRows);
+                const notes = row.warnings || [];
+                const expected = expectedPaise(row);
+                const difference = lineDifference(row);
+                const designation = row.designation || getDesignationLabel(record);
+                // The branch's name (some lines carry only its code).
+                const branchName = getBranchLabel(lookups, record?.branchCode) || row.branchName || '';
+                return (
+                  <tr key={`${row.demandLineId || row.importRowId || 'line'}-${index}`} className={bad ? 'bg-red-50/70 shadow-[inset_3px_0_0_0_#dc2626]' : 'hover:bg-slate-50'}>
+                    <td className="max-w-[300px] px-2 py-1 align-top">
+                      <div className="flex items-center gap-1.5">
+                        {row.unmatched
+                          ? <span className="truncate font-medium text-red-700">PF {row.excel?.pfNo || '—'} <span className="font-normal">{row.memberName}</span></span>
+                          : <><span className="font-semibold text-slate-900">{row.member}</span><span className="truncate text-slate-700">{row.memberName || record?.name || ''}</span></>}
+                        {notes.length ? <span title={notes.join('\n')} aria-label={`${notes.length} note(s): ${notes.join('; ')}`} className="inline-flex shrink-0 cursor-help items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-px text-[10.5px] font-semibold text-amber-800"><Info size={11} />{notes.length}</span> : null}
+                      </div>
+                      {errors.length ? <div className="mt-0.5 text-[11px] font-medium leading-snug text-red-700">{errors.join(' ')}</div> : null}
+                    </td>
+                    <td className="max-w-[210px] truncate px-2 py-1 align-top text-slate-600" title={`${branchName} · ${designation || ''}`}>
+                      {branchName}{designation ? <span className="text-slate-400"> · {designation}</span> : null}
+                    </td>
+                    <td className="px-2 py-1 text-right align-top font-semibold tabular-nums text-slate-900">{expected == null ? '—' : formatHead(fromPaise(expected))}</td>
+                    {visibleHeads.map(([key]) => <td key={key} className="px-2 py-1 text-right align-top tabular-nums text-slate-700">{formatHead(row.heads?.[key])}</td>)}
+                    <td className="px-2 py-1 text-right align-top font-semibold tabular-nums text-slate-900">{formatHead(lineTotal(row))}</td>
+                    <td className={`px-2 py-1 text-right align-top font-semibold tabular-nums ${difference === 0 ? 'text-slate-300' : 'text-red-700'}`}>{difference === 0 ? '0' : formatHead(difference)}</td>
+                    <td className="px-2 py-1 align-top">
+                      <span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[10.5px] font-semibold ${bad ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>{STATUS_LABELS[status]}</span>
+                    </td>
+                    <td className={`sticky right-0 whitespace-nowrap px-1 py-0.5 text-right align-top ${bad ? 'bg-red-50' : 'bg-white'}`}>
+                      {row.excel && !row.unmatched && bad ? (
+                        <button type="button" onClick={() => onChange(applyExcelHeads(safeRows, index))} className="rounded p-1 text-emerald-700 hover:bg-emerald-50" title="Use the Excel split (the Excel amount over the member's monthly demand heads)" aria-label="Use Excel split"><FileSpreadsheet size={15} /></button>
+                      ) : null}
+                      {!row.unmatched ? <button type="button" onClick={() => setMemberDialog({ index, ...row })} className="rounded p-1 text-[var(--primary,#2563eb)] hover:bg-blue-50" title="Edit" aria-label={`Edit ${row.member}`}><Pencil size={15} /></button> : null}
+                      <button type="button" onClick={() => remove(index)} className="rounded p-1 text-rose-600 hover:bg-rose-50" title={row.excel?.rowId ? 'Exclude this Excel row' : 'Remove'} aria-label={row.excel?.rowId ? 'Exclude' : 'Remove'}><X size={15} /></button>
+                    </td>
+                  </tr>
+                );
+              })}
+              {excelFilter === 'ZERO' ? noEntry.map((item) => (
+                <tr key={`no-entry-${item.member}`} className="bg-slate-50 text-slate-500">
+                  <td className="px-2 py-1"><span className="font-semibold">{item.member}</span> {item.memberName}</td>
+                  <td className="truncate px-2 py-1">{item.branchName}{item.designation ? ` · ${item.designation}` : ''}</td>
+                  <td className="px-2 py-1 text-right">0</td>
+                  <td colSpan={visibleHeads.length + 2} className="px-2 py-1">Nothing in the Excel (demand ₹{formatHead(item.demandAmount)}): no entry this month, demand stays pending.</td>
+                  <td className="px-2 py-1"><span className="whitespace-nowrap rounded-full bg-slate-200 px-2 py-0.5 text-[10.5px] font-semibold text-slate-600">No entry</span></td>
+                  <td></td>
+                </tr>
+              )) : null}
+              {excelFilter !== 'ALL' && !shownRows.length && !(excelFilter === 'ZERO' && noEntry.length) ? (
+                <tr><td colSpan={columnCount} className="px-3 py-6 text-center text-slate-500">No members in this filter.</td></tr>
+              ) : null}
+            </tbody>
+            <tfoot className="sticky bottom-0 bg-slate-100 font-semibold text-slate-800 shadow-[0_-1px_0_0_#e2e8f0]">
+              <tr>
+                <td className="px-2 py-1.5" colSpan={2}>Total · {safeRows.length} members</td>
+                <td className="px-2 py-1.5 text-right tabular-nums">{formatHead(summary.excelTotal)}</td>
+                {visibleHeads.map(([key]) => <td key={key} className="px-2 py-1.5 text-right tabular-nums">{formatHead(summary.heads[key])}</td>)}
+                <td className="px-2 py-1.5 text-right tabular-nums">{formatHead(summary.recoveryTotal)}</td>
+                <td className={`px-2 py-1.5 text-right tabular-nums ${summary.difference === 0 ? 'text-slate-400' : 'text-red-700'}`}>{summary.difference === 0 ? '0' : formatHead(summary.difference)}</td>
+                <td></td>
+                <td className="sticky right-0 bg-slate-100"></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+
       {safeExcluded.length ? (
-        <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3">
-          <p className="mb-2 text-[13px] font-semibold text-amber-800">Excluded Excel rows: {safeExcluded.length} · ₹{formatHead(excludedTotal)} (not in this recovery or its Excel total)</p>
-          <ul className="max-h-40 space-y-0.5 overflow-y-auto text-[12px] text-amber-900">
+        <details className="rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-1.5">
+          <summary className="cursor-pointer text-[12px] font-semibold text-amber-800">Excluded Excel rows: {safeExcluded.length} · ₹{formatHead(excludedTotal)} (not in this recovery or its Excel total)</summary>
+          <ul className="mt-1.5 max-h-40 space-y-0.5 overflow-y-auto text-[12px] text-amber-900">
             {safeExcluded.map((row, index) => (
               <li key={`${row.importRowId}-${index}`} className="flex items-center justify-between gap-3">
                 <span>Row {row.rowNo ?? '—'} · PF {row.pfNo || '—'} {row.name ? `· ${row.name}` : ''} · ₹{formatHead(row.amount)} — {row.reason}</span>
@@ -819,7 +864,7 @@ function RecoveryLinesEditor({ rows = [], excluded = [], onChange, onOutstanding
               </li>
             ))}
           </ul>
-        </div>
+        </details>
       ) : null}
 
       {/* The dialogs render outside the voucher <form> (portal): inside it,
@@ -852,13 +897,13 @@ function RecoveryLinesEditor({ rows = [], excluded = [], onChange, onOutstanding
   );
 }
 
-function SummaryFigure({ label, value, tone = '' }) {
+function ToolbarFigure({ label, value, tone = '' }) {
   const color = tone === 'bad' ? 'text-red-700' : tone === 'ok' ? 'text-emerald-700' : 'text-slate-900';
   return (
-    <div>
-      <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-slate-500">{label}</div>
-      <div className={`text-[15px] font-bold ${color}`}>{value}</div>
-    </div>
+    <span className="whitespace-nowrap">
+      <span className="text-[10.5px] font-semibold uppercase tracking-[0.06em] text-slate-500">{label}</span>{' '}
+      <span className={`text-[14px] font-bold tabular-nums ${color}`}>{value}</span>
+    </span>
   );
 }
 
@@ -1251,57 +1296,31 @@ export function MemberTransactionForm({ section, lookups = {}, value, setValue, 
     );
   }
 
+  // Recovery: one compact strip for the voucher (cheque fields only for DD /
+  // Cheque) and the total, then the member workspace takes the rest.
   function renderRecoveryForm() {
+    const chequeMode = ['DD', 'CHEQUE'].includes(String(draft.mode || '').toUpperCase());
+    const mini = 'h-9 text-[13px]';
     return (
-      <section className="space-y-3">
-        <div className="space-y-3">
-          <SectionTitle>Voucher</SectionTitle>
-          <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-5">
-            <div className="space-y-1.5">
-              <FieldLabel>Voucher No.</FieldLabel>
-              <Input value={draft.voucherNo || ''} readOnly placeholder="Generating..." />
-            </div>
-            <div className="space-y-1.5">
-              <FieldLabel required>Date</FieldLabel>
-              <Input type="date" value={draft.date || ''} onChange={(event) => setRootValue(setValue, 'date', event.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <FieldLabel required>Mode</FieldLabel>
-              <CustomSelect value={draft.mode || ''} onChange={(next) => setRootValue(setValue, 'mode', next)} options={paymentOptions} placeholder="Select mode" searchable={false} />
-            </div>
-            <div className="space-y-1.5">
-              <FieldLabel>DD / Cheque No.</FieldLabel>
-              <Input value={draft.instrumentNo || ''} onChange={(event) => setRootValue(setValue, 'instrumentNo', event.target.value)} placeholder="DD / cheque number" />
-            </div>
-            <div className="space-y-1.5">
-              <FieldLabel>Cheque Date</FieldLabel>
-              <Input type="date" value={draft.instrumentDate || ''} onChange={(event) => setRootValue(setValue, 'instrumentDate', event.target.value)} />
-            </div>
+      <section className="space-y-2">
+        <div className="flex flex-wrap items-end gap-2 rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2">
+          <MiniField label="Voucher No." className="w-24"><Input className={mini} value={draft.voucherNo || ''} readOnly placeholder="Auto" /></MiniField>
+          <MiniField label="Date" required className="w-40"><Input className={mini} type="date" value={draft.date || ''} onChange={(event) => setRootValue(setValue, 'date', event.target.value)} /></MiniField>
+          <MiniField label="Mode" required className="w-36"><CustomSelect value={draft.mode || ''} onChange={(next) => setRootValue(setValue, 'mode', next)} options={paymentOptions} placeholder="Select mode" searchable={false} /></MiniField>
+          {chequeMode ? (
+            <>
+              <MiniField label="DD / Cheque No." className="w-40"><Input className={mini} value={draft.instrumentNo || ''} onChange={(event) => setRootValue(setValue, 'instrumentNo', event.target.value)} placeholder="Number" /></MiniField>
+              <MiniField label="Cheque Date" className="w-40"><Input className={mini} type="date" value={draft.instrumentDate || ''} onChange={(event) => setRootValue(setValue, 'instrumentDate', event.target.value)} /></MiniField>
+            </>
+          ) : null}
+          <MiniField label="Narration" className="min-w-[220px] flex-1"><Input className={mini} value={draft.narration || ''} onChange={(event) => setRootValue(setValue, 'narration', event.target.value)} placeholder="Recovery remarks" /></MiniField>
+          <div className="ml-auto pl-2 text-right">
+            <div className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-slate-500">Total Recovery</div>
+            <div className="text-xl font-bold tabular-nums text-slate-900">₹ {formatHead(amountValue) === '-' ? '0' : formatHead(amountValue)}</div>
           </div>
         </div>
 
         <RecoveryLinesEditor rows={recoveryRows} excluded={recoveryExcluded} onChange={updateRecoveryRows} memberGroups={memberGroups} lookups={lookups} voucherDate={draft.date} voucherId={draft.id || draft._id || ''} onOutstanding={setRecoveryOutstanding} />
-
-        <div className="space-y-3">
-          <SectionTitle>Total and Narration</SectionTitle>
-          <div className="grid gap-3 md:grid-cols-4">
-            <div className="space-y-1.5 md:col-span-2">
-              <FieldLabel>Total Recovery Amount</FieldLabel>
-              <Input value={amountValue || ''} readOnly />
-            </div>
-            {/* SMS is not configured (no provider yet): the button is shown
-                disabled and does nothing. Save never depends on it. */}
-            <div className="flex items-end gap-3 md:col-span-2">
-              <Button type="button" variant="outline" disabled title="SMS is not configured" className="cursor-not-allowed text-slate-400">
-                Send SMS — not configured
-              </Button>
-            </div>
-            <div className="space-y-1.5 md:col-span-4">
-              <FieldLabel>Narration</FieldLabel>
-              <Textarea rows={3} value={draft.narration || ''} onChange={(event) => setRootValue(setValue, 'narration', event.target.value)} placeholder="Recovery remarks" />
-            </div>
-          </div>
-        </div>
       </section>
     );
   }
@@ -1314,7 +1333,15 @@ export function MemberTransactionForm({ section, lookups = {}, value, setValue, 
       {isInsurance ? renderInsuranceForm() : null}
       {isSsa ? renderSsaForm() : null}
       {isRecovery ? renderRecoveryForm() : null}
-      {documentDefs.length ? (
+      {documentDefs.length && isRecovery ? (
+        // Recovery: the member workspace gets the room; attachments fold away.
+        <details className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+          <summary className="flex cursor-pointer items-center gap-2 text-[12px] font-semibold text-slate-600">
+            <Paperclip size={14} /> Attachments · {documentDefs.filter((def) => draft.documents?.[def.key]).length} of {documentDefs.length} added
+          </summary>
+          <div className="mt-2"><SimpleDocumentList definitions={documentDefs} documents={draft.documents || {}} onPickFile={updateDocumentMap} onClearFile={clearDocument} /></div>
+        </details>
+      ) : documentDefs.length ? (
         <section className="space-y-3">
           <SectionTitle>Attachments</SectionTitle>
           <SimpleDocumentList definitions={documentDefs} documents={draft.documents || {}} onPickFile={updateDocumentMap} onClearFile={clearDocument} />

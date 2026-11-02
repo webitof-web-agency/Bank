@@ -10,10 +10,13 @@ import { DialogContext } from './dialogContext';
 // still make a dialog narrower (confirmations, small pickers).
 const DEFAULT_WIDTH = 'min(720px, 94vw)';
 const WIDE_WIDTH = 'min(1200px, 97vw)';
+// `fill`: a workspace dialog (Recovery From Member) that takes nearly the
+// whole screen; its body fills the height so a table inside can scroll.
+const FILL_WIDTH = 'min(1800px, 98vw)';
 
 // bare: no header row at all; the content draws its own title and close
 // button (ConfirmDialog).
-export function Modal({ open, title, subtitle, children, onClose, footer, width, wide = false, hideHeader = false, bare = false, overflowVisible = false }) {
+export function Modal({ open, title, subtitle, children, onClose, footer, width, wide = false, fill = false, hideHeader = false, bare = false, overflowVisible = false }) {
   const modalRef = useRef();
 
   if (!open) return null;
@@ -27,13 +30,15 @@ export function Modal({ open, title, subtitle, children, onClose, footer, width,
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/40 backdrop-blur-sm" role="presentation" onMouseDown={handleBackdropClick}>
-      <div className="flex min-h-full items-center justify-center p-4 py-8">
+      <div className={`flex min-h-full items-center justify-center ${fill ? 'p-2 sm:p-3' : 'p-4 py-8'}`}>
         <div
           ref={modalRef}
           className="relative w-full rounded-2xl border border-slate-200 bg-white shadow-lg flex flex-col"
-          style={{ maxWidth: width || (wide ? WIDE_WIDTH : DEFAULT_WIDTH), maxHeight: 'min(85vh, 800px)' }}
+          style={fill
+            ? { maxWidth: width || FILL_WIDTH, height: '96vh', maxHeight: '96vh' }
+            : { maxWidth: width || (wide ? WIDE_WIDTH : DEFAULT_WIDTH), maxHeight: 'min(85vh, 800px)' }}
           role="dialog"
-          data-dialog={wide ? 'wide' : 'form'}
+          data-dialog={wide || fill ? 'wide' : 'form'}
           aria-modal="true"
           aria-label={title}
         >
@@ -54,7 +59,7 @@ export function Modal({ open, title, subtitle, children, onClose, footer, width,
               </Button>
             </div>
           )}
-          <div className={`${bare ? 'px-5 pb-5 pt-5' : hideHeader ? 'px-5 pb-5 pt-2' : 'px-5 py-4'} ${overflowVisible ? 'overflow-visible' : 'overflow-y-auto'}`}><DialogContext.Provider value>{children}</DialogContext.Provider></div>
+          <div className={`${bare ? 'px-5 pb-5 pt-5' : hideHeader ? 'px-5 pb-5 pt-2' : fill ? 'px-4 py-3' : 'px-5 py-4'} ${fill ? 'min-h-0 flex-1' : ''} ${overflowVisible ? 'overflow-visible' : 'overflow-y-auto'}`}><DialogContext.Provider value>{children}</DialogContext.Provider></div>
           {footer ? <div className="rounded-b-2xl border-t border-slate-200 px-5 py-3 bg-slate-50 shrink-0">{footer}</div> : null}
         </div>
       </div>

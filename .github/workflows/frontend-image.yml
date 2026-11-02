@@ -78,9 +78,22 @@ jobs:
             echo "::warning::Dokploy secrets not set: image pushed, deploy skipped."
             exit 0
           fi
-          curl -fsS --retry 3 --retry-all-errors -X POST "${DOKPLOY_URL%/}/api/application.deploy" \
+          APP_ID="$(echo "$APP_ID" | tr -d '[:space:]')"
+          URL="${DOKPLOY_URL%/}"
+          URL="${URL%/api}"
+          # Dokploy's own answer is printed, so a wrong id or key is visible.
+          # Only network / 5xx errors are retried.
+          code=$(curl -sS --retry 3 -o response.txt -w '%{http_code}' -X POST "$URL/api/application.deploy" \
             -H "x-api-key: $DOKPLOY_API_KEY" \
             -H "Content-Type: application/json" \
-            -d "{\"applicationId\":\"$APP_ID\"}"
-          echo
+            -d "{\"applicationId\":\"$APP_ID\"}")
+          echo "Dokploy answered HTTP $code:"
+          cat response.txt; echo
+          if [ "$code" = "401" ] || [ "$code" = "403" ]; then
+            echo "::error::Dokploy refused the API key: check DOKPLOY_API_KEY."; exit 1
+          fi
+          if [ "$code" = "404" ]; then
+            echo "::error::Dokploy has no application with this id: DOKPLOY_*_APP_ID must be the last part of the app's Dokploy address (.../services/application/<id>), not the project or environment id."; exit 1
+          fi
+          if [ "$code" -ge 300 ]; then echo "::error::Dokploy deploy failed (HTTP $code)."; exit 1; fi
           echo "Dokploy deploy queued for $IMAGE:latest"
