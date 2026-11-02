@@ -32,11 +32,15 @@ const ids = {};
 
 test.after(async () => {
   const db = await initializeDatabase();
-  const own = [code(7), code(8)];
+  const own = [code(7), code(8), code(10), code(11), code(12), code(13)];
   await db.query('DELETE FROM demand_lines WHERE "memberCode" = ANY($1)', [own]);
   await db.query('DELETE FROM demand_lists WHERE "demandListNo" = $1', [LISTX]);
   await db.query('DELETE FROM member_demand_defaults WHERE "memberCode" = ANY($1)', [own]);
   await db.query('DELETE FROM members WHERE code = ANY($1)', [own]);
+  if (ids.rejoinBatch) {
+    await db.query('DELETE FROM recovery_import_rows WHERE "batchId" = $1', [ids.rejoinBatch]);
+    await db.query('DELETE FROM recovery_import_batches WHERE id::text = $1', [ids.rejoinBatch]);
+  }
   // The Mail test's voucher (soft-deleted by the test): removed for good.
   if (ids.mailVoucher) {
     await db.query('DELETE FROM journal_lines WHERE "voucherId" = $1', [ids.mailVoucher]);
@@ -357,3 +361,28 @@ test('S: Excel import matches the migrated PF (payload.raw.PFNo) exactly, leadin
   assert.equal(Number(matched.allocatedCompulsoryDeposit), 1000);
   assert.equal(rows.find((row) => row.pfNo === pf.slice(1)).status, 'MEMBER NOT FOUND');
 });
+
+test('Excel import: a PF on a former membership and on the re-joined one matches the current member', async () => {
+  const pf = `${Math.floor(Math.random() * 90000 + 10000)}`;
+  // Same person: left (dismembered), then joined again under a new code.
+  await Member.create({ code: code(10), name: 'Rejoined Member', branchCode: BRANCH, status: 'INACTIVE', dismembered: true, dismemberedDate: '2024-03-13', membershipDate: '2011-06-16', pfNo: pf });
+  await Member.create({ code: code(11), name: 'Rejoined Member', branchCode: BRANCH, status: 'ACTIVE', membershipDate: '2025-01-31', pfNo: pf });
+  // Two current members on one PF stay ambiguous.
+  const pf2 = `${Number(pf) + 1}`;
+  await Member.create({ code: code(12), name: 'Twin A', branchCode: BRANCH, status: 'ACTIVE', membershipDate: '2020-04-01', pfNo: pf2 });
+  await Member.create({ code: code(13), name: 'Twin B', branchCode: BRANCH, status: 'ACTIVE', membershipDate: '2020-04-01', pfNo: pf2 });
+  const sheet = xlsx.utils.aoa_to_sheet([['Sno', 'Branch', 'PF', 'EmpName', 'Grade', 'TotalAmt'], [1, 'X', pf, 'Rejoined Member', 'CLERK', 2000], [2, 'X', pf2, 'Twin', 'CLERK', 100]]);
+  const book = xlsx.utils.book_new();
+  xlsx.utils.book_append_sheet(book, sheet, 'Sheet1');
+  const buffer = xlsx.write(book, { type: 'buffer', bookType: 'xlsx' });
+  const batch = await recoveryImport.uploadAndParseBatch('rejoin.xlsx', buffer, { pfNo: 'PF', amount: 'TotalAmt', branch: 'Branch', empName: 'EmpName', grade: 'Grade' }, 'test');
+  ids.rejoinBatch = batch.id;
+  const rows = await RecoveryImportRow.find({ batchId: batch.id }).lean();
+  const rejoined = rows.find((row) => row.pfNo === pf);
+  const current = await Member.findOne({ code: code(11) }).lean();
+  assert.notEqual(rejoined.status, 'DUPLICATE PF');
+  assert.equal(String(rejoined.memberId), String(current.id || current._id));
+  assert.match(rejoined.warnings || '', /former membership/i);
+  assert.equal(rows.find((row) => row.pfNo === pf2).status, 'DUPLICATE PF');
+});
+

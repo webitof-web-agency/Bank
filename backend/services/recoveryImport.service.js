@@ -239,6 +239,14 @@ function memberPfNo(member = {}) {
   return pf == null ? '' : String(pf).trim();
 }
 
+// A member who has left: the flag, a leaving date, or an inactive status
+// (banking.service isDismemberedMember).
+function hasLeft(member = {}) {
+  if (member.dismembered === true) return true;
+  if (/^\d{4}-\d{2}-\d{2}/.test(String(member.dismemberedDate || '').trim())) return true;
+  return /dismember|resign|left|closed|inactive/i.test(String(member.status || ''));
+}
+
 async function findMembersByPf(pfNos = []) {
   const wanted = new Set(pfNos.map((pf) => String(pf).trim()).filter(Boolean));
   const membersByPf = {};
@@ -353,7 +361,12 @@ async function validateAndBuildRow(batchId, parsedRow, membersByPf, demandsByMem
     status = 'DUPLICATE IMPORT ROW';
     errorMessage = `PF No. ${pfNo} appears multiple times in file.`;
   } else {
-    const matchedMembers = membersByPf[pfNo] || [];
+    const allMatched = membersByPf[pfNo] || [];
+    // A PF on several records is usually one person who left and joined
+    // again under a new code (PF 2156: 1496 left 2024, 1781 joined 2025):
+    // the one current membership takes the row.
+    const current = allMatched.filter((member) => !hasLeft(member));
+    const matchedMembers = allMatched.length > 1 && current.length === 1 ? current : allMatched;
     if (matchedMembers.length === 0) {
       status = 'MEMBER NOT FOUND';
       errorMessage = `No member found with PF No: ${pfNo}`;
@@ -363,6 +376,10 @@ async function validateAndBuildRow(batchId, parsedRow, membersByPf, demandsByMem
     } else {
       const member = matchedMembers[0];
       memberId = member.id;
+      const former = allMatched.filter((other) => other !== member);
+      if (former.length) {
+        warningParts.push(`PF ${pfNo} is also on former membership ${former.map((other) => `${other.code}${other.dismemberedDate ? ` (left ${String(other.dismemberedDate).slice(0, 10)})` : ''}`).join(', ')}`);
+      }
       
       // --- Soft match warnings (do not fail the row) ---
       if (parsedRow.sourceEmployeeName) {

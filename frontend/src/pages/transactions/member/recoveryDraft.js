@@ -162,6 +162,8 @@ function excelOf(row = {}, batchId = '') {
     branch: row.sourceBranch || '',
     nameDiffers: notes.includes('SOURCE NAME DIFFERENCE'),
     branchDiffers: notes.includes('SOURCE BRANCH DIFFERENCE'),
+    // A PF also on an earlier membership (the member left and joined again).
+    formerMembership: (notes.match(/PF \S+ is also on former membership[^\n]*/) || [''])[0],
     batchId: batchId || row.batchId || '',
     rowId: row.id || '',
     // The import's split of the Excel amount over the member's demand heads.
@@ -496,6 +498,7 @@ export function lineNotes(line = {}, lines = []) {
   const notes = [];
   if (line.excel?.nameDiffers) notes.push(`Excel name "${line.excel.name}" differs from the member`);
   if (line.excel?.branchDiffers) notes.push(`Excel branch "${line.excel.branch}" differs from the member`);
+  if (line.excel?.formerMembership) notes.push(line.excel.formerMembership);
   if (demandLoaded && line.source === 'EXCEL') notes.push('In the Excel, not in the loaded demand (split from the member\'s monthly demand)');
   if (line.needsReview && line.reviewNote) notes.push(line.reviewNote);
   if (line.fitNote) notes.push(line.fitNote);

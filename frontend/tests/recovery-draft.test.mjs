@@ -352,3 +352,9 @@ test('Add From Demand List opens on the latest month with pending Demand Entry, 
   assert.equal(pickDemandEntryMonth([], '11', '2026'), null);
 });
 
+test('a PF also on a former membership is a note on the matched line', () => {
+  const excel = { batch: { id: 'B9' }, rows: [{ id: 'r1', memberId: 'm1', importedTotalAmount: 3500, warnings: 'PF 2156 is also on former membership 1496 (left 2024-03-13)' }] };
+  const result = addExcelLines([], excel, { candidates: [demand], members });
+  assert.ok(result.lines[0].warnings.some((note) => /former membership 1496/.test(note)));
+});
+

@@ -1630,6 +1630,7 @@ async function createResource(resource, data = {}, meta = {}) {
     payload.updatedByUserId = meta.actorUserId;
   }
   if (resource === 'members') {
+    await assertMemberRejoinAllowed(payload);
     await applyMemberCredentials(payload, data, { requirePassword: true });
     payload.payload = protectMemberPayload(payload.payload, {});
     // Checked before the member is written, so a bad amount saves nothing.
@@ -1720,6 +1721,15 @@ async function updateResource(resource, id, data = {}, meta = {}) {
     payload.branchCode = resolveBranchCode(actorUser, current.branchCode);
     payload.code = payload.code || current.code;
     payload.payload = protectMemberPayload(data.payload, current.toObject().payload);
+    // Re-joining rule first: the stored member with the edited fields on top.
+    {
+      const stored = current.toObject();
+      const edited = Object.fromEntries(Object.entries(payload).filter(([, value]) => value !== '' && value != null));
+      const candidate = { ...stored, ...edited };
+      // Un-ticking "dismembered" reactivates: the old leaving date goes with it.
+      if (payload.dismembered === false) candidate.dismemberedDate = '';
+      await assertMemberRejoinAllowed(candidate, { previous: stored });
+    }
     // Mobile stays required; password is only rehashed when a new one is sent
     // (an absent/blank password leaves the existing hash in place).
     await applyMemberCredentials(payload, data, { requirePassword: false });
@@ -6145,6 +6155,47 @@ async function buildDemandListReport({ month = '', year = '', date = '', fyStart
 
 // Dismembered = the member has left the society (flagged, dated, or a status
 // that says so).
+// Re-joining (user, 2026-11-02): a member who left (dismembered) may join
+// again only from the next financial year — 1 April after the FY they left
+// in — whether as a new member record (the old software gave PF 2156 a new
+// code, 1496 -> 1781) or by reactivating the old one. The same person is found
+// by PF, else by name + date of birth. A PF also belongs to one current
+// member only (the bank Excel is matched by PF).
+const memberPfOf = (row = {}) => cleanText(row.pfNo || row?.payload?.raw?.PFNo);
+function memberNameDobKey(row = {}) {
+  const name = cleanLower(row.name).replace(/[^a-z0-9]+/g, ' ').trim();
+  const dob = cleanText(row.dateOfBirth || row?.payload?.raw?.DOB).slice(0, 10);
+  return name && /^\d{4}-\d{2}-\d{2}$/.test(dob) ? `${name}|${dob}` : '';
+}
+const indianDate = (day) => `${day.slice(8, 10)}-${day.slice(5, 7)}-${day.slice(0, 4)}`;
+
+// candidate: the member as it will be saved; previous: the stored row when
+// editing (a reactivation counts from today).
+async function assertMemberRejoinAllowed(candidate = {}, { previous = null } = {}) {
+  if (isDismemberedMember(candidate)) return;
+  const code = cleanUpper(candidate.code);
+  const pf = memberPfOf(candidate);
+  const nameDob = memberNameDobKey(candidate);
+  const today = new Date().toISOString().slice(0, 10);
+  const reactivating = Boolean(previous && isDismemberedMember(previous));
+  const joinDay = reactivating ? today : (cleanText(candidate.membershipDate).slice(0, 10) || today);
+  const others = (await Member.find({}).lean()).filter((row) => cleanUpper(row.code) !== code
+    && ((pf && memberPfOf(row) === pf) || (nameDob && memberNameDobKey(row) === nameDob)));
+  if (reactivating) others.push(previous);
+  for (const row of others) {
+    if (!isDismemberedMember(row)) {
+      if (pf && memberPfOf(row) === pf) {
+        throw recoveryHttpError(`PF ${pf} is already used by member ${row.code} (${row.name || ''}), who is still a member. A PF can belong to one current member only.`, 409);
+      }
+      continue;
+    }
+    const left = cleanText(row.dismemberedDate).slice(0, 10);
+    const leftFy = /^\d{4}-\d{2}-\d{2}$/.test(left) ? fyStartYearOf(left) : null;
+    if (leftFy == null || fyStartYearOf(joinDay) > leftFy) continue;
+    throw recoveryHttpError(`${row.name || 'This member'} (member ${row.code}${memberPfOf(row) ? `, PF ${memberPfOf(row)}` : ''}) was dismembered on ${indianDate(left)} (FY ${leftFy}-${String(leftFy + 1).slice(2)}). A dismembered member can join again only from the next financial year: from 01-04-${leftFy + 1}.`, 409);
+  }
+}
+
 function isDismemberedMember(row = {}) {
   if (row.dismembered === true) return true;
   if (/^\d{4}-\d{2}-\d{2}/.test(cleanText(row.dismemberedDate))) return true;
@@ -7577,6 +7628,7 @@ async function buildDividendReport({ mode = 'branchwise-opening', dateFrom = '',
 }
 
 module.exports = {
+  assertMemberRejoinAllowed,
   notifyNegativeBalances,
   getGlobalRatesConfig,
   updateGlobalRatesConfig,
