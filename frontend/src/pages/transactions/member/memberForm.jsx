@@ -15,7 +15,7 @@ import { toast } from 'sonner';
 import { ClipboardList, FileSpreadsheet, Info, Paperclip, Pencil, Plus, X } from 'lucide-react';
 import { SmsCheckbox } from '../../../components/ui/CheckboxLine';
 import {
-  RECOVERY_HEADS, STATUS_LABELS, addDemandLines, excelVsDemand, addExcelLines, applyExcelHeads, candidateKey, emptyHeads, expectedPaise, fromPaise, lineDifference, lineErrors, lineStatus,
+  RECOVERY_HEADS, STATUS_LABELS, addDemandLines, excelVsDemand, pickDemandEntryMonth, addExcelLines, applyExcelHeads, candidateKey, emptyHeads, expectedPaise, fromPaise, lineDifference, lineErrors, lineStatus,
   lineTotal, manualLine, normalizeDraftLines, reconcile, removeLine, toPaise, updateLineHeads, withOutstanding, withWarnings
 } from './recoveryDraft';
 import { membersInFy } from '../../../lib/fyMembers';
@@ -353,6 +353,9 @@ function DemandPickerDialog({ open, onClose, onAdd, lookups = {}, voucherDate = 
   const [branchCode, setBranchCode] = useState('');
   const [month, setMonth] = useState(date ? String(Number(date.slice(5, 7))) : '');
   const [year, setYear] = useState(date ? date.slice(0, 4) : '');
+  // (loadDemand's own month / year may come from its `period` argument.)
+  const monthState = month;
+  const yearState = year;
   const [rows, setRows] = useState([]);
   const [selected, setSelected] = useState(() => new Set());
   const [loading, setLoading] = useState(false);
@@ -375,7 +378,25 @@ function DemandPickerDialog({ open, onClose, onAdd, lookups = {}, voucherDate = 
   // loaded straight away (the button is then Load Excel); otherwise nothing
   // is loaded until Load Demand.
   useEffect(() => {
-    if (open && month && year) loadDemand({ demandEntryOnly: true });
+    if (!open) return;
+    // The month of the latest Demand Entry with pending members, up to the
+    // voucher's month (October's demand is recovered in November); without
+    // access to the Demand Entry list, the voucher's month.
+    (async () => {
+      let period = { month, year };
+      try {
+        const listing = await api.banking.demandEntry.list(token, { fyStart: activeFY?.start || '', fyEnd: activeFY?.end || '' });
+        const picked = pickDemandEntryMonth(Array.isArray(listing?.data) ? listing.data : [], month, year);
+        if (picked) {
+          period = picked;
+          setMonth(picked.month);
+          setYear(picked.year);
+        }
+      } catch {
+        // No Demand Entry access: keep the voucher's month.
+      }
+      if (period.month && period.year) loadDemand({ demandEntryOnly: true, period });
+    })();
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!open) return null;
@@ -403,7 +424,10 @@ function DemandPickerDialog({ open, onClose, onAdd, lookups = {}, voucherDate = 
   if (excel) for (const row of rows) { const kind = compareRow(row); if (kind in excelCounts) excelCounts[kind] += 1; }
   const shownRows = excel && excelFilter !== 'ALL' ? rows.filter((row) => compareRow(row) === excelFilter) : rows;
 
-  async function loadDemand({ demandEntryOnly = false } = {}) {
+  // period: { month, year } to load (on opening, before state catches up).
+  async function loadDemand({ demandEntryOnly = false, period = null } = {}) {
+    const month = period?.month || monthState;
+    const year = period?.year || yearState;
     if (!month || !year) {
       if (!demandEntryOnly) toast.error('Choose the demand month and year.');
       return;

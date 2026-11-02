@@ -590,3 +590,22 @@ export function removeLine(lines = [], index, excluded = [], reason = '') {
   const next = withWarnings(lines.filter((_, i) => i !== index));
   return Object.assign(next, { excluded: nextExcluded });
 }
+
+// Add From Demand List opens on the month of the latest Demand Entry that
+// still has pending members, up to the voucher's month (a month's demand is
+// usually recovered the month after). entries: the Demand Entry listing
+// ({ month, year, pendingCount }). Returns { month, year } as strings, or
+// null when no entry qualifies (the dialog then keeps the voucher's month).
+export function pickDemandEntryMonth(entries = [], month = '', year = '') {
+  const key = (y, m) => Number(y) * 100 + Number(m);
+  const limit = month && year ? key(year, month) : Infinity;
+  let best = null;
+  for (const entry of Array.isArray(entries) ? entries : []) {
+    if (!(Number(entry.pendingCount) > 0) || !Number(entry.month) || !Number(entry.year)) continue;
+    const at = key(entry.year, entry.month);
+    if (at > limit) continue;
+    if (!best || at > best.at) best = { at, month: String(Number(entry.month)), year: String(entry.year) };
+  }
+  return best ? { month: best.month, year: best.year } : null;
+}
+

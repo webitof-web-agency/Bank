@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  addDemandLines, addExcelLines, excelVsDemand, applyExcelHeads, fitHeadsToAmount, balanceErrors, draftTotals, isUnresolved, lineDifference, lineErrors, lineStatus, lineTotal, manualLine, mergeImportRows, reconcile,
+  addDemandLines, addExcelLines, excelVsDemand, pickDemandEntryMonth, applyExcelHeads, fitHeadsToAmount, balanceErrors, draftTotals, isUnresolved, lineDifference, lineErrors, lineStatus, lineTotal, manualLine, mergeImportRows, reconcile,
   removeLine, unresolvedCount, updateLineHeads, withOutstanding, withWarnings
 } from '../src/pages/transactions/member/recoveryDraft.js';
 
@@ -335,5 +335,20 @@ test('filter: each Excel line is Less / Extra / Equal against its demand; 0 memb
   assert.equal(excelVsDemand({ ...a, excel: { ...a.excel, amount: 3500 } }), 'EQUAL');
   assert.equal(excelVsDemand(manualLine({ code: '1473' }, { cd: 10 }, '10')), '');
   assert.deepEqual(result.noEntryLines.map((line) => [line.member, line.demandAmount]), [['1475', 3500]]);
+});
+
+test('Add From Demand List opens on the latest month with pending Demand Entry, up to the voucher month', () => {
+  const entries = [
+    { month: 10, year: '2026', pendingCount: 570 },
+    { month: 9, year: '2026', pendingCount: 3 },
+    { month: 8, year: '2026', pendingCount: 0 },
+    { month: 12, year: '2026', pendingCount: 10 } // after the voucher month: not offered
+  ];
+  assert.deepEqual(pickDemandEntryMonth(entries, '11', '2026'), { month: '10', year: '2026' });
+  assert.deepEqual(pickDemandEntryMonth(entries, '10', '2026'), { month: '10', year: '2026' });
+  assert.deepEqual(pickDemandEntryMonth([{ month: 3, year: '2027', pendingCount: 5 }, { month: 12, year: '2026', pendingCount: 5 }], '4', '2027'), { month: '3', year: '2027' });
+  // Everything recovered, or nothing yet: keep the voucher month.
+  assert.equal(pickDemandEntryMonth([{ month: 10, year: '2026', pendingCount: 0 }], '11', '2026'), null);
+  assert.equal(pickDemandEntryMonth([], '11', '2026'), null);
 });
 
