@@ -48,8 +48,6 @@ import { DepositPaidMemberTransactionDetailPage } from './pages/transactions/mem
 import { InsurancePaidMemberTransactionDetailPage } from './pages/transactions/member/insurancePaidDetail';
 import { SsaPaidMemberTransactionDetailPage } from './pages/transactions/member/ssaPaidDetail';
 import { RecoveryMemberTransactionDetailPage } from './pages/transactions/member/recoveryDetail';
-import RecoveryImportList from './pages/transactions/member/recovery-import';
-import RecoveryImportDetail from './pages/transactions/member/recovery-import/detail';
 import { BankTransactionsPage } from './pages/transactions/bank';
 import { BankTransactionDetailPage } from './pages/transactions/bank/detail';
 import { BankTransactionsHomePage } from './pages/transactions/bank/home';
@@ -212,12 +210,6 @@ function AppRoutes() {
             </PermissionRoute>} />
         <Route path="transactions/member/recovery/:id" element={<PermissionRoute permission="transactions.member.view">
               <RecoveryMemberTransactionDetailPage />
-            </PermissionRoute>} />
-        <Route path="transactions/member/recovery-import" element={<PermissionRoute permission="transactions.member.create">
-              <RecoveryImportList />
-            </PermissionRoute>} />
-        <Route path="transactions/member/recovery-import/:id" element={<PermissionRoute permission="transactions.member.create">
-              <RecoveryImportDetail />
             </PermissionRoute>} />
         <Route path="transactions/member/:id" element={<PermissionRoute permission="transactions.member.view">
               <MemberTransactionDetailPage sectionKey="member" detailPathBase="/app/transactions/member" />

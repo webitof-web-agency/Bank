@@ -14,10 +14,6 @@ const create = requirePermission('transactions.member.create');
 router.post('/analyze', create, upload.single('file'), recoveryImportController.analyzeFile);
 router.post('/upload', create, upload.single('file'), recoveryImportController.uploadFile);
 router.get('/upload-jobs/:id', create, recoveryImportController.getUploadJob);
-router.get('/batches', view, recoveryImportController.getBatches);
 router.get('/batches/:id', view, recoveryImportController.getBatchRows);
-router.post('/batches/:id/revalidate', create, recoveryImportController.revalidate);
-router.post('/batches/:id/accept', create, recoveryImportController.accept);
-router.post('/batches/:id/post', create, recoveryImportController.post);
 
 module.exports = router;
