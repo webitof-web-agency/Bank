@@ -14,7 +14,7 @@ import UploadModal from './recovery-import/UploadModal';
 import { toast } from 'sonner';
 import { SmsCheckbox } from '../../../components/ui/CheckboxLine';
 import {
-  RECOVERY_HEADS, STATUS_LABELS, addDemandLines, addExcelLines, applyExcelHeads, candidateKey, emptyHeads, expectedPaise, fromPaise, lineDifference, lineErrors, lineStatus,
+  RECOVERY_HEADS, STATUS_LABELS, addDemandLines, excelVsDemand, addExcelLines, applyExcelHeads, candidateKey, emptyHeads, expectedPaise, fromPaise, lineDifference, lineErrors, lineStatus,
   lineTotal, manualLine, normalizeDraftLines, reconcile, removeLine, toPaise, updateLineHeads, withOutstanding, withWarnings
 } from './recoveryDraft';
 import { membersInFy } from '../../../lib/fyMembers';
@@ -302,6 +302,26 @@ const RECOVERY_FIELDS = [
   ['suspense', 'Suspense A/C']
 ];
 
+// All / Less / Extra / 0: the Excel amount against the demand.
+const EXCEL_FILTERS = [['ALL', 'All'], ['LESS', 'Less'], ['EXTRA', 'Extra'], ['ZERO', '0']];
+function ExcelFilterChips({ value, onChange, counts = {} }) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filter by Excel amount">
+      {EXCEL_FILTERS.map(([key, label]) => (
+        <button
+          key={key}
+          type="button"
+          onClick={() => onChange(key)}
+          aria-pressed={value === key}
+          className={`rounded-full border px-3 py-1 text-[12px] font-medium ${value === key ? (key === 'EXTRA' ? 'border-red-600 bg-red-600 text-white' : 'border-[var(--primary,#2563eb)] bg-[var(--primary,#2563eb)] text-white') : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'}`}
+        >
+          {label} <span className="tabular-nums opacity-80">{counts[key] ?? 0}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 // Add From Demand List: Branch + Month + Year -> that month's demand: each
 // member's pending demand line (Demand Entry), else their Monthly Demand
 // Data. One button: when Demand Entry already has the month, the dialog
@@ -330,6 +350,7 @@ function DemandPickerDialog({ open, onClose, onAdd, lookups = {}, voucherDate = 
   const [uploadOpen, setUploadOpen] = useState(false);
   // The month's bank Excel: { batch, rows, outstanding } once imported.
   const [excel, setExcel] = useState(null);
+  const [excelFilter, setExcelFilter] = useState('ALL');
   const members = Array.isArray(lookups.members) ? lookups.members : [];
   const already = new Set(draftLines.map((row) => row.demandLineId || (row.demandSource === 'MEMBER_DEMAND' ? `member:${row.member}:${row.demandYear}-${row.demandMonth}` : '')).filter(Boolean));
   // Memoised: the Excel preview below re-runs only when these change.
@@ -360,6 +381,16 @@ function DemandPickerDialog({ open, onClose, onAdd, lookups = {}, voucherDate = 
   const fittedByCode = new Map((preview?.lines || []).filter((line) => line.excel && line.member).map((line) => [line.member, line]));
   const excelTotal = (excel?.rows || []).reduce((sum, row) => sum + toPaise(row.importedTotalAmount), 0);
   const newlyExcluded = preview ? preview.excluded.length - excluded.length : 0;
+  // Each demand row against its Excel amount (once the Excel is loaded).
+  const compareRow = (row) => {
+    const amount = excelByCode.get(String(row.memberCode || '').toUpperCase());
+    if (!amount) return 'ZERO';
+    const difference = Math.round(amount * 100) - Math.round(Number(row.totalAmount || 0) * 100);
+    return difference > 0 ? 'EXTRA' : difference < 0 ? 'LESS' : 'EQUAL';
+  };
+  const excelCounts = { ALL: rows.length, LESS: 0, EXTRA: 0, ZERO: 0 };
+  if (excel) for (const row of rows) { const kind = compareRow(row); if (kind in excelCounts) excelCounts[kind] += 1; }
+  const shownRows = excel && excelFilter !== 'ALL' ? rows.filter((row) => compareRow(row) === excelFilter) : rows;
 
   async function loadDemand({ demandEntryOnly = false } = {}) {
     if (!month || !year) {
@@ -401,6 +432,7 @@ function DemandPickerDialog({ open, onClose, onAdd, lookups = {}, voucherDate = 
         ? (await api.banking.recoveryMemberOutstanding(token, { codes: codes.join(','), excludeVoucherId: voucherId || '' }))?.data || {}
         : {};
       setExcel({ batch, rows: excelRows, outstanding });
+      setExcelFilter('ALL');
     } catch (error) {
       toast.error(error.message || 'Unable to read the imported rows');
     } finally {
@@ -487,6 +519,8 @@ function DemandPickerDialog({ open, onClose, onAdd, lookups = {}, voucherDate = 
           </div>
         ) : null}
 
+        {excel ? <ExcelFilterChips value={excelFilter} onChange={setExcelFilter} counts={excelCounts} /> : null}
+
         <div className="overflow-x-auto rounded-xl border border-slate-200">
           <table className="min-w-full text-left text-[12px]">
             <thead className="bg-slate-50 text-[11px] font-semibold uppercase tracking-[0.06em] text-slate-500">
@@ -508,7 +542,7 @@ function DemandPickerDialog({ open, onClose, onAdd, lookups = {}, voucherDate = 
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {rows.map((row) => {
+              {shownRows.map((row) => {
                 const key = candidateKey(row);
                 const inDraft = already.has(key);
                 const code = String(row.memberCode || '').toUpperCase();
@@ -571,7 +605,15 @@ function RecoveryLinesEditor({ rows = [], excluded = [], onChange, onOutstanding
   const [memberDialog, setMemberDialog] = useState(null);
   const [demandOpen, setDemandOpen] = useState(false);
   const [notice, setNotice] = useState('');
+  // All / Less / Extra / 0 over the lines; 0 = the demand members the last
+  // Excel gave nothing (they get no line, so they are listed apart).
+  const [excelFilter, setExcelFilter] = useState('ALL');
+  const [noEntry, setNoEntry] = useState([]);
   const checkedRows = withWarnings(safeRows);
+  const excelCounts = { ALL: safeRows.length, LESS: 0, EXTRA: 0, ZERO: noEntry.length };
+  for (const row of safeRows) { const kind = excelVsDemand(row); if (kind in excelCounts) excelCounts[kind] += 1; }
+  const indexedRows = checkedRows.map((row, index) => ({ row, index }));
+  const shownRows = excelFilter === 'ALL' ? indexedRows : excelFilter === 'ZERO' ? [] : indexedRows.filter(({ row }) => excelVsDemand(row) === excelFilter);
   const summary = reconcile(safeRows);
   const members = Array.isArray(lookups.members) ? lookups.members : [];
   const hasExcel = safeRows.some((row) => row.excel) || safeExcluded.length > 0;
@@ -616,6 +658,8 @@ function RecoveryLinesEditor({ rows = [], excluded = [], onChange, onOutstanding
       return;
     }
     onChange(result.lines, result.excluded);
+    setNoEntry(result.noEntryLines || []);
+    setExcelFilter('ALL');
     const check = reconcile(result.lines);
     const batch = excel.batch;
     const footer = batch?.payload?.footerTotal;
@@ -666,6 +710,7 @@ function RecoveryLinesEditor({ rows = [], excluded = [], onChange, onOutstanding
         </div>
       </div>
       {notice ? <p className="rounded-lg bg-slate-50 px-3 py-2 text-[13px] text-slate-700">{notice}</p> : null}
+      {hasExcel || noEntry.length ? <ExcelFilterChips value={excelFilter} onChange={setExcelFilter} counts={excelCounts} /> : null}
 
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
         <table className="min-w-full text-left text-[12px]">
@@ -682,7 +727,7 @@ function RecoveryLinesEditor({ rows = [], excluded = [], onChange, onOutstanding
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {checkedRows.map((row, index) => {
+            {shownRows.map(({ row, index }) => {
               const record = getMemberRecord(lookups, row.member);
               const status = lineStatus(row, safeRows);
               const bad = status !== 'VALID';
@@ -720,6 +765,19 @@ function RecoveryLinesEditor({ rows = [], excluded = [], onChange, onOutstanding
                 </tr>
               );
             })}
+            {excelFilter === 'ZERO' ? noEntry.map((item) => (
+              <tr key={`no-entry-${item.member}`} className="bg-slate-50 text-slate-500">
+                <td className="px-2 py-1.5"><span className="font-medium">{item.member}</span> {item.memberName}</td>
+                <td className="px-2 py-1.5">{item.branchName}<div className="text-[11px]">{item.designation}</div></td>
+                <td className="px-2 py-1.5 text-right">0</td>
+                <td colSpan={RECOVERY_HEADS.length + 2} className="px-2 py-1.5 text-[12px]">Nothing in the Excel (demand ₹{formatHead(item.demandAmount)}): no entry this month, demand stays pending.</td>
+                <td className="px-2 py-1.5"><span className="whitespace-nowrap rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-semibold text-slate-600">No entry</span></td>
+                <td></td>
+              </tr>
+            )) : null}
+            {safeRows.length && excelFilter !== 'ALL' && !shownRows.length && !(excelFilter === 'ZERO' && noEntry.length) ? (
+              <tr><td colSpan={RECOVERY_HEADS.length + 7} className="px-3 py-6 text-center text-slate-500">No members in this filter.</td></tr>
+            ) : null}
             {!safeRows.length ? (
               <tr><td colSpan={RECOVERY_HEADS.length + 7} className="px-3 py-6 text-center text-slate-500">No members yet — Add From Demand List (the month's demand, then its Excel), or Add Record.</td></tr>
             ) : null}

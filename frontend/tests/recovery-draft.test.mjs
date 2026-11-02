@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  addDemandLines, addExcelLines, applyExcelHeads, fitHeadsToAmount, balanceErrors, draftTotals, isUnresolved, lineDifference, lineErrors, lineStatus, lineTotal, manualLine, mergeImportRows, reconcile,
+  addDemandLines, addExcelLines, excelVsDemand, applyExcelHeads, fitHeadsToAmount, balanceErrors, draftTotals, isUnresolved, lineDifference, lineErrors, lineStatus, lineTotal, manualLine, mergeImportRows, reconcile,
   removeLine, unresolvedCount, updateLineHeads, withOutstanding, withWarnings
 } from '../src/pages/transactions/member/recoveryDraft.js';
 
@@ -324,3 +324,16 @@ test('Load Demand then Load Excel: a demand member with nothing in the Excel get
   assert.equal(result.noEntry, 2);
   assert.equal(result.excluded.length, 1);
 });
+
+test('filter: each Excel line is Less / Extra / Equal against its demand; 0 members are listed apart', () => {
+  const excel = { batch: { id: 'B9' }, rows: [{ id: 'r1', memberId: 'm1', importedTotalAmount: 3000 }, { id: 'r2', memberId: 'm2', importedTotalAmount: 4000 }] };
+  const ticked = [demand, { ...demand, demandLineId: 'D102', memberCode: '1474' }, { ...demand, demandLineId: 'D103', memberCode: '1475' }];
+  const result = addExcelLines([], excel, { candidates: ticked, members });
+  const [a, b] = result.lines;
+  assert.equal(excelVsDemand(a), 'LESS');
+  assert.equal(excelVsDemand(b), 'EXTRA');
+  assert.equal(excelVsDemand({ ...a, excel: { ...a.excel, amount: 3500 } }), 'EQUAL');
+  assert.equal(excelVsDemand(manualLine({ code: '1473' }, { cd: 10 }, '10')), '');
+  assert.deepEqual(result.noEntryLines.map((line) => [line.member, line.demandAmount]), [['1475', 3500]]);
+});
+

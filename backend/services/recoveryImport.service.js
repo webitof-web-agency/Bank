@@ -533,7 +533,7 @@ async function uploadAndParseBatch(fileName, buffer, colMap, uploadedBy, onProgr
   await RecoveryImportBatch.create(batchRecord);
   
   // Saved in bulk, a chunk at a time so the progress bar moves.
-  const SAVE_CHUNK = 100;
+  const SAVE_CHUNK = 50;
   onProgress({ stage: 'save', done: 0, total });
   for (let start = 0; start < builtRows.length; start += SAVE_CHUNK) {
     const chunk = builtRows.slice(start, start + SAVE_CHUNK);

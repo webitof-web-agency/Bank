@@ -254,12 +254,13 @@ export function addExcelLines(lines = [], excel = {}, { candidates = [], members
   const batchRowIds = new Set(rows.map((row) => row.id).filter(Boolean));
   // The demand lines this Add brings in (not those already in the draft).
   const before = lines.length;
-  let noEntry = 0;
+  const noEntryLines = [];
   const kept = merged.lines.filter((line, index) => {
     if (index < before || index >= demand.lines.length || line.excel) return true;
-    noEntry += 1;
+    noEntryLines.push({ member: line.member, memberName: line.memberName || '', branchName: line.branchName || '', designation: line.designation || '', demandAmount: lineTotal(line) });
     return false;
   });
+  const noEntry = noEntryLines.length;
   let adjusted = 0;
   // overDemand: Excel more than the demand. loanCapped: within the demand,
   // but a loan owed less than its demand leaves part to allocate.
@@ -274,7 +275,16 @@ export function addExcelLines(lines = [], excel = {}, { candidates = [], members
     else if (fit.extra > 0) loanCapped += 1;
     return { ...line, heads: fit.heads, demandAmount: fit.demandTotal, fitNote: fit.note, needsReview: false, reviewNote: '' };
   });
-  return { ...merged, lines: withWarnings(fitted), demandMatched: demand.added - noEntry, adjusted, overDemand, loanCapped, noEntry };
+  return { ...merged, lines: withWarnings(fitted), demandMatched: demand.added - noEntry, adjusted, overDemand, loanCapped, noEntry, noEntryLines };
+}
+
+// The Excel amount against the demand it was split from: 'EXTRA' (more),
+// 'LESS', 'EQUAL', or '' for a line with no Excel row or no demand figure.
+// (Members with 0 / nothing in the Excel get no line: see noEntryLines.)
+export function excelVsDemand(line = {}) {
+  if (!line.excel || line.unmatched || line.demandAmount == null || line.demandAmount === '') return '';
+  const difference = toPaise(line.excel.amount) - toPaise(line.demandAmount);
+  return difference > 0 ? 'EXTRA' : difference < 0 ? 'LESS' : 'EQUAL';
 }
 
 // "Use Excel": the line takes the Excel split, which matches the Excel total
