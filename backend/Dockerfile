@@ -1,4 +1,5 @@
-# Backend image for Dokploy (Build Type: Dockerfile, build path: backend).
+# Backend image, built by GitHub Actions (.github/workflows/backend-image.yml)
+# and pushed to ghcr.io; Dokploy only pulls and runs it (Source: Docker).
 #
 # Same as the Railpack build it replaces (Node 24 on Debian 12, npm, `node
 # server.js`), plus the PostgreSQL 18 client tools: the database backups

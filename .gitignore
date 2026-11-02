@@ -47,6 +47,8 @@ Thumbs.db
 !/backend/
 # The member mobile app (Flutter); its own mobile/.gitignore keeps build output out.
 !/mobile/
+# CI: GitHub Actions build the Docker images Dokploy deploys.
+!/.github/
 !/.gitignore
 backend/ledgers_backup_before_group_update_2026-09-28.csv
 
