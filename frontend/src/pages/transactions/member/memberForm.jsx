@@ -403,26 +403,34 @@ function DemandPickerDialog({ open, onClose, onAdd, lookups = {}, voucherDate = 
 
   const branches = Array.isArray(lookups.branches) ? lookups.branches : [];
   const memberCodeById = new Map(members.map((member) => [String(member.id || member._id), String(member.code || '').toUpperCase()]));
-  // Excel amount per member code (a member twice in the file adds up).
-  const excelByCode = new Map();
-  for (const row of excel?.rows || []) {
-    const code = memberCodeById.get(String(row.memberId || ''));
-    if (code) excelByCode.set(code, (excelByCode.get(code) || 0) + Number(row.importedTotalAmount || 0));
-  }
-  // The fitted split per member, as Add will put it in the draft.
-  const fittedByCode = new Map((preview?.lines || []).filter((line) => line.excel && line.member).map((line) => [line.member, line]));
   const excelTotal = (excel?.rows || []).reduce((sum, row) => sum + toPaise(row.importedTotalAmount), 0);
   const newlyExcluded = preview ? preview.excluded.length - excluded.length : 0;
-  // Each demand row against its Excel amount (once the Excel is loaded).
-  const compareRow = (row) => {
-    const amount = excelByCode.get(String(row.memberCode || '').toUpperCase());
-    if (!amount) return 'ZERO';
-    const difference = Math.round(amount * 100) - Math.round(Number(row.totalAmount || 0) * 100);
-    return difference > 0 ? 'EXTRA' : difference < 0 ? 'LESS' : 'EQUAL';
-  };
-  const excelCounts = { ALL: rows.length, LESS: 0, EXTRA: 0, ZERO: 0 };
-  if (excel) for (const row of rows) { const kind = compareRow(row); if (kind in excelCounts) excelCounts[kind] += 1; }
-  const shownRows = excel && excelFilter !== 'ALL' ? rows.filter((row) => compareRow(row) === excelFilter) : rows;
+  // After the import: each imported row against the member's demand (what
+  // Add will put in the recovery), plus the demand members with nothing in
+  // the Excel (0). Kinds: LESS / EXTRA / EQUAL, ZERO, NOMEMBER.
+  const batchId = excel?.batch?.id || '';
+  const compareRows = excel && preview ? [
+    ...preview.lines.filter((line) => line.excel && (line.excel.batchId || line.importBatchId) === batchId).map((line) => ({
+      key: line.importRowId || `m-${line.member}`,
+      member: line.member,
+      name: line.memberName || '',
+      branch: line.unmatched ? (line.excel.branch || '') : (line.branchName || ''),
+      demand: line.unmatched ? null : Number(line.demandAmount ?? 0),
+      amount: Number(line.excel.amount || 0),
+      kind: line.unmatched ? 'NOMEMBER' : (excelVsDemand(line) || 'EQUAL'),
+      notInDemand: line.source === 'EXCEL' && !line.unmatched,
+      pf: line.excel.pfNo || '',
+      heads: line.heads || {}
+    })),
+    ...(preview.noEntryLines || []).map((item) => ({
+      key: `no-${item.member}`, member: item.member, name: item.memberName, branch: item.branchName, demand: Number(item.demandAmount || 0), amount: 0, kind: 'ZERO', notInDemand: false, pf: '', heads: {}
+    }))
+  ] : [];
+  const excelCounts = { ALL: compareRows.length, LESS: 0, EXTRA: 0, ZERO: 0 };
+  for (const row of compareRows) if (row.kind in excelCounts) excelCounts[row.kind] += 1;
+  const shownCompare = excelFilter === 'ALL' ? compareRows : compareRows.filter((row) => row.kind === excelFilter);
+  const demandTotal = rows.reduce((sum, row) => sum + toPaise(row.totalAmount), 0);
+  const demandLists = [...new Set(rows.map((row) => row.demandListNo).filter(Boolean))];
 
   // period: { month, year } to load (on opening, before state catches up).
   async function loadDemand({ demandEntryOnly = false, period = null } = {}) {
@@ -475,18 +483,8 @@ function DemandPickerDialog({ open, onClose, onAdd, lookups = {}, voucherDate = 
     }
   }
 
-  function toggle(id) {
-    setSelected((curr) => {
-      const next = new Set(curr);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  }
-
   // The loaded demand still matches the filters: the button is Load Excel.
   const demandReady = Boolean(loaded) && loaded.branchCode === branchCode && String(loaded.month) === String(month) && String(loaded.year) === String(year);
-  const selectable = rows.filter((row) => !already.has(candidateKey(row)));
-  const allSelected = selectable.length > 0 && selectable.every((row) => selected.has(candidateKey(row)));
   const fromMemberData = rows.filter((row) => row.source === 'MEMBER_DEMAND').length;
 
   return (
@@ -498,7 +496,7 @@ function DemandPickerDialog({ open, onClose, onAdd, lookups = {}, voucherDate = 
       wide
       footer={(
         <div className="flex w-full items-center justify-between gap-3">
-          <span className="text-sm text-slate-600">{selected.size} of {rows.length} member(s) selected{fromMemberData ? ` · ${fromMemberData} from Monthly Demand Data` : ''}{excel ? ` · Excel ${excel.rows.length} row(s)` : ''}</span>
+          <span className="text-sm text-slate-600">{excel ? `${compareRows.length} row(s) compared with the demand · Excel ₹${formatHead(fromPaise(excelTotal))}` : demandReady ? `${selected.size} member(s) in the demand${fromMemberData ? ` · ${fromMemberData} from Monthly Demand Data` : ''}` : ''}</span>
           <div className="flex gap-2">
             <button type="button" onClick={onClose} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Cancel</button>
             <button type="button" disabled={!selected.size && !excel} onClick={() => onAdd(excel ? { excel, result: preview } : { candidates: chosen })} className="rounded-lg bg-[var(--primary,#2563eb)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Add to Recovery</button>
@@ -536,91 +534,83 @@ function DemandPickerDialog({ open, onClose, onAdd, lookups = {}, voucherDate = 
           )}
         </div>
 
-        {demandReady ? (
-          <div className={`rounded-xl border px-3 py-2 text-[13px] ${excel ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-slate-200 bg-slate-50 text-slate-700'}`}>
-            {excel ? (
-              <span>
-                Excel <span className="font-semibold">{excel.batch.fileName || ''}</span>: {excel.rows.length} row(s) · ₹{formatHead(fromPaise(excelTotal))}.
-                {' '}{preview.matched} match the selected demand, {preview.added} not in it (split over the member's demand set-up), {preview.unmatched} with no member
-                {newlyExcluded ? `, ${newlyExcluded} excluded (0 amount, no membership date or another branch)` : ''}.
-                {preview.noEntry ? ` ${preview.noEntry} demand member(s) have nothing in the Excel: no entry for them this month.` : ''}
-                {preview.overDemand ? <span className="font-semibold text-red-700"> {preview.overDemand} member(s) have more than their demand (red): put the extra into a head after Add.</span> : null}
-                {preview.loanCapped ? <span className="font-semibold text-red-700"> {preview.loanCapped} member(s) owe less loan than their loan demand: put the rest into a head after Add.</span> : null}
-                {excel.batch?.payload?.footerTotal != null && !excel.batch.payload.footerMatches ? ` WARNING: the file's total line ₹${formatHead(excel.batch.payload.footerTotal)} differs from its member rows.` : ''}
-              </span>
-            ) : (
-              <span>Demand for {String(loaded.month).padStart(2, '0')}/{loaded.year} loaded. Load Excel: each member's Excel amount fills their demand CD → SSA → Reg. Loan → LAD. Without it, Add takes the demand total as the amount received.</span>
-            )}
-          </div>
-        ) : null}
-
-        {excel ? <ExcelFilterChips value={excelFilter} onChange={setExcelFilter} counts={excelCounts} /> : null}
-
-        <div className="overflow-x-auto rounded-xl border border-slate-200">
-          <table className="min-w-full text-left text-[12px]">
-            <thead className="bg-slate-50 text-[11px] font-semibold uppercase tracking-[0.06em] text-slate-500">
-              <tr>
-                <th className="px-2 py-2"><input type="checkbox" checked={allSelected} onChange={() => setSelected(allSelected ? new Set() : new Set(selectable.map(candidateKey)))} aria-label="Select all" /></th>
-                <th className="px-2 py-2">Demand No / Date</th>
-                <th className="px-2 py-2">Month</th>
-                <th className="px-2 py-2">Member</th>
-                <th className="px-2 py-2">Branch</th>
-                <th className="px-2 py-2">Designation</th>
-                <th className="px-2 py-2 text-right">Cmp. Dep.</th>
-                <th className="px-2 py-2 text-right">SSA</th>
-                <th className="px-2 py-2 text-right">Reg. Loan</th>
-                <th className="px-2 py-2 text-right">LAD</th>
-                <th className="px-2 py-2 text-right">Premium / Other</th>
-                <th className="px-2 py-2 text-right">Total</th>
-                {excel ? <th className="px-2 py-2 text-right">Excel</th> : null}
-                {excel ? <th className="px-2 py-2">Split to the Excel</th> : null}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {shownRows.map((row) => {
-                const key = candidateKey(row);
-                const inDraft = already.has(key);
-                const code = String(row.memberCode || '').toUpperCase();
-                const fitted = selected.has(key) ? fittedByCode.get(code) : null;
-                return (
-                  <tr key={key} className={inDraft ? 'bg-slate-50 text-slate-400' : ''}>
-                    <td className="px-2 py-1.5"><input type="checkbox" disabled={inDraft} checked={selected.has(key)} onChange={() => toggle(key)} aria-label={`Select ${row.memberCode}`} /></td>
-                    <td className="px-2 py-1.5">{row.source === 'MEMBER_DEMAND'
-                      ? <span className="text-slate-600">Monthly Demand Data</span>
-                      : <>{row.demandListNo}<div className="text-[11px] text-slate-500">{row.demandListDate}</div></>}</td>
-                    <td className="px-2 py-1.5">{String(row.month).padStart(2, '0')}/{row.year}</td>
-                    <td className="px-2 py-1.5"><span className="font-medium">{row.memberCode}</span> {row.memberName}{inDraft ? <span className="ml-1 text-[11px]">(in recovery)</span> : null}</td>
-                    <td className="px-2 py-1.5">{row.branchName}</td>
-                    <td className="px-2 py-1.5">{row.designation}</td>
-                    <td className="px-2 py-1.5 text-right">{formatHead(row.compulsoryDeposit)}</td>
-                    <td className="px-2 py-1.5 text-right">{formatHead(row.specialDeposit)}</td>
-                    <td className="px-2 py-1.5 text-right">{formatHead(row.regularLoan)}</td>
-                    <td className="px-2 py-1.5 text-right">{formatHead(row.loanAgainstDeposit)}</td>
-                    <td className="px-2 py-1.5 text-right">{formatHead(Number(row.insurancePremium || 0) + Number(row.other || 0))}</td>
-                    <td className="px-2 py-1.5 text-right font-semibold">{formatHead(row.totalAmount)}</td>
-                    {excel ? (() => {
-                      const amount = excelByCode.get(code);
-                      if (!amount) return <td className="px-2 py-1.5 text-right text-slate-400">no entry</td>;
-                      // Less than the demand is normal; only more is red.
-                      const over = Math.round(amount * 100) > Math.round(Number(row.totalAmount || 0) * 100);
-                      return <td className={`px-2 py-1.5 text-right font-semibold ${over ? 'bg-red-50 text-red-700' : 'text-slate-800'}`}>{formatHead(amount)}</td>;
-                    })() : null}
-                    {excel ? (
-                      <td className="px-2 py-1.5 text-[11px] text-slate-600">
-                        {fitted?.fitNote
-                          ? <>{RECOVERY_HEADS.filter(([head]) => Number(fitted.heads?.[head] || 0)).map(([head, label]) => `${label} ${formatHead(fitted.heads[head])}`).join(' · ')}</>
-                          : fitted ? 'As the demand' : ''}
-                      </td>
-                    ) : null}
+        {excel ? (
+          <>
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-[12.5px] text-emerald-900">
+              Excel <span className="font-semibold">{excel.batch.fileName || ''}</span>: {excel.rows.length} row(s) · ₹{formatHead(fromPaise(excelTotal))}.
+              {' '}{preview.matched} match the demand, {preview.added} not in it (split over the member's demand set-up), {preview.unmatched} with no member
+              {newlyExcluded ? `, ${newlyExcluded} excluded (0 amount, no membership date or another branch)` : ''}.
+              {preview.noEntry ? ` ${preview.noEntry} demand member(s) have nothing in the Excel: no entry for them this month.` : ''}
+              {preview.overDemand ? <span className="font-semibold text-red-700"> {preview.overDemand} member(s) have more than their demand: put the extra into a head after Add.</span> : null}
+              {preview.loanCapped ? <span className="font-semibold text-red-700"> {preview.loanCapped} member(s) owe less loan than their loan demand: put the rest into a head after Add.</span> : null}
+              {excel.batch?.payload?.footerTotal != null && !excel.batch.payload.footerMatches ? ` WARNING: the file's total line ₹${formatHead(excel.batch.payload.footerTotal)} differs from its member rows.` : ''}
+            </div>
+            <ExcelFilterChips value={excelFilter} onChange={setExcelFilter} counts={excelCounts} />
+            <div className="overflow-auto rounded-xl border border-slate-200" style={{ maxHeight: '52vh' }}>
+              <table className="min-w-full text-left text-[12px]">
+                <thead className="sticky top-0 z-10 bg-slate-100 text-[10.5px] font-semibold uppercase tracking-[0.06em] text-slate-500">
+                  <tr>
+                    <th className="px-2 py-1.5">Member</th>
+                    <th className="px-2 py-1.5">Branch</th>
+                    <th className="px-2 py-1.5 text-right">Demand</th>
+                    <th className="px-2 py-1.5 text-right">Excel</th>
+                    <th className="px-2 py-1.5 text-right">Excel − Demand</th>
+                    <th className="px-2 py-1.5">Split</th>
+                    <th className="px-2 py-1.5">Compared</th>
                   </tr>
-                );
-              })}
-              {!rows.length ? (
-                <tr><td colSpan={excel ? 14 : 12} className="px-3 py-6 text-center text-slate-500">{loading ? 'Loading the month\'s demand...' : demandReady ? 'No pending demand and no member Monthly Demand Data for this branch and month.' : 'No Demand Entry for this month yet. Choose a branch, month and year, then Load Demand: every member\'s demand for that month is listed.'}</td></tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {shownCompare.map((row) => {
+                    const difference = row.demand == null ? null : Math.round((row.amount - row.demand) * 100) / 100;
+                    const red = row.kind === 'EXTRA' || row.kind === 'NOMEMBER';
+                    const pill = {
+                      LESS: ['Less', 'bg-sky-100 text-sky-800'],
+                      EXTRA: ['Extra', 'bg-red-100 text-red-700'],
+                      EQUAL: ['Equal', 'bg-emerald-100 text-emerald-700'],
+                      ZERO: ['No entry', 'bg-slate-200 text-slate-600'],
+                      NOMEMBER: ['No member', 'bg-red-100 text-red-700']
+                    }[row.kind] || ['', ''];
+                    return (
+                      <tr key={row.key} className={red ? 'bg-red-50/70' : row.kind === 'ZERO' ? 'bg-slate-50 text-slate-500' : 'hover:bg-slate-50'}>
+                        <td className="max-w-[320px] truncate px-2 py-1">
+                          {row.member ? <><span className="font-semibold text-slate-900">{row.member}</span> {row.name}</> : <span className="text-red-700">PF {row.pf || '—'} {row.name}</span>}
+                          {row.notInDemand ? <span className="ml-1.5 rounded bg-amber-100 px-1 text-[10.5px] font-semibold text-amber-800">not in demand</span> : null}
+                        </td>
+                        <td className="max-w-[200px] truncate px-2 py-1 text-slate-600">{row.branch}</td>
+                        <td className="px-2 py-1 text-right tabular-nums text-slate-700">{row.demand == null ? '—' : formatHead(row.demand)}</td>
+                        <td className={`px-2 py-1 text-right font-semibold tabular-nums ${red ? 'text-red-700' : 'text-slate-900'}`}>{row.amount ? formatHead(row.amount) : '0'}</td>
+                        <td className={`px-2 py-1 text-right tabular-nums ${difference > 0 ? 'font-semibold text-red-700' : difference < 0 ? 'text-sky-700' : 'text-slate-300'}`}>{difference == null ? '—' : difference === 0 ? '0' : `${difference > 0 ? '+' : '−'}${formatHead(Math.abs(difference))}`}</td>
+                        <td className="px-2 py-1 text-[11px] text-slate-600">{RECOVERY_HEADS.filter(([head]) => Number(row.heads?.[head] || 0)).map(([head, label]) => `${label} ${formatHead(row.heads[head])}`).join(' · ')}</td>
+                        <td className="px-2 py-1"><span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[10.5px] font-semibold ${pill[1]}`}>{pill[0]}</span></td>
+                      </tr>
+                    );
+                  })}
+                  {!shownCompare.length ? <tr><td colSpan={7} className="px-3 py-6 text-center text-slate-500">No rows in this filter.</td></tr> : null}
+                </tbody>
+              </table>
+            </div>
+          </>
+        ) : demandReady ? (
+          <div className="flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-emerald-200 bg-gradient-to-b from-emerald-50/70 to-white px-6 py-10 text-center">
+            <div className="grid h-12 w-12 place-items-center rounded-2xl bg-emerald-600 text-white shadow-md"><FileSpreadsheet size={24} /></div>
+            <div className="space-y-1">
+              <h3 className="text-[17px] font-semibold text-slate-900">{MONTH_OPTIONS.find((option) => String(option.value) === String(loaded.month))?.label || loaded.month} {loaded.year} demand is ready</h3>
+              <p className="text-[13px] text-slate-600">
+                {rows.length} member(s) · ₹{formatHead(fromPaise(demandTotal))}
+                {demandLists.length ? ` · Demand Entry ${demandLists.join(', ')}` : ''}
+                {fromMemberData ? ` · ${fromMemberData} from Monthly Demand Data` : ''}
+              </p>
+            </div>
+            <button type="button" onClick={() => setUploadOpen(true)} disabled={loading} className="inline-flex h-11 items-center gap-2 rounded-xl bg-emerald-600 px-6 text-[15px] font-semibold text-white shadow-lg shadow-emerald-600/20 hover:bg-emerald-700 disabled:opacity-50">
+              <FileSpreadsheet size={18} /> Load Excel
+            </button>
+            <p className="max-w-lg text-[12px] text-slate-500">The imported rows are then shown against each member's demand (Less, Extra, 0). Without an Excel, Add takes the demand total as the amount received.</p>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-8 text-center text-[13px] text-slate-500">
+            {loading ? 'Loading the month\'s demand…' : loaded ? 'No pending demand and no member Monthly Demand Data for this branch and month.' : 'No Demand Entry with pending members up to this month. Choose the month and year, then Load Demand.'}
+          </div>
+        )}
       </div>
       {/* data-modal-portal: clicks in the upload dialog are not "outside" this one. */}
       {createPortal(<div data-modal-portal="true"><UploadModal isOpen={uploadOpen} onClose={() => setUploadOpen(false)} onUploadSuccess={excelUploaded} token={token} /></div>, document.body)}
