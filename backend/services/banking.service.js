@@ -5859,6 +5859,12 @@ async function saveDemandEntryAllBranches(header, data = {}, { user = {}, id = '
   const savedIds = await withTransaction(async (tx) => {
     const ids = [];
     const newLines = [];
+    // Existing lists / changed lines are written in bulk at the end: an
+    // All-branches entry has ~76 lists, and one round trip per row made even
+    // a date-only edit slow.
+    const listUpdates = [];
+    const lineUpdates = [];
+    const newLists = [];
     for (const [branch, branchLines] of byBranch) {
       const list = listByBranch.get(branch);
       const listDoc = {
@@ -5874,12 +5880,11 @@ async function saveDemandEntryAllBranches(header, data = {}, { user = {}, id = '
       // The real month/year live in the columns for lists entered here.
       delete listDoc.payload.raw;
       if (!list) {
-        const created = await DemandList.create(listDoc, { tx });
-        ids.push(String(created.id || created._id));
+        newLists.push(listDoc);
         for (const line of branchLines) newLines.push(lineDoc(line, branch));
         continue;
       }
-      await DemandList.findByIdAndUpdate(String(list.id || list._id), listDoc, { new: true }).tx(tx);
+      listUpdates.push({ id: String(list.id || list._id), set: listDoc });
       ids.push(String(list.id || list._id));
       const existingByCode = new Map(ownLinesOf(list).map((line) => [cleanUpper(line.memberCode), line]));
       for (const line of branchLines) {
@@ -5894,7 +5899,7 @@ async function saveDemandEntryAllBranches(header, data = {}, { user = {}, id = '
         // id, so a recovery draft that loaded it still links to it.
         const same = cleanUpper(before.demandListNo) === doc.demandListNo && (before.memberName || '') === doc.memberName
           && DEMAND_HEADS.every((key) => toPaise(before[key] || 0) === toPaise(doc[key] || 0));
-        if (!same) await DemandLine.findByIdAndUpdate(String(before.id || before._id), doc, { new: true }).tx(tx);
+        if (!same) lineUpdates.push({ id: String(before.id || before._id), set: doc });
       }
       const kept = new Set(branchLines.map((line) => line.memberCode));
       for (const line of ownLinesOf(list)) {
@@ -5910,6 +5915,11 @@ async function saveDemandEntryAllBranches(header, data = {}, { user = {}, id = '
       for (const line of ownLinesOf(list)) await DemandLine.findByIdAndDelete(String(line.id || line._id)).tx(tx);
       await DemandList.findByIdAndDelete(String(list.id || list._id)).tx(tx);
     }
+    if (newLists.length) {
+      for (const created of await DemandList.insertMany(newLists, { tx })) ids.push(String(created.id || created._id));
+    }
+    if (listUpdates.length) await DemandList.updateManyById(listUpdates, { tx });
+    if (lineUpdates.length) await DemandLine.updateManyById(lineUpdates, { tx });
     if (newLines.length) await DemandLine.insertMany(newLines, { tx });
     return ids;
   });

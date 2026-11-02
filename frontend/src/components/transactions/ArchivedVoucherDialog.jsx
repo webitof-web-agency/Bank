@@ -27,7 +27,13 @@ const HEAD_LABELS = {
 };
 const LINE_COLUMNS = [['Share', 'Share'], ['CD', 'CD'], ['SSA', 'SSA'], ['RLoan', 'Loan'], ['DLoan', 'LAD'], ['Premium', 'Premium'], ['Admission', 'Admission'], ['Suspense', 'Suspense']];
 
-const money = (value) => Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// One formatter for every cell (a monthly recovery has ~560 lines).
+const MONEY = new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const WHOLE = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
+const money = (value) => MONEY.format(Number(value || 0));
+const lineSum = (line = {}) => LINE_COLUMNS.reduce((sum, [field]) => sum + num(line?.[field]), 0);
+// The four demand heads always show; the rest only when some line uses them.
+const CORE_LINE_COLUMNS = new Set(['CD', 'SSA', 'RLoan', 'DLoan']);
 const num = (value) => (Number.isFinite(Number(value)) ? Number(value) : 0);
 
 export function canChangeVoucherRow(row) {
@@ -106,11 +112,20 @@ export function ArchivedVoucherDialog({ voucher, onClose, onSaved }) {
     return num(form.totalAmt);
   }, [data, form, lines]);
 
+  // Member lines (Recovery): what changed against the voucher as it was.
+  const [lineFilter, setLineFilter] = useState('ALL');
+  const originalById = useMemo(() => new Map((data?.lines || []).map((line) => [line.id, line])), [data]);
+  const isChanged = (line) => LINE_COLUMNS.some(([field]) => num(line[field]) !== num(originalById.get(line.id)?.[field]));
+  const changedCount = lines.filter(isChanged).length;
+  const originalTotal = useMemo(() => (data?.lines || []).reduce((sum, line) => sum + lineSum(line), 0), [data]);
+  const lineColumns = LINE_COLUMNS.filter(([field]) => CORE_LINE_COLUMNS.has(field)
+    || lines.some((line) => num(line[field]) !== 0) || (data?.lines || []).some((line) => num(line[field]) !== 0));
+  const columnTotals = Object.fromEntries(lineColumns.map(([field]) => [field, lines.reduce((sum, line) => sum + num(line[field]), 0)]));
   const visibleLines = useMemo(() => {
     const term = search.trim().toLowerCase();
-    if (!term) return lines;
-    return lines.filter((line) => `${line.memberCode} ${line.memberName}`.toLowerCase().includes(term));
-  }, [lines, search]);
+    return lines.filter((line) => (!term || `${line.memberCode} ${line.memberName}`.toLowerCase().includes(term))
+      && (lineFilter !== 'CHANGED' || LINE_COLUMNS.some(([field]) => num(line[field]) !== num(originalById.get(line.id)?.[field]))));
+  }, [lines, search, lineFilter, originalById]);
 
   function setLine(id, field, value) {
     setLines((current) => current.map((line) => (line.id === id ? { ...line, [field]: value } : line)));
@@ -153,12 +168,12 @@ export function ArchivedVoucherDialog({ voucher, onClose, onSaved }) {
     <Modal
       open={open}
       onClose={onClose}
-      wide={data?.enteredBy === 'lines'}
+      fill={data?.enteredBy === 'lines'}
       title={`Edit voucher ${data?.voucherNo || voucher?.voucherNo || ''}`}
       subtitle="From the old software. Saving adjusts the member and ledger balances by the change."
       footer={data && form ? (
         <div className="flex items-center justify-between gap-3">
-          <span className="text-[13px] text-slate-600">Total <strong className="text-slate-900">{money(total)}</strong></span>
+          <span className="text-[13px] text-slate-600">Total <strong className="text-slate-900">{money(total)}</strong>{data.enteredBy === 'lines' ? <span className="ml-2 text-slate-500">· {changedCount ? `${changedCount} line(s) changed` : 'no line changed'}</span> : null}</span>
           <div className="flex gap-2">
             <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
             <Button type="button" onClick={save} disabled={saving || !data.editable || !(total > 0)}>{saving ? 'Saving...' : 'Save'}</Button>
@@ -186,6 +201,18 @@ export function ArchivedVoucherDialog({ voucher, onClose, onSaved }) {
               Its other side is a separate voucher that can't be found. Changing the amount puts the Trial Balance out until that voucher is changed too; you'll be asked first.
             </p>
           ) : null}
+          {data.enteredBy === 'lines' ? (
+            <div className="flex flex-wrap items-end gap-2 rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2">
+              <MiniLabel label="Voucher date" className="w-40"><Input className="h-9 text-[13px]" type="date" min={data.fyFrom} max={data.fyTo} {...field('voucherDate')} /></MiniLabel>
+              <MiniLabel label="Cheque no." className="w-40"><Input className="h-9 text-[13px]" {...field('chequeNo')} /></MiniLabel>
+              <MiniLabel label="Cheque date" className="w-40"><Input className="h-9 text-[13px]" type="date" {...field('chequeDate')} /></MiniLabel>
+              <MiniLabel label="Narration" className="min-w-[220px] flex-1"><Input className="h-9 text-[13px]" {...field('narration')} placeholder="Recovery remarks" /></MiniLabel>
+              <div className="ml-auto pl-2 text-right">
+                <div className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-slate-500">Total Recovery</div>
+                <div className="text-xl font-bold tabular-nums text-slate-900">₹ {WHOLE.format(total)}</div>
+              </div>
+            </div>
+          ) : (
           <div className="grid gap-3 sm:grid-cols-3">
             <label className="space-y-1.5 text-[13px] font-medium text-slate-700">
               <span>Voucher date</span>
@@ -200,6 +227,7 @@ export function ArchivedVoucherDialog({ voucher, onClose, onSaved }) {
               <Input type="date" {...field('chequeDate')} />
             </label>
           </div>
+          )}
 
           {data.enteredBy === 'heads' ? (
             <div className="grid gap-3 sm:grid-cols-3">
@@ -227,48 +255,78 @@ export function ArchivedVoucherDialog({ voucher, onClose, onSaved }) {
 
           {data.enteredBy === 'lines' ? (
             <div className="space-y-2">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-[13px] font-medium text-slate-700">{lines.length} member lines</span>
-                <Input className="max-w-xs" placeholder="Search member..." value={search} onChange={(event) => setSearch(event.target.value)} />
+              <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-2 py-1.5 shadow-sm">
+                <span className="px-1 text-[13px] font-semibold text-slate-800">{lines.length} member lines</span>
+                <div className="w-56"><Input className="h-8 text-[12.5px]" placeholder="Search member..." value={search} onChange={(event) => setSearch(event.target.value)} /></div>
+                <div className="flex items-center gap-1.5" role="group" aria-label="Filter lines">
+                  {[['ALL', 'All', lines.length], ['CHANGED', 'Changed', changedCount]].map(([key, label, count]) => (
+                    <button key={key} type="button" aria-pressed={lineFilter === key} onClick={() => setLineFilter(key)}
+                      className={`rounded-full border px-3 py-1 text-[12px] font-medium ${lineFilter === key ? 'border-[var(--primary,#2563eb)] bg-[var(--primary,#2563eb)] text-white' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'}`}>
+                      {label} <span className="tabular-nums opacity-80">{count}</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="ml-auto flex flex-wrap items-center gap-x-5 gap-y-1 pr-1 text-[12px]">
+                  <span className="whitespace-nowrap"><span className="text-[10.5px] font-semibold uppercase tracking-[0.06em] text-slate-500">Original</span> <span className="text-[14px] font-bold tabular-nums text-slate-900">{WHOLE.format(originalTotal)}</span></span>
+                  <span className="whitespace-nowrap"><span className="text-[10.5px] font-semibold uppercase tracking-[0.06em] text-slate-500">New</span> <span className="text-[14px] font-bold tabular-nums text-slate-900">{WHOLE.format(total)}</span></span>
+                  <span className="whitespace-nowrap"><span className="text-[10.5px] font-semibold uppercase tracking-[0.06em] text-slate-500">Change</span> <span className={`text-[14px] font-bold tabular-nums ${Math.round((total - originalTotal) * 100) === 0 ? 'text-slate-400' : 'text-amber-700'}`}>{Math.round((total - originalTotal) * 100) === 0 ? '0' : `${total > originalTotal ? '+' : '−'}${WHOLE.format(Math.abs(total - originalTotal))}`}</span></span>
+                </div>
               </div>
-              <div className="max-h-[45vh] overflow-auto rounded-lg border border-slate-200">
-                <table className="w-full text-[12px]">
-                  <thead className="sticky top-0 bg-slate-50 text-left text-slate-600">
+              <div className="overflow-auto rounded-xl border border-slate-200 bg-white" style={{ maxHeight: 'calc(96vh - 330px)', minHeight: 240 }}>
+                <table className="min-w-full text-left text-[12px]">
+                  <thead className="sticky top-0 z-10 bg-slate-100 text-[10.5px] font-semibold uppercase tracking-[0.06em] text-slate-500 shadow-[0_1px_0_0_#e2e8f0]">
                     <tr>
-                      <th className="px-2 py-2">Member</th>
-                      {LINE_COLUMNS.map(([key, label]) => <th key={key} className="px-2 py-2 text-right">{label}</th>)}
-                      <th className="px-2 py-2 text-right">Total</th>
+                      <th className="px-2 py-1.5">Member</th>
+                      {lineColumns.map(([key, label]) => <th key={key} className="px-2 py-1.5 text-right">{label}</th>)}
+                      <th className="px-2 py-1.5 text-right">Total</th>
+                      <th className="px-2 py-1.5 text-right">Was</th>
                     </tr>
                   </thead>
-                  <tbody>
-                    {visibleLines.map((line) => (
-                      <tr key={line.id} className="border-t border-slate-100">
-                        <td className="whitespace-nowrap px-2 py-1">{line.memberCode} - {line.memberName}</td>
-                        {LINE_COLUMNS.map(([key]) => (
-                          <td key={key} className="px-1 py-1">
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              className="w-24 rounded border border-slate-200 px-1.5 py-1 text-right"
-                              value={line[key] ?? 0}
-                              onChange={(event) => setLine(line.id, key, event.target.value)}
-                            />
-                          </td>
-                        ))}
-                        <td className="px-2 py-1 text-right font-medium">{money(LINE_COLUMNS.reduce((sum, [key]) => sum + num(line[key]), 0))}</td>
-                      </tr>
-                    ))}
+                  <tbody className="divide-y divide-slate-100">
+                    {visibleLines.map((line) => {
+                      const changed = isChanged(line);
+                      return (
+                        <tr key={line.id} className={changed ? 'bg-amber-50/70 shadow-[inset_3px_0_0_0_#d97706]' : 'hover:bg-slate-50'}>
+                          <td className="max-w-[320px] truncate px-2 py-0.5"><span className="font-semibold text-slate-900">{line.memberCode}</span> <span className="text-slate-700">{line.memberName}</span></td>
+                          {lineColumns.map(([key]) => (
+                            <td key={key} className="px-1 py-0.5 text-right">
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                aria-label={`${line.memberCode} ${key}`}
+                                className={`h-7 w-24 rounded-md border px-1.5 text-right text-[12px] tabular-nums outline-none focus:border-[var(--primary,#2563eb)] ${num(line[key]) !== num(originalById.get(line.id)?.[key]) ? 'border-amber-400 bg-amber-50' : 'border-[var(--border-input,#cbd5e1)] bg-white'}`}
+                                value={line[key] ?? 0}
+                                onChange={(event) => setLine(line.id, key, event.target.value)}
+                              />
+                            </td>
+                          ))}
+                          <td className="px-2 py-0.5 text-right font-semibold tabular-nums text-slate-900">{WHOLE.format(lineSum(line))}</td>
+                          <td className={`px-2 py-0.5 text-right tabular-nums ${changed ? 'text-amber-700' : 'text-slate-300'}`}>{changed ? WHOLE.format(lineSum(originalById.get(line.id))) : '—'}</td>
+                        </tr>
+                      );
+                    })}
+                    {!visibleLines.length ? <tr><td colSpan={lineColumns.length + 3} className="px-3 py-6 text-center text-slate-500">{lineFilter === 'CHANGED' ? 'No line changed yet.' : 'No member matches.'}</td></tr> : null}
                   </tbody>
+                  <tfoot className="sticky bottom-0 bg-slate-100 font-semibold text-slate-800 shadow-[0_-1px_0_0_#e2e8f0]">
+                    <tr>
+                      <td className="px-2 py-1.5">Total · {lines.length} members</td>
+                      {lineColumns.map(([key]) => <td key={key} className="px-2 py-1.5 text-right tabular-nums">{WHOLE.format(columnTotals[key])}</td>)}
+                      <td className="px-2 py-1.5 text-right tabular-nums">{WHOLE.format(total)}</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums text-slate-500">{WHOLE.format(originalTotal)}</td>
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
             </div>
           ) : null}
 
-          <label className="block space-y-1.5 text-[13px] font-medium text-slate-700">
-            <span>Narration</span>
-            <Textarea rows={2} {...field('narration')} />
-          </label>
+          {data.enteredBy !== 'lines' ? (
+            <label className="block space-y-1.5 text-[13px] font-medium text-slate-700">
+              <span>Narration</span>
+              <Textarea rows={2} {...field('narration')} />
+            </label>
+          ) : null}
         </div>
       )}
     </Modal>
@@ -276,3 +334,14 @@ export function ArchivedVoucherDialog({ voucher, onClose, onSaved }) {
 }
 
 export default ArchivedVoucherDialog;
+
+// A small label over a compact field (same strip as Create Recovery).
+function MiniLabel({ label, className = '', children }) {
+  return (
+    <div className={`space-y-1 ${className}`}>
+      <div className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-slate-500">{label}</div>
+      {children}
+    </div>
+  );
+}
+

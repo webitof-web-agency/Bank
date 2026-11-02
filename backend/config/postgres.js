@@ -791,8 +791,12 @@ async function persistMainRow(tableName, row, tx = null, { isNew = false } = {})
 // must be new (fresh ids) and share the same columns (as dataToRow makes
 // them). Inside `tx` the caller's transaction refreshes the cache; on its own
 // it is one transaction, then the cache takes the rows.
-async function insertRowsInChunks(database, tableName, rows) {
+async function insertRowsInChunks(database, tableName, rows, { upsert = false } = {}) {
   const columns = Object.keys(rows[0]).filter((key) => rows[0][key] !== undefined);
+  // upsert: existing rows (same id) take every column of the new row.
+  const conflict = upsert
+    ? ` ON CONFLICT (${quoteIdentifier('id')}) DO UPDATE SET ${columns.filter((column) => column !== 'id').map((column) => `${quoteIdentifier(column)} = EXCLUDED.${quoteIdentifier(column)}`).join(', ')}`
+    : '';
   const chunkSize = Math.max(1, Math.min(500, Math.floor(60000 / Math.max(1, columns.length))));
   for (let start = 0; start < rows.length; start += chunkSize) {
     const chunk = rows.slice(start, start + chunkSize);
@@ -802,7 +806,7 @@ async function insertRowsInChunks(database, tableName, rows) {
       return `$${values.length}`;
     }).join(', ')})`);
     await database.query(
-      `INSERT INTO ${quoteIdentifier(tableName)} (${columns.map(quoteIdentifier).join(', ')}) VALUES ${tuples.join(', ')}`,
+      `INSERT INTO ${quoteIdentifier(tableName)} (${columns.map(quoteIdentifier).join(', ')}) VALUES ${tuples.join(', ')}${conflict}`,
       values
     );
   }
@@ -854,6 +858,64 @@ async function insertMainRows(tableName, rows = [], tx = null) {
   try {
     await client.query('BEGIN');
     await write(client);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+  updateCachedRows(tableName, payloads);
+  updateCachedRows('audit_log', audits);
+  return payloads;
+}
+
+// Many existing rows changed at once (an All-branches demand entry's 76
+// lists): one SELECT for the audit's "before" rows, multi-row upserts in
+// chunks, the audit entries in bulk — instead of persistMainRow's three
+// round trips per row. Rows are complete (as dataToRow makes them). Inside
+// `tx` the caller's transaction refreshes the cache.
+async function updateMainRows(tableName, rows = [], tx = null) {
+  if (!rows.length) return [];
+  const payloads = rows.map((row) => clone(row) || {});
+  if (payloads.some((row) => !row.id)) throw new Error(`updateMainRows requires an id on every row for ${tableName}`);
+  const auditEnabled = isSoftDeleteEnabled(tableName) && tableName !== 'audit_log';
+  const write = async (database) => {
+    let beforeById = new Map();
+    if (auditEnabled) {
+      const before = await database.query(`SELECT * FROM ${quoteIdentifier(tableName)} WHERE ${quoteIdentifier('id')}::text = ANY($1)`, [payloads.map((row) => String(row.id))]);
+      beforeById = new Map(before.rows.map((row) => [String(row.id), row]));
+    }
+    await insertRowsInChunks(database, tableName, payloads, { upsert: true });
+    if (!auditEnabled) return [];
+    const now = new Date().toISOString();
+    const actorUserId = getCurrentActorId();
+    const audits = payloads.map((row) => {
+      const previous = beforeById.get(String(row.id)) || null;
+      return {
+        id: crypto.randomUUID(),
+        tableName,
+        recordId: String(row.id),
+        action: previous ? 'UPDATE' : 'CREATE',
+        actorUserId,
+        changes: JSON.stringify(redactAuditChanges({ before: previous, after: row })),
+        createdAt: now,
+        updatedAt: now
+      };
+    });
+    await insertRowsInChunks(database, 'audit_log', audits);
+    return audits;
+  };
+  if (tx) {
+    await write(tx);
+    return payloads;
+  }
+  const database = await initializeDatabase();
+  const client = await database.connect();
+  let audits = [];
+  try {
+    await client.query('BEGIN');
+    audits = await write(client);
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK');
@@ -1069,6 +1131,7 @@ module.exports = {
   initializeDatabase,
   persistMainRow,
   insertMainRows,
+  updateMainRows,
   replaceUserRoles,
   restoreMainRow,
   withTransaction

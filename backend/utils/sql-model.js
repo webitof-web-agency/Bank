@@ -9,6 +9,7 @@ const {
   initializeDatabase,
   persistMainRow,
   insertMainRows,
+  updateMainRows,
   replaceUserRoles
 } = require('../config/postgres');
 
@@ -800,11 +801,12 @@ function createSqlModel(tableName, options = {}) {
     return new SqlDocument(model, saved);
   }
 
-  // A model with no create hooks or unique fields inserts the rows in bulk
-  // (insertMainRows); otherwise each goes through create().
+  // A model with no create hooks inserts the rows in bulk (insertMainRows;
+  // unique fields checked per row, in memory, as create() does); otherwise
+  // each goes through create().
   async function insertMany(docs = [], options = {}) {
     const list = Array.isArray(docs) ? docs : [];
-    const bulk = !beforeCreate && !afterSave && !uniqueFields.length && tableName !== 'users' && list.length > 1;
+    const bulk = !beforeCreate && !afterSave && tableName !== 'users' && list.length > 1;
     if (!bulk) {
       const created = [];
       for (const doc of list) {
@@ -813,7 +815,9 @@ function createSqlModel(tableName, options = {}) {
       return created;
     }
     await initializeDatabase();
-    const rows = list.map((doc) => dataToRow(clone(doc) || {}));
+    const prepared = list.map((doc) => clone(doc) || {});
+    prepared.forEach((doc) => assertUnique(doc));
+    const rows = prepared.map((doc) => dataToRow(doc));
     await insertMainRows(tableName, rows, options.tx);
     return rows.map((row) => new SqlDocument(model, rowToData({ ...row })));
   }
@@ -855,6 +859,37 @@ function createSqlModel(tableName, options = {}) {
       await afterSave(nextDoc, { isCreate: false, previous: clone(target) });
     }
     return new SqlDocument(model, nextDoc);
+  }
+
+  // Several rows by id, each with its own $set: one bulk write for a model
+  // with no afterSave hook (unique fields are checked per row, in memory, as
+  // updateById does); otherwise one updateById each.
+  // updates: [{ id, set }]. Rows not found are skipped.
+  async function updateManyById(updates = [], options = {}) {
+    const list = (Array.isArray(updates) ? updates : []).filter((item) => item && item.id != null);
+    const bulk = !afterSave && tableName !== 'users' && list.length > 1;
+    if (!bulk) {
+      const out = [];
+      for (const { id, set } of list) out.push(await updateById(id, set || {}, options));
+      return out.filter(Boolean);
+    }
+    await initializeDatabase();
+    const byId = new Map(sharedRows().map((row) => [String(row.id), row]));
+    const now = new Date().toISOString();
+    const docs = [];
+    for (const { id, set } of list) {
+      const target = byId.get(String(id));
+      if (!target) continue;
+      const nextDoc = mergeUpdate(target, { $set: set || {} });
+      nextDoc.id = target.id;
+      nextDoc.createdAt = target.createdAt;
+      nextDoc.updatedAt = now;
+      assertUnique(nextDoc, target.id);
+      docs.push(nextDoc);
+    }
+    const rows = docs.map((doc) => dataToRow(doc));
+    await updateMainRows(tableName, rows, options.tx);
+    return rows.map((row) => new SqlDocument(model, rowToData({ ...row })));
   }
 
   async function updateOne(filter = {}, update = {}, options = {}) {
@@ -1025,6 +1060,7 @@ function createSqlModel(tableName, options = {}) {
     },
     insertMany,
     updateMany,
+    updateManyById,
     updateOne,
     upsert: async (filter, update) => updateOne(filter, update, { upsert: true }),
     exec: executeQuery,
