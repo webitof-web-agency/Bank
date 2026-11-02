@@ -78,7 +78,8 @@ test('save: lines carry the components, total is derived, nil members skipped, a
 test('validation: duplicate member, month outside the FY, same list number in the same branch', async () => {
   await assert.rejects(banking.saveDemandEntry({ ...header({ demandListNo: `${Number(LIST) + 1}` }), lines: [{ memberCode: code(1), compulsoryDeposit: 1 }, { memberCode: code(1), compulsoryDeposit: 1 }] }, FY), /entered twice/);
   await assert.rejects(banking.saveDemandEntry({ ...header({ demandListNo: `${Number(LIST) + 1}`, month: '3' }), lines: [{ memberCode: code(1), compulsoryDeposit: 1 }] }, FY), /outside the selected financial year/);
-  await assert.rejects(banking.saveDemandEntry({ ...header(), lines: [{ memberCode: code(1), compulsoryDeposit: 1 }] }, FY), /already exists/);
+  // (The member's month is already taken by that list, which is checked first.)
+  await assert.rejects(banking.saveDemandEntry({ ...header(), lines: [{ memberCode: code(1), compulsoryDeposit: 1 }] }, FY), /already exists|once per month/);
   await assert.rejects(banking.saveDemandEntry({ ...header({ demandListNo: `${Number(LIST) + 1}` }), lines: [{ memberCode: code(1), compulsoryDeposit: -5 }] }, FY), /zero or more/);
 });
 
@@ -94,11 +95,14 @@ test('one demand per branch per month; a list number belongs to one month; branc
   assert.notEqual(a.demandListNo, b.demandListNo);
 });
 
-test('the same list number is allowed for another branch (as legacy numbers lists)', async () => {
+test('the same list number for another branch joins that entry (as legacy numbers lists)', async () => {
   await Member.create({ code: code(9), name: 'Other', branchCode: OTHER_BRANCH });
   const other = await banking.saveDemandEntry({ ...header({ branchCode: OTHER_BRANCH }), lines: [{ memberCode: code(9), compulsoryDeposit: 500 }] }, FY);
   assert.equal(other.demandListNo, LIST);
-  assert.equal(other.memberCount, 1);
+  // One entry: both branches' lists, every member.
+  assert.equal(other.branchCount, 2);
+  assert.equal(other.branchCode, 'ALL');
+  assert.equal(other.memberCount, 4);
 });
 
 test('All branches: members of every branch load; save makes one list per branch with the same number', async () => {
@@ -112,13 +116,18 @@ test('All branches: members of every branch load; save makes one list per branch
     ...header({ demandListNo: ALL_LIST, branchCode: 'ALL', month: '9', demandListDate: '2026-09-01' }),
     lines: [{ memberCode: code(1), compulsoryDeposit: 100 }, { memberCode: code(2), regularLoan: 200 }, { memberCode: code(9), compulsoryDeposit: 300 }]
   }, { ...FY, user: admin });
-  assert.equal(saved.bulk, true);
+  // One entry, one list per branch underneath.
+  assert.equal(saved.branchCode, 'ALL');
   assert.equal(saved.branchCount, 2);
   assert.equal(saved.memberCount, 3);
-  const byBranch = new Map(saved.lists.map((list) => [list.branchCode, list]));
-  assert.equal(byBranch.get(BRANCH).memberCount, 2);
-  assert.equal(byBranch.get(OTHER_BRANCH).memberCount, 1);
-  assert.ok(saved.lists.every((list) => list.demandListNo === ALL_LIST));
+  assert.equal(saved.totalAmount, 600);
+  assert.equal(saved.lines.filter((line) => line.branchCode === BRANCH).length, 2);
+  assert.equal(saved.lines.filter((line) => line.branchCode === OTHER_BRANCH).length, 1);
+  assert.equal((await DemandList.find({ demandListNo: ALL_LIST }).lean()).length, 2);
+  // The listing shows it once.
+  const listed = (await banking.listDemandEntries({ ...FY, user: admin })).filter((row) => row.demandListNo === ALL_LIST);
+  assert.equal(listed.length, 1);
+  assert.equal(listed[0].memberCount, 3);
 
   // The same number again clashes for every branch already holding it; nothing saved.
   await assert.rejects(banking.saveDemandEntry({
@@ -138,12 +147,19 @@ test('editing a list with All branches updates its own branch and adds the other
     ...header({ demandListNo: EDIT_LIST, month: '10', demandListDate: '2026-10-01', branchCode: 'ALL' }),
     lines: [{ memberCode: code(1), compulsoryDeposit: 150 }, { memberCode: code(9), compulsoryDeposit: 300 }]
   }, { id: one.id, ...FY, user: admin });
-  assert.equal(saved.bulk, true);
-  assert.equal(saved.updated.length, 1);
-  assert.equal(saved.updated[0].id, one.id);
-  assert.equal(saved.updated[0].totalAmount, 150);
-  assert.equal(saved.lists.length, 1);
-  assert.equal(saved.lists[0].branchCode, OTHER_BRANCH);
+  assert.equal(saved.branchCount, 2);
+  assert.ok(saved.listIds.includes(one.id), 'the edited branch keeps its list');
+  assert.equal(saved.totalAmount, 450);
+  assert.equal(saved.lines.find((line) => line.memberCode === code(1)).compulsoryDeposit, 150);
+
+  // Editing again without OTHER_BRANCH's member drops that branch's list.
+  const back = await banking.saveDemandEntry({
+    ...header({ demandListNo: EDIT_LIST, month: '10', demandListDate: '2026-10-01', branchCode: 'ALL' }),
+    lines: [{ memberCode: code(1), compulsoryDeposit: 150 }]
+  }, { id: one.id, ...FY, user: admin });
+  assert.equal(back.branchCount, 1);
+  assert.equal((await DemandList.find({ demandListNo: EDIT_LIST }).lean()).length, 1);
+  assert.equal((await DemandLine.find({ demandListNo: EDIT_LIST }).lean()).length, 1);
 });
 
 test('the saved demand is offered by Add From Demand List and shown on the Demand List report', async () => {
@@ -161,16 +177,19 @@ test('after a recovery collects a line it is locked; pending lines keep their id
   ctx.voucherId = String(voucher.id || voucher._id);
   assert.equal(await statusOf(ctx.lineIds[code(3)]), 'RECOVERED');
 
+  // The entry holds BRANCH's list and OTHER_BRANCH's (code 9): an edit
+  // submits the whole entry.
   const lines = [
     { memberCode: code(1), compulsoryDeposit: 2500, regularLoan: 10000, loanAgainstDeposit: 3000 },
     { memberCode: code(3), compulsoryDeposit: 1000 },
-    { memberCode: code(4), specialDeposit: 300 }
+    { memberCode: code(4), specialDeposit: 300 },
+    { memberCode: code(9), compulsoryDeposit: 500 }
     // member 2 removed
   ];
   // Changing a recovered member's demand, or dropping it, is refused.
   await assert.rejects(banking.saveDemandEntry({ ...header(), lines: lines.map((l) => (l.memberCode === code(3) ? { ...l, compulsoryDeposit: 900 } : l)) }, { id: ctx.id, ...FY }), /already been recovered/);
   await assert.rejects(banking.saveDemandEntry({ ...header(), lines: lines.filter((l) => l.memberCode !== code(3)) }, { id: ctx.id, ...FY }), /already been recovered/);
-  await assert.rejects(banking.saveDemandEntry({ ...header({ month: '9' }), lines }, { id: ctx.id, ...FY }), /cannot change|already used for/);
+  await assert.rejects(banking.saveDemandEntry({ ...header({ month: '9' }), lines }, { id: ctx.id, ...FY }), /cannot change|already used for|one demand list per month/);
 
   const saved = await banking.saveDemandEntry({ ...header(), lines }, { id: ctx.id, ...FY });
   const byCode = new Map(saved.lines.map((line) => [line.memberCode, line]));
@@ -179,6 +198,7 @@ test('after a recovery collects a line it is locked; pending lines keep their id
   assert.equal(byCode.get(code(3)).recoveryStatus, 'RECOVERED');
   assert.equal(byCode.has(code(2)), false);
   assert.equal(byCode.get(code(4)).recoveryStatus, 'PENDING');
+  assert.equal(byCode.get(code(9)).branchCode, OTHER_BRANCH);
 });
 
 test('a list with recovered members cannot be deleted; once the recovery is deleted it can', async () => {
@@ -187,5 +207,7 @@ test('a list with recovered members cannot be deleted; once the recovery is dele
   assert.equal(await statusOf(ctx.lineIds[code(3)]), 'PENDING');
   assert.equal(await banking.deleteDemandEntry(ctx.id), true);
   assert.equal(await banking.getDemandEntry(ctx.id), null);
-  assert.equal((await DemandLine.find({ demandListNo: LIST }).lean()).filter((line) => line.postedBranch === BRANCH).length, 0);
+  // The whole entry went: both branches' lists and lines.
+  assert.equal((await DemandLine.find({ demandListNo: LIST }).lean()).length, 0);
+  assert.equal((await DemandList.find({ demandListNo: LIST }).lean()).length, 0);
 });

@@ -280,6 +280,7 @@ export function formatTransactionModeLabel(value = '') {
   if (normalized === 'CHEQUE') return 'Cheque';
   if (normalized === 'TRANSFER') return 'Transfer';
   if (normalized === 'DD') return 'DD';
+  if (normalized === 'MAIL') return 'Mail';
   return cleanText(value) || '—';
 }
 

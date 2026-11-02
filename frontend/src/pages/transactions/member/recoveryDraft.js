@@ -261,16 +261,20 @@ export function addExcelLines(lines = [], excel = {}, { candidates = [], members
     return false;
   });
   let adjusted = 0;
+  // overDemand: Excel more than the demand. loanCapped: within the demand,
+  // but a loan owed less than its demand leaves part to allocate.
   let overDemand = 0;
+  let loanCapped = 0;
   const fitted = withOutstanding(kept, outstanding).map((line) => {
     if (line.unmatched || !line.excel || !batchRowIds.has(line.excel.rowId)) return line;
     const start = line.source === 'EXCEL' ? line.excel.demandHeads : line.heads;
     const fit = fitHeadsToAmount(line.excel.amount, start, line.outstanding || null);
     if (fit.note) adjusted += 1;
-    if (fit.extra > 0) overDemand += 1;
+    if (toPaise(line.excel.amount) > toPaise(fit.demandTotal)) overDemand += 1;
+    else if (fit.extra > 0) loanCapped += 1;
     return { ...line, heads: fit.heads, demandAmount: fit.demandTotal, fitNote: fit.note, needsReview: false, reviewNote: '' };
   });
-  return { ...merged, lines: withWarnings(fitted), demandMatched: demand.added - noEntry, adjusted, overDemand, noEntry };
+  return { ...merged, lines: withWarnings(fitted), demandMatched: demand.added - noEntry, adjusted, overDemand, loanCapped, noEntry };
 }
 
 // "Use Excel": the line takes the Excel split, which matches the Excel total

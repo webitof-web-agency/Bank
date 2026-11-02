@@ -98,7 +98,7 @@ export function DemandForm({ value, setValue, onSubmit, branches = [], members =
             onChange={(next) => setField('branchCode', next)}
             options={[
               { value: '', label: 'Select branch' },
-              ...(allowAllBranches ? [{ value: 'ALL', label: 'All branches (one list per branch)' }] : []),
+              ...(allowAllBranches || value.branchCode === 'ALL' ? [{ value: 'ALL', label: 'All branches' }] : []),
               ...branches.map((branch) => ({ value: branch.code, label: `${branch.code} - ${branch.label || ''}` }))
             ]}
           />
@@ -112,7 +112,7 @@ export function DemandForm({ value, setValue, onSubmit, branches = [], members =
           <Input type="number" disabled={locked} value={value.year || ''} onChange={(event) => setPeriod('year', event.target.value)} placeholder="2026" />
         </div>
         <div>
-          <FieldLabel required>List No. <span className="font-normal text-slate-400">(one per branch per month)</span></FieldLabel>
+          <FieldLabel required>List No. <span className="font-normal text-slate-400">(one per month)</span></FieldLabel>
           <Input disabled={locked} value={value.demandListNo || ''} onChange={(event) => setField('demandListNo', event.target.value)} />
         </div>
         <div>

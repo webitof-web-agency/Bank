@@ -37,11 +37,17 @@ test.after(async () => {
   await db.query('DELETE FROM demand_lists WHERE "demandListNo" = $1', [LISTX]);
   await db.query('DELETE FROM member_demand_defaults WHERE "memberCode" = ANY($1)', [own]);
   await db.query('DELETE FROM members WHERE code = ANY($1)', [own]);
+  // The Mail test's voucher (soft-deleted by the test): removed for good.
+  if (ids.mailVoucher) {
+    await db.query('DELETE FROM journal_lines WHERE "voucherId" = $1', [ids.mailVoucher]);
+    await db.query('DELETE FROM recovery_lines WHERE "voucherId" = $1', [ids.mailVoucher]);
+    await db.query('DELETE FROM vouchers WHERE id::text = $1', [ids.mailVoucher]);
+  }
   if (closeDatabase) await closeDatabase();
 });
 
 async function ensureLedgers() {
-  for (const role of ['CASH', 'SHARE', 'COMPULSORY_DEPOSIT', 'SPECIAL_DEPOSIT', 'REGULAR_LOAN', 'LOAN_AGAINST_DEPOSIT', 'ADMISSION']) {
+  for (const role of ['CASH', 'SHARE', 'COMPULSORY_DEPOSIT', 'SPECIAL_DEPOSIT', 'REGULAR_LOAN', 'LOAN_AGAINST_DEPOSIT', 'ADMISSION', 'TRANSFER_ADJUSTMENT']) {
     const semanticRole = ACCOUNTING_ROLES[role];
     if (await Ledger.findOne({ semanticRole })) continue;
     const removed = await Ledger.findOne({ semanticRole }).withDeleted().lean();
@@ -161,6 +167,20 @@ test('18-20, 14-15, 4: save is one unit — voucher, recovery_lines, journal_lin
   assert.equal(await status(ids.d104), 'PENDING');
   // Demand amounts untouched.
   assert.equal(Number((await DemandLine.findById(ids.d101).lean()).regularLoan), 2000);
+});
+
+test('mode Mail (the recovery default) is accepted and posts against Transfer Adjustment', async () => {
+  const v = await banking.createVoucher(recoveryVoucher([{ member: code(5), source: 'MANUAL', heads: { cd: 250 } }], { mode: 'MAIL' }));
+  const id = String(v.id || v._id);
+  ids.mailVoucher = id;
+  const journal = await journalOf(id);
+  const debit = journal.find((line) => Number(line.debitAmount) > 0);
+  const adjustment = await Ledger.findOne({ semanticRole: ACCOUNTING_ROLES.TRANSFER_ADJUSTMENT }).lean();
+  assert.equal(String(debit.ledgerId), String(adjustment.id || adjustment._id));
+  assert.equal(Number(debit.debitAmount), 250);
+  // An empty mode is still refused.
+  await assert.rejects(banking.createVoucher(recoveryVoucher([{ member: code(5), source: 'MANUAL', heads: { cd: 250 } }], { mode: '' })), /payment mode/);
+  await banking.deleteVoucher(id);
 });
 
 test('21: the same demand line twice in one recovery is rejected, nothing saved', async () => {

@@ -1073,7 +1073,7 @@ const TRANSACTION_CATALOG = [
       { key: 'deposit-paid-member', label: 'Compulsory Deposit Paid to Member', description: 'Pay compulsory deposit amounts back to member accounts.', voucherCategory: 'Compulsory Deposit Paid to Member', transactionType: 'payment', accent: 'pink', mode: 'Cash / Cheque', documents: MEMBER_TRANSACTION_DOCUMENTS.depositPaidMember },
       { key: 'insurance-paid-member', label: 'Insurance Premium Paid to Member', description: 'Record insurance premium disbursement entries.', voucherCategory: 'Insurance Premium Paid to Member', transactionType: 'payment', accent: 'pink', mode: 'Cash / Cheque', documents: MEMBER_TRANSACTION_DOCUMENTS.insurancePaidMember },
       { key: 'ssa-paid-member', label: 'SSA Paid To Member', description: 'Record SSA payout entries to members.', voucherCategory: 'SSA Paid To Member', transactionType: 'payment', accent: 'pink', mode: 'Cash-in-Hand', documents: MEMBER_TRANSACTION_DOCUMENTS.ssaPaidMember },
-      { key: 'recovery-member', label: 'Recovery From Member', description: 'Recover dues from member accounts.', voucherCategory: 'Recovery From Member', transactionType: 'receipt', accent: 'emerald', mode: 'Cash / Transfer', documents: MEMBER_TRANSACTION_DOCUMENTS.recoveryMember }
+      { key: 'recovery-member', label: 'Recovery From Member', description: 'Recover dues from member accounts.', voucherCategory: 'Recovery From Member', transactionType: 'receipt', accent: 'emerald', mode: 'MAIL', documents: MEMBER_TRANSACTION_DOCUMENTS.recoveryMember }
     ]
   },
   {
@@ -5547,6 +5547,40 @@ function demandEntrySummary(list, lines, branchByCode = new Map()) {
   };
 }
 
+// A demand ENTRY is every list sharing its number: one month's demand, one
+// list per branch (as "All branches" saves it, and as the legacy lists were).
+// The listing, view, edit and delete work on the whole entry; a branch user
+// sees only their own branch's list of it.
+async function demandEntryGroup(list, user = {}) {
+  return (await DemandList.find({ demandListNo: list.demandListNo }).lean())
+    .filter((item) => canAccessBranchRecord('demandLists', item, user))
+    .sort((a, b) => compareCodesNumerically(a.branchCode, b.branchCode));
+}
+
+function demandGroupSummary(group = [], lines = [], branchByCode = new Map()) {
+  const parts = group.map((list) => demandEntrySummary(list, lines, branchByCode));
+  const first = parts[0];
+  const branchCodes = parts.map((part) => cleanUpper(part.branchCode));
+  if (parts.length === 1) return { ...first, branchCodes, branchCount: 1, listIds: [first.id] };
+  const sum = (key) => toRupees(parts.reduce((total, part) => total + toPaise(part[key] || 0), 0));
+  const memberCount = parts.reduce((total, part) => total + part.memberCount, 0);
+  const recoveredCount = parts.reduce((total, part) => total + part.recoveredCount, 0);
+  return {
+    ...first,
+    branchCode: ALL_BRANCHES,
+    branchName: `All branches (${parts.length})`,
+    branchCodes,
+    branchCount: parts.length,
+    listIds: parts.map((part) => part.id),
+    memberCount,
+    ...Object.fromEntries(DEMAND_HEADS.map((key) => [key, sum(key)])),
+    totalAmount: sum('totalAmount'),
+    pendingCount: memberCount - recoveredCount,
+    recoveredCount,
+    status: !memberCount || !recoveredCount ? DEMAND_PENDING : recoveredCount === memberCount ? DEMAND_RECOVERED : 'PARTIAL'
+  };
+}
+
 async function listDemandEntries({ branchCode = '', fyStart = '', fyEnd = '', user = {} } = {}) {
   const effectiveBranchCode = resolveBranchCode(user, branchCode);
   const lists = (await DemandList.find(effectiveBranchCode ? { branchCode: effectiveBranchCode } : {}).lean()).filter((list) => {
@@ -5559,26 +5593,39 @@ async function listDemandEntries({ branchCode = '', fyStart = '', fyEnd = '', us
   const listNos = [...new Set(lists.map((list) => list.demandListNo))];
   const lines = listNos.length ? await DemandLine.find({ demandListNo: { $in: listNos } }).lean() : [];
   const branchByCode = new Map((await Branch.find({}).lean()).map((branch) => [cleanUpper(branch.code), branch]));
-  return lists.map((list) => demandEntrySummary(list, lines, branchByCode))
+  const groups = new Map();
+  for (const list of lists.filter((item) => canAccessBranchRecord('demandLists', item, user))) {
+    const key = cleanUpper(list.demandListNo);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(list);
+  }
+  return [...groups.values()]
+    .map((group) => demandGroupSummary(group.sort((a, b) => compareCodesNumerically(a.branchCode, b.branchCode)), lines, branchByCode))
     .sort((a, b) => (`${b.year}-${String(b.month).padStart(2, '0')}`).localeCompare(`${a.year}-${String(a.month).padStart(2, '0')}`)
-      || compareCodesNumerically(a.branchCode, b.branchCode));
+      || compareCodesNumerically(b.demandListNo, a.demandListNo));
 }
 
+// The whole entry `id` belongs to (see demandEntryGroup), with every line.
 async function getDemandEntry(id, { user = {} } = {}) {
   const list = await DemandList.findById(id).lean();
   if (!list || !canAccessBranchRecord('demandLists', list, user)) return null;
-  const lines = demandListLinesOf(list, await DemandLine.find({ demandListNo: list.demandListNo }).lean());
+  const group = await demandEntryGroup(list, user);
+  const allLines = await DemandLine.find({ demandListNo: list.demandListNo }).lean();
+  const lines = group.flatMap((item) => demandListLinesOf(item, allLines));
   const members = lines.length ? await Member.find({ code: { $in: lines.map((line) => line.memberCode) } }).lean() : [];
   const memberByCode = new Map(members.map((member) => [cleanUpper(member.code), member]));
   const branchByCode = new Map((await Branch.find({}).lean()).map((branch) => [cleanUpper(branch.code), branch]));
   return {
-    ...demandEntrySummary(list, lines, branchByCode),
+    ...demandGroupSummary(group, lines, branchByCode),
     lines: lines.map((line) => {
       const member = memberByCode.get(cleanUpper(line.memberCode)) || {};
+      const branch = branchByCode.get(cleanUpper(line.postedBranch)) || {};
       return {
         id: String(line.id || line._id),
         memberCode: line.memberCode,
         memberName: member.name || line.memberName || '',
+        branchCode: cleanUpper(line.postedBranch),
+        branchName: branch.label || line.postedBranch || '',
         designation: member.designation || member?.payload?.raw?.Designation || '',
         ...Object.fromEntries(DEMAND_HEADS.map((key) => [key, toNumber(line[key], 0)])),
         totalAmount: toRupees(demandLineTotalPaise(line)),
@@ -5598,8 +5645,9 @@ async function getDemandEntry(id, { user = {} } = {}) {
 async function assertOneListPerMonth(header, branches = [], excludeId = '') {
   const monthName = (month) => new Date(2000, month - 1, 1).toLocaleString('en-IN', { month: 'long' });
   const wanted = new Set(branches.map((branch) => cleanUpper(branch)));
+  const excluded = excludedIds(excludeId);
   for (const list of await DemandList.find({}).lean()) {
-    if (excludeId && String(list.id || list._id) === String(excludeId)) continue;
+    if (excluded.has(String(list.id || list._id))) continue;
     const period = demandPeriod(list);
     const sameMonth = period.month === header.month && period.year === header.year;
     const sameNumber = cleanUpper(list.demandListNo) === header.demandListNo;
@@ -5624,13 +5672,19 @@ function isAllBranches(branchCode, user = {}) {
 // taken: a line in another demand list of that month (any branch), or that
 // month recovered from their Monthly Demand Data. { CODE: 'why' }.
 // excludeId: the list being edited (its own lines don't count).
+// excludeId: one list id, or a list of them (a whole demand entry).
+function excludedIds(excludeId) {
+  return new Set([].concat(excludeId || []).map(String).filter(Boolean));
+}
+
 async function membersDemandedInMonth(month, year, excludeId = '') {
   const monthNumber = Number(month) || 0;
   const yearText = cleanText(year);
   const taken = new Map();
   if (!monthNumber || !yearText) return taken;
+  const excluded = excludedIds(excludeId);
   const lists = (await DemandList.find({}).lean()).filter((list) => {
-    if (excludeId && String(list.id || list._id) === String(excludeId)) return false;
+    if (excluded.has(String(list.id || list._id))) return false;
     const period = demandPeriod(list);
     return period.month === monthNumber && period.year === yearText;
   });
@@ -5665,7 +5719,10 @@ async function getDemandEntryMembers({ branchCode = '', month = '', year = '', e
   const all = isAllBranches(branchCode, user);
   const effectiveBranchCode = all ? '' : resolveBranchCode(user, branchCode);
   if (!all && !effectiveBranchCode) throw recoveryHttpError('Choose a branch first.');
-  const taken = await membersDemandedInMonth(month, year, excludeId);
+  // Editing an entry: none of its own lists count as "already demanded".
+  const editing = excludeId ? await DemandList.findById(excludeId).lean() : null;
+  const excluded = editing ? (await demandEntryGroup(editing, user)).map((list) => String(list.id || list._id)) : excludeId;
+  const taken = await membersDemandedInMonth(month, year, excluded);
   const active = withoutTestMembers(await Member.find(all ? {} : { branchCode: effectiveBranchCode }).lean())
     .filter((member) => !isDismemberedMember(member));
   const members = active.filter((member) => !taken.has(cleanUpper(member.code)));
@@ -5734,7 +5791,7 @@ function demandLinesFrom(lines = []) {
 // branch and one list per branch is created (the shared list number, as the
 // legacy lists were), all in one transaction. A branch that already has this
 // list number stops the whole save.
-async function saveDemandEntryAllBranches(header, data = {}, { user = {}, id = '', fyStart = '', fyEnd = '' } = {}) {
+async function saveDemandEntryAllBranches(header, data = {}, { user = {}, id = '' } = {}) {
   const lines = demandLinesFrom(data.lines);
   if (!lines.length) throw recoveryHttpError('Enter a demand amount for at least one member.');
   const members = await Member.find({ code: { $in: lines.map((line) => line.memberCode) } }).lean();
@@ -5750,39 +5807,57 @@ async function saveDemandEntryAllBranches(header, data = {}, { user = {}, id = '
     if (!byBranch.has(branch)) byBranch.set(branch, []);
     byBranch.get(branch).push(line);
   }
-  // Editing a list with "All branches": its own branch's members update that
-  // list; the other branches get new lists with the same number.
+  // Editing: the whole entry (every list of its number) is replaced by what
+  // was submitted — a branch's list updated, added, or dropped when empty.
   const current = id ? await DemandList.findById(id).lean() : null;
   if (id && !current) return null;
-  const ownBranch = current ? cleanUpper(current.branchCode) : '';
-  const ownLines = ownBranch ? (byBranch.get(ownBranch) || []) : [];
-  if (ownBranch) byBranch.delete(ownBranch);
-  // The new lists (the edited one is checked by its own save below).
-  await assertOneListPerMonth(header, [...byBranch.keys()], id);
-  await assertMembersNotDemanded(header, [...byBranch.values()].flat(), id);
+  const group = current ? await demandEntryGroup(current, user) : [];
+  const groupIds = group.map((list) => String(list.id || list._id));
+  const listByBranch = new Map(group.map((list) => [cleanUpper(list.branchCode), list]));
+  const groupLines = current ? await DemandLine.find({ demandListNo: current.demandListNo }).lean() : [];
+  const ownLinesOf = (list) => demandListLinesOf(list, groupLines);
 
+  // Every check before anything is written.
+  await assertOneListPerMonth(header, [...byBranch.keys()], groupIds);
+  await assertMembersNotDemanded(header, lines, groupIds);
   const clashes = (await DemandList.find({ demandListNo: header.demandListNo }).lean())
-    .map((list) => cleanUpper(list.branchCode))
-    .filter((branch) => byBranch.has(branch));
+    .filter((list) => !groupIds.includes(String(list.id || list._id)) && byBranch.has(cleanUpper(list.branchCode)))
+    .map((list) => cleanUpper(list.branchCode));
   if (clashes.length) {
     throw recoveryHttpError(`Demand list ${header.demandListNo} already exists for branch(es) ${[...new Set(clashes)].join(', ')}. Use another list number.`, 409);
   }
-
-  const updated = [];
-  if (current) {
-    // Same checks and rules as a normal edit of that list (recovered lines locked).
-    const { lines: _ownLines, ...summary } = await saveDemandEntry(
-      { ...data, branchCode: ownBranch, lines: data.lines.filter((line) => ownLines.some((own) => own.memberCode === cleanUpper(line.memberCode))) },
-      { id, fyStart, fyEnd, user }
-    );
-    updated.push(summary);
+  for (const list of group) {
+    const recovered = ownLinesOf(list).filter((line) => cleanUpper(line.recoveryStatus) === DEMAND_RECOVERED);
+    if (!recovered.length) continue;
+    const period = demandPeriod(list);
+    if (cleanUpper(list.demandListNo) !== header.demandListNo || period.month !== header.month || period.year !== header.year) {
+      throw recoveryHttpError('This demand list has recovered members, so its number, month and year cannot change.', 409);
+    }
+    const submitted = new Map((byBranch.get(cleanUpper(list.branchCode)) || []).map((line) => [line.memberCode, line]));
+    for (const line of recovered) {
+      const next = submitted.get(cleanUpper(line.memberCode));
+      if (!next || DEMAND_HEADS.some((key) => toPaise(next[key]) !== toPaise(line[key] || 0))) {
+        throw recoveryHttpError(`Member ${line.memberCode}'s demand has already been recovered${line?.payload?.recoveryVoucherNo ? ` (recovery voucher ${line.payload.recoveryVoucherNo})` : ''}. Edit or delete the linked recovery first.`, 409);
+      }
+    }
   }
-  if (!byBranch.size) return { bulk: true, lists: [], updated, branchCount: updated.length, memberCount: lines.length };
 
-  const createdIds = await withTransaction(async (tx) => {
+  const lineDoc = (line, branch) => ({
+    demandListNo: header.demandListNo,
+    memberCode: line.memberCode,
+    memberName: memberByCode.get(line.memberCode).name || '',
+    postedBranch: branch,
+    ...Object.fromEntries(DEMAND_HEADS.map((key) => [key, line[key]])),
+    totalAmount: line.totalAmount,
+    recoveredAmount: 0,
+    recoveryStatus: DEMAND_PENDING
+  });
+  const savedIds = await withTransaction(async (tx) => {
     const ids = [];
+    const newLines = [];
     for (const [branch, branchLines] of byBranch) {
-      const created = await DemandList.create({
+      const list = listByBranch.get(branch);
+      const listDoc = {
         demandListNo: header.demandListNo,
         demandListDate: header.demandListDate,
         branchCode: branch,
@@ -5790,37 +5865,65 @@ async function saveDemandEntryAllBranches(header, data = {}, { user = {}, id = '
         year: header.year,
         status: DEMAND_PENDING,
         remarks: header.remarks,
-        payload: { fyCode: header.fyCode }
-      }, { tx });
-      ids.push(String(created.id || created._id));
+        payload: { ...(list?.payload || {}), fyCode: header.fyCode }
+      };
+      // The real month/year live in the columns for lists entered here.
+      delete listDoc.payload.raw;
+      if (!list) {
+        const created = await DemandList.create(listDoc, { tx });
+        ids.push(String(created.id || created._id));
+        for (const line of branchLines) newLines.push(lineDoc(line, branch));
+        continue;
+      }
+      await DemandList.findByIdAndUpdate(String(list.id || list._id), listDoc, { new: true }).tx(tx);
+      ids.push(String(list.id || list._id));
+      const existingByCode = new Map(ownLinesOf(list).map((line) => [cleanUpper(line.memberCode), line]));
       for (const line of branchLines) {
-        await DemandLine.create({
-          demandListNo: header.demandListNo,
-          memberCode: line.memberCode,
-          memberName: memberByCode.get(line.memberCode).name || '',
-          postedBranch: branch,
-          ...Object.fromEntries(DEMAND_HEADS.map((key) => [key, line[key]])),
-          totalAmount: line.totalAmount,
-          recoveredAmount: 0,
-          recoveryStatus: DEMAND_PENDING
-        }, { tx });
+        const before = existingByCode.get(line.memberCode);
+        if (!before) {
+          newLines.push(lineDoc(line, branch));
+          continue;
+        }
+        if (cleanUpper(before.recoveryStatus) === DEMAND_RECOVERED) continue;
+        const doc = lineDoc(line, branch);
+        // Unchanged lines are left alone; a changed pending line keeps its
+        // id, so a recovery draft that loaded it still links to it.
+        const same = cleanUpper(before.demandListNo) === doc.demandListNo && (before.memberName || '') === doc.memberName
+          && DEMAND_HEADS.every((key) => toPaise(before[key] || 0) === toPaise(doc[key] || 0));
+        if (!same) await DemandLine.findByIdAndUpdate(String(before.id || before._id), doc, { new: true }).tx(tx);
+      }
+      const kept = new Set(branchLines.map((line) => line.memberCode));
+      for (const line of ownLinesOf(list)) {
+        if (!kept.has(cleanUpper(line.memberCode)) && cleanUpper(line.recoveryStatus) !== DEMAND_RECOVERED) {
+          await DemandLine.findByIdAndDelete(String(line.id || line._id)).tx(tx);
+        }
       }
     }
+    // A branch with no member left: its list goes (it has nothing recovered,
+    // or the checks above would have stopped the save).
+    for (const list of group) {
+      if (byBranch.has(cleanUpper(list.branchCode))) continue;
+      for (const line of ownLinesOf(list)) await DemandLine.findByIdAndDelete(String(line.id || line._id)).tx(tx);
+      await DemandList.findByIdAndDelete(String(list.id || list._id)).tx(tx);
+    }
+    if (newLines.length) await DemandLine.insertMany(newLines, { tx });
     return ids;
   });
-
-  const lists = [];
-  for (const listId of createdIds) {
-    const { lines: _lines, ...summary } = await getDemandEntry(listId, { user });
-    lists.push(summary);
-  }
-  return { bulk: true, lists, updated, branchCount: lists.length + updated.length, memberCount: lines.length };
+  const firstId = savedIds.sort()[0];
+  const saved = await getDemandEntry(current && savedIds.includes(String(id)) ? id : firstId, { user });
+  return saved;
 }
 
 async function saveDemandEntry(data = {}, { id = '', fyStart = '', fyEnd = '', user = {} } = {}) {
   const header = demandHeaderFrom(data, { fyStart, fyEnd });
-  if (isAllBranches(header.branchCode, user)) {
-    return saveDemandEntryAllBranches(header, data, { user, id, fyStart, fyEnd });
+  // "All branches", or editing an entry that spans several branches: the
+  // entry is saved as a whole, one list per branch.
+  const editedGroup = id && !getScopedBranchCode(user) ? await (async () => {
+    const list = await DemandList.findById(id).lean();
+    return list ? demandEntryGroup(list, user) : [];
+  })() : [];
+  if (isAllBranches(header.branchCode, user) || editedGroup.length > 1) {
+    return saveDemandEntryAllBranches(header, data, { user, id });
   }
   header.branchCode = resolveBranchCode(user, header.branchCode);
   if (!(await Branch.findOne({ code: header.branchCode }).lean())) throw recoveryHttpError(`Unknown branch ${header.branchCode}.`);
@@ -5908,14 +6011,19 @@ async function saveDemandEntry(data = {}, { id = '', fyStart = '', fyEnd = '', u
   return getDemandEntry(listId, { user });
 }
 
+// Deletes the whole entry (every list of its number the user may see);
+// refused while any of its members is recovered.
 async function deleteDemandEntry(id, { user = {} } = {}) {
   const list = await DemandList.findById(id).lean();
   if (!list || !canAccessBranchRecord('demandLists', list, user)) return false;
-  await assertDemandNotRecovered('demandLists', id, { deleting: true });
-  const lines = demandListLinesOf(list, await DemandLine.find({ demandListNo: list.demandListNo }).lean());
+  const group = await demandEntryGroup(list, user);
+  for (const item of group) await assertDemandNotRecovered('demandLists', String(item.id || item._id), { deleting: true });
+  const allLines = await DemandLine.find({ demandListNo: list.demandListNo }).lean();
   await withTransaction(async (tx) => {
-    for (const line of lines) await DemandLine.findByIdAndDelete(String(line.id || line._id)).tx(tx);
-    await DemandList.findByIdAndDelete(id).tx(tx);
+    for (const item of group) {
+      for (const line of demandListLinesOf(item, allLines)) await DemandLine.findByIdAndDelete(String(line.id || line._id)).tx(tx);
+      await DemandList.findByIdAndDelete(String(item.id || item._id)).tx(tx);
+    }
   });
   return true;
 }
@@ -6667,7 +6775,10 @@ function assertVoucherBasics(payload = {}, submitted = {}) {
   const key = payload?.details?.key;
   if (MODE_REQUIRED_KEYS.has(key)) {
     const mode = cleanText(submitted.mode);
-    if (!mode || mode === cleanText(getTransactionCatalogItemByKey(key)?.mode)) {
+    // A catalog description ("Cash / Transfer") is not a mode; a catalog
+    // default that is a real mode (Recovery's MAIL) is.
+    const catalogMode = cleanText(getTransactionCatalogItemByKey(key)?.mode);
+    if (!mode || (mode === catalogMode && catalogMode.includes('/'))) {
       throw recoveryHttpError('Choose the payment mode.');
     }
   }

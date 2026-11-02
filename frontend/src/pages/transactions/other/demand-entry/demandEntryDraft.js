@@ -59,7 +59,8 @@ export function emptyDemandDraft(fy = null, entries = []) {
   return {
     demandListNo: listNoForMonth(entries, String(Number(date.slice(5, 7))), date.slice(0, 4)),
     demandListDate: date,
-    branchCode: '',
+    // A month's demand is one entry for every branch, unless narrowed.
+    branchCode: 'ALL',
     month: String(Number(date.slice(5, 7))),
     year: date.slice(0, 4),
     remarks: '',

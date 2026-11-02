@@ -83,8 +83,11 @@ function getDesignationLabel(member = {}) {
 }
 
 function getPaymentOptions(activeKey = '') {
+  // Mail (the default for a new recovery): the bank's monthly deduction
+  // remitted by mail; like DD / Cheque it posts to Transfer Adjustment.
   if (activeKey === 'recovery-member') {
     return [
+      { label: 'Mail', value: 'MAIL' },
       { label: 'Cash', value: 'CASH' },
       { label: 'DD', value: 'DD' },
       { label: 'Cheque', value: 'CHEQUE' }
@@ -475,6 +478,7 @@ function DemandPickerDialog({ open, onClose, onAdd, lookups = {}, voucherDate = 
                 {newlyExcluded ? `, ${newlyExcluded} excluded (0 amount, no membership date or another branch)` : ''}.
                 {preview.noEntry ? ` ${preview.noEntry} demand member(s) have nothing in the Excel: no entry for them this month.` : ''}
                 {preview.overDemand ? <span className="font-semibold text-red-700"> {preview.overDemand} member(s) have more than their demand (red): put the extra into a head after Add.</span> : null}
+                {preview.loanCapped ? <span className="font-semibold text-red-700"> {preview.loanCapped} member(s) owe less loan than their loan demand: put the rest into a head after Add.</span> : null}
                 {excel.batch?.payload?.footerTotal != null && !excel.batch.payload.footerMatches ? ` WARNING: the file's total line ₹${formatHead(excel.batch.payload.footerTotal)} differs from its member rows.` : ''}
               </span>
             ) : (
@@ -622,7 +626,7 @@ function RecoveryLinesEditor({ rows = [], excluded = [], onChange, onOutstanding
       result.noMembershipDate ? `${result.noMembershipDate} row(s) of members with no membership date` : ''
     ].filter(Boolean);
     const skippedNote = skipped.length ? ` Excluded (listed below): ${skipped.join(', ')}.` : '';
-    setNotice(`${result.demandMatched} demand line(s) added. Excel: ${result.matched} matched a demand line, ${result.added} not in the demand, ${result.unmatched} with no member; ${result.adjusted} adjusted to the Excel amount.${skippedNote}${footerNote} ${check.errorRows ? `${check.errorRows} row(s) to correct.` : 'Every row reconciles.'}`);
+    setNotice(`${result.demandMatched} demand line(s) added. Excel: ${result.matched} matched a demand line, ${result.added} not in the demand, ${result.unmatched} with no member; ${result.adjusted} adjusted to the Excel amount.${result.noEntry ? ` ${result.noEntry} demand member(s) with nothing in the Excel: no entry this month.` : ''}${skippedNote}${footerNote} ${check.errorRows ? `${check.errorRows} row(s) to correct.` : 'Every row reconciles.'}`);
   }
 
   // Removing a line holding an Excel row excludes that row, and needs a

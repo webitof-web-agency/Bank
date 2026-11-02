@@ -73,7 +73,8 @@ export function DemandEntryPage({ detailPathBase = '/app/transactions/other/dema
 
   const rows = useMemo(() => {
     const text = search.trim().toLowerCase();
-    return entries.filter((entry) => (!filterBranch || String(entry.branchCode) === String(filterBranch))
+    // An entry covers every branch it has a list for.
+    return entries.filter((entry) => (!filterBranch || (entry.branchCodes || [entry.branchCode]).map(String).includes(String(filterBranch)))
       && (!filterMonth || String(entry.month) === String(filterMonth))
       && (!text || [entry.demandListNo, entry.branchCode, entry.branchName, entry.remarks].some((value) => String(value || '').toLowerCase().includes(text))));
   }, [entries, filterBranch, filterMonth, search]);
@@ -103,19 +104,11 @@ export function DemandEntryPage({ detailPathBase = '/app/transactions/other/dema
       const response = editor.id
         ? await api.banking.demandEntry.update(token, editor.id, payload, fyQuery)
         : await api.banking.demandEntry.create(token, payload, fyQuery);
-      const saved = response.data;
-      if (saved?.bulk) {
-        // All branches: one list per branch (the edited list updated, the
-        // other branches' lists new).
-        const updatedById = new Map((saved.updated || []).map((row) => [row.id, row]));
-        setEntries((current) => [...saved.lists, ...current.map((row) => updatedById.get(row.id) || row)]);
-        toast.success(`Demand list saved for ${saved.branchCount} branch(es): ${saved.memberCount} member(s), all pending`);
-        setEditor(null);
-        return;
-      }
-      const { lines, ...summary } = saved;
-      setEntries((current) => (editor.id ? current.map((row) => (row.id === saved.id ? summary : row)) : [summary, ...current]));
-      toast.success(editor.id ? 'Demand list updated' : `Demand list saved: ${saved.memberCount} member(s), all pending`);
+      // The saved entry (every branch's list of its number) replaces the row
+      // it was and any row of the same number.
+      const { lines, ...summary } = response.data;
+      setEntries((current) => [summary, ...current.filter((row) => row.id !== editor.id && row.demandListNo !== summary.demandListNo)]);
+      toast.success(`${editor.id ? 'Demand list updated' : 'Demand list saved'}: ${summary.memberCount} member(s)${summary.branchCount > 1 ? ` in ${summary.branchCount} branches` : ''}`);
       setEditor(null);
     } catch (error) {
       toast.error(error.message || 'Unable to save demand list');
@@ -142,7 +135,7 @@ export function DemandEntryPage({ detailPathBase = '/app/transactions/other/dema
         <div>
           <p className="text-[12px] font-semibold uppercase tracking-[0.2em] text-[var(--primary,#1661F6)]">Other Transactions</p>
           <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">Demand Entry</h1>
-          <p className="text-[13px] text-slate-500">Monthly demand per branch for FY {activeFY?.label}. Recovery collects it member by member.</p>
+          <p className="text-[13px] text-slate-500">Monthly demand for FY {activeFY?.label}: one entry per month, covering every branch. Recovery collects it member by member.</p>
         </div>
         {canCreate ? (
           <Button type="button" className="gap-2 bg-[var(--primary,#1661F6)] text-white" onClick={() => setEditor({ id: null, draft: emptyDemandDraft(activeFY, entries), locked: false })}>
@@ -191,7 +184,7 @@ export function DemandEntryPage({ detailPathBase = '/app/transactions/other/dema
                 <tr key={row.id} className="hover:bg-slate-50/60">
                   <td className="px-4 py-3 font-medium text-slate-900">{row.demandListNo}</td>
                   <td className="px-4 py-3 text-slate-700">{row.demandListDate || '-'}</td>
-                  <td className="px-4 py-3 text-slate-700">{row.branchCode} - {row.branchName}</td>
+                  <td className="px-4 py-3 text-slate-700">{row.branchCount > 1 ? row.branchName : `${row.branchCode} - ${row.branchName}`}</td>
                   <td className="px-4 py-3 text-slate-700">{monthLabel(row.month)} {row.year}</td>
                   <td className="px-4 py-3 text-right text-slate-700">{row.memberCount}</td>
                   <td className="px-4 py-3 text-right text-slate-900">{formatAmount(row.totalAmount)}</td>
@@ -239,7 +232,7 @@ export function DemandEntryPage({ detailPathBase = '/app/transactions/other/dema
             members={members}
             fy={activeFY}
             locked={editor.locked}
-            allowAllBranches={!editor.locked}
+            allowAllBranches
             entries={entries.filter((row) => row.id !== editor.id)}
             editingId={editor.id || ''}
           />
@@ -249,7 +242,7 @@ export function DemandEntryPage({ detailPathBase = '/app/transactions/other/dema
       <ConfirmDialog
         open={Boolean(deleteTarget)}
         title="Delete demand list"
-        description={`Delete demand list ${deleteTarget?.demandListNo || ''} (${deleteTarget?.branchName || ''}) and its ${deleteTarget?.memberCount || 0} member line(s)?`}
+        description={`Delete demand list ${deleteTarget?.demandListNo || ''} (${deleteTarget?.branchName || ''}) and its ${deleteTarget?.memberCount || 0} member line(s)${deleteTarget?.branchCount > 1 ? ` in ${deleteTarget.branchCount} branches` : ''}?`}
         confirmLabel="Delete"
         tone="destructive"
         onConfirm={confirmDelete}

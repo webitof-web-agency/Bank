@@ -80,7 +80,7 @@ export function DemandEntryDetailPage({ basePath = '/app/transactions/other/dema
         <div>
           <button type="button" onClick={() => navigate(basePath)} className="mb-2 inline-flex items-center gap-1 text-[13px] text-slate-500 hover:text-slate-800"><ArrowLeft size={14} /> Demand Entry</button>
           <h1 className="text-2xl font-bold text-slate-900">Demand List {entry.demandListNo}</h1>
-          <p className="text-[13px] text-slate-600">{entry.branchCode} - {entry.branchName} · {month} {entry.year} · {entry.demandListDate || 'no date'}</p>
+          <p className="text-[13px] text-slate-600">{entry.branchCount > 1 ? entry.branchName : `${entry.branchCode} - ${entry.branchName}`} · {month} {entry.year} · {entry.demandListDate || 'no date'}</p>
         </div>
         <div className="flex items-center gap-2">
           <DemandStatusPill status={entry.status} />
@@ -116,7 +116,7 @@ export function DemandEntryDetailPage({ basePath = '/app/transactions/other/dema
           <tbody className="divide-y divide-slate-100">
             {entry.lines.map((line) => (
               <tr key={line.id}>
-                <td className="px-3 py-2"><span className="font-medium">{line.memberCode}</span> {line.memberName}</td>
+                <td className="px-3 py-2"><span className="font-medium">{line.memberCode}</span> {line.memberName}{entry.branchCount > 1 && line.branchName ? <div className="text-[11px] text-slate-500">{line.branchCode} - {line.branchName}</div> : null}</td>
                 <td className="px-3 py-2 text-slate-600">{line.designation}</td>
                 {DEMAND_HEADS.map(([key]) => <td key={key} className="px-3 py-2 text-right">{Number(line[key]) ? formatAmount(line[key]) : '-'}</td>)}
                 <td className="px-3 py-2 text-right font-semibold">{formatAmount(demandLineTotal(line))}</td>
@@ -149,6 +149,8 @@ export function DemandEntryDetailPage({ basePath = '/app/transactions/other/dema
             members={members}
             fy={activeFY}
             locked={entry.recoveredCount > 0}
+            allowAllBranches
+            editingId={id}
           />
         ) : null}
       </Modal>
@@ -156,7 +158,7 @@ export function DemandEntryDetailPage({ basePath = '/app/transactions/other/dema
       <ConfirmDialog
         open={confirmOpen}
         title="Delete demand list"
-        description={`Delete demand list ${entry.demandListNo} and its ${entry.memberCount} member line(s)?`}
+        description={`Delete demand list ${entry.demandListNo} and its ${entry.memberCount} member line(s)${entry.branchCount > 1 ? ` in ${entry.branchCount} branches` : ''}?`}
         confirmLabel="Delete"
         tone="destructive"
         onConfirm={remove}
