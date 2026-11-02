@@ -2915,7 +2915,9 @@ async function loadLegacyPartyIndex(database) {
     database.query(`SELECT code, name, "branchCode", payload->'raw'->>'AccID' AS accid FROM members WHERE payload->'raw'->>'AccID' IS NOT NULL`),
     database.query(`SELECT code, name, "branchCode", payload->'raw'->>'AccID' AS accid FROM employees WHERE payload->'raw'->>'AccID' IS NOT NULL`),
     database.query(`SELECT code, name, payload->'raw'->>'AccID' AS accid FROM ledgers WHERE payload->'raw'->>'AccID' IS NOT NULL`),
-    database.query(`SELECT DISTINCT ON ("sourceDatabase", payload->'raw'->>'TransNo') "sourceDatabase" AS source_db, payload->'raw'->>'TransNo' AS trans_no, "memberCode" FROM legacy_historical_recovery ORDER BY "sourceDatabase", payload->'raw'->>'TransNo'`)
+    // One row per recovery voucher: its first member (legacy left the party
+    // empty) and how many members it covers (a monthly recovery: ~560).
+    database.query(`SELECT "sourceDatabase" AS source_db, payload->'raw'->>'TransNo' AS trans_no, min("memberCode") AS "memberCode", count(DISTINCT "memberCode")::int AS member_count FROM legacy_historical_recovery GROUP BY 1, 2`)
   ]);
 
   const byKindAccId = new Map();
@@ -2937,7 +2939,7 @@ async function loadLegacyPartyIndex(database) {
   for (const row of recoveryResult.rows) {
     const party = memberByCode.get(row.memberCode);
     if (party) {
-      recoveryPartyByKey.set(`${row.source_db}:${row.trans_no}`, party);
+      recoveryPartyByKey.set(`${row.source_db}:${row.trans_no}`, { ...party, memberCount: Number(row.member_count) || 1 });
     }
   }
 
@@ -2991,14 +2993,16 @@ function mapLegacyVoucherRow(row, partyIndex, { branchCode, partyTypeFilter, arc
     date: voucherDate,
     voucherCategory: catalogItem.label,
     transactionType: catalogItem.transactionType,
-    partyCode: party?.code || '',
-    partyLabel: party?.label || '',
+    partyCode: party?.memberCount > 1 ? '' : (party?.code || ''),
+    partyLabel: party?.memberCount > 1 ? `${party.memberCount} members` : (party?.label || ''),
     partyType: map.partyKind,
     branchCode: party?.branchCode || '',
     amount: Number(row.amount || raw.TotalAmt || 0),
     mode: raw.Paymode || '',
     narration: row.narration || raw.Narration || '',
     details: {
+      // A recovery covering several members has no single member to show.
+      ...(party?.memberCount > 1 ? { memberCount: party.memberCount } : {}),
       key: catalogItem.key,
       // The amount split, under the keys the app's own vouchers use (the
       // lists show Loan / LAD / home, vehicle and grain advance from them).

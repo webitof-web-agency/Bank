@@ -32,6 +32,14 @@ import { followSmsResult } from './smsToast';
 import { getMemberTransactionTypeByKey } from './memberConfig';
 import { useServerList } from '../../../lib/useServerList';
 
+// A recovery covers one member or many: a monthly one (legacy, or saved
+// here from the bank Excel) lists its member count instead of a name.
+function recoveryMemberCount(row = {}) {
+  if (Number(row.details?.memberCount) > 1) return Number(row.details.memberCount);
+  const lines = Array.isArray(row.details?.recoveryLines) ? row.details.recoveryLines : [];
+  return new Set(lines.map((line) => line?.member || line?.memberCode).filter(Boolean)).size;
+}
+
 export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '' }) {
   const navigate = useNavigate();
   const { token, pageAccess } = useAuth();
@@ -245,6 +253,13 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '
   const columns = useMemo(() => {
     const getMember = (code) => (lookups.members || []).find((row) => String(row.code || row.value || '').toUpperCase() === String(code || '').toUpperCase()) || null;
     const getBranch = (code) => getMember(code)?.branch || getMember(code)?.branchCode || '-';
+    // "N members" for a recovery covering several, else its one member.
+    const recoveryMemberLabel = (row) => {
+      const count = recoveryMemberCount(row);
+      if (count > 1) return `${count} members`;
+      const single = row.partyCode || row.details?.recoveryLines?.[0]?.member || '';
+      return single ? getTransactionPartyLabel(single, lookups, 'member') : (row.partyLabel || '-');
+    };
     const getDesignation = (code) => getMember(code)?.designation || '-';
 
     const actionsColumn = {
@@ -289,7 +304,7 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '
       return [
         { key: 'voucherNo', label: 'Voucher No', sortable: true, render: (row) => <span className="font-medium text-slate-900">{row.voucherNo || '-'}</span> },
         { key: 'date', label: 'Date', sortable: true, render: (row) => <span className="text-slate-700">{row.date || '-'}</span> },
-        { key: 'member', label: 'Member', sortable: true, sortField: 'partyCode', sortValue: (row) => getTransactionPartyLabel(row.partyCode, lookups, row.partyType), render: (row) => <span className="text-slate-700">{getTransactionPartyLabel(row.partyCode, lookups, row.partyType)}</span> },
+        { key: 'member', label: 'Member', sortable: true, sortField: 'partyCode', sortValue: (row) => recoveryMemberLabel(row), render: (row) => <span className={recoveryMemberCount(row) > 1 ? 'font-medium text-slate-900' : 'text-slate-700'}>{recoveryMemberLabel(row)}</span> },
         { key: 'mode', label: 'Mode', sortable: true, sortField: 'mode', render: (row) => <span className="text-slate-700">{formatTransactionModeLabel(row.details?.payMode || row.mode)}</span> },
         { key: 'instrument', label: 'Instrument', sortable: true, sortField: 'instrumentNo', render: (row) => <span className="text-slate-700">{row.instrumentNo || '-'}</span> },
         { key: 'amount', label: 'Amount', sortable: true, render: (row) => <span className="text-slate-700">{formatTransactionAmount(row.amount ?? 0)}</span> },
