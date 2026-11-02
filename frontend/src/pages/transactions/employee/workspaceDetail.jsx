@@ -24,6 +24,7 @@ import {
   getTransactionVoucherTitle,
   getVoucherSectionItem
 } from './transactionUtils';
+import { entryVariantFor } from '../../../lib/entryVariant';
 
 function DetailRow({ label, value }) {
   return (
@@ -416,7 +417,7 @@ export function EmployeeTransactionWorkspaceDetailPage({ sectionKey, itemKey }) 
         </div>
       </div>
 
-      <Modal
+      <Modal variant={entryVariantFor(record?.details?.key || draft?.details?.key || itemKey)}
         open={editorOpen}
         title={`Edit ${activeItem?.label || 'Employee Transaction'}`}
         subtitle={section?.description || 'Update employee transaction voucher details.'}

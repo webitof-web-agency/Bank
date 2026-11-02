@@ -55,8 +55,9 @@ export function EmployeeForm({
 
   return (
     <form
+      data-form-variant="neutral"
       id="employee-form"
-      className="flex flex-col rounded-2xl border border-slate-200 bg-white shadow-sm"
+      className="entry-surface flex flex-col rounded-2xl border border-slate-200 bg-white shadow-sm"
       onSubmit={(event) => event.preventDefault()}
     >
       

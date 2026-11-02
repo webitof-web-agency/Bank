@@ -3,7 +3,7 @@ import { ArchivedVoucherDialog, canChangeVoucherRow, deleteVoucherRow } from '..
 import { useConfirm } from '../../../components/overlays/ConfirmProvider';
 import { useNavigate } from 'react-router-dom';
 import { useServerList } from '../../../lib/useServerList';
-import { Eye, Edit2, Plus, Trash2 } from 'lucide-react';
+import { Eye, Edit2, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../api/api';
 import { Button } from '../../../components/ui/Button';
@@ -27,6 +27,8 @@ import {
   getTransactionVoucherTitle,
   getTransferVoucherAllocationTotal
 } from './transactionUtils';
+import { entryVariantFor } from '../../../lib/entryVariant';
+import { AddEntryButton } from '../../../components/ui/AddEntryButton';
 
 export function TransferVoucherTransactionWorkspacePage({ sectionKey, itemKey, detailPathBase }) {
   const navigate = useNavigate();
@@ -280,10 +282,7 @@ export function TransferVoucherTransactionWorkspacePage({ sectionKey, itemKey, d
         </div>
 
         <div className="flex gap-2">
-          <Button type="button" className="gap-2 bg-[var(--primary,#1661F6)] text-white hover:opacity-90" onClick={openCreate} disabled={!activeItem || !canCreate}>
-            <Plus size={16} />
-            Add Entry
-          </Button>
+          <AddEntryButton variant={entryVariantFor(activeItem?.key)} onClick={openCreate} disabled={!activeItem || !canCreate} />
         </div>
       </div>
 
@@ -291,7 +290,7 @@ export function TransferVoucherTransactionWorkspacePage({ sectionKey, itemKey, d
         <Table search={list.search} onSearch={list.setSearch} searchPlaceholder="Search voucher, member or narration" columns={columns} data={visibleRows} serverPagination={list.serverPagination} emptyMessage="No transfer voucher entries found." />
       </Card>
 
-      <Modal open={editorOpen} onClose={closeEditor} title={`${activeRecord ? 'Edit' : 'Create'} ${transactionLabel}`} footer={<div className="flex w-full justify-end gap-3">
+      <Modal variant={entryVariantFor(activeRecord?.details?.key || draft?.details?.key || activeItem?.key)} open={editorOpen} onClose={closeEditor} title={`${activeRecord ? 'Edit' : 'Create'} ${transactionLabel}`} footer={<div className="flex w-full justify-end gap-3">
           <Button type="button" variant="outline" onClick={closeEditor} disabled={saving}>Cancel</Button>
           <Button type="submit" form="transaction-voucher-form" className="bg-[var(--primary,#1661F6)] text-white hover:opacity-90" disabled={saving || !activeItem}>
             {saving ? 'Saving...' : activeRecord ? 'Update' : 'Save'}

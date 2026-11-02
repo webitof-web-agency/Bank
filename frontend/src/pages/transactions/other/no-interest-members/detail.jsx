@@ -223,7 +223,7 @@ export function NoInterestMemberDetailPage({ basePath = '/app/master/no-interest
         </div>
       </div>
 
-      <Modal
+      <Modal variant="neutral"
         open={editorOpen}
         title="Edit Record"
         onClose={closeEditor}

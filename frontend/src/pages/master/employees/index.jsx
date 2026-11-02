@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Edit2, Trash2, Eye, Key, Users, UserCheck, User, UserX } from 'lucide-react';
+import { Edit2, Trash2, Eye, Key, Users, UserCheck, User, UserX } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { useServerList } from '../../../lib/useServerList';
@@ -23,6 +23,7 @@ import {
 } from './employeeUtils';
 import { uploadDocumentMap } from '../documentUpload';
 import { EmployeeForm } from './form';
+import { AddEntryButton } from '../../../components/ui/AddEntryButton';
 
 function getEmployeeStatus(user) {
   if (!user) return 'Active';
@@ -356,10 +357,7 @@ export function EmployeesPage() {
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Manage Employees</h1>
         </div>
         {canCreate ? (
-          <Button onClick={openCreate} className="gap-2">
-            <Plus size={16} />
-            Add Employee
-          </Button>
+          <AddEntryButton variant="neutral" onClick={openCreate} />
         ) : null}
       </div>
 

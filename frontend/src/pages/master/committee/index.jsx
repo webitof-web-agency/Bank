@@ -107,7 +107,7 @@ export function CommitteePage() {
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <Card className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <Card data-form-variant="neutral" className="rounded-2xl border border-slate-200 bg-white entry-surface p-6 shadow-sm">
           <div className="mb-6 flex items-start gap-4">
             <div className="flex h-11 w-11 items-center justify-center rounded-[14px] bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary,#1661F6)] shrink-0">
               <ShieldCheck size={22} strokeWidth={1.5} />
@@ -133,7 +133,7 @@ export function CommitteePage() {
           </div>
         </Card>
 
-        <Card className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <Card data-form-variant="neutral" className="rounded-2xl border border-slate-200 bg-white entry-surface p-6 shadow-sm">
           <div className="mb-6 flex items-start gap-4">
             <div className="flex h-11 w-11 items-center justify-center rounded-[14px] bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary,#1661F6)] shrink-0">
               <BadgeCheck size={22} strokeWidth={1.5} />

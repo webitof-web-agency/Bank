@@ -27,6 +27,8 @@ import {
   getTransactionPartyLabel,
   getTransactionVoucherTitle
 } from './transactionUtils';
+import { entryVariantFor } from '../../../lib/entryVariant';
+import { AddEntryButton } from '../../../components/ui/AddEntryButton';
 
 // Interest Receive From Employee is an employee's voucher; the others a member's.
 function partyTypeFor(key = '') {
@@ -268,10 +270,7 @@ export function InterestVoucherWorkspacePage({ sectionKey, itemKey, detailPathBa
           </Button>
           
           {activeItem ? (
-            <Button type="button" className="gap-2 bg-[var(--primary,#1661F6)] text-white hover:opacity-90" onClick={() => openCreate(activeItem.key)}>
-              <Plus size={16} />
-              Add Entry
-            </Button>
+            <AddEntryButton variant={entryVariantFor(activeItem?.key)} onClick={() => openCreate(activeItem.key)} />
           ) : (
             <div className="relative">
               <Button
@@ -364,7 +363,7 @@ export function InterestVoucherWorkspacePage({ sectionKey, itemKey, detailPathBa
           />
       </Card>
 
-      <Modal
+      <Modal variant={entryVariantFor(activeRecord?.details?.key || draft?.details?.key || activeItem?.key)}
         open={editorOpen}
         onClose={closeEditor}
         title={`${activeRecord ? 'Edit' : 'Create'} ${activeItem?.label || 'Interest'}`}

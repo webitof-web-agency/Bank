@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useServerList } from '../../../../lib/useServerList';
-import { Ban, Edit2, Eye, Plus, Trash2, UserRound, Calendar, AlertCircle } from 'lucide-react';
+import { Ban, Edit2, Eye, Trash2, UserRound, Calendar, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../../api/api';
 import { useAuth } from '../../../../context/AuthContext';
@@ -12,6 +12,7 @@ import { ConfirmDialog } from '../../../../components/overlays/ConfirmDialog';
 import { Table } from '../../../../components/ui/Table';
 import { NoInterestMemberForm } from './form';
 import { buildNoInterestMemberPayload, createEmptyNoInterestMemberDraft, createNoInterestMemberDraftFromRecord, getEntryMemberLabel } from './noInterestMemberUtils';
+import { AddEntryButton } from '../../../../components/ui/AddEntryButton';
 
 function isActive(record) {
   return String(record?.status || 'Active').toLowerCase() !== 'inactive';
@@ -173,10 +174,7 @@ export function NoInterestMembersPage({ basePath = '/app/master/no-interest-memb
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">No Interest Members</h1>
         </div>
         {canCreate ? (
-          <Button onClick={openCreate} className="gap-2">
-            <Plus size={16} />
-            Add Entry
-          </Button>
+          <AddEntryButton variant="neutral" onClick={openCreate} />
         ) : null}
       </div>
 
@@ -219,7 +217,7 @@ export function NoInterestMembersPage({ basePath = '/app/master/no-interest-memb
         )}
       </Card>
 
-      <Modal
+      <Modal variant="neutral"
         open={editorOpen}
         title={activeRecord ? 'Edit Record' : 'Add Record'}
         onClose={closeEditor}

@@ -23,6 +23,7 @@ import {
   getVoucherSectionItem,
   getTransactionVoucherTitle
 } from './transactionUtils';
+import { entryVariantFor } from '../../../lib/entryVariant';
 
 function DetailRow({ label, value }) {
   return (
@@ -292,7 +293,7 @@ export function ReceiptVoucherWorkspaceDetailPage({ sectionKey, itemKey, detailP
         </div>
       </div>
 
-      <Modal 
+      <Modal variant={entryVariantFor(record?.details?.key || draft?.details?.key || itemKey)} 
         open={editorOpen} 
         onClose={closeEditor} 
         title="Edit Receipt" 

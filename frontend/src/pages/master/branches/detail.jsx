@@ -281,7 +281,7 @@ export function BranchDetailPage() {
           </div>
         </div>
 
-      <Modal
+      <Modal variant="neutral"
         open={editorOpen}
         title="Edit Branch"
         onClose={closeEditor}

@@ -26,6 +26,7 @@ import {
   getVoucherSectionItem,
   toCurrency
 } from './transactionUtils';
+import { entryVariantFor } from '../../../lib/entryVariant';
 
 function DetailRow({ label, value }) {
   return (
@@ -449,7 +450,7 @@ export function TransferVoucherTransactionWorkspaceDetailPage({ sectionKey, item
         </div>
       </div>
 
-      <Modal open={editorOpen} onClose={closeEditor} title={`Edit ${title}`} footer={<div className="flex w-full justify-end gap-3">
+      <Modal variant={entryVariantFor(record?.details?.key || draft?.details?.key || itemKey)} open={editorOpen} onClose={closeEditor} title={`Edit ${title}`} footer={<div className="flex w-full justify-end gap-3">
           <Button type="button" variant="outline" onClick={closeEditor} disabled={saving}>Cancel</Button>
           <Button type="submit" form="transaction-voucher-form" className="bg-[var(--primary,#1661F6)] text-white hover:opacity-90" disabled={saving}>
             {saving ? 'Saving...' : 'Save'}

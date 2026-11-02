@@ -211,7 +211,7 @@ export function DemandEntryPage({ detailPathBase = '/app/transactions/other/dema
         </div>
       </div>
 
-      <Modal
+      <Modal variant="neutral"
         open={Boolean(editor)}
         title={editor?.id ? `Edit Demand List ${editor?.draft?.demandListNo || ''}` : 'New Demand List'}
         onClose={() => setEditor(null)}

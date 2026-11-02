@@ -28,6 +28,8 @@ import {
   getTransactionVoucherTitle
 } from './transactionUtils';
 import { toneClassName } from './transactionUtils';
+import { entryVariantFor } from '../../../lib/entryVariant';
+import { AddEntryButton } from '../../../components/ui/AddEntryButton';
 
 export function OtherTransactionsPage({ sectionKey, itemKey, detailPathBase }) {
   const navigate = useNavigate();
@@ -299,10 +301,7 @@ export function OtherTransactionsPage({ sectionKey, itemKey, detailPathBase }) {
           </Button>
           
           {canCreate && directCreateItem ? (
-            <Button type="button" className="gap-2 bg-[var(--primary,#1661F6)] text-white hover:opacity-90" onClick={() => openCreate(directCreateItem.key)}>
-              <Plus size={16} />
-              Add Entry
-            </Button>
+            <AddEntryButton variant={entryVariantFor(directCreateItem?.key)} onClick={() => openCreate(directCreateItem.key)} />
           ) : (
           <div className="relative">
             {canCreate ? (
@@ -458,7 +457,7 @@ export function OtherTransactionsPage({ sectionKey, itemKey, detailPathBase }) {
           />
       </Card>
 
-      <Modal
+      <Modal variant={entryVariantFor(activeRecord?.details?.key || draft?.details?.key || activeItem?.key || directCreateItem?.key)}
         open={editorOpen}
         title={activeRecord ? `Edit ${draft?.voucherCategory || 'Transaction'}` : `Create ${draft?.voucherCategory || 'Transaction'}`}
         onClose={closeEditor}

@@ -242,3 +242,30 @@ button[class*="border-slate-200"]:not([class*="border-transparent"]),
 button[class*="border-slate-300"]:not([class*="border-transparent"]) {
   border-color: var(--border-input);
 }
+
+/* Entry-form backgrounds of the original desktop software (lib/entryVariant.js):
+   pink = paid out, green = received, mint = Recovery From Member (very subtle
+   green), neutral = masters / supporting entries. A Modal with `variant`, or a
+   page form marked class="entry-surface" data-form-variant="…", carries it; the colour covers the whole form
+   and the fields stay white so they read clearly. Unlayered on purpose: it
+   overrides the footer's bg-slate-50 and the fields' own backgrounds. */
+:root {
+  --entry-pink: #FBE3E0;   --entry-pink-edge: #F6D2CD;
+  --entry-green: #E7F4E8;  --entry-green-edge: #D3EAD6;
+  --entry-mint: #F2F9F3;   --entry-mint-edge: #E3F0E5;
+  --entry-neutral: #FFFDF9; --entry-neutral-edge: #F6F2E9;
+  --entry-pink-action: #C2486A;
+  --entry-green-action: #2F8F5B;
+}
+[data-form-variant="pink"]    { --entry-bg: var(--entry-pink);    --entry-edge: var(--entry-pink-edge); }
+[data-form-variant="green"]   { --entry-bg: var(--entry-green);   --entry-edge: var(--entry-green-edge); }
+[data-form-variant="mint"]    { --entry-bg: var(--entry-mint);    --entry-edge: var(--entry-mint-edge); }
+[data-form-variant="neutral"] { --entry-bg: var(--entry-neutral); --entry-edge: var(--entry-neutral-edge); }
+[role="dialog"][data-form-variant],
+.entry-surface[data-form-variant] { background-color: var(--entry-bg); }
+[role="dialog"][data-form-variant] > .modal-head,
+[role="dialog"][data-form-variant] > .modal-foot { background-color: var(--entry-edge); }
+[data-form-variant] :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]), select, textarea):not(:disabled):not([readonly]) {
+  background-color: #fff;
+}
+

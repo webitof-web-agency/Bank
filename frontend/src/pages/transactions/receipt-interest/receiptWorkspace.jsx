@@ -26,6 +26,8 @@ import {
   getTransactionPartyLabel,
   getTransactionVoucherTitle
 } from './transactionUtils';
+import { entryVariantFor } from '../../../lib/entryVariant';
+import { AddEntryButton } from '../../../components/ui/AddEntryButton';
 
 export function ReceiptVoucherWorkspacePage({ sectionKey, itemKey, detailPathBase }) {
   const navigate = useNavigate();
@@ -264,10 +266,7 @@ export function ReceiptVoucherWorkspacePage({ sectionKey, itemKey, detailPathBas
           </Button>
           
           {activeItem ? (
-            <Button type="button" className="gap-2 bg-[var(--primary,#1661F6)] text-white hover:opacity-90" onClick={() => openCreate(activeItem.key)}>
-              <Plus size={16} />
-              Add Entry
-            </Button>
+            <AddEntryButton variant={entryVariantFor(activeItem?.key)} onClick={() => openCreate(activeItem.key)} />
           ) : (
             <div className="relative">
               <Button
@@ -364,7 +363,7 @@ export function ReceiptVoucherWorkspacePage({ sectionKey, itemKey, detailPathBas
         )}
       </Card>
 
-      <Modal
+      <Modal variant={entryVariantFor(activeRecord?.details?.key || draft?.details?.key || activeItem?.key)}
         open={editorOpen}
         onClose={closeEditor}
         title={activeRecord ? 'Edit Receipt' : 'Create Receipt'}

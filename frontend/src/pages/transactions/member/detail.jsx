@@ -29,6 +29,7 @@ import {
 } from './transactionUtils';
 import { toneClassName } from './transactionUtils';
 import { followSmsResult } from './smsToast';
+import { entryVariantFor } from '../../../lib/entryVariant';
 
 export function DetailRow({ label, value }) {
   return (
@@ -851,7 +852,7 @@ export function MemberTransactionDetailPage({
         </div>
       </div>
 
-      <Modal
+      <Modal variant={entryVariantFor(record?.details?.key || draft?.details?.key || currentItemKey)}
         open={editorOpen}
         title="Edit"
         subtitle={section?.description || 'Update transaction voucher details.'}

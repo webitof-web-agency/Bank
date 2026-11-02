@@ -27,6 +27,8 @@ import {
   getTransactionPartyLabel,
   getTransactionVoucherTitle
 } from './transactionUtils';
+import { entryVariantFor } from '../../../lib/entryVariant';
+import { AddEntryButton } from '../../../components/ui/AddEntryButton';
 
 function matchesWorkspaceRow(row, itemKey, activeItems = []) {
   const normalizedKey = String(itemKey || '').trim().toLowerCase();
@@ -322,10 +324,7 @@ export function BankTransactionWorkspacePage({ sectionKey, itemKey = '', detailP
           </Button>
           
           {activeItem ? (
-            <Button type="button" className="gap-2 bg-[var(--primary,#1661F6)] text-white hover:opacity-90" onClick={() => openCreate(activeItem.key)}>
-              <Plus size={16} />
-              Add Entry
-            </Button>
+            <AddEntryButton variant={entryVariantFor(activeItem?.key)} onClick={() => openCreate(activeItem.key)} />
           ) : (
             <div className="relative">
               <Button
@@ -432,7 +431,7 @@ export function BankTransactionWorkspacePage({ sectionKey, itemKey = '', detailP
           />
       </Card>
 
-      <Modal
+      <Modal variant={entryVariantFor(activeRecord?.details?.key || draft?.details?.key || activeItem?.key)}
         open={editorOpen}
         title={activeRecord ? `Edit ${draft?.voucherCategory || activeItem?.label || 'Transaction'}` : `Create ${draft?.voucherCategory || activeItem?.label || 'Transaction'}`}
         onClose={closeEditor}

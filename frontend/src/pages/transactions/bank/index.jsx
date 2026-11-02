@@ -27,6 +27,7 @@ import {
   getTransactionVoucherTitle
 } from './transactionUtils';
 import { toneClassName } from './transactionUtils';
+import { entryVariantFor } from '../../../lib/entryVariant';
 
 export function BankTransactionsPage({ sectionKey, detailPathBase }) {
   const navigate = useNavigate();
@@ -460,7 +461,7 @@ export function BankTransactionsPage({ sectionKey, detailPathBase }) {
         )}
       </Card>
 
-      <Modal
+      <Modal variant={entryVariantFor(activeRecord?.details?.key || draft?.details?.key)}
         open={editorOpen}
         title={activeRecord ? `Edit ${draft?.voucherCategory || 'Transaction'}` : `Create ${draft?.voucherCategory || 'Transaction'}`}
         onClose={closeEditor}

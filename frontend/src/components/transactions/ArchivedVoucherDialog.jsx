@@ -4,6 +4,7 @@ import { api } from '../../api/api';
 import { useAuth } from '../../context/AuthContext';
 import { useConfirm } from '../overlays/ConfirmProvider';
 import { Modal } from '../ui/Modal';
+import { entryVariantFor } from '../../lib/entryVariant';
 import { Button } from '../ui/Button';
 import { Input, Textarea } from '../ui/Input';
 
@@ -166,6 +167,8 @@ export function ArchivedVoucherDialog({ voucher, onClose, onSaved }) {
 
   return (
     <Modal
+      // Same colour as the transaction's own Add / Edit form.
+      variant={entryVariantFor(voucher)}
       open={open}
       onClose={onClose}
       fill={data?.enteredBy === 'lines'}

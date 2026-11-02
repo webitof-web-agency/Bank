@@ -31,6 +31,8 @@ import { toneClassName } from './transactionUtils';
 import { followSmsResult } from './smsToast';
 import { getMemberTransactionTypeByKey } from './memberConfig';
 import { useServerList } from '../../../lib/useServerList';
+import { entryVariantFor } from '../../../lib/entryVariant';
+import { AddEntryButton } from '../../../components/ui/AddEntryButton';
 
 // A recovery covers one member or many: a monthly one (legacy, or saved
 // here from the bank Excel) lists its member count instead of a name.
@@ -367,10 +369,7 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '
           </Button>
           
           {!canCreate ? null : activeItem ? (
-            <Button type="button" className="gap-2 bg-[var(--primary,#1661F6)] text-white hover:opacity-90" onClick={() => openCreate(activeItem.key)}>
-              <Plus size={16} />
-              Add Entry
-            </Button>
+            <AddEntryButton variant={entryVariantFor(activeItem?.key)} onClick={() => openCreate(activeItem.key)} />
           ) : (
             <div className="relative">
               <Button
@@ -524,7 +523,7 @@ export function MemberTransactionsPage({ sectionKey, detailPathBase, itemKey = '
           />
       </Card>
 
-      <Modal
+      <Modal variant={entryVariantFor(activeRecord?.details?.key || draft?.details?.key || activeItem?.key)}
         open={editorOpen}
         title={activeRecord ? `Edit ${draft?.voucherCategory || activeItem?.label || 'Transaction'}` : `Create ${draft?.voucherCategory || activeItem?.label || 'Transaction'}` }
         subtitle={null}

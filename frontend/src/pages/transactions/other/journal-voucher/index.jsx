@@ -14,6 +14,7 @@ import { useFY } from '../../../../context/FYContext';
 import { useServerList } from '../../../../lib/useServerList';
 import { formatTransactionAmount } from '../transactionUtils';
 import { emptyJournalDraft, journalDraftFromRecord, journalPayload, journalTotals } from './journalUtils';
+import { AddEntryButton } from '../../../../components/ui/AddEntryButton';
 
 // Transactions -> Other -> Journal Voucher: a balanced entry across any
 // ledgers (year-end interest, depreciation, profit appropriation, ...).
@@ -122,9 +123,7 @@ export function JournalVoucherPage() {
           <p className="mt-1 text-sm text-slate-500">A balanced entry across any ledgers: total debit must equal total credit.</p>
         </div>
         {canCreate ? (
-          <Button type="button" className="gap-2" onClick={() => setEditor({ id: null, draft: emptyJournalDraft() })}>
-            <Plus size={16} /> Add Entry
-          </Button>
+          <AddEntryButton variant="neutral" onClick={() => setEditor({ id: null, draft: emptyJournalDraft() })} />
         ) : null}
       </div>
 
@@ -132,7 +131,7 @@ export function JournalVoucherPage() {
         <Table columns={columns} data={list.rows} serverPagination={list.serverPagination} emptyMessage={loading ? 'Loading...' : 'No journal vouchers in this year'} />
       </Card>
 
-      <Modal
+      <Modal variant="neutral"
         open={Boolean(editor)}
         title={editor?.id ? 'Edit Journal Voucher' : 'New Journal Voucher'}
         onClose={() => setEditor(null)}

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useServerList } from '../../../lib/useServerList';
-import { Building2, Edit2, Eye, GitBranch, Plus, Trash2, MapPin, Phone } from 'lucide-react';
+import { Building2, Edit2, Eye, GitBranch, Trash2, MapPin, Phone } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../api/api';
 import { useAuth } from '../../../context/AuthContext';
@@ -12,6 +12,7 @@ import { ConfirmDialog } from '../../../components/overlays/ConfirmDialog';
 import { Table } from '../../../components/ui/Table';
 import { BranchForm } from './form';
 import { buildBranchPayload, createBranchDraftFromRecord, createEmptyBranchDraft } from './branchUtils';
+import { AddEntryButton } from '../../../components/ui/AddEntryButton';
 
 function isActiveBranch(branch) {
   return branch?.isActive !== false;
@@ -137,10 +138,7 @@ export function BranchesPage() {
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Manage Branches</h1>
         </div>
         {canCreate ? (
-          <Button onClick={openCreate} className="gap-2">
-            <Plus size={16} />
-            Add Branch
-          </Button>
+          <AddEntryButton variant="neutral" onClick={openCreate} />
         ) : null}
       </div>
 
@@ -183,7 +181,7 @@ export function BranchesPage() {
         )}
       </Card>
 
-      <Modal
+      <Modal variant="neutral"
         open={editorOpen}
         title={activeRecord ? 'Edit Branch' : 'Add Branch'}
         onClose={closeEditor}

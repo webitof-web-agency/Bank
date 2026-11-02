@@ -414,7 +414,7 @@ export function RatesPage() {
           {/* Main Content Area */}
           <div className="flex-1 overflow-hidden">
             {activeTab === 'interest' && (
-              <Card className="animate-in fade-in slide-in-from-bottom-2 duration-300 rounded-[1.75rem] border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+              <Card data-form-variant="neutral" className="animate-in fade-in slide-in-from-bottom-2 duration-300 rounded-[1.75rem] border border-slate-200 bg-white entry-surface p-6 shadow-sm sm:p-8">
                 <div className="mb-6 flex items-center justify-between gap-4">
                   <div>
                     <h2 className="text-xl font-semibold tracking-tight text-slate-900">Interest Rate's</h2>
@@ -543,7 +543,7 @@ export function RatesPage() {
             )}
 
             {activeTab === 'dividend' && (
-              <Card className="animate-in fade-in slide-in-from-bottom-2 duration-300 rounded-[1.75rem] border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+              <Card data-form-variant="neutral" className="animate-in fade-in slide-in-from-bottom-2 duration-300 rounded-[1.75rem] border border-slate-200 bg-white entry-surface p-6 shadow-sm sm:p-8">
                 <div className="mb-6 flex items-center justify-between gap-4">
                   <div>
                     <h2 className="text-xl font-semibold tracking-tight text-slate-900">Dividend</h2>
@@ -643,7 +643,7 @@ export function RatesPage() {
             )}
 
             {activeTab === 'limits' && (
-              <Card className="animate-in fade-in slide-in-from-bottom-2 duration-300 rounded-[1.75rem] border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+              <Card data-form-variant="neutral" className="animate-in fade-in slide-in-from-bottom-2 duration-300 rounded-[1.75rem] border border-slate-200 bg-white entry-surface p-6 shadow-sm sm:p-8">
                 <div className="mb-6 flex items-center justify-between gap-4">
                   <div>
                     <h2 className="text-xl font-semibold tracking-tight text-slate-900">Limits</h2>
@@ -714,7 +714,7 @@ export function RatesPage() {
             )}
 
             {activeTab === 'demand' && (
-              <Card className="animate-in fade-in slide-in-from-bottom-2 duration-300 rounded-[1.75rem] border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+              <Card data-form-variant="neutral" className="animate-in fade-in slide-in-from-bottom-2 duration-300 rounded-[1.75rem] border border-slate-200 bg-white entry-surface p-6 shadow-sm sm:p-8">
                 <div className="mb-6 flex items-center justify-between gap-4">
                   <div>
                     <h2 className="text-xl font-semibold tracking-tight text-slate-900">Demand List Amount</h2>

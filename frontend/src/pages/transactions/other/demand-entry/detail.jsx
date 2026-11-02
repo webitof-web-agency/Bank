@@ -128,7 +128,7 @@ export function DemandEntryDetailPage({ basePath = '/app/transactions/other/dema
       </div>
       {entry.remarks ? <p className="text-[13px] text-slate-600">Remarks: {entry.remarks}</p> : null}
 
-      <Modal
+      <Modal variant="neutral"
         open={Boolean(draft)}
         title={`Edit Demand List ${entry.demandListNo}`}
         onClose={() => setDraft(null)}

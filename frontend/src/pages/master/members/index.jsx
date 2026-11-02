@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Edit2, Trash2, Eye, Users, UserCheck, UserX, Building2, BookOpen } from 'lucide-react';
+import { Edit2, Trash2, Eye, Users, UserCheck, UserX, Building2, BookOpen } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { useServerList } from '../../../lib/useServerList';
@@ -24,6 +24,7 @@ import {
   formatMoney
 } from './memberUtils';
 import { uploadDocumentMap } from '../documentUpload';
+import { AddEntryButton } from '../../../components/ui/AddEntryButton';
 
 function getMemberStatus(member) {
   if (!member) return 'Active';
@@ -267,10 +268,7 @@ export function MembersPage() {
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Manage Members</h1>
         </div>
         {canCreate ? (
-          <Button onClick={openCreate} className="gap-2">
-            <Plus size={16} />
-            Add Member
-          </Button>
+          <AddEntryButton variant="neutral" onClick={openCreate} />
         ) : null}
       </div>
 

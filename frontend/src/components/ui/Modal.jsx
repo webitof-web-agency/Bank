@@ -16,7 +16,10 @@ const FILL_WIDTH = 'min(1800px, 98vw)';
 
 // bare: no header row at all; the content draws its own title and close
 // button (ConfirmDialog).
-export function Modal({ open, title, subtitle, children, onClose, footer, width, wide = false, fill = false, hideHeader = false, bare = false, overflowVisible = false }) {
+// variant: the entry-form colour ('pink' | 'green' | 'mint' | 'neutral', see
+// lib/entryVariant.js) over the whole dialog — header, body and footer —
+// with the fields kept white (styles.css [data-form-variant]).
+export function Modal({ open, title, subtitle, children, onClose, footer, width, wide = false, fill = false, hideHeader = false, bare = false, overflowVisible = false, variant = '' }) {
   const modalRef = useRef();
 
   if (!open) return null;
@@ -39,6 +42,7 @@ export function Modal({ open, title, subtitle, children, onClose, footer, width,
             : { maxWidth: width || (wide ? WIDE_WIDTH : DEFAULT_WIDTH), maxHeight: 'min(85vh, 800px)' }}
           role="dialog"
           data-dialog={wide || fill ? 'wide' : 'form'}
+          data-form-variant={variant || undefined}
           aria-modal="true"
           aria-label={title}
         >
@@ -49,7 +53,7 @@ export function Modal({ open, title, subtitle, children, onClose, footer, width,
               </Button>
             </div>
           ) : (
-            <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-3 shrink-0">
+            <div className="modal-head flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-3 shrink-0">
               <div>
                 <h3 className="text-lg font-semibold text-[var(--text-main)]">{title}</h3>
                 {subtitle ? <p className="mt-1 text-[13px] text-[var(--text-muted)]">{subtitle}</p> : null}
@@ -60,7 +64,7 @@ export function Modal({ open, title, subtitle, children, onClose, footer, width,
             </div>
           )}
           <div className={`${bare ? 'px-5 pb-5 pt-5' : hideHeader ? 'px-5 pb-5 pt-2' : fill ? 'px-4 py-3' : 'px-5 py-4'} ${fill ? 'min-h-0 flex-1' : ''} ${overflowVisible ? 'overflow-visible' : 'overflow-y-auto'}`}><DialogContext.Provider value>{children}</DialogContext.Provider></div>
-          {footer ? <div className="rounded-b-2xl border-t border-slate-200 px-5 py-3 bg-slate-50 shrink-0">{footer}</div> : null}
+          {footer ? <div className="modal-foot rounded-b-2xl border-t border-slate-200 px-5 py-3 bg-slate-50 shrink-0">{footer}</div> : null}
         </div>
       </div>
     </div>

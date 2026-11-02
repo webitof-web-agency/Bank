@@ -239,7 +239,7 @@ export function SocietyDetailsPage() {
         <p className="mt-1 text-sm text-slate-500">Registered society identity used on letterheads and printed reports.</p>
       </div>
 
-      <Card className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <Card data-form-variant="neutral" className="rounded-2xl border border-slate-200 bg-white entry-surface p-6 shadow-sm">
         <form className="space-y-6" onSubmit={saveDetails}>
           <div className="grid gap-6 md:grid-cols-2">
             <Field label="Society Name" icon={Building2}>

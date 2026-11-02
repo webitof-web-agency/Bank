@@ -278,7 +278,7 @@ export function LedgerDetailPage() {
         </div>
       </div>
 
-      <Modal
+      <Modal variant="neutral"
         open={editorOpen}
         title="Edit Ledger"
         onClose={closeEditor}

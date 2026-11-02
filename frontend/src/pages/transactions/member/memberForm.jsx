@@ -222,6 +222,7 @@ function RecoveryMemberDialog({ state, onClose, onSave, memberGroups = [], looku
 
   return (
     <Modal
+      variant="mint"
       open
       title={editing ? `Edit Recovery — ${member}` : 'Add Recovery Record'}
       onClose={onClose}
@@ -489,6 +490,7 @@ function DemandPickerDialog({ open, onClose, onAdd, lookups = {}, voucherDate = 
 
   return (
     <Modal
+      variant="mint"
       open
       title="Add From Demand List"
       subtitle="Load the month's demand (Demand Entry, else each member's Monthly Demand Data), then Load Excel: each member's Excel amount fills their demand CD → SSA → Reg. Loan → LAD. More than the demand is red; nothing in the Excel means no entry for the month. Lines can still be corrected before Save."

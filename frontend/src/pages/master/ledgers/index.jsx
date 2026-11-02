@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useServerList } from '../../../lib/useServerList';
-import { BookOpen, Edit2, Eye, Landmark, Plus, Trash2, TrendingDown, TrendingUp } from 'lucide-react';
+import { BookOpen, Edit2, Eye, Landmark, Trash2, TrendingDown, TrendingUp } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../api/api';
 import { useAuth } from '../../../context/AuthContext';
@@ -12,6 +12,7 @@ import { ConfirmDialog } from '../../../components/overlays/ConfirmDialog';
 import { Table } from '../../../components/ui/Table';
 import { LedgerForm } from './form';
 import { buildLedgerPayload, createEmptyLedgerDraft, createLedgerDraftFromRecord, formatMoney } from './ledgerUtils';
+import { AddEntryButton } from '../../../components/ui/AddEntryButton';
 
 function getLedgerNature(ledger) {
   return String(ledger?.nature || 'ASSET').toUpperCase();
@@ -147,10 +148,7 @@ export function LedgersPage() {
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Manage Ledgers</h1>
         </div>
         {canCreate ? (
-          <Button onClick={openCreate} className="gap-2">
-            <Plus size={16} />
-            Add Ledger
-          </Button>
+          <AddEntryButton variant="neutral" onClick={openCreate} />
         ) : null}
       </div>
 
@@ -193,7 +191,7 @@ export function LedgersPage() {
         )}
       </Card>
 
-      <Modal
+      <Modal variant="neutral"
         open={editorOpen}
         title={activeRecord ? 'Edit Ledger' : 'Add Ledger'}
         onClose={closeEditor}

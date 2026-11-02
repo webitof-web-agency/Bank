@@ -3,7 +3,7 @@ import { ArchivedVoucherDialog, canChangeVoucherRow, deleteVoucherRow } from '..
 import { useConfirm } from '../../../components/overlays/ConfirmProvider';
 import { useNavigate } from 'react-router-dom';
 import { useServerList } from '../../../lib/useServerList';
-import { Plus, Eye, Edit2, Trash2, Filter, X } from 'lucide-react';
+import { Eye, Edit2, Trash2, Filter, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../api/api';
 import { Button } from '../../../components/ui/Button';
@@ -27,6 +27,8 @@ import {
   getTransactionVoucherTitle,
   getEmployeeComponentTotal
 } from './transactionUtils';
+import { entryVariantFor } from '../../../lib/entryVariant';
+import { AddEntryButton } from '../../../components/ui/AddEntryButton';
 
 export function EmployeeTransactionWorkspacePage({ sectionKey, itemKey, detailPathBase }) {
   const navigate = useNavigate();
@@ -322,10 +324,7 @@ export function EmployeeTransactionWorkspacePage({ sectionKey, itemKey, detailPa
             <Filter size={14} />
             Filter
           </Button>
-          <Button type="button" className="gap-2 bg-[var(--primary,#1661F6)] text-white hover:opacity-90" onClick={openCreate} disabled={!activeItem}>
-            <Plus size={16} />
-            Add Entry
-          </Button>
+          <AddEntryButton variant={entryVariantFor(activeItem?.key)} onClick={openCreate} disabled={!activeItem} />
         </div>
       </div>
 
@@ -367,7 +366,7 @@ export function EmployeeTransactionWorkspacePage({ sectionKey, itemKey, detailPa
         />
       </Card>
 
-      <Modal
+      <Modal variant={entryVariantFor(activeRecord?.details?.key || draft?.details?.key || activeItem?.key)}
         open={editorOpen}
         title={activeRecord ? `Edit ${activeItem?.label || 'Employee Transaction'}` : `Create ${activeItem?.label || 'Employee Transaction'}`}
         onClose={closeEditor}
