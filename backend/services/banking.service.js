@@ -5106,6 +5106,14 @@ async function appVouchersInArchivedWindow({ from, to, ledgers }) {
   };
 }
 
+// The Transfer Adjustment account is the app's link between the two halves
+// of a legacy one-sided pair (a cheque / MAIL recovery and the Deposit in
+// Bank that banks it). Legacy has no such account, so its Cash Book shows
+// only the real heads (members' heads Cr, Bank Saving Dr); the app's does too.
+function isTransferAdjustmentLedger(ledger = {}) {
+  return ledger.semanticRole === ACCOUNTING_ROLES.TRANSFER_ADJUSTMENT;
+}
+
 async function buildLegacyCashBook({ from, to, ledgers }) {
   const window = await legacyCashWindow({ from, to, ledgers });
   if (!window) return null;
@@ -5122,7 +5130,7 @@ async function buildLegacyCashBook({ from, to, ledgers }) {
   for (const line of app.lines) {
     if (String(line.ledgerId) === app.cashLedgerId) continue;
     const ledger = ledgerById.get(String(line.ledgerId));
-    if (!ledger) continue;
+    if (!ledger || isTransferAdjustmentLedger(ledger)) continue;
     book.add(cleanUpper(ledger.code), toNumber(line.creditAmount, 0), toNumber(line.debitAmount, 0), app.cashVoucherIds.has(String(line.voucherId)));
   }
 
@@ -5164,7 +5172,7 @@ async function buildLiveCashBook({ from, to, ledgers, branchCode = '' }) {
   for (const line of lines) {
     if (String(line.ledgerId) === cashLedgerId) continue;
     const ledger = ledgerById.get(String(line.ledgerId));
-    if (!ledger) continue;
+    if (!ledger || isTransferAdjustmentLedger(ledger)) continue;
     book.add(cleanUpper(ledger.code), toNumber(line.creditAmount, 0), toNumber(line.debitAmount, 0), cashVoucherIds.has(String(line.voucherId)));
   }
 
