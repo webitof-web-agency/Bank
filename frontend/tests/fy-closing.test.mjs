@@ -3,40 +3,15 @@ import { after, before, test } from 'node:test';
 import { createServer } from 'vite';
 
 let fy;
-let journal;
 let vite;
 
 before(async () => {
   vite = await createServer({ appType: 'custom', configFile: false, server: { hmr: false, middlewareMode: true } });
   fy = await vite.ssrLoadModule('/src/pages/settings/fyClosing/fyClosingUtils.js');
-  journal = await vite.ssrLoadModule('/src/pages/transactions/other/journal-voucher/journalUtils.js');
 });
 
 after(async () => {
   await vite?.close();
-});
-
-test('journal voucher: balanced only when debit equals credit to the paisa and every amount has a ledger', () => {
-  const lines = [
-    { ledgerCode: '63', debit: '1000.10', credit: '' },
-    { ledgerCode: '6', debit: '', credit: '1000.1' }
-  ];
-  assert.deepEqual(journal.journalTotals(lines), { debit: 1000.1, credit: 1000.1, balanced: true });
-  assert.equal(journal.journalTotals([{ ledgerCode: '63', debit: '10' }, { ledgerCode: '6', credit: '9.99' }]).balanced, false);
-  assert.equal(journal.journalTotals([{ ledgerCode: '', debit: '10' }, { ledgerCode: '6', credit: '10' }]).balanced, false);
-});
-
-test('journal voucher payload: only lines with a ledger and an amount, as numbers', () => {
-  const payload = journal.journalPayload({
-    date: '2027-03-31',
-    narration: 'Depreciation',
-    lines: [{ ledgerCode: '88', debit: '500', credit: '' }, { ledgerCode: '20', debit: '', credit: '500' }, { ledgerCode: '', debit: '', credit: '' }]
-  });
-  assert.equal(payload.details.key, 'journal-voucher');
-  assert.deepEqual(payload.details.journalLines, [{ ledgerCode: '88', debit: 500, credit: 0 }, { ledgerCode: '20', debit: 0, credit: 500 }]);
-  const draft = journal.journalDraftFromRecord({ date: '2027-03-31', narration: 'x', details: { journalLines: payload.details.journalLines } });
-  assert.equal(draft.lines.length, 2);
-  assert.equal(draft.lines[0].debit, '500');
 });
 
 test('appropriation: optional, remaining to the paisa, over-allocation, missing and duplicate fund are caught', () => {

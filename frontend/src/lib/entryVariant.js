@@ -33,7 +33,6 @@ export const ENTRY_VARIANT_BY_KEY = {
   // Not in the original colour list: receipts are green.
   'interest-recv-member': 'green',
   'interest-recv-employee': 'green',
-  'journal-voucher': 'neutral',
   'no-interest-members': 'neutral',
   'demand-entry': 'neutral'
 };

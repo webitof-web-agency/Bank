@@ -26,6 +26,11 @@ const { initializeDatabase } = require('../../config/postgres');
 const fyLock = require('./fyLock');
 const yearInterest = require('./yearInterest.service');
 
+// The year-end entries are journal vouchers. The Journal Voucher page (and its
+// catalog entry, which used to supply these) was removed on 2026-11-03, so
+// the close names them itself and passes meta.systemJournal to be allowed.
+const SYSTEM_JOURNAL_FIELDS = { voucherCategory: 'Journal Voucher', transactionType: 'journal', accent: 'sky', mode: 'Journal', partyType: 'ledger' };
+
 const LEGACY_FYS = ['2021-22', '2022-23', '2023-24', '2024-25', '2025-26'];
 const SOURCE_DATABASE = 'APP-FY-CLOSE';
 
@@ -375,8 +380,9 @@ async function closeYear(fy, { appropriation = [], remarks = '', includeEmployee
       const voucher = await banking.createVoucher({
         date: bounds.end,
         narration: `Year-end interest FY ${fy} (members and staff, as computed at close)`,
+        ...SYSTEM_JOURNAL_FIELDS,
         details: { key: 'journal-voucher', system: 'fy-close', fy, part: 'interest', journalLines: interest.lines }
-      }, meta);
+      }, { ...meta, systemJournal: true });
       created.push(String(voucher.id || voucher._id));
     }
     if (lines.length) {
@@ -389,8 +395,9 @@ async function closeYear(fy, { appropriation = [], remarks = '', includeEmployee
       const voucher = await banking.createVoucher({
         date: bounds.end,
         narration: `Appropriation of ${profit >= 0 ? 'net profit' : 'net loss'} FY ${fy}`,
+        ...SYSTEM_JOURNAL_FIELDS,
         details: { key: 'journal-voucher', system: 'fy-close', fy, part: 'appropriation', journalLines }
-      }, meta);
+      }, { ...meta, systemJournal: true });
       created.push(String(voucher.id || voucher._id));
     }
     previousInterest = await writeOpenings(db, fy, members, employees, bounds.nextStart, bounds.start);

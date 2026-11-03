@@ -1129,7 +1129,6 @@ const TRANSACTION_CATALOG = [
     description: 'Other transactions and support forms.',
     permission: 'transactions.receipt-interest.view',
     items: [
-      { key: 'journal-voucher', label: 'Journal Voucher', description: 'Balanced entry across any ledgers (year-end interest, depreciation, profit appropriation).', voucherCategory: 'Journal Voucher', transactionType: 'journal', accent: 'sky', mode: 'Journal', documents: [], route: '/app/transactions/other/journal-voucher' },
       { key: 'payment-voucher', label: 'Payment Voucher', description: 'General payment entry.', voucherCategory: 'Payment Voucher', transactionType: 'payment', accent: 'pink', mode: 'Payment', documents: [] },
       { key: 'receipt-voucher', label: 'Receipt Voucher', description: 'General receipt entry for the society.', voucherCategory: 'Receipt Voucher', transactionType: 'receipt', accent: 'emerald', mode: 'Receipt', documents: [] },
       { key: 'no-interest-members', label: 'No Interest Members', description: 'Members excluded from interest calculation.', voucherCategory: 'No Interest Members', transactionType: 'support', accent: 'amber', mode: 'Master Link', route: '/app/transactions/other/no-interest-members' },
@@ -6918,7 +6917,17 @@ async function assertPartyMemberAccess(payload = {}, user = {}) {
 // back with it) and sent only after it commits; an SMS failure never fails
 // the save. `sms` on the response is the queued state (PENDING, or SKIPPED
 // with a reason); the page follows the send with GET .../vouchers/:id/sms.
+// The Journal Voucher page was removed (user, 2026-11-03): only the year-end
+// close still posts journal entries (its interest and profit appropriation),
+// and it says so with meta.systemJournal.
+function assertNoManualJournal(data = {}, meta = {}) {
+  if (cleanLower(data?.details?.key) === 'journal-voucher' && !meta.systemJournal) {
+    throw recoveryHttpError('Journal Voucher has been removed; year-end entries are made by Financial Year Closing.');
+  }
+}
+
 async function createVoucher(data = {}, meta = {}) {
+  assertNoManualJournal(data, meta);
   await assertFilesAttachable(data, {}, meta.actorUserId || meta.actorUser?.id);
   const { response, smsQueued } = await withTransaction(async (tx) => {
     const branchCode = resolveBranchCode(meta.actorUser || {}, data.branchCode);
@@ -6993,6 +7002,7 @@ async function updateVoucher(id, data = {}, meta = {}) {
     assertVoucherBranchAccess(current.toObject(), meta.actorUser);
     await assertFilesAttachable(data, current.toObject(), meta.actorUserId || meta.actorUser?.id);
     const payload = normalizeVoucher({ ...current.toObject(), ...data });
+    assertNoManualJournal(payload, meta);
     assertVoucherBasics(payload, { ...current.toObject(), ...data });
     // Neither the old date nor the new one may be in a closed FY.
     await fyLock.assertDatesOpen([current.date, payload.date], { allowFy: meta.allowClosedFy });

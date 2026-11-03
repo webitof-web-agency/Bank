@@ -211,7 +211,7 @@ export function FinancialYearClosingPage() {
 
               <div className="grid gap-6 lg:grid-cols-2">
                 <div className="space-y-2">
-                  <p className="text-sm font-semibold text-slate-700">Year-end interest (Journal Voucher dated {formatDate(preview.end)})</p>
+                  <p className="text-sm font-semibold text-slate-700">Year-end interest (journal entry dated {formatDate(preview.end)})</p>
                   <p className="text-[12px] text-slate-500">Calculated the way the old software did, at CD {preview.rates.cd}%, SSA {preview.rates.ssa}%, loan {preview.rates.loan}%, LAD {preview.rates.dloan}% for {eligibleMembers.length} active members.</p>
                   {['cd', 'ssa', 'loan', 'dloan'].map((k) => (
                     <div key={k} className="flex justify-between gap-4 text-sm"><span className="text-slate-600">{INTEREST_HEAD_LABELS[k]}</span><span className="font-medium">{formatAmount(preview.totals[k])}</span></div>
@@ -230,7 +230,7 @@ export function FinancialYearClosingPage() {
                     {profit >= 0 ? 'Net profit' : 'Net loss'} for the year: <span className="text-slate-900">{formatAmount(Math.abs(profit))}</span>
                   </p>
                   <p className="text-[12px] text-slate-500">
-                    Optional. {profit >= 0 ? 'Split the profit to funds as decided by the society (P&L A/c Dr, funds Cr).' : 'Charge the loss to funds as negative amounts.'} Whatever is not split stays in the Profit &amp; Loss A/c and carries into next year&apos;s balance sheet; it can be split later with a Journal Voucher, as in the old software.
+                    Optional. {profit >= 0 ? 'Split the profit to funds as decided by the society (P&L A/c Dr, funds Cr).' : 'Charge the loss to funds as negative amounts.'} Whatever is not split stays in the Profit &amp; Loss A/c and carries into next year&apos;s balance sheet, so split it here before closing.
                   </p>
                   {rows.map((row, index) => (
                     <div key={index} className="grid grid-cols-[minmax(0,1fr)_150px_36px] items-center gap-2">

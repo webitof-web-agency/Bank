@@ -1,4 +1,4 @@
-import { ArrowDownLeft, ArrowDownToLine, ArrowRightLeft, ArrowUpRight, BadgePercent, Banknote, BookText, ClipboardList, CreditCard, FileCheck2, FolderOpen, HandCoins, Landmark, Percent, PiggyBank, ReceiptText, Repeat2, RotateCcw, Shuffle, Umbrella, UserCheck, UserCog, UserX, Users, Wallet } from 'lucide-react';
+import { ArrowDownLeft, ArrowDownToLine, ArrowRightLeft, ArrowUpRight, BadgePercent, Banknote, ClipboardList, CreditCard, FileCheck2, FolderOpen, HandCoins, Landmark, Percent, PiggyBank, ReceiptText, Repeat2, RotateCcw, Shuffle, Umbrella, UserCheck, UserCog, UserX, Users, Wallet } from 'lucide-react';
 
 export const TRANSACTION_SECTIONS = [
   {
@@ -84,7 +84,6 @@ export const TRANSACTION_SECTIONS = [
     description: 'Other transactions and special pages.',
     tone: 'slate',
     children: [
-      { label: 'Journal Voucher', path: '/app/transactions/other/journal-voucher', icon: BookText, permission: 'transactions.receipt-interest.view' },
       { label: 'Payment Voucher', path: '/app/transactions/other/payment-voucher', icon: Banknote, permission: 'transactions.receipt-interest.view' },
       { label: 'Receipt Voucher', path: '/app/transactions/other/receipt-voucher', icon: ReceiptText, permission: 'transactions.receipt-interest.view' },
       { label: 'No Interest Members', path: '/app/transactions/other/no-interest-members', icon: UserX, permission: 'no-interest-members.read' },

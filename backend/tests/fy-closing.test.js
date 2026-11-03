@@ -108,7 +108,11 @@ test('close FY 2026-27: interest posted, profit appropriated, next year opened, 
   // During the year: CD 10,000 paid to the member on 01-10-2026, and 10,000
   // bank interest received.
   await banking.createVoucher({ date: '2026-10-01', mode: 'Cash', partyType: 'member', partyCode: M1, amount: 10000, details: { key: 'deposit-paid-member', payMode: 'Cash', components: { cd: 10000 } } }, { actorUser: admin });
-  await banking.createVoucher({ date: '2026-12-31', narration: 'Bank interest', details: { key: 'journal-voucher', journalLines: [{ ledgerCode: 'FC2', debit: 10000 }, { ledgerCode: 'FC90', credit: 10000 }] } }, { actorUser: admin });
+  // A manual Journal Voucher is refused (the page was removed); the year-end
+  // close's own entries pass systemJournal, as this test data does.
+  const bankInterest = { date: '2026-12-31', narration: 'Bank interest', details: { key: 'journal-voucher', journalLines: [{ ledgerCode: 'FC2', debit: 10000 }, { ledgerCode: 'FC90', credit: 10000 }] } };
+  await assert.rejects(banking.createVoucher(bankInterest, { actorUser: admin }), (e) => e.statusCode === 400 && /Journal Voucher has been removed/.test(e.message));
+  await banking.createVoucher(bankInterest, { actorUser: admin, systemJournal: true });
 
   // Not before the year has ended.
   await assert.rejects(fyClosing.closeYear('2026-27', { now: new Date('2027-03-31T10:00:00Z') }), (e) => e.statusCode === 409 && /can be closed from/.test(e.message));
@@ -134,9 +138,9 @@ test('close FY 2026-27: interest posted, profit appropriated, next year opened, 
 
   // Locked: nothing dated in the closed year, nor in a legacy year.
   const jv = (date) => ({ date, narration: 'x', details: { key: 'journal-voucher', journalLines: [{ ledgerCode: 'FC2', debit: 1 }, { ledgerCode: 'FC90', credit: 1 }] } });
-  await assert.rejects(banking.createVoucher(jv('2027-01-15'), { actorUser: admin }), (e) => e.statusCode === 409 && /2026-27 is closed/.test(e.message));
-  await assert.rejects(banking.createVoucher(jv('2025-05-01'), { actorUser: admin }), (e) => e.statusCode === 409 && /old software/.test(e.message));
-  const next = await banking.createVoucher(jv('2027-04-10'), { actorUser: admin });
+  await assert.rejects(banking.createVoucher(jv('2027-01-15'), { actorUser: admin, systemJournal: true }), (e) => e.statusCode === 409 && /2026-27 is closed/.test(e.message));
+  await assert.rejects(banking.createVoucher(jv('2025-05-01'), { actorUser: admin, systemJournal: true }), (e) => e.statusCode === 409 && /old software/.test(e.message));
+  const next = await banking.createVoucher(jv('2027-04-10'), { actorUser: admin, systemJournal: true });
   await banking.deleteVoucher(next.id, { actorUser: admin });
 
   // The member opens 2027-28 at closing + interest (deposit adds, loan interest is charged).
@@ -171,7 +175,7 @@ test('close FY 2026-27: interest posted, profit appropriated, next year opened, 
   assert.equal(after.rows[0].compulsoryDeposit.balance, 90000);
   const left = await db.query(`SELECT count(*)::int AS n FROM vouchers WHERE details->>'system' = 'fy-close' AND "deletedAt" IS NULL`);
   assert.equal(left.rows[0].n, 0);
-  const extra = await banking.createVoucher(jv('2027-01-15'), { actorUser: admin });
+  const extra = await banking.createVoucher(jv('2027-01-15'), { actorUser: admin, systemJournal: true });
   await banking.deleteVoucher(extra.id, { actorUser: admin });
 
   // Partly appropriated, as the old software allowed (the split was a normal
