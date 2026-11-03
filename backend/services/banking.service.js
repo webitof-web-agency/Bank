@@ -3462,23 +3462,18 @@ function liveMemberLedgerRows(member, vouchers = [], recoveryLinesAll = []) {
 }
 
 // Sets each row's signed balance after it (and its absolute `balance`) per
-// bucket. `anchors` (paise, credit-positive) is the cutover snapshot in
-// member.balances: after every archived row and before every live one, so
-// archived rows are undone backwards from it and live rows applied forwards.
-// (Walking backwards over live rows too treated the snapshot as if it already
-// included them.)
+// bucket. `rows` must be in date order. `anchors` (paise, credit-positive) is
+// the cutover snapshot in member.balances: it includes every archived row and
+// no live one. So the balance after a row is the snapshot, less the archived
+// rows after it, plus the live rows up to it. A live row dated among archived
+// ones (a month entered in the app while that month's other legacy vouchers
+// are archived, 2026-11-03) is counted from its own date; when every live row
+// comes after the archive this is the old backward/forward walk exactly.
 function applyMemberRunningBalances(rows = [], anchors = {}) {
-  const historical = rows.filter((row) => row.isHistorical);
-  const live = rows.filter((row) => !row.isHistorical);
   for (const key of MEMBER_BALANCE_BUCKETS) {
-    let running = anchors[key] || 0;
-    for (let i = historical.length - 1; i >= 0; i -= 1) {
-      historical[i][key].signed = running;
-      historical[i][key].balance = Math.abs(running);
-      running -= historical[i][key].credit - historical[i][key].debit;
-    }
-    running = anchors[key] || 0;
-    for (const row of live) {
+    const archived = rows.reduce((total, row) => (row.isHistorical ? total + row[key].credit - row[key].debit : total), 0);
+    let running = (anchors[key] || 0) - archived;
+    for (const row of rows) {
       running += row[key].credit - row[key].debit;
       row[key].signed = running;
       row[key].balance = Math.abs(running);
