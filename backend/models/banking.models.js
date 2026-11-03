@@ -87,10 +87,12 @@ const Society = createSqlModel('societies', {
   uniqueFields: ['key']
 });
 
+// voucherNo is unique only within its FY and series (Receipt R / Payment P),
+// as in legacy; banking.service checks it on save (assertVoucherNoFree).
 const Voucher = createSqlModel('vouchers', {
   schema: TABLE_SCHEMAS.vouchers,
   modelName: 'Voucher',
-  uniqueFields: ['voucherNo']
+  uniqueFields: []
 });
 
 const RecoveryLine = createSqlModel('recovery_lines', {

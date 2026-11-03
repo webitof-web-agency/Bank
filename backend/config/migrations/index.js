@@ -326,6 +326,19 @@ const MIGRATIONS = [
       await db.query('DROP TABLE bank_transactions');
       return { dropped: true };
     }
+  },
+  {
+    // Voucher numbers follow legacy (user, 2026-11-03): two yearly series,
+    // Receipt (R) and Payment (P), each continuing after the archived legacy
+    // numbers, so the same number is used once as R and once as P. The old
+    // rule "voucherNo unique across all vouchers" can't allow that; the app
+    // checks a number is free within its FY and series when it saves.
+    name: '2026-11-03-voucher-numbers-per-series',
+    async run(db) {
+      await db.query('ALTER TABLE vouchers DROP CONSTRAINT IF EXISTS "uniq_vouchers_voucherNo"');
+      await db.query('DROP SEQUENCE IF EXISTS "vouchers_voucherNo_seq"');
+      return { dropped: true };
+    }
   }
 ];
 

@@ -474,7 +474,7 @@ const TABLE_SCHEMAS = {
     createdByUserId: T.string(40),
     updatedByUserId: T.string(40),
     deletedAt: T.date
-  }, ['voucherNo']),
+  }), // voucherNo: unique per FY and R/P series, checked on save
 
 
   recovery_lines: schema({

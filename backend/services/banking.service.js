@@ -1490,7 +1490,7 @@ async function seedBankingData() {
   await syncSequence('bank_accounts', 'code');
   await syncSequence('demand_lists', 'demandListNo');
   await syncSequence('no_interest_members', 'code');
-  await syncSequence('vouchers', 'voucherNo');
+  // Vouchers: no counter; numbered per FY and R/P series (getNextVoucherNo).
 
   console.log('Default data seeding completed successfully');
   return true;
@@ -2131,6 +2131,15 @@ function fyStartYearOf(date = '') {
   const month = parseInt(text.slice(5, 7), 10);
   if (!Number.isFinite(year) || !Number.isFinite(month)) return null;
   return month >= 4 ? year : year - 1;
+}
+
+// An archived voucher's number as legacy shows it (VoucherNo of its R / P
+// series). The archive's own "voucherNo" column holds TransNo, legacy's
+// internal row number, which lists and ledgers used to show (1211 for
+// legacy's P 662).
+function legacyVoucherNo(row = {}, raw = row?.payload?.raw || {}) {
+  const number = raw?.VoucherNo;
+  return number != null && String(number).trim() !== '' ? String(number).trim() : String(row?.voucherNo ?? '');
 }
 
 function legacyDbForFyStartYear(startYear) {
@@ -2998,7 +3007,7 @@ function mapLegacyVoucherRow(row, partyIndex, { branchCode, partyTypeFilter, arc
 
   return {
     id: `legacy:${row.id}`,
-    voucherNo: String(row.voucherNo ?? ''),
+    voucherNo: legacyVoucherNo(row, raw),
     date: voucherDate,
     voucherCategory: catalogItem.label,
     transactionType: catalogItem.transactionType,
@@ -3567,7 +3576,7 @@ async function getLegacyMemberInterestRows(members = [], { legacy = true } = {})
     const payment = String(raw.VoucherType).toUpperCase() === 'P';
     const deposit = (amount) => (isPaid ? (payment ? -amount : amount) : -amount);
     const row = {
-      voucherNo: String(v.voucherNo ?? ''),
+      voucherNo: legacyVoucherNo(v, raw),
       date,
       share: { credit: 0, debit: 0, balance: 0 },
       specialDeposit: { credit: 0, debit: 0, balance: 0, interest: 0 },
@@ -4255,7 +4264,7 @@ async function readHistoricalMemberLedgerRows(members) {
       if (!date) continue;
 
       const row = {
-        voucherNo: String(v.voucherNo ?? ''),
+        voucherNo: legacyVoucherNo(v, raw),
         date,
         share: { credit: 0, debit: 0, balance: 0 },
         specialDeposit: { credit: 0, debit: 0, balance: 0, interest: 0 },
@@ -4299,7 +4308,7 @@ async function readHistoricalMemberLedgerRows(members) {
 
       const line = recoveryLineMovement(rraw);
       list.push({
-        voucherNo: r.parent_voucher_no ? String(r.parent_voucher_no) : 'RECOVERY',
+        voucherNo: legacyVoucherNo({ voucherNo: r.parent_voucher_no }, r.voucher_payload?.raw) || 'RECOVERY',
         date,
         share: { ...line.share, balance: 0 },
         specialDeposit: { ...line.specialDeposit, balance: 0, interest: 0 },
@@ -6482,8 +6491,69 @@ async function buildDashboardQuickSummary({ user = {}, fyStart = '', fyEnd = '' 
   return { ...summary, analytics };
 }
 
-async function getNextVoucherNo(branchCode = '') {
-  return await getNextSequenceValue('vouchers', 'voucherNo');
+// Voucher numbers, as legacy (user, 2026-11-03): two series per FY, Receipt
+// (R) and Payment (P) — the voucher's transactionType, legacy's VoucherType —
+// each going on from the highest number of that series in the FY, archived
+// legacy vouchers included (legacy's own VoucherNo, payload.raw; the archive
+// "voucherNo" column holds TransNo). So an app voucher is always last + 1:
+// after legacy's 31-Oct-2026 P 664 comes P 665.
+function voucherSeries(voucher = {}) {
+  const type = cleanLower(voucher.transactionType || getTransactionCatalogItemByKey(voucher?.details?.key)?.transactionType);
+  return type === 'receipt' ? 'R' : 'P';
+}
+
+const VOUCHER_SERIES_SQL = `(CASE WHEN lower(coalesce("transactionType", '')) = 'receipt' THEN 'R' ELSE 'P' END)`;
+
+function voucherFyBounds(day) {
+  const date = isoDay(day) || isoDay(new Date());
+  const fyStart = fyStartOf(date);
+  const startYear = Number(fyStart.slice(0, 4));
+  return { fyStart, nextFyStart: `${startYear + 1}-04-01`, legacyDb: legacyDbForFyStartYear(startYear), fy: `${startYear}-${String(startYear + 1).slice(2)}` };
+}
+
+// Highest number used in a series in the date's FY (legacy archive + app).
+async function maxVoucherNumber(client, { series, date }) {
+  const { fyStart, nextFyStart, legacyDb } = voucherFyBounds(date);
+  const { rows } = await client.query(`
+    SELECT GREATEST(
+      (SELECT COALESCE(MAX((payload->'raw'->>'VoucherNo')::bigint), 0) FROM legacy_historical_vouchers
+        WHERE "sourceDatabase" = $1 AND payload->'raw'->>'VoucherType' = $2 AND payload->'raw'->>'VoucherNo' ~ '^[0-9]{1,15}$'),
+      (SELECT COALESCE(MAX("voucherNo"::bigint), 0) FROM vouchers
+        WHERE "deletedAt" IS NULL AND "voucherNo" ~ '^[0-9]{1,15}$' AND date >= $3::date AND date < $4::date AND ${VOUCHER_SERIES_SQL} = $2)
+    ) AS max`, [legacyDb, series, fyStart, nextFyStart]);
+  return Number(rows[0]?.max || 0);
+}
+
+// The number the next voucher of this type and date will get (the form's
+// preview; nothing is reserved, the save takes the then-next number).
+async function getNextVoucherNo({ key = '', transactionType = '', date = '' } = {}) {
+  const database = await initializeDatabase();
+  const series = voucherSeries({ transactionType, details: { key } });
+  return String(await maxVoucherNumber(database, { series, date }) + 1);
+}
+
+// One save at a time per FY and series picks or checks a number.
+async function lockVoucherSeries(client, { series, date }) {
+  const { fy } = voucherFyBounds(date);
+  await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`voucher-no:${fy}:${series}`]);
+}
+
+// A typed (or changed) number must be free in its FY and series: not on
+// another app voucher, nor on an archived legacy voucher.
+async function assertVoucherNoFree(client, { voucherNo, series, date, exceptId = '' }) {
+  const number = cleanText(voucherNo);
+  if (!number) return;
+  const { fyStart, nextFyStart, legacyDb, fy } = voucherFyBounds(date);
+  const { rows } = await client.query(`
+    SELECT (SELECT count(*) FROM vouchers
+              WHERE "deletedAt" IS NULL AND "voucherNo" = $1 AND id::text <> $2
+                AND date >= $3::date AND date < $4::date AND ${VOUCHER_SERIES_SQL} = $5)
+         + (SELECT count(*) FROM legacy_historical_vouchers
+              WHERE "sourceDatabase" = $6 AND payload->'raw'->>'VoucherType' = $5 AND payload->'raw'->>'VoucherNo' = $1) AS used`,
+  [number, String(exceptId || ''), fyStart, nextFyStart, series, legacyDb]);
+  if (Number(rows[0]?.used || 0) > 0) {
+    throw recoveryHttpError(`Voucher no. ${series} ${number} is already used in FY ${fy}. Leave it blank to take the next number.`, 409);
+  }
 }
 
 // Server-side copy of the transaction pages' row filter
@@ -6931,10 +7001,18 @@ async function createVoucher(data = {}, meta = {}) {
   await assertFilesAttachable(data, {}, meta.actorUserId || meta.actorUser?.id);
   const { response, smsQueued } = await withTransaction(async (tx) => {
     const branchCode = resolveBranchCode(meta.actorUser || {}, data.branchCode);
-    const voucherNo = cleanText(data.voucherNo) || await getNextVoucherNo(branchCode);
-    const payload = normalizeVoucher({ ...data, voucherNo, branchCode });
+    const payload = normalizeVoucher({ ...data, voucherNo: cleanText(data.voucherNo), branchCode });
     assertVoucherBasics(payload, data);
     await fyLock.assertDatesOpen([payload.date], { allowFy: meta.allowClosedFy });
+    // Legacy numbering: blank takes the next number of the voucher's series
+    // in its FY (last + 1); a typed number must be free there.
+    const series = voucherSeries(payload);
+    await lockVoucherSeries(tx, { series, date: payload.date });
+    if (payload.voucherNo) {
+      await assertVoucherNoFree(tx, { voucherNo: payload.voucherNo, series, date: payload.date });
+    } else {
+      payload.voucherNo = String(await maxVoucherNumber(tx, { series, date: payload.date }) + 1);
+    }
     await assertPartyMemberAccess(payload, meta.actorUser);
     if (meta.actorUserId) {
       payload.createdByUserId = meta.actorUserId;
@@ -7007,6 +7085,20 @@ async function updateVoucher(id, data = {}, meta = {}) {
     // Neither the old date nor the new one may be in a closed FY.
     await fyLock.assertDatesOpen([current.date, payload.date], { allowFy: meta.allowClosedFy });
     assertNotYearEndVoucher(current.toObject(), meta);
+    // A number that changes, or moves to another FY / series, must be free
+    // there (an unchanged one stays, even legacy's own duplicate R 1).
+    {
+      const before = current.toObject();
+      const series = voucherSeries(payload);
+      if (!payload.voucherNo) payload.voucherNo = cleanText(before.voucherNo);
+      const moved = cleanText(payload.voucherNo) !== cleanText(before.voucherNo)
+        || series !== voucherSeries(before)
+        || voucherFyBounds(payload.date).fy !== voucherFyBounds(before.date).fy;
+      if (moved) {
+        await lockVoucherSeries(tx, { series, date: payload.date });
+        await assertVoucherNoFree(tx, { voucherNo: payload.voucherNo, series, date: payload.date, exceptId: id });
+      }
+    }
     payload.branchCode = resolveBranchCode(meta.actorUser || {}, current.branchCode);
     await assertPartyMemberAccess(payload, meta.actorUser);
     if (meta.actorUserId) {

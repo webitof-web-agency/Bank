@@ -208,8 +208,12 @@ const resources = {
 const transactions = {
   async getNextVoucher(req, res, next) {
     try {
-      const branchCode = req.query.branchCode || '';
-      const voucherNo = await bankingService.getNextVoucherNo(branchCode);
+      // The next number of the voucher's series (R / P) in its date's FY.
+      const voucherNo = await bankingService.getNextVoucherNo({
+        key: String(req.query.key || ''),
+        transactionType: String(req.query.transactionType || ''),
+        date: String(req.query.date || '')
+      });
       res.json({ success: true, data: { voucherNo } });
     } catch (error) {
       next(error);

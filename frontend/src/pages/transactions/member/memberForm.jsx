@@ -983,30 +983,26 @@ export function MemberTransactionForm({ section, lookups = {}, value, setValue, 
   const { token } = useAuth();
   const draft = value || {};
 
-  useEffect(() => {
-    let mounted = true;
-    if (!draft.voucherNo && !draft.id) {
-      api.banking.getNextVoucherNo(token, draft.branchCode)
-        .then((res) => {
-          if (!mounted) return;
-          if (res?.success && res?.data?.voucherNo) {
-            setValue((prev) => ({ ...prev, voucherNo: res.data.voucherNo }));
-          } else {
-            setValue((prev) => ({ ...prev, voucherNo: 'Err: ' + JSON.stringify(res) }));
-          }
-        })
-        .catch((err) => {
-          if (mounted) setValue((prev) => ({ ...prev, voucherNo: 'Error: ' + err.message }));
-        });
-    }
-    return () => {
-      mounted = false;
-    };
-  }, [draft.id, draft.voucherNo, draft.branchCode, setValue, token]);
 
   const editableItems = useMemo(() => (section?.items || []).filter((item) => !item.route), [section]);
   const activeKey = draft?.details?.key || forcedActiveKey || editableItems[0]?.key || '';
   const activeItem = editableItems.find((item) => item.key === activeKey) || editableItems[0] || null;
+
+  // The next voucher number of this type's series (R / P) in the date's FY,
+  // shown until save. Not sent: the server numbers the voucher when it is
+  // saved (last + 1 then), so opening a form never uses a number up.
+  const [nextVoucherNo, setNextVoucherNo] = useState('');
+  useEffect(() => {
+    let mounted = true;
+    if (draft.id || draft.voucherNo || !activeKey) return undefined;
+    api.banking.getNextVoucherNo(token, { key: activeKey, date: draft.date })
+      .then((res) => { if (mounted) setNextVoucherNo(res?.data?.voucherNo || ''); })
+      .catch(() => { if (mounted) setNextVoucherNo(''); });
+    return () => {
+      mounted = false;
+    };
+  }, [draft.id, draft.voucherNo, draft.date, activeKey, token]);
+  const shownVoucherNo = draft.voucherNo || nextVoucherNo;
   const memberGroups = useMemo(() => getMemberLookupGroups(lookups), [lookups]);
   const paymentOptions = useMemo(() => getPaymentOptions(activeKey), [activeKey]);
   const documentDefs = useMemo(() => getMemberDocumentDefinitions(activeKey), [activeKey]);
@@ -1116,7 +1112,7 @@ export function MemberTransactionForm({ section, lookups = {}, value, setValue, 
         <div className="grid gap-3 md:grid-cols-4">
           <div className="space-y-1.5">
             <FieldLabel>Voucher No.</FieldLabel>
-            <Input value={draft.voucherNo || ''} readOnly placeholder="Generating..." />
+            <Input value={shownVoucherNo} readOnly placeholder="Auto on save" />
           </div>
           <div className="space-y-1.5">
             <FieldLabel required>Date</FieldLabel>
@@ -1320,7 +1316,7 @@ export function MemberTransactionForm({ section, lookups = {}, value, setValue, 
     return (
       <section className="space-y-2">
         <div className="flex flex-wrap items-end gap-2 rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2">
-          <MiniField label="Voucher No." className="w-24"><Input className={mini} value={draft.voucherNo || ''} readOnly placeholder="Auto" /></MiniField>
+          <MiniField label="Voucher No." className="w-24"><Input className={mini} value={shownVoucherNo} readOnly placeholder="Auto" /></MiniField>
           <MiniField label="Date" required className="w-40"><Input className={mini} type="date" value={draft.date || ''} onChange={(event) => setRootValue(setValue, 'date', event.target.value)} /></MiniField>
           <MiniField label="Mode" required className="w-36"><CustomSelect value={draft.mode || ''} onChange={(next) => setRootValue(setValue, 'mode', next)} options={paymentOptions} placeholder="Select mode" searchable={false} /></MiniField>
           {chequeMode ? (
