@@ -5080,6 +5080,32 @@ async function legacyCashWindow({ from, to, ledgers }) {
   };
 }
 
+// App vouchers dated inside an archived window. The archived Day Book / Cash
+// Book are built from legacy rows, but an app voucher can be dated on or
+// before the cutover too (the October 2026 recovery was entered in the app,
+// dated 29-Oct, while legacy's own October was left out of the archive), so it
+// is added to them; its Cash-In-Hand lines move the opening / closing cash.
+async function appVouchersInArchivedWindow({ from, to, ledgers }) {
+  const fyStart = fyStartOf(to);
+  const vouchers = (await Voucher.find({ date: { $lte: to } }).lean())
+    .filter((v) => isoDay(v.date) >= fyStart && isoDay(v.date) <= to);
+  const cashLedger = ledgers.find((ledger) => ledger.semanticRole === ACCOUNTING_ROLES.CASH);
+  const cashLedgerId = cashLedger ? String(cashLedger.id || cashLedger._id) : '';
+  const ids = vouchers.map((v) => String(v.id || v._id));
+  const lines = ids.length ? await JournalLine.find({ voucherId: { $in: ids } }).lean() : [];
+  const inWindowIds = new Set(vouchers.filter((v) => !from || isoDay(v.date) >= from).map((v) => String(v.id || v._id)));
+  const cashLines = lines.filter((line) => cashLedgerId && String(line.ledgerId) === cashLedgerId);
+  const inHand = (line) => toNumber(line.debitAmount, 0) - toNumber(line.creditAmount, 0);
+  return {
+    vouchers: vouchers.filter((v) => inWindowIds.has(String(v.id || v._id))),
+    lines: lines.filter((line) => inWindowIds.has(String(line.voucherId))),
+    cashLedgerId,
+    cashVoucherIds: new Set(cashLines.map((line) => String(line.voucherId))),
+    cashBefore: cashLines.filter((line) => !inWindowIds.has(String(line.voucherId))).reduce((t, line) => t + inHand(line), 0),
+    cashIn: cashLines.filter((line) => inWindowIds.has(String(line.voucherId))).reduce((t, line) => t + inHand(line), 0)
+  };
+}
+
 async function buildLegacyCashBook({ from, to, ledgers }) {
   const window = await legacyCashWindow({ from, to, ledgers });
   if (!window) return null;
@@ -5091,11 +5117,19 @@ async function buildLegacyCashBook({ from, to, ledgers }) {
       book.add(entry.code, entry.cr, -entry.dr, row.isCash);
     }
   }
+  const app = await appVouchersInArchivedWindow({ from, to, ledgers });
+  const ledgerById = new Map(ledgers.map((l) => [String(l.id || l._id), l]));
+  for (const line of app.lines) {
+    if (String(line.ledgerId) === app.cashLedgerId) continue;
+    const ledger = ledgerById.get(String(line.ledgerId));
+    if (!ledger) continue;
+    book.add(cleanUpper(ledger.code), toNumber(line.creditAmount, 0), toNumber(line.debitAmount, 0), app.cashVoucherIds.has(String(line.voucherId)));
+  }
 
   return {
     rows: book.rows(),
-    openingCash: window.openingCash,
-    closingCash: window.closingCash,
+    openingCash: Number((window.openingCash + app.cashBefore).toFixed(2)),
+    closingCash: Number((window.closingCash + app.cashBefore + app.cashIn).toFixed(2)),
     source: 'legacy'
   };
 }
@@ -5245,14 +5279,24 @@ async function buildLegacyDayBook({ from, to, ledgers }) {
       group,
       lines,
       credit: v.voucherType === 'R' ? v.total : 0,
-      debit: v.voucherType === 'P' ? v.total : 0
+      debit: v.voucherType === 'P' ? v.total : 0,
+      receipt: v.voucherType === 'R'
     };
   });
 
+  // App vouchers dated in the window: receipts after the archived receipts,
+  // payments after the archived payments.
+  const app = await appVouchersInArchivedWindow({ from, to, ledgers });
+  const appRows = liveDayBookRows(app.vouchers, app.cashVoucherIds);
+  const merged = [
+    ...vouchers.filter((row) => row.receipt), ...appRows.filter((row) => row.receipt),
+    ...vouchers.filter((row) => !row.receipt), ...appRows.filter((row) => !row.receipt)
+  ];
+
   return {
-    vouchers: withDayBookHeadings(vouchers),
-    openingCash: window.openingCash,
-    closingCash: window.closingCash,
+    vouchers: withDayBookHeadings(merged),
+    openingCash: Number((window.openingCash + app.cashBefore).toFixed(2)),
+    closingCash: Number((window.closingCash + app.cashBefore + app.cashIn).toFixed(2)),
     source: 'legacy'
   };
 }
@@ -5287,13 +5331,24 @@ async function buildLiveDayBook({ from, to, ledgers, branchCode = '' }) {
     : [];
   const cashVoucherIds = new Set(cashLines.map((line) => String(line.voucherId)));
 
+  return {
+    vouchers: withDayBookHeadings(liveDayBookRows(vouchers, cashVoucherIds)),
+    openingCash: Number(openingCash.toFixed(2)),
+    closingCash: Number(closingCash.toFixed(2)),
+    source: 'live'
+  };
+}
+
+// App vouchers as Day Book rows (receipts first, then by voucher number);
+// `receipt` marks the side for merging with archived rows.
+function liveDayBookRows(vouchers = [], cashVoucherIds = new Set()) {
   const isReceipt = (v) => cleanLower(v.transactionType) === 'receipt';
   const sorted = [...vouchers].sort((a, b) => {
     if (isReceipt(a) !== isReceipt(b)) return isReceipt(a) ? -1 : 1;
     return compareCodesNumerically(a.voucherNo, b.voucherNo);
   });
 
-  const rows = sorted.map((voucher) => {
+  return sorted.map((voucher) => {
     const isCash = cashVoucherIds.has(String(voucher.id || voucher._id));
     const typeName = voucher.voucherCategory || titleCase(voucher.transactionType || '') || 'Voucher';
     const mode = isCash ? 'By Cash' : cleanText(voucher.mode);
@@ -5311,16 +5366,10 @@ async function buildLiveDayBook({ from, to, ledgers, branchCode = '' }) {
       group: `${typeName} ${mode}`.trim(),
       lines,
       credit: isReceipt(voucher) ? amount : 0,
-      debit: isReceipt(voucher) ? 0 : amount
+      debit: isReceipt(voucher) ? 0 : amount,
+      receipt: isReceipt(voucher)
     };
   });
-
-  return {
-    vouchers: withDayBookHeadings(rows),
-    openingCash: Number(openingCash.toFixed(2)),
-    closingCash: Number(closingCash.toFixed(2)),
-    source: 'live'
-  };
 }
 
 // Voucher Summary, in the legacy layout (CrVchSummry.rpt): the Day Book's
