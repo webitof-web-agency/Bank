@@ -80,9 +80,86 @@ async function uploadFiles(req, res, next) {
   }
 }
 
+// Small images (the society logo, watermark, branding, member photos) are kept
+// in memory for an hour after the first view: most live in Google Drive, and
+// fetching the logo from Drive on every page load made it slow to appear.
+// A file id never changes content (a new upload is a new file), so the copy
+// can't go stale; deleting a file drops it.
+const IMAGE_CACHE_MAX_BYTES = 2 * 1024 * 1024;
+const IMAGE_CACHE_MAX_ENTRIES = 50;
+const IMAGE_CACHE_TTL_MS = 60 * 60 * 1000;
+const imageCache = new Map();
+
+function cachedImage(fileId) {
+  const entry = imageCache.get(fileId);
+  if (!entry) return null;
+  if (Date.now() - entry.at > IMAGE_CACHE_TTL_MS) {
+    imageCache.delete(fileId);
+    return null;
+  }
+  return entry;
+}
+
+function rememberImage(fileId, entry) {
+  imageCache.delete(fileId);
+  imageCache.set(fileId, { ...entry, at: Date.now() });
+  while (imageCache.size > IMAGE_CACHE_MAX_ENTRIES) imageCache.delete(imageCache.keys().next().value);
+}
+
+function forgetImage(fileId) {
+  imageCache.delete(String(fileId));
+}
+
+function streamToBuffer(stream, limit) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    stream.on('data', (chunk) => {
+      size += chunk.length;
+      if (size > limit) {
+        stream.destroy();
+        reject(Object.assign(new Error('too large to cache'), { tooLarge: true }));
+        return;
+      }
+      chunks.push(chunk);
+    });
+    stream.on('end', () => resolve(Buffer.concat(chunks)));
+    stream.on('error', reject);
+  });
+}
+
+function sendFileHeaders(res, { mimeType, originalName, storedName }) {
+  // Images and PDFs open in the browser; anything else (including files
+  // stored before the upload type list, whatever type they claimed) is a
+  // download, and a sandbox CSP stops any script in a served file.
+  const type = String(mimeType || '').toLowerCase();
+  const inline = INLINE_TYPES.has(type);
+  const fileName = String(originalName || storedName || 'file').replace(/[^\w.\- ]+/g, '_').slice(0, 150);
+  res.setHeader('Content-Type', inline ? type : 'application/octet-stream');
+  res.setHeader('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename="${fileName}"`);
+  // (Not on PDFs: Chrome won't open its PDF viewer in a sandboxed page.)
+  if (type !== 'application/pdf') res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox");
+  if (type.startsWith('image/')) {
+    // The view URL stays the same for an hour (see utils/file-url.js), so the
+    // browser may keep the image that long; never in a shared cache.
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+  } else {
+    res.setHeader('Cache-Control', 'private, no-store, max-age=0, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+  }
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+}
+
 async function viewFile(req, res, next) {
   try {
-    const result = await readFileStream(req.params.id);
+    const fileId = String(req.params.id);
+    const hit = cachedImage(fileId);
+    if (hit) {
+      sendFileHeaders(res, hit);
+      return res.end(hit.buffer);
+    }
+
+    const result = await readFileStream(fileId);
     if (!result) {
       return res.status(404).send('File not found');
     }
@@ -95,19 +172,22 @@ async function viewFile(req, res, next) {
       return res.status(404).send('File stream could not be created');
     }
 
-    // Images and PDFs open in the browser; anything else (including files
-    // stored before the upload type list, whatever type they claimed) is a
-    // download, and a sandbox CSP stops any script in a served file.
+    sendFileHeaders(res, result);
     const mimeType = String(result.mimeType || '').toLowerCase();
-    const inline = INLINE_TYPES.has(mimeType);
-    const fileName = String(result.originalName || result.storedName || 'file').replace(/[^\w.\- ]+/g, '_').slice(0, 150);
-    res.setHeader('Content-Type', inline ? mimeType : 'application/octet-stream');
-    res.setHeader('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename="${fileName}"`);
-    // (Not on PDFs: Chrome won't open its PDF viewer in a sandboxed page.)
-    if (mimeType !== 'application/pdf') res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox");
-    res.setHeader('Cache-Control', 'private, no-store, max-age=0, must-revalidate');
-    res.setHeader('Pragma', 'no-cache');
-    res.setHeader('X-Content-Type-Options', 'nosniff');
+    const size = Number(result.sizeBytes || 0);
+    if (mimeType.startsWith('image/') && INLINE_TYPES.has(mimeType) && size > 0 && size <= IMAGE_CACHE_MAX_BYTES) {
+      try {
+        const buffer = await streamToBuffer(result.stream, IMAGE_CACHE_MAX_BYTES);
+        rememberImage(fileId, { buffer, mimeType: result.mimeType, originalName: result.originalName, storedName: result.storedName });
+        return res.end(buffer);
+      } catch (error) {
+        if (!error.tooLarge) throw error;
+        // Bigger than its record said: re-read it and stream it uncached.
+        const again = await readFileStream(fileId);
+        if (!again?.stream) return res.status(404).send('File stream could not be created');
+        return again.stream.pipe(res);
+      }
+    }
     result.stream.pipe(res);
   } catch (error) {
     next(error);
@@ -117,6 +197,7 @@ async function viewFile(req, res, next) {
 async function archive(req, res, next) {
   try {
     const record = await archiveFile(req.params.id, req.user?.id || null);
+    forgetImage(req.params.id);
     if (!record) {
       return res.status(404).json({ success: false, message: 'File not found' });
     }
@@ -171,6 +252,7 @@ async function deleteFolderController(req, res, next) {
 async function deleteFileController(req, res, next) {
   try {
     const success = await deleteFileById(req.params.id);
+    forgetImage(req.params.id);
     if (!success) {
       return res.status(404).json({ success: false, message: 'File not found' });
     }
