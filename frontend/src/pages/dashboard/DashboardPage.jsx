@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowRight,
@@ -30,8 +30,11 @@ function formatNumber(value) {
   return new Intl.NumberFormat('en-IN').format(number);
 }
 
+// Money always with paise (₹ 1,55,01,503.80, not .8).
+const CURRENCY_FORMAT = new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 function formatCurrency(value) {
-  return `₹ ${formatNumber(value)}`;
+  const number = Number(value || 0);
+  return `₹ ${CURRENCY_FORMAT.format(Number.isFinite(number) ? number : 0)}`;
 }
 
 // Short form for tight spots (the donut's centre): ₹19.66 Cr, ₹48.38 L.
@@ -370,16 +373,21 @@ export function DashboardPage() {
                   </div>
                 </div>
 
-                <div className="grid w-full min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto_2.75rem] items-center gap-x-3 gap-y-4 text-[12px]">
+                {/* Each entry on two lines (name, then amount and share), so a
+                    narrow card never squeezes the name into one word per line
+                    or runs it into the amount. */}
+                <div className="flex w-full min-w-0 flex-1 flex-col gap-3 text-[12px]">
                   {selectedFundPosition.map(item => (
-                    <Fragment key={item.name}>
+                    <div key={item.name} className="min-w-0">
                       <div className="flex min-w-0 items-center gap-2">
                         <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: item.color }}></span>
-                        <span className="font-medium text-slate-600">{item.name}</span>
+                        <span className="truncate font-medium text-slate-600" title={item.name}>{item.name}</span>
                       </div>
-                      <span className="whitespace-nowrap text-right font-bold tabular-nums text-slate-900">{formatCurrency(item.amount)}</span>
-                      <span className="text-right font-medium tabular-nums text-slate-400">{item.pct}</span>
-                    </Fragment>
+                      <div className="mt-0.5 flex items-baseline justify-between gap-3 pl-4">
+                        <span className="whitespace-nowrap font-bold tabular-nums text-slate-900">{formatCurrency(item.amount)}</span>
+                        <span className="shrink-0 font-medium tabular-nums text-slate-400">{item.pct}</span>
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -440,7 +448,7 @@ export function DashboardPage() {
                     <td className="py-3 pl-1 pr-4 font-bold text-slate-800">{v.voucherNo || '-'}</td>
                     <td className="py-3 pr-4 text-slate-500">{formatDate(v.date)}</td>
                     <td className="py-3 pr-4 font-medium text-slate-600">{v.voucherCategory || v.transactionType || '-'}</td>
-                    <td className="py-3 pr-4 font-bold text-slate-800">₹ {formatNumber(v.amount)}</td>
+                    <td className="py-3 pr-4 font-bold text-slate-800">{formatCurrency(v.amount)}</td>
                     <td className="py-3 pr-1">
                       <span className={cn('inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider', statusTone(v.status))}>
                         {v.status || 'Posted'}
@@ -487,7 +495,7 @@ export function DashboardPage() {
                     <td className="py-3 pl-1 pr-4 font-bold text-slate-800">{tx.voucherNo || '-'}</td>
                     <td className="py-3 pr-4 text-slate-500">{formatDate(tx.date)}</td>
                     <td className="py-3 pr-4 font-medium text-slate-600">{tx.voucherCategory || tx.transactionType || '-'}</td>
-                    <td className="py-3 pr-4 font-bold text-slate-800">₹ {formatNumber(tx.amount)}</td>
+                    <td className="py-3 pr-4 font-bold text-slate-800">{formatCurrency(tx.amount)}</td>
                     <td className="py-3 pr-1">
                       <span className={cn('inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider', statusTone(tx.status))}>
                         {tx.status || 'Posted'}
