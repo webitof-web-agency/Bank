@@ -528,17 +528,10 @@ export function MemberTransactionsPage({ sectionKey, itemKey = '' }) {
         fill={(activeItem?.key || draft?.voucherCategory || '').toLowerCase().includes('recovery')}
         footer={
           (() => {
-            const saveLabel = saving ? 'Saving...' : (activeRecord ? 'Save Changes' : (
-              (activeItem?.key || draft?.voucherCategory || '').toLowerCase().includes('loan') ? 'Save Loan Details' :
-              (activeItem?.key || draft?.voucherCategory || '').toLowerCase().includes('recovery') ? 'Save Recovery' :
-              (activeItem?.key || draft?.voucherCategory || '').toLowerCase().includes('deposit') ? 'Save Deposit Details' :
-              (activeItem?.key || draft?.voucherCategory || '').toLowerCase().includes('insurance') ? 'Save Insurance Details' :
-              'Create Voucher'
-            ));
+            const saveLabel = saving ? 'Saving...' : 'Save';
             
             return (
               <div className="flex w-full justify-end gap-3">
-                <Button variant="outline" type="button" onClick={closeEditor}>Cancel</Button>
                 <Button type="submit" form="transaction-voucher-form" disabled={saving || !(activeRecord ? canEdit : canCreate)} className="bg-[#1661F6] text-white hover:bg-blue-700">
                   {saveLabel}
                 </Button>

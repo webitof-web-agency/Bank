@@ -215,8 +215,7 @@ export function DemandEntryPage() {
         wide
         footer={(
           <div className="flex w-full justify-end gap-3">
-            <Button variant="outline" type="button" onClick={() => setEditor(null)}>Cancel</Button>
-            <Button type="submit" form="demand-form" disabled={saving} className="bg-[var(--primary,#1661F6)] text-white">{saving ? 'Saving...' : 'Save Demand'}</Button>
+            <Button type="submit" form="demand-form" disabled={saving} className="bg-[var(--primary,#1661F6)] text-white">{saving ? 'Saving...' : 'Save'}</Button>
           </div>
         )}
       >

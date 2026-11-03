@@ -273,7 +273,9 @@ export function TransferVoucherTransactionWorkspacePage({ sectionKey, itemKey })
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.25em] text-violet-500">Transfer Voucher</p>
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">{activeItem?.label || `${section?.label || sectionKey}`.replace(/( Transactions)?$/, ' Transactions')}</h1>
+          {/* "Transfer Voucher" is already the heading above: the title is just
+              the type ("Paid to Member", not "Transfer Voucher Paid to Member"). */}
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">{activeItem?.label ? activeItem.label.replace(/^Transfer Voucher\s+/i, '') : `${section?.label || sectionKey}`.replace(/( Transactions)?$/, ' Transactions')}</h1>
         </div>
 
         <div className="flex gap-2">
@@ -286,9 +288,8 @@ export function TransferVoucherTransactionWorkspacePage({ sectionKey, itemKey })
       </Card>
 
       <Modal variant={entryVariantFor(activeRecord?.details?.key || draft?.details?.key || activeItem?.key)} open={editorOpen} onClose={closeEditor} title={`${activeRecord ? 'Edit' : 'Create'} ${transactionLabel}`} footer={<div className="flex w-full justify-end gap-3">
-          <Button type="button" variant="outline" onClick={closeEditor} disabled={saving}>Cancel</Button>
           <Button type="submit" form="transaction-voucher-form" className="bg-[var(--primary,#1661F6)] text-white hover:opacity-90" disabled={saving || !activeItem}>
-            {saving ? 'Saving...' : activeRecord ? 'Update' : 'Save'}
+            {saving ? 'Saving...' : 'Save'}
           </Button>
         </div>}>
         <TransferVoucherTransactionForm

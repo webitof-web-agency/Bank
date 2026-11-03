@@ -365,9 +365,8 @@ export function InterestVoucherWorkspaceDetailPage({ sectionKey, itemKey, detail
         title="Edit Interest" 
         footer={
           <div className="flex w-full justify-end gap-3">
-            <Button variant="outline" type="button" onClick={closeEditor}>Cancel</Button>
             <Button type="submit" form="transaction-voucher-form" disabled={saving || !canEdit} className="bg-[var(--primary,#1661F6)] text-white hover:opacity-90">
-              {saving ? 'Saving...' : 'Save Changes'}
+              {saving ? 'Saving...' : 'Save'}
             </Button>
           </div>
         }

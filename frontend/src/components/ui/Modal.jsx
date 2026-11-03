@@ -53,7 +53,7 @@ export function Modal({ open, title, subtitle, children, onClose, footer, width,
               </Button>
             </div>
           ) : (
-            <div className="modal-head flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-3 shrink-0">
+            <div className="modal-head flex items-start justify-between gap-4 rounded-t-2xl border-b border-slate-200 px-5 py-3 shrink-0">
               <div>
                 <h3 className="text-lg font-semibold text-[var(--text-main)]">{title}</h3>
                 {subtitle ? <p className="mt-1 text-[13px] text-[var(--text-muted)]">{subtitle}</p> : null}

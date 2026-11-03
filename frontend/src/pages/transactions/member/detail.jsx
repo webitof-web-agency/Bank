@@ -860,9 +860,8 @@ export function MemberTransactionDetailPage({
         fill={isRecovery}
         footer={
           <div className="flex w-full justify-end gap-3">
-            <Button variant="outline" type="button" onClick={closeEditor}>Cancel</Button>
             <Button type="submit" form="transaction-voucher-form" disabled={saving || !canEdit} className="bg-[#1661F6] text-white hover:bg-blue-700">
-              {saving ? 'Saving...' : 'Save Changes'}
+              {saving ? 'Saving...' : 'Save'}
             </Button>
           </div>
         }

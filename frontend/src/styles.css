@@ -265,6 +265,11 @@ button[class*="border-slate-300"]:not([class*="border-transparent"]) {
 .entry-surface[data-form-variant] { background-color: var(--entry-bg); }
 [role="dialog"][data-form-variant] > .modal-head,
 [role="dialog"][data-form-variant] > .modal-foot { background-color: var(--entry-edge); }
+/* The coloured dialog's outline in its own edge colour (a grey border round a
+   pink dialog read as a second frame), and the header/footer rounded with it. */
+[role="dialog"][data-form-variant] { border-color: var(--entry-edge); }
+[role="dialog"][data-form-variant] > .modal-head,
+[role="dialog"][data-form-variant] > .modal-foot { border-color: color-mix(in srgb, var(--entry-edge) 70%, #94a3b8); }
 [data-form-variant] :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]), select, textarea):not(:disabled):not([readonly]) {
   background-color: #fff;
 }

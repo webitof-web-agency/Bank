@@ -460,11 +460,8 @@ export function OtherTransactionsPage({ sectionKey, itemKey }) {
         onClose={closeEditor}
         footer={
           <div className="flex w-full justify-end gap-3">
-            <Button variant="outline" type="button" onClick={closeEditor} disabled={saving}>
-              Cancel
-            </Button>
             <Button type="submit" form="transaction-voucher-form" disabled={saving || !(activeRecord ? canEdit : canCreate)} className="bg-[var(--primary,#1661F6)] text-white hover:opacity-90">
-              {saving ? 'Saving...' : (activeRecord ? 'Save Changes' : `Create ${draft?.voucherCategory || 'Transaction'}`)}
+              {saving ? 'Saving...' : 'Save'}
             </Button>
           </div>
         }

@@ -434,9 +434,8 @@ export function BankTransactionWorkspacePage({ sectionKey, itemKey = '' }) {
         onClose={closeEditor}
         footer={
           <div className="flex w-full justify-end gap-3">
-            <Button variant="outline" type="button" onClick={closeEditor}>Cancel</Button>
             <Button type="submit" form="transaction-voucher-form" disabled={saving || !(activeRecord ? canEdit : canCreate)} className="bg-[#1661F6] text-white hover:bg-blue-700">
-              {saving ? 'Saving...' : (activeRecord ? 'Save Changes' : `Create ${draft?.voucherCategory || activeItem?.label || 'Transaction'}`)}
+              {saving ? 'Saving...' : 'Save'}
             </Button>
           </div>
         }

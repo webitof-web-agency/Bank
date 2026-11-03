@@ -178,7 +178,6 @@ export function ArchivedVoucherDialog({ voucher, onClose, onSaved }) {
         <div className="flex items-center justify-between gap-3">
           <span className="text-[13px] text-slate-600">Total <strong className="text-slate-900">{money(total)}</strong>{data.enteredBy === 'lines' ? <span className="ml-2 text-slate-500">· {changedCount ? `${changedCount} line(s) changed` : 'no line changed'}</span> : null}</span>
           <div className="flex gap-2">
-            <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
             <Button type="button" onClick={save} disabled={saving || !data.editable || !(total > 0)}>{saving ? 'Saving...' : 'Save'}</Button>
           </div>
         </div>

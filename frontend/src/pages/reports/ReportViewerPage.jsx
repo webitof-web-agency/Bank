@@ -10,6 +10,7 @@ import { Select } from '../../components/ui/Select';
 import { Table } from '../../components/ui/Table';
 import { useAuth } from '../../context/AuthContext';
 import { useFY } from '../../context/FYContext';
+import { useIdleRedirect } from '../../hooks/useIdleRedirect';
 import { getReportConfig, getReportDefaultFilters, fyCalendarYearForMonth, DIVIDEND_MODES, DIVIDEND_SORT_OPTIONS } from './reportDefinitions';
 import { ReportActionsContext } from './print/PrintShell';
 import { AccessDeniedPage } from '../system/AccessDeniedPage';
@@ -258,6 +259,8 @@ function downloadCsv(sections, filename) {
 // Report requests still running, by report + filters (see the load effect).
 const REPORT_REQUESTS_IN_FLIGHT = new Map();
 
+const IDLE_CLOSE_REPORTS = new Set(['trial-balance', 'cash-book', 'day-book', 'voucher-summary', 'balance-sheet']);
+
 export function ReportViewerPage() {
   const { reportKey } = useParams();
   const navigate = useNavigate();
@@ -265,6 +268,8 @@ export function ReportViewerPage() {
   const { token, hasPermission } = useAuth();
   const { activeFY } = useFY();
   const config = useMemo(() => getReportConfig(reportKey), [reportKey]);
+  // These five close to the Dashboard after 10 minutes with no mouse, click or key.
+  useIdleRedirect({ enabled: IDLE_CLOSE_REPORTS.has(reportKey) });
   const reportPermission = REPORT_LINK_MAP[reportKey]?.permission || '';
   const exportPermission = reportPermission ? reportPermission.replace(/\.view$/, '.export') : '';
   const printPermission = reportPermission ? reportPermission.replace(/\.view$/, '.print') : '';

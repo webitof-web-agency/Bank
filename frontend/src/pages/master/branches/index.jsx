@@ -182,9 +182,8 @@ export function BranchesPage() {
         onClose={closeEditor}
         footer={
           <div className="flex justify-end gap-3 w-full">
-            <Button variant="outline" type="button" onClick={closeEditor}>Cancel</Button>
             <Button type="submit" form="branch-form" disabled={saving} className="bg-[var(--primary,#1661F6)] hover:opacity-90 text-white shadow-sm rounded-[var(--radius-button,1rem)] px-6">
-              {saving ? 'Saving...' : (activeRecord ? 'Save Changes' : 'Create Branch')}
+              {saving ? 'Saving...' : 'Save'}
             </Button>
           </div>
         }
