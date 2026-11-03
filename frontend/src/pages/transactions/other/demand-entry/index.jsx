@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Eye, Edit2, Plus, Trash2 } from 'lucide-react';
+import { Edit2, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../../api/api';
 import { Button } from '../../../../components/ui/Button';
@@ -34,8 +33,7 @@ const monthLabel = (month) => MONTH_OPTIONS.find((option) => option.value === St
 
 // Demand Entry: one row per demand list (branch + month); members and amounts
 // are on the list. Lines stay Pending until a saved recovery collects them.
-export function DemandEntryPage({ detailPathBase = '/app/transactions/other/demand-entry' }) {
-  const navigate = useNavigate();
+export function DemandEntryPage() {
   const { token, pageAccess } = useAuth();
   const { activeFY } = useFY();
   const [entries, setEntries] = useState([]);
@@ -192,7 +190,6 @@ export function DemandEntryPage({ detailPathBase = '/app/transactions/other/dema
                   <td className="px-4 py-3"><DemandStatusPill status={row.status} /></td>
                   <td className="px-4 py-3">
                     <div className="flex justify-end gap-1">
-                      <button type="button" onClick={() => navigate(`${detailPathBase}/${row.id}`)} className="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-900" title="View"><Eye size={16} /></button>
                       {canEdit ? (
                             <button type="button" onClick={() => openEdit(row)} className="rounded-full p-2 text-slate-400 hover:bg-blue-50 hover:text-blue-600" title="Edit"><Edit2 size={16} /></button>
                       ) : null}

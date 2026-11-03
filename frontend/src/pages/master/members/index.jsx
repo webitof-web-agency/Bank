@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Edit2, Trash2, Eye, Users, UserCheck, UserX, Building2, BookOpen } from 'lucide-react';
+import { Edit2, Trash2, Users, UserCheck, UserX, Building2, BookOpen } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { useServerList } from '../../../lib/useServerList';
@@ -218,14 +218,6 @@ export function MembersPage() {
       align: 'right',
       render: (row) => (
         <div className="flex justify-end gap-1">
-          <button
-            type="button"
-            onClick={() => navigate(`/app/master/members/${row.id}`)}
-            className="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-900"
-            title="View"
-          >
-            <Eye size={16} />
-          </button>
           {canViewLedger ? (
             <button
               type="button"

@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useServerList } from '../../../lib/useServerList';
-import { BookOpen, Edit2, Eye, Landmark, Trash2, TrendingDown, TrendingUp } from 'lucide-react';
+import { BookOpen, Edit2, Landmark, Trash2, TrendingDown, TrendingUp } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../api/api';
 import { useAuth } from '../../../context/AuthContext';
@@ -23,7 +22,6 @@ function isLedgerActive(ledger) {
 }
 
 export function LedgersPage() {
-  const navigate = useNavigate();
   const { token, pageAccess } = useAuth();
   // The server filters, sorts and pages; only the visible page is loaded.
   const list = useServerList((query) => api.resources.page('/banking/masters/ledgers', token, query), [token], { errorMessage: 'Unable to load ledgers' });
@@ -123,9 +121,6 @@ export function LedgersPage() {
       align: 'right',
       render: (row) => (
         <div className="flex justify-end gap-1">
-          <button type="button" onClick={() => navigate(`/app/master/ledgers/${row.id}`)} className="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-900" title="View">
-            <Eye size={16} />
-          </button>
           {canEdit ? (
             <button type="button" onClick={() => openEdit(row)} className="rounded-full p-2 text-slate-400 hover:bg-blue-50 hover:text-blue-600" title="Edit">
               <Edit2 size={16} />

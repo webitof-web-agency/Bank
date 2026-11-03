@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ArchivedVoucherDialog, canChangeVoucherRow, deleteVoucherRow } from '../../../components/transactions/ArchivedVoucherDialog';
 import { useConfirm } from '../../../components/overlays/ConfirmProvider';
 import { useNavigate } from 'react-router-dom';
-import { Eye, Edit2, Plus, Trash2, Sparkles, Link2, ChevronDown, FileText, Banknote, Filter, X } from 'lucide-react';
+import { Edit2, Plus, Trash2, Sparkles, Link2, ChevronDown, FileText, Banknote, Filter, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../api/api';
 import { Button } from '../../../components/ui/Button';
@@ -29,7 +29,7 @@ import {
 import { toneClassName } from './transactionUtils';
 import { entryVariantFor } from '../../../lib/entryVariant';
 
-export function BankTransactionsPage({ sectionKey, detailPathBase }) {
+export function BankTransactionsPage({ sectionKey }) {
   const navigate = useNavigate();
   const { token, pageAccess } = useAuth();
   const { activeFY } = useFY();
@@ -274,9 +274,6 @@ export function BankTransactionsPage({ sectionKey, detailPathBase }) {
       align: 'right',
       render: (row) => (
         <div className="flex justify-end gap-1">
-          <button type="button" onClick={() => navigate(`${detailPathBase}/${row.id}`)} className="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-900" title="View">
-            <Eye size={16} />
-          </button>
           {canEdit && canChangeVoucherRow(row) ? (
             <button type="button" onClick={() => (row.isHistorical ? setArchiveTarget(row) : openEdit(row))} className="rounded-full p-2 text-slate-400 hover:bg-blue-50 hover:text-blue-600" title="Edit">
               <Edit2 size={16} />

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Edit2, Trash2, Eye, Key, Users, UserCheck, User, UserX } from 'lucide-react';
+import { Edit2, Trash2, Key, Users, UserCheck, User, UserX } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { useServerList } from '../../../lib/useServerList';
@@ -307,14 +307,6 @@ export function EmployeesPage() {
       align: 'right',
       render: (row) => (
         <div className="flex justify-end gap-1">
-          <button
-            type="button"
-            onClick={() => navigate(`/app/master/employees/${row.id}`)}
-            className="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-900"
-            title="View"
-          >
-            <Eye size={16} />
-          </button>
           {canEdit && row.hasLogin !== false ? (
             <button
               type="button"
