@@ -243,22 +243,24 @@ export function DashboardPage() {
       </div>
 
       {/* Stat Cards */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-6 lg:gap-6">
+      {/* Six across only on very wide screens: at 1024-1440px with the sidebar
+          the cards were ~135px, cut "Employees" and ran the text into the line. */}
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:gap-6 2xl:grid-cols-6">
         {metrics.map((item) => (
           <div key={item.label} className="relative flex flex-col justify-between overflow-hidden rounded-[var(--radius-card,1.75rem)] bg-white p-5 min-h-[140px] shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] border border-gray-100 hover:shadow-md transition-shadow group">
             <div className="flex items-center gap-3">
               <div className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px]', item.bg, item.color)}>
                 <item.icon size={22} strokeWidth={1.5} />
               </div>
-              <div>
-                <p className="text-[11.5px] font-semibold text-gray-500 mb-0.5">{item.label}</p>
+              <div className="min-w-0">
+                <p className="truncate text-[11.5px] font-semibold text-gray-500 mb-0.5" title={item.label}>{item.label}</p>
                 <p className="text-[22px] font-extrabold text-gray-900 leading-none">{item.value}</p>
               </div>
             </div>
-            <p className="mt-4 text-[10.5px] font-medium leading-[1.5] text-slate-500 max-w-[135px] relative z-10">{item.desc}</p>
+            <p className="mt-4 text-[10.5px] font-medium leading-[1.5] text-slate-500 relative z-10 sm:pr-24">{item.desc}</p>
 
             {/* Sparkline (Decorative) */}
-            <div className={cn("absolute bottom-2 right-2 w-24 h-10 opacity-80 group-hover:opacity-100 transition-opacity", item.spark)}>
+            <div className={cn("absolute bottom-2 right-2 hidden w-24 h-10 opacity-80 group-hover:opacity-100 transition-opacity sm:block", item.spark)}>
               <svg viewBox="0 0 100 30" className="w-full h-full drop-shadow-sm text-current" preserveAspectRatio="none">
                 <defs>
                   <linearGradient id={`gradient-${item.label.replace(/\s+/g, '')}`} x1="0" x2="0" y1="0" y2="1">
@@ -347,7 +349,7 @@ export function DashboardPage() {
             {/* Fund Position Donut Chart */}
             <div>
               <p className="text-[12px] font-semibold text-slate-500">Fund Position{analytics?.asOn ? ` as on ${formatDate(analytics.asOn)}` : ''}</p>
-              <div className="mt-6 flex flex-col items-center sm:flex-row sm:items-center sm:justify-between gap-6">
+              <div className="mt-4 flex flex-col items-center gap-5">
                 <div className="relative h-[160px] w-[160px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <RechartsPieChart>
@@ -373,20 +375,19 @@ export function DashboardPage() {
                   </div>
                 </div>
 
-                {/* Each entry on two lines (name, then amount and share), so a
-                    narrow card never squeezes the name into one word per line
-                    or runs it into the amount. */}
-                <div className="flex w-full min-w-0 flex-1 flex-col gap-3 text-[12px]">
+                {/* Below the donut, one per row: the full name with its share, then
+                    the amount on its own line (never broken after the ₹). Side by side with the donut the
+                    legend was ~150px wide, cut the names ("Loans to Memb...") and
+                    ran the share past the card's edge. */}
+                <div className="grid w-full max-w-[22rem] grid-cols-1 gap-y-3 text-[12px]">
                   {selectedFundPosition.map(item => (
                     <div key={item.name} className="min-w-0">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: item.color }}></span>
-                        <span className="truncate font-medium text-slate-600" title={item.name}>{item.name}</span>
-                      </div>
-                      <div className="mt-0.5 flex items-baseline justify-between gap-3 pl-4">
-                        <span className="whitespace-nowrap font-bold tabular-nums text-slate-900">{formatCurrency(item.amount)}</span>
+                      <div className="flex items-start gap-2">
+                        <span className="mt-1 h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: item.color }}></span>
+                        <span className="min-w-0 flex-1 font-medium leading-snug text-slate-600">{item.name}</span>
                         <span className="shrink-0 font-medium tabular-nums text-slate-400">{item.pct}</span>
                       </div>
+                      <p className="mt-0.5 whitespace-nowrap pl-4 font-bold tabular-nums text-slate-900">{formatCurrency(item.amount)}</p>
                     </div>
                   ))}
                 </div>
@@ -420,7 +421,7 @@ export function DashboardPage() {
       {/* Tables Section */}
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Recent Vouchers */}
-        <div className="rounded-[var(--radius-card,1.75rem)] border border-slate-100 bg-white p-6 shadow-sm">
+        <div className="min-w-0 rounded-[var(--radius-card,1.75rem)] border border-slate-100 bg-white p-6 shadow-sm">
           <h3 className="mb-5 flex items-center gap-2.5 text-lg font-bold text-slate-900">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary,#1661F6)]">
               <ReceiptText size={22} strokeWidth={1.5} />
@@ -431,11 +432,11 @@ export function DashboardPage() {
             <table className="w-full text-left">
               <thead>
                 <tr className="border-b border-slate-100 text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                  <th className="pb-3 pl-1 pr-4">Voucher No</th>
-                  <th className="pb-3 pr-4">Date</th>
+                  <th className="whitespace-nowrap pb-3 pl-1 pr-4">Voucher No</th>
+                  <th className="whitespace-nowrap pb-3 pr-4">Date</th>
                   <th className="pb-3 pr-4">Category</th>
-                  <th className="pb-3 pr-4">Amount</th>
-                  <th className="pb-3 pr-1">Status</th>
+                  <th className="whitespace-nowrap pb-3 pr-4 text-right">Amount</th>
+                  <th className="whitespace-nowrap pb-3 pr-1">Status</th>
                 </tr>
               </thead>
               <tbody className="text-[13px]">
@@ -445,10 +446,10 @@ export function DashboardPage() {
                   <tr><td colSpan={5} className="py-6 text-center text-slate-500">No vouchers in this financial year</td></tr>
                 ) : recentVouchers.slice(0, 5).map(v => (
                   <tr key={v.id || v._id || v.voucherNo} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50">
-                    <td className="py-3 pl-1 pr-4 font-bold text-slate-800">{v.voucherNo || '-'}</td>
-                    <td className="py-3 pr-4 text-slate-500">{formatDate(v.date)}</td>
+                    <td className="whitespace-nowrap py-3 pl-1 pr-4 font-bold text-slate-800">{v.voucherNo || '-'}</td>
+                    <td className="whitespace-nowrap py-3 pr-4 text-slate-500">{formatDate(v.date)}</td>
                     <td className="py-3 pr-4 font-medium text-slate-600">{v.voucherCategory || v.transactionType || '-'}</td>
-                    <td className="py-3 pr-4 font-bold text-slate-800">{formatCurrency(v.amount)}</td>
+                    <td className="whitespace-nowrap py-3 pr-4 text-right font-bold tabular-nums text-slate-800">{formatCurrency(v.amount)}</td>
                     <td className="py-3 pr-1">
                       <span className={cn('inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider', statusTone(v.status))}>
                         {v.status || 'Posted'}
@@ -467,7 +468,7 @@ export function DashboardPage() {
         </div>
 
         {/* Recent Bank Entries */}
-        <div className="rounded-[var(--radius-card,1.75rem)] border border-slate-100 bg-white p-6 shadow-sm">
+        <div className="min-w-0 rounded-[var(--radius-card,1.75rem)] border border-slate-100 bg-white p-6 shadow-sm">
           <h3 className="mb-5 flex items-center gap-2.5 text-lg font-bold text-slate-900">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary,#1661F6)]">
               <Landmark size={22} strokeWidth={1.5} />
@@ -478,11 +479,11 @@ export function DashboardPage() {
             <table className="w-full text-left">
               <thead>
                 <tr className="border-b border-slate-100 text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                  <th className="pb-3 pl-1 pr-4">Voucher No</th>
-                  <th className="pb-3 pr-4">Date</th>
+                  <th className="whitespace-nowrap pb-3 pl-1 pr-4">Voucher No</th>
+                  <th className="whitespace-nowrap pb-3 pr-4">Date</th>
                   <th className="pb-3 pr-4">Type</th>
-                  <th className="pb-3 pr-4">Amount</th>
-                  <th className="pb-3 pr-1">Status</th>
+                  <th className="whitespace-nowrap pb-3 pr-4 text-right">Amount</th>
+                  <th className="whitespace-nowrap pb-3 pr-1">Status</th>
                 </tr>
               </thead>
               <tbody className="text-[13px]">
@@ -492,10 +493,10 @@ export function DashboardPage() {
                   <tr><td colSpan={5} className="py-6 text-center text-slate-500">No bank entries in this financial year</td></tr>
                 ) : recentBankTransactions.slice(0, 5).map(tx => (
                   <tr key={tx.id || tx._id || tx.voucherNo} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50">
-                    <td className="py-3 pl-1 pr-4 font-bold text-slate-800">{tx.voucherNo || '-'}</td>
-                    <td className="py-3 pr-4 text-slate-500">{formatDate(tx.date)}</td>
+                    <td className="whitespace-nowrap py-3 pl-1 pr-4 font-bold text-slate-800">{tx.voucherNo || '-'}</td>
+                    <td className="whitespace-nowrap py-3 pr-4 text-slate-500">{formatDate(tx.date)}</td>
                     <td className="py-3 pr-4 font-medium text-slate-600">{tx.voucherCategory || tx.transactionType || '-'}</td>
-                    <td className="py-3 pr-4 font-bold text-slate-800">{formatCurrency(tx.amount)}</td>
+                    <td className="whitespace-nowrap py-3 pr-4 text-right font-bold tabular-nums text-slate-800">{formatCurrency(tx.amount)}</td>
                     <td className="py-3 pr-1">
                       <span className={cn('inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider', statusTone(tx.status))}>
                         {tx.status || 'Posted'}
