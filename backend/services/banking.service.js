@@ -1518,6 +1518,20 @@ async function withNoInterestMemberNames(rows = []) {
   });
 }
 
+// The next numeric code of a master table for its Add form: the highest code
+// over every row, deleted ones included (a deleted row's code is still taken:
+// the unique rule covers it), + 1. Nothing is reserved. Before 2026-11-04
+// the Branch form took the highest code of the list page it showed.
+const NEXT_CODE_TABLES = { branches: 'branches' };
+
+async function getNextMasterCode(resource) {
+  const table = NEXT_CODE_TABLES[resource];
+  if (!table) throw recoveryHttpError(`No next code for ${resource}.`, 404);
+  const database = await initializeDatabase();
+  const { rows } = await database.query(`SELECT COALESCE(MAX(code::bigint), 0) AS max FROM "${table}" WHERE code ~ '^[0-9]{1,15}$'`);
+  return String(Number(rows[0]?.max || 0) + 1);
+}
+
 async function listResource(resource, search = '', user = {}, options = {}) {
   const def = getResourceDef(resource);
   if (resource === 'employees') {
@@ -7829,6 +7843,7 @@ module.exports = {
   getLegacyFyLedgerSnapshots,
   getLookups,
   getNextVoucherNo,
+  getNextMasterCode,
   getTransactionCatalog,
   getVoucherPermissionPage,
   getHistoricalEmployeeLedgerRows,

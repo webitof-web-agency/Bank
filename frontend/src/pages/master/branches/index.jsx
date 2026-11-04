@@ -35,10 +35,19 @@ export function BranchesPage() {
     if (!list.loading) setLoading(false);
   }, [list.loading]);
 
+  // The suggested code comes from the server: the highest branch code, deleted
+  // ones included, + 1. (It used to be the highest code on the list page shown,
+  // often a code already taken.) A code typed meanwhile is kept.
   function openCreate() {
     setActiveRecord(null);
-    setDraft(createEmptyBranchDraft(rows));
+    setDraft({ ...createEmptyBranchDraft(), code: '' });
     setEditorOpen(true);
+    api.banking.getNextMasterCode(token, 'branches')
+      .then((res) => {
+        const code = res?.data?.code;
+        if (code) setDraft((current) => (current.code ? current : { ...current, code }));
+      })
+      .catch(() => {});
   }
 
   function openEdit(branch) {
@@ -50,7 +59,7 @@ export function BranchesPage() {
   function closeEditor() {
     setEditorOpen(false);
     setActiveRecord(null);
-    setDraft(createEmptyBranchDraft(rows));
+    setDraft({ ...createEmptyBranchDraft(), code: '' });
   }
 
   async function saveBranch(event) {

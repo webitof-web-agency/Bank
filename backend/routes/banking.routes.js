@@ -46,6 +46,8 @@ function registerCrud(basePath, controllerGroup, perms) {
 }
 
 const demands = page('master', 'demands');
+// Before the CRUD routes, so "next-code" is not read as a branch id.
+router.get('/masters/branches/next-code', requirePermission(page('master', 'branches').create), banking.resources.branches.nextCode);
 registerCrud('/masters/branches', banking.resources.branches, page('master', 'branches'));
 registerCrud('/masters/employees', banking.resources.employees, page('master', 'employees'));
 registerCrud('/masters/members', banking.resources.members, page('master', 'members'));

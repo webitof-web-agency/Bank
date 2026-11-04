@@ -196,7 +196,17 @@ function buildSingletonControllers(resource) {
 const resources = {
   society: buildSingletonControllers('society'),
   committee: buildSingletonControllers('committee'),
-  branches: buildCrudControllers('branches'),
+  branches: {
+    ...buildCrudControllers('branches'),
+    // GET /masters/branches/next-code: the code the Add Branch form suggests.
+    async nextCode(req, res, next) {
+      try {
+        res.json({ success: true, data: { code: await bankingService.getNextMasterCode('branches') } });
+      } catch (error) {
+        next(error);
+      }
+    }
+  },
   employees: buildCrudControllers('employees'),
   members: buildCrudControllers('members'),
   ledgers: buildCrudControllers('ledgers'),

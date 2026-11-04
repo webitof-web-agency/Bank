@@ -248,6 +248,8 @@ export const api = {
     recoveryMemberOutstanding: (token, query = {}) => request(`/banking/transactions/recovery/member-outstanding${buildQuery(query)}`, { token, skipCache: true }),
     listTransactionVouchers: (token, query = {}) => request(`/banking/transactions/vouchers${buildQuery(query)}`, { token, skipCache: true }),
     getMemberInterestDue: (token, query = {}) => request(`/banking/transactions/interest-due${buildQuery(query)}`, { token, skipCache: true }),
+    // The next free code of a master (branches): highest code incl. deleted + 1.
+    getNextMasterCode: (token, resource) => request(`/banking/masters/${resource}/next-code`, { token, skipCache: true }),
     // The next number of a voucher type's series (R / P) in the date's FY.
     getNextVoucherNo: (token, { key = '', date = '' } = {}) => request(`/banking/transactions/vouchers/next?key=${encodeURIComponent(key)}&date=${encodeURIComponent(date || '')}`, { token, skipCache: true }),
     getTransactionVoucher: (token, id) => request(`/banking/transactions/vouchers/${id}`, { token, skipCache: true }),
