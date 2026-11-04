@@ -17,7 +17,7 @@ const { paginateRows, wantsPaging } = require('../utils/paginate');
 async function listController(req, res, next) {
   try {
     const search = req.query.search || '';
-    const rows = [...withoutBootstrapAdmin(await listUsers(search)), ...await listStaffWithoutLogin(search)];
+    const rows = [...await withoutBootstrapAdmin(await listUsers(search)), ...await listStaffWithoutLogin(search)];
     if (wantsPaging(req.query)) {
       const summarize = (list) => ({
         active: list.filter((row) => row.isActive !== false && String(row.status || 'Active').toLowerCase() !== 'inactive').length,

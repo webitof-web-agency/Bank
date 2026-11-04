@@ -1468,11 +1468,21 @@ function getBootstrapAdminUsername() {
   return normalizeUsername(process.env.BOOTSTRAP_ADMIN_USERNAME || normalizeEmail(process.env.BOOTSTRAP_ADMIN_EMAIL || 'admin@bank.local'));
 }
 
-// The bootstrap login is a system account, not a staff member, so staff
-// listings leave it out. It can still sign in and appears in user pickers.
-function withoutBootstrapAdmin(rows = []) {
+// System admin logins (the bootstrap one, and any other account holding the
+// admin role, e.g. the society's own admin login added 2026-11-04) are not
+// staff members, so staff listings leave them out. They can still sign in
+// and appear in user pickers. The admin role can't be given from the app,
+// so only such accounts hold it.
+async function withoutBootstrapAdmin(rows = []) {
   const username = getBootstrapAdminUsername();
-  return rows.filter((row) => !username || normalizeUsername(row?.username || '') !== username);
+  const adminRole = await Role.findOne({ code: HIDDEN_ROLE_CODE }).select('_id').lean();
+  const adminRoleId = adminRole ? String(adminRole._id) : '';
+  return rows.filter((row) => {
+    if (username && normalizeUsername(row?.username || '') === username) return false;
+    const id = row?._id || row?.id;
+    if (adminRoleId && id && getUserRoles(String(id)).some((roleId) => String(roleId?._id || roleId) === adminRoleId)) return false;
+    return true;
+  });
 }
 
 async function seedBootstrapAdmin() {

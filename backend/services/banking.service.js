@@ -1521,7 +1521,7 @@ async function withNoInterestMemberNames(rows = []) {
 async function listResource(resource, search = '', user = {}, options = {}) {
   const def = getResourceDef(resource);
   if (resource === 'employees') {
-    const rows = authService.withoutBootstrapAdmin(await authService.listUsers(search));
+    const rows = await authService.withoutBootstrapAdmin(await authService.listUsers(search));
     return rows.filter((row) => canAccessBranchRecord(resource, row, user));
   }
   const query = applyBranchScope(buildSearchQuery(def.searchFields, search), resource, user);
