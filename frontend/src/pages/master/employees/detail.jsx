@@ -37,6 +37,16 @@ function DetailRow({ label, value }) {
   );
 }
 
+// A staff loan as the form shows it: the amount with its side (owed = Dr),
+// never "-44745" (stored credit-positive, as legacy).
+function loanText(stored) {
+  if (stored === '' || stored === null || stored === undefined) return '';
+  const value = Number(stored);
+  if (!Number.isFinite(value)) return String(stored);
+  if (value === 0) return '0';
+  return `${new Intl.NumberFormat('en-IN').format(Math.abs(value))} ${value < 0 ? 'Dr' : 'Cr'}`;
+}
+
 export function EmployeeDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -248,9 +258,9 @@ export function EmployeeDetailPage() {
                   <DetailRow label="Caste" value={user.caste || employeePayload.caste} />
                   <DetailRow label="Qualification" value={user.qualification || employeePayload.qualification} />
                   <DetailRow label="Basic Salary" value={String(user.basicSalary ?? employeePayload.basicSalary ?? "")} />
-                  <DetailRow label="Housing Loan" value={String(user.housingLoan ?? employeePayload.housingLoan ?? "")} />
-                  <DetailRow label="Vehicle Loan" value={String(user.vehicleLoan ?? employeePayload.vehicleLoan ?? "")} />
-                  <DetailRow label="Grain Advance" value={String(user.grainAdvance ?? employeePayload.grainAdvance ?? "")} />
+                  <DetailRow label="Housing Loan" value={loanText(user.housingLoan ?? employeePayload.housingLoan)} />
+                  <DetailRow label="Vehicle Loan" value={loanText(user.vehicleLoan ?? employeePayload.vehicleLoan)} />
+                  <DetailRow label="Grain Advance" value={loanText(user.grainAdvance ?? employeePayload.grainAdvance)} />
                   <DetailRow label="Retired" value={(user.retired ?? employeePayload.retired) ? "Yes" : "No"} />
                   <DetailRow label="Retired Date" value={user.retiredDate || employeePayload.retiredDate} />
                   <DetailRow label="Status" value={statusLabel} />

@@ -107,12 +107,9 @@ export function createEmployeeDraftFromRecord(user = {}) {
     address: user.address || '',
     gender: user.gender || '',
     basicSalary: user.basicSalary ?? payload.basicSalary ?? '',
-    housingLoan: user.housingLoan ?? payload.housingLoan ?? '',
-    housingSide: user.housingSide || payload.housingSide || 'Dr',
-    vehicleLoan: user.vehicleLoan ?? payload.vehicleLoan ?? '',
-    vehicleSide: user.vehicleSide || payload.vehicleSide || 'Dr',
-    grainAdvance: user.grainAdvance ?? payload.grainAdvance ?? '',
-    grainSide: user.grainSide || payload.grainSide || 'Dr',
+    ...loanField('housingLoan', 'housingSide', user.housingLoan ?? payload.housingLoan, user.housingSide || payload.housingSide),
+    ...loanField('vehicleLoan', 'vehicleSide', user.vehicleLoan ?? payload.vehicleLoan, user.vehicleSide || payload.vehicleSide),
+    ...loanField('grainAdvance', 'grainSide', user.grainAdvance ?? payload.grainAdvance, user.grainSide || payload.grainSide),
     retired: user.retired ?? payload.retired ?? false,
     retiredDate: toDateInputValue(user.retiredDate || payload.retiredDate),
     status: user.status || (user.isActive === false ? 'Inactive' : 'Active'),
@@ -123,6 +120,28 @@ export function createEmployeeDraftFromRecord(user = {}) {
     payload,
     documents: hydrateDocumentMap(EMPLOYEE_DOCUMENT_DEFS, user.documents || {})
   };
+}
+
+// Staff loan balances (housing, vehicle, grain) are stored as legacy keeps
+// them, credit-positive: money the employee owes is negative (-44745). The
+// form shows the amount without a sign and the side on the Dr / Cr switch
+// (44745 Dr), so a minus never doubles the Dr; saving puts the sign back.
+const sideOf = (side) => (String(side || '').trim().toLowerCase() === 'cr' ? 'Cr' : 'Dr');
+
+function loanField(amountKey, sideKey, stored, storedSide) {
+  if (stored === '' || stored === null || stored === undefined) return { [amountKey]: '', [sideKey]: sideOf(storedSide) };
+  const value = Number(stored);
+  if (!Number.isFinite(value)) return { [amountKey]: '', [sideKey]: sideOf(storedSide) };
+  const side = value < 0 ? 'Dr' : value > 0 ? 'Cr' : sideOf(storedSide);
+  return { [amountKey]: String(Math.abs(value)), [sideKey]: side };
+}
+
+function signedLoan(amount, side) {
+  if (amount === '' || amount === null || amount === undefined) return '';
+  const value = Math.abs(Number(amount));
+  if (!Number.isFinite(value)) return '';
+  if (value === 0) return 0;
+  return sideOf(side) === 'Dr' ? -value : value;
 }
 
 export function buildEmployeePayload(draft = {}) {
@@ -138,18 +157,12 @@ export function buildEmployeePayload(draft = {}) {
     basicSalary: draft.basicSalary === '' || draft.basicSalary === null || draft.basicSalary === undefined
       ? ''
       : Number(draft.basicSalary),
-    housingLoan: draft.housingLoan === '' || draft.housingLoan === null || draft.housingLoan === undefined
-      ? ''
-      : Number(draft.housingLoan),
-    housingSide: String(draft.housingSide || 'Dr').trim(),
-    vehicleLoan: draft.vehicleLoan === '' || draft.vehicleLoan === null || draft.vehicleLoan === undefined
-      ? ''
-      : Number(draft.vehicleLoan),
-    vehicleSide: String(draft.vehicleSide || 'Dr').trim(),
-    grainAdvance: draft.grainAdvance === '' || draft.grainAdvance === null || draft.grainAdvance === undefined
-      ? ''
-      : Number(draft.grainAdvance),
-    grainSide: String(draft.grainSide || 'Dr').trim(),
+    housingLoan: signedLoan(draft.housingLoan, draft.housingSide),
+    housingSide: sideOf(draft.housingSide),
+    vehicleLoan: signedLoan(draft.vehicleLoan, draft.vehicleSide),
+    vehicleSide: sideOf(draft.vehicleSide),
+    grainAdvance: signedLoan(draft.grainAdvance, draft.grainSide),
+    grainSide: sideOf(draft.grainSide),
     retired: Boolean(draft.retired),
     retiredDate: String(draft.retiredDate || '').trim()
   };

@@ -321,6 +321,8 @@ export function EmployeeForm({
                 <div key={field.amount} className="space-y-1.5">
                   <label className="text-[13px] font-semibold text-slate-700">{field.label}</label>
                   <AmountSideInput
+                    min="0"
+                    step="0.01"
                     value={value[field.amount] ?? ''}
                     onChange={(e) => setValue({ ...value, [field.amount]: e.target.value })}
                     side={value[field.side]}
