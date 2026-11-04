@@ -64,6 +64,27 @@ const RESOURCE_SUMMARIES = {
   })
 };
 
+// Exact-value list filters a page may send; a filter not sent (or "all")
+// keeps every row. The Members page filters by branch and social category
+// (legacy also has one member saved as "GEN", which is General).
+const memberCategory = (row) => {
+  const value = String(row?.category || '').trim().toUpperCase();
+  return value === 'GEN' ? 'GENERAL' : value;
+};
+const LIST_FILTERS = {
+  members: {
+    branchCode: (row, value) => String(row?.branchCode || '').trim().toUpperCase() === value,
+    category: (row, value) => memberCategory(row) === (value === 'GEN' ? 'GENERAL' : value)
+  }
+};
+
+function applyListFilters(resource, rows = [], query = {}) {
+  const filters = Object.entries(LIST_FILTERS[resource] || {})
+    .map(([key, test]) => [String(query[key] ?? '').trim().toUpperCase(), test])
+    .filter(([value]) => value && value !== 'ALL');
+  return filters.length ? rows.filter((row) => filters.every(([value, test]) => test(row, value))) : rows;
+}
+
 function buildCrudControllers(resource, { allowDelete = true } = {}) {
   return {
     async list(req, res, next) {
@@ -72,9 +93,9 @@ function buildCrudControllers(resource, { allowDelete = true } = {}) {
         // Employees are logins (users table), not a cached banking table.
         if (wantsPaging(req.query) && resource !== 'employees') {
           const { rows, searchFields } = await bankingService.getCachedResourceRows(resource, req.user || {}, fy);
-          return res.json({ success: true, ...paginateRows(rows, req.query, { searchFields, summarize: RESOURCE_SUMMARIES[resource] }) });
+          return res.json({ success: true, ...paginateRows(applyListFilters(resource, rows, req.query), req.query, { searchFields, summarize: RESOURCE_SUMMARIES[resource] }) });
         }
-        const rows = await bankingService.listResource(resource, req.query.search || '', req.user || {}, fy);
+        const rows = applyListFilters(resource, await bankingService.listResource(resource, req.query.search || '', req.user || {}, fy), req.query);
         if (wantsPaging(req.query)) {
           return res.json({ success: true, ...paginateRows(rows, { ...req.query, search: '' }) });
         }

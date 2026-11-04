@@ -12,6 +12,7 @@ import { Modal } from '../../../components/ui/Modal';
 import { ConfirmDialog } from '../../../components/overlays/ConfirmDialog';
 import { UserAvatar } from '../../../components/ui/UserAvatar';
 import { Table } from '../../../components/ui/Table';
+import { Select } from '../../../components/ui/Select';
 import { MemberForm } from './form';
 import {
   buildNextMemberCode,
@@ -39,11 +40,28 @@ function isMemberActive(member) {
   return status !== 'inactive' && status !== 'exited';
 }
 
+// Social category of the members (legacy values; "GEN" is counted as General).
+const MEMBER_CATEGORY_OPTIONS = [
+  { value: '', label: 'All categories' },
+  { value: 'GENERAL', label: 'General' },
+  { value: 'OBC', label: 'OBC' },
+  { value: 'SC', label: 'SC' },
+  { value: 'ST', label: 'ST' }
+];
+
 export function MembersPage() {
   const navigate = useNavigate();
   const { token, hasPermission, pageAccess } = useAuth();
+  // Branch and category filters, '' = All (the server leaves out a filter
+  // that isn't sent).
+  const [branchFilter, setBranchFilter] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
   // The server filters, sorts and pages; only the visible page is loaded.
-  const list = useServerList((query) => api.resources.page('/banking/masters/members', token, query), [token], { errorMessage: 'Unable to load members' });
+  const list = useServerList(
+    (query) => api.resources.page('/banking/masters/members', token, { ...query, branchCode: branchFilter, category: categoryFilter }),
+    [token, branchFilter, categoryFilter],
+    { errorMessage: 'Unable to load members' }
+  );
   const rows = list.rows;
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -55,6 +73,13 @@ export function MembersPage() {
   const [removedDocumentIds, setRemovedDocumentIds] = useState([]);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const branchLookup = useMemo(() => getBranchMap(branches), [branches]);
+  const branchOptions = useMemo(() => [
+    { value: '', label: 'All branches' },
+    ...[...branches]
+      .filter((branch) => branch?.code)
+      .sort((a, b) => String(a.code).localeCompare(String(b.code), undefined, { numeric: true }))
+      .map((branch) => ({ value: String(branch.code).trim().toUpperCase(), label: formatBranchLabel(branch) || String(branch.code) }))
+  ], [branches]);
 
   const { canCreate, canEdit, canDelete } = pageAccess('master', 'members');
   const canViewLedger = hasPermission(REPORT_LINK_MAP['member-ledger']?.permission || 'reports.read');
@@ -299,6 +324,12 @@ export function MembersPage() {
             search={list.search}
             onSearch={list.setSearch}
             searchPlaceholder="Search members..."
+            headerActions={(
+              <div className="flex flex-wrap items-center gap-2">
+                <Select className="w-56" options={branchOptions} value={branchFilter} onChange={setBranchFilter} searchable ariaLabel="Branch" placeholder="All branches" />
+                <Select className="w-44" options={MEMBER_CATEGORY_OPTIONS} value={categoryFilter} onChange={setCategoryFilter} ariaLabel="Category" placeholder="All categories" />
+              </div>
+            )}
           />
         )}
       </Card>
