@@ -67,6 +67,13 @@ export function BranchForm({ value, setValue, onSubmit }) {
               options={[{ value: '', label: 'None' }, ...headOfficeOptions]}
               placeholder={headOfficeOptions.length ? 'Select head office' : 'No branch is marked as head office yet'}
             />
+            {/* The list holds only branches marked as head office (the old
+                software has no such mark, so none came over with the data). */}
+            {!headOfficeOptions.length ? (
+              <p className="mt-1.5 text-[12px] text-slate-500">
+                No branch is marked as a head office yet. Edit the head office branch and tick "This branch is a head office"; it then appears here.
+              </p>
+            ) : null}
           </div>
         ) : null}
 
