@@ -36,7 +36,9 @@ function LookupSelect({ label, value, onChange, options = [], placeholder = 'Sel
   );
 }
 
-export function InterestVoucherForm({ section, lookups = {}, value, setValue, onSubmit, onDocumentRemove, isEditing = false }) {
+// `archived`: a voucher from the old software. It shows as entered; only its
+// date, interest and narration can change, and it has no attachments.
+export function InterestVoucherForm({ section, lookups = {}, value, setValue, onSubmit, onDocumentRemove, isEditing = false, archived = false }) {
   // Inside a dialog its title already names the voucher type.
   const inDialog = useInDialog();
   const activeItem = useMemo(() => (section?.items || []).find((item) => item.key === value?.details?.key) || section?.items?.[0] || null, [section, value]);
@@ -139,6 +141,7 @@ export function InterestVoucherForm({ section, lookups = {}, value, setValue, on
               onChange={(e) => setRoot('voucherNo', String(e.target.value || '').toUpperCase())}
               placeholder="Auto generated on save"
               className="font-mono uppercase tracking-wider"
+              readOnly={archived}
             />
           </div>
 
@@ -147,18 +150,25 @@ export function InterestVoucherForm({ section, lookups = {}, value, setValue, on
             <Input type="date" value={value.date || ''} onChange={(e) => setRoot('date', e.target.value)} />
           </div>
 
-          <LookupSelect
-            label={isEmployee ? "Employee Code" : "Member Code"}
-            value={value.partyCode || ''}
-            onChange={(next) => {
-              setRoot('partyCode', String(next || '').toUpperCase());
-              setRoot('partyType', isEmployee ? 'employee' : 'member');
-            }}
-            options={isEmployee ? employeeOptions : memberOptions}
-            placeholder={`Search ${isEmployee ? 'employee' : 'member'} by code`}
-            required
-            helper={`${isEmployee ? 'Employee' : 'Member'} code from the master table.`}
-          />
+          {archived ? (
+            <div className="space-y-1.5">
+              <FieldLabel>{isEmployee ? "Employee Code" : "Member Code"}</FieldLabel>
+              <Input value={value.partyCode || '—'} readOnly />
+            </div>
+          ) : (
+            <LookupSelect
+              label={isEmployee ? "Employee Code" : "Member Code"}
+              value={value.partyCode || ''}
+              onChange={(next) => {
+                setRoot('partyCode', String(next || '').toUpperCase());
+                setRoot('partyType', isEmployee ? 'employee' : 'member');
+              }}
+              options={isEmployee ? employeeOptions : memberOptions}
+              placeholder={`Search ${isEmployee ? 'employee' : 'member'} by code`}
+              required
+              helper={`${isEmployee ? 'Employee' : 'Member'} code from the master table.`}
+            />
+          )}
 
           <div className="space-y-1.5">
             <FieldLabel>{isEmployee ? "Employee Name" : "Member Name"}</FieldLabel>
@@ -179,27 +189,31 @@ export function InterestVoucherForm({ section, lookups = {}, value, setValue, on
 
           <div className="space-y-1.5">
             <FieldLabel>A/C</FieldLabel>
-            <CustomSelect
-              value={value.details?.accountType || ''}
-              onChange={(next) => setDetail('accountType', next)}
-              className="w-full"
-              placeholder="Select A/C Type"
-              options={accountTypeOptions}
-            />
+            {archived ? <Input value={value.details?.accountType || '—'} readOnly /> : (
+              <CustomSelect
+                value={value.details?.accountType || ''}
+                onChange={(next) => setDetail('accountType', next)}
+                className="w-full"
+                placeholder="Select A/C Type"
+                options={accountTypeOptions}
+              />
+            )}
           </div>
 
           <div className="space-y-1.5">
             <FieldLabel>Payment Mode</FieldLabel>
-            <CustomSelect
-              value={value.mode || ''}
-              onChange={(next) => setRoot('mode', next)}
-              className="w-full"
-              placeholder="Select Mode"
-              options={[
-                { value: 'Cash', label: 'Cash' },
-                { value: 'Transfer', label: 'Transfer' }
-              ]}
-            />
+            {archived ? <Input value={value.mode || '—'} readOnly /> : (
+              <CustomSelect
+                value={value.mode || ''}
+                onChange={(next) => setRoot('mode', next)}
+                className="w-full"
+                placeholder="Select Mode"
+                options={[
+                  { value: 'Cash', label: 'Cash' },
+                  { value: 'Transfer', label: 'Transfer' }
+                ]}
+              />
+            )}
           </div>
 
           <div className="space-y-1.5">
@@ -244,7 +258,7 @@ export function InterestVoucherForm({ section, lookups = {}, value, setValue, on
         </div>
       </Card>
 
-      <Card className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      {!archived ? <Card className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <HideInDialog>
           <div className="mb-4 flex items-center gap-3">
             <div className={`flex h-10 w-10 items-center justify-center rounded-xl border ${toneClassName('pink')}`}>
@@ -289,7 +303,7 @@ export function InterestVoucherForm({ section, lookups = {}, value, setValue, on
             }));
           }}
         />
-      </Card>
+      </Card> : null}
 
       <div className="flex items-center gap-3 text-sm text-slate-500">
         <span>{isEmployee ? "Employee:" : "Member:"}</span>

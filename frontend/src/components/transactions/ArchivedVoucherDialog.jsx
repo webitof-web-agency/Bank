@@ -43,7 +43,7 @@ export function canChangeVoucherRow(row) {
 
 // Asks before a change that puts the Trial Balance out (an archived voucher
 // whose other side can't be found), then sends it again confirmed.
-async function withImbalanceCheck(confirm, send) {
+export async function withImbalanceCheck(confirm, send) {
   try {
     return await send(false);
   } catch (error) {

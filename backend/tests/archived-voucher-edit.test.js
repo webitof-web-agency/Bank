@@ -191,6 +191,18 @@ test('a cheque payment and its Cheque Issue change together, keeping the books b
   assert.equal(result.partner.voucherNo, '99106');
 });
 
+// The lists, ledgers and reports show the legacy VoucherNo; TransNo is only
+// the old software's internal key. An edit dialog must show the same number.
+test('an archived voucher opens under the number the lists show, not its TransNo', async () => {
+  const id = crypto.randomUUID();
+  await insertArchived(id, 'JilaSahkariDB2627', '21', { TransNo: 99198, VoucherNo: 546, VoucherType: 'R', TransType: 21, VoucherDate: '2026-10-31T00:00:00.000Z', RLoanAmt: 500, TotalAmt: 500 });
+  try {
+    assert.equal((await archived.getArchivedVoucher(`legacy:${id}`, meta)).voucherNo, '546');
+  } finally {
+    await db.query('DELETE FROM legacy_historical_vouchers WHERE id = $1', [id]);
+  }
+});
+
 test('deleting a cheque payment deletes its Cheque Issue too', async () => {
   const before = { loan: (await memberBalances()).loan, net: await ledgerNet() };
   await archived.deleteArchivedVoucher(`legacy:${ids.chequeLoan}`, meta);

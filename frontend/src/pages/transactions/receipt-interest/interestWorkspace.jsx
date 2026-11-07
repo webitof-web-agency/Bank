@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArchivedVoucherDialog, canChangeVoucherRow, deleteVoucherRow } from '../../../components/transactions/ArchivedVoucherDialog';
+import { canChangeVoucherRow, deleteVoucherRow, withImbalanceCheck } from '../../../components/transactions/ArchivedVoucherDialog';
 import { useConfirm } from '../../../components/overlays/ConfirmProvider';
 import { useServerList } from '../../../lib/useServerList';
 import { Edit2, Plus, Trash2, ChevronDown, FileText, Banknote, X } from 'lucide-react';
@@ -15,6 +15,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { useFY } from '../../../context/FYContext';
 import { uploadDocumentMap } from '../../master/documentUpload';
 import { InterestVoucherForm } from './interestForm';
+import { archivedInterestDraft, archivedInterestPayload } from './archivedInterest';
 import {
   buildTransactionVoucherPayload,
   createEmptyTransactionDraft,
@@ -45,7 +46,8 @@ export function InterestVoucherWorkspacePage({ sectionKey, itemKey }) {
   const [draft, setDraft] = useState(createEmptyTransactionDraft(sectionKey, []));
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
-  const [archiveTarget, setArchiveTarget] = useState(null);
+  // The old-software voucher being edited (its server record), if any.
+  const [archivedRecord, setArchivedRecord] = useState(null);
   const confirm = useConfirm();
   const [removedDocumentIds, setRemovedDocumentIds] = useState([]);
   const [filterDropdownOpen, setFilterDropdownOpen] = useState(false);
@@ -121,9 +123,28 @@ export function InterestVoucherWorkspacePage({ sectionKey, itemKey }) {
     setEditorOpen(true);
   }
 
+  // A voucher from the old software opens in the same form, as it was entered.
+  async function openArchivedEdit(row) {
+    try {
+      const response = await api.banking.getArchivedVoucher(token, row.id);
+      const record = response?.data || response;
+      const base = createEmptyTransactionDraft(sectionKey, sectionItems);
+      setActiveRecord(row);
+      setArchivedRecord(record);
+      setDraft({
+        ...archivedInterestDraft(record, row, { ...base, details: { ...base.details, key: activeItem?.key || base.details?.key || '' } }),
+        partyType: partyTypeFor(activeItem?.key)
+      });
+      setEditorOpen(true);
+    } catch (error) {
+      toast.error(error.message || 'Unable to open the voucher');
+    }
+  }
+
   function closeEditor() {
     setEditorOpen(false);
     setActiveRecord(null);
+    setArchivedRecord(null);
     setDraft(createEmptyTransactionDraft(sectionKey, sectionItems));
     setRemovedDocumentIds([]);
   }
@@ -194,6 +215,17 @@ export function InterestVoucherWorkspacePage({ sectionKey, itemKey }) {
 
     setSaving(true);
     try {
+      if (archivedRecord) {
+        // The change may put the Trial Balance out: it asks first, as on the other lists.
+        const payload = archivedInterestPayload(archivedRecord, draft);
+        const saved = await withImbalanceCheck(confirm, (accept) => api.banking.updateTransactionVoucher(token, activeRecord.id, { ...payload, acceptImbalance: accept }));
+        if (!saved) return;
+        list.reload();
+        toast.success('Interest updated');
+        closeEditor();
+        return;
+      }
+
       const payload = buildTransactionVoucherPayload(draft);
       const response = activeRecord
         ? await api.banking.updateTransactionVoucher(token, activeRecord.id, payload)
@@ -238,7 +270,7 @@ export function InterestVoucherWorkspacePage({ sectionKey, itemKey }) {
       render: (row) => (
         <div className="flex justify-end gap-1">
           {canEdit && canChangeVoucherRow(row) ? (
-            <button type="button" onClick={() => (row.isHistorical ? setArchiveTarget(row) : openEdit(row))} className="rounded-full p-2 text-slate-400 hover:bg-blue-50 hover:text-blue-600" title="Edit">
+            <button type="button" onClick={() => (row.isHistorical ? openArchivedEdit(row) : openEdit(row))} className="rounded-full p-2 text-slate-400 hover:bg-blue-50 hover:text-blue-600" title="Edit">
               <Edit2 size={16} />
             </button>
           ) : null}
@@ -364,16 +396,15 @@ export function InterestVoucherWorkspacePage({ sectionKey, itemKey }) {
         title={`${activeRecord ? 'Edit' : 'Create'} ${activeItem?.label || 'Interest'}`}
         footer={
           <div className="flex w-full justify-end gap-3">
-            <Button type="submit" form="transaction-voucher-form" disabled={saving || !(activeRecord ? canEdit : canCreate)} className="bg-[var(--primary,#1661F6)] text-white hover:opacity-90">
+            <Button type="submit" form="transaction-voucher-form" disabled={saving || !(activeRecord ? canEdit : canCreate) || (archivedRecord && !archivedRecord.editable)} className="bg-[var(--primary,#1661F6)] text-white hover:opacity-90">
               {saving ? 'Saving...' : 'Save'}
             </Button>
           </div>
         }
       >
-        <InterestVoucherForm section={section} lookups={lookups} value={draft} setValue={setDraft} onSubmit={saveVoucher} onDocumentRemove={handleDocumentRemove} isEditing={Boolean(activeRecord)} />
+        <InterestVoucherForm section={section} lookups={lookups} value={draft} setValue={setDraft} onSubmit={saveVoucher} onDocumentRemove={handleDocumentRemove} isEditing={Boolean(activeRecord)} archived={Boolean(archivedRecord)} />
       </Modal>
 
-      <ArchivedVoucherDialog voucher={archiveTarget} onClose={() => setArchiveTarget(null)} onSaved={() => list.reload()} />
       <ConfirmDialog open={Boolean(deleteTarget)} title="Delete interest" description="This interest entry will be removed permanently." confirmLabel="Delete" tone="destructive" onConfirm={confirmDelete} onClose={() => setDeleteTarget(null)} />
     </div>
   );

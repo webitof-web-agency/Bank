@@ -86,6 +86,13 @@ function typeOf(row) {
   return Number(row.voucherCategory);
 }
 
+// The number the lists and ledgers show. The archive's "voucherNo" column is
+// the old software's internal TransNo.
+function legacyNoOf(row, raw = row?.payload?.raw || {}) {
+  const number = raw?.VoucherNo;
+  return number != null && String(number).trim() !== '' ? String(number).trim() : String(row?.voucherNo ?? '');
+}
+
 // AccID -> code maps and the cash ledger, read inside the transaction. An
 // AccID only means something inside its own FY database, so members and
 // employees are matched among those whose master row came from it (a member
@@ -322,7 +329,7 @@ function partnerInfo(partner) {
   const type = typeOf(partner.row);
   return {
     id: `legacy:${partner.row.id}`,
-    voucherNo: String(partner.row.voucherNo ?? ''),
+    voucherNo: legacyNoOf(partner.row, partner.raw),
     transType: type,
     label: TYPE_LABELS[type] || `voucher type ${type}`,
     // Its amount follows an edit only when it is entered by its total.
@@ -383,7 +390,7 @@ async function getArchivedVoucher(id, meta = {}) {
     // A cash voucher balances on its own; otherwise its other side, if found.
     selfBalancing: legacyNumber(raw.PayModeAccID) > 0,
     partner: partnerInfo(partner),
-    voucherNo: String(row.voucherNo ?? ''),
+    voucherNo: legacyNoOf(row, raw),
     transType: type,
     voucherType: raw.VoucherType || '',
     voucherDate: isoDay(raw.VoucherDate),
@@ -495,7 +502,7 @@ async function updateArchivedVoucher(id, input = {}, meta = {}) {
     const imbalance = imbalanceOf(delta);
     if (Math.abs(imbalance) >= 0.005 && input.acceptImbalance !== true) throw imbalanceError(imbalance, 'changing');
     await applyDelta(tx, delta);
-    applied = { delta, voucherNo: row.voucherNo };
+    applied = { delta, voucherNo: legacyNoOf(row, raw) };
 
     if (partner) {
       await tx.query(
@@ -566,7 +573,7 @@ async function deleteArchivedVoucher(id, meta = {}, { acceptImbalance = false } 
     const imbalance = imbalanceOf(delta);
     if (Math.abs(imbalance) >= 0.005 && !acceptImbalance) throw imbalanceError(imbalance, 'deleting');
     await applyDelta(tx, delta);
-    applied = { delta, voucherNo: found.row.voucherNo };
+    applied = { delta, voucherNo: legacyNoOf(found.row, found.raw) };
 
     await removeArchived(tx, found, meta, { imbalance });
     if (partner) await removeArchived(tx, partner, meta, { deletedWith: `legacy:${found.row.id}` });
