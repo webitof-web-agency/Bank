@@ -7765,7 +7765,8 @@ async function buildDividendReport({ mode = 'branchwise-opening', dateFrom = '',
     return {
       memberCode: member.code,
       memberName: member.name,
-      pfNo: cleanText(legacyRow.PFNo ?? (member.pfNo || currentRow.PFNo)),
+      // Legacy stores "no PF no." as 0: shown blank.
+      pfNo: ((pf) => (pf === '0' ? '' : pf))(cleanText(legacyRow.PFNo ?? (member.pfNo || currentRow.PFNo))),
       grade: cleanText(legacyRow.Designation ?? (member.designation || currentRow.Designation)),
       branch: branchCode,
       branchName: branch.label || branchCode,

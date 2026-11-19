@@ -9,7 +9,8 @@ import { formatMoneyLegacy as money } from './printStyles';
 //               each branch on its own sheet with "TOTAL :" and its own
 //               footer (the sheet a branch returns after payment), then a
 //               grand-total sheet
-//   MemberWise  one row per member: branch, PF no., grade, dividend
+//   MemberWise  one row per member: branch, code, PF no., grade, dividend
+// Member rows carry both the member code and the PF no. (client, 2026-11-19).
 // Legacy's look: an outer box, a rule under the header, no inner grid, dashed
 // rules around subtotals and dotted lines to sign on. Rows arrive sorted.
 
@@ -130,12 +131,13 @@ function BranchwiseTable({ rows, rate, withFooter }) {
 function SummaryColumns() {
   return (
     <colgroup>
-      <col style={{ width: '7%' }} />
+      <col style={{ width: '6%' }} />
       <col style={{ width: '8%' }} />
-      <col style={{ width: '35%' }} />
+      <col style={{ width: '9%' }} />
+      <col style={{ width: '29%' }} />
+      <col style={{ width: '13%' }} />
       <col style={{ width: '14%' }} />
-      <col style={{ width: '14%' }} />
-      <col style={{ width: '22%' }} />
+      <col style={{ width: '21%' }} />
     </colgroup>
   );
 }
@@ -146,6 +148,7 @@ function SummaryHead({ rate }) {
       <tr>
         <th className={th}>SN.</th>
         <th className={th}>CODE</th>
+        <th className={th}>PF NO.</th>
         <th className={th}>MEMBER'S NAME</th>
         <th className={thRight}>SHARE</th>
         <th className={`${th} text-center`}>DIVIDEND AMOUNT<br />ON {rate}</th>
@@ -159,12 +162,13 @@ function BranchRows({ group, totalLabel = '' }) {
   return (
     <>
       <tr data-group-row>
-        <td colSpan={6} className={`${cell} pt-1 font-bold`}>BRANCH : {group.branchName}</td>
+        <td colSpan={7} className={`${cell} pt-1 font-bold`}>BRANCH : {group.branchName}</td>
       </tr>
       {group.rows.map((row, i) => (
         <tr key={row.memberCode}>
           <td className={cell}>{group.firstSerial + i}</td>
           <td className={cell}>{row.memberCode}</td>
+          <td className={cell}>{row.pfNo}</td>
           <td className={cell}>{row.memberName}</td>
           <td className={num}>{money(row.share)}</td>
           <td className={num}>{money(row.dividendAmount)}</td>
@@ -172,7 +176,7 @@ function BranchRows({ group, totalLabel = '' }) {
         </tr>
       ))}
       <tr className="font-bold">
-        <td colSpan={3} className={`${cell} ${dashedTop} text-right`}>{totalLabel}</td>
+        <td colSpan={4} className={`${cell} ${dashedTop} text-right`}>{totalLabel}</td>
         <td className={`${num} ${dashedTop}`}>{money(sum(group.rows, shareOf))}</td>
         <td className={`${num} ${dashedTop}`}>{money(sum(group.rows, dividendOf))}</td>
         <td className={`${cell} ${dashedTop}`} />
@@ -191,16 +195,16 @@ function SummaryOpeningTable({ rows, rate }) {
       <SummaryHead rate={rate} />
       <tbody>
         {groups.map((group) => <BranchRows key={group.branch} group={group} />)}
-        {rows.length === 0 && <EmptyRow colSpan={6} />}
+        {rows.length === 0 && <EmptyRow colSpan={7} />}
         {rows.length > 0 && (
           <>
             <tr className="font-bold">
-              <td colSpan={3} className={`${cell} ${dashedTop} text-right`}>TOTAL</td>
+              <td colSpan={4} className={`${cell} ${dashedTop} text-right`}>TOTAL</td>
               <td className={`${num} ${dashedTop}`}>{money(sum(rows, shareOf))}</td>
               <td className={`${num} ${dashedTop}`}>{money(sum(rows, dividendOf))}</td>
               <td className={`${cell} ${dashedTop}`} />
             </tr>
-            <SanctionFooter colSpan={6} />
+            <SanctionFooter colSpan={7} />
           </>
         )}
       </tbody>
@@ -216,7 +220,7 @@ function SummaryClosingSheets({ rows, rate, title }) {
     return (
       <>
         <PrintLetterhead title={title} />
-        <table className={box}><SummaryColumns /><SummaryHead rate={rate} /><tbody><EmptyRow colSpan={6} /></tbody></table>
+        <table className={box}><SummaryColumns /><SummaryHead rate={rate} /><tbody><EmptyRow colSpan={7} /></tbody></table>
       </>
     );
   }
@@ -232,7 +236,7 @@ function SummaryClosingSheets({ rows, rate, title }) {
             <SummaryHead rate={rate} />
             <tbody>
               <BranchRows group={group} totalLabel="TOTAL :" />
-              <SanctionFooter colSpan={6} label="SANCTIONED AMOUNT Rs." signedBy="Chairman / Vice Chairman" />
+              <SanctionFooter colSpan={7} label="SANCTIONED AMOUNT Rs." signedBy="Chairman / Vice Chairman" />
             </tbody>
           </table>
         </div>
@@ -246,7 +250,7 @@ function SummaryClosingSheets({ rows, rate, title }) {
           <SummaryHead rate={rate} />
           <tbody>
             <tr className="font-bold">
-              <td colSpan={3} className={`${cell} text-right`}>GRAND TOTAL :</td>
+              <td colSpan={4} className={`${cell} text-right`}>GRAND TOTAL :</td>
               <td className={num}>{money(sum(rows, shareOf))}</td>
               <td className={num}>{money(sum(rows, dividendOf))}</td>
               <td className={cell} />
@@ -263,10 +267,11 @@ function MemberwiseTable({ rows, rate }) {
     <table className={box}>
       <colgroup>
         <col style={{ width: '5%' }} />
-        <col style={{ width: '22%' }} />
+        <col style={{ width: '19%' }} />
         <col style={{ width: '7%' }} />
-        <col style={{ width: '23%' }} />
-        <col style={{ width: '15%' }} />
+        <col style={{ width: '7%' }} />
+        <col style={{ width: '21%' }} />
+        <col style={{ width: '13%' }} />
         <col style={{ width: '10%' }} />
         <col style={{ width: '18%' }} />
       </colgroup>
@@ -274,6 +279,7 @@ function MemberwiseTable({ rows, rate }) {
         <tr>
           <th className={th}>SN.</th>
           <th className={th}>BRANCH</th>
+          <th className={th}>CODE</th>
           <th className={th}>PF</th>
           <th className={th}>MEMBER'S NAME</th>
           <th className={th}>GRADE</th>
@@ -286,6 +292,7 @@ function MemberwiseTable({ rows, rate }) {
           <tr key={row.memberCode || i}>
             <td className={cell}>{i + 1}</td>
             <td className={`${cell} font-semibold`}>{row.branch} - {row.branchName}</td>
+            <td className={cell}>{row.memberCode}</td>
             <td className={cell}>{row.pfNo}</td>
             <td className={cell}>{row.memberName}</td>
             <td className={cell}>{row.grade}</td>
@@ -293,15 +300,15 @@ function MemberwiseTable({ rows, rate }) {
             <td className={cell}><SignatureLine /></td>
           </tr>
         ))}
-        {rows.length === 0 && <EmptyRow colSpan={7} />}
+        {rows.length === 0 && <EmptyRow colSpan={8} />}
         {rows.length > 0 && (
           <>
             <tr className="font-bold">
-              <td colSpan={5} className={`${cell} ${dashedTop} text-right`}>TOTAL</td>
+              <td colSpan={6} className={`${cell} ${dashedTop} text-right`}>TOTAL</td>
               <td className={`${num} ${dashedTop}`}>{money(sum(rows, dividendOf))}</td>
               <td className={`${cell} ${dashedTop}`} />
             </tr>
-            <SanctionFooter colSpan={7} />
+            <SanctionFooter colSpan={8} />
           </>
         )}
       </tbody>
