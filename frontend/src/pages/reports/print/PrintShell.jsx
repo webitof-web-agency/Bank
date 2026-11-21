@@ -406,7 +406,7 @@ export function PrintShell({ headerActions, landscape = false, children, ...prop
   // no page buttons for a one-page report.
   const compact = props.compact ?? view.compact ?? false;
   // A fixed opening zoom (the app's ledger view opens at 100%) instead of
-  // fitting the sheet to the stage width; Reset zoom still fits it.
+  // fitting the sheet to the stage width; Reset returns to it.
   const initialZoom = props.initialZoom ?? view.initialZoom ?? null;
   const { canPrint, canExport } = useContext(ReportActionsContext);
   const watermark = useWatermark();
@@ -514,6 +514,18 @@ export function PrintShell({ headerActions, landscape = false, children, ...prop
     clearTimeout(lead.timer);
     lead.timer = setTimeout(() => { lead.el = null; }, 150);
     if (to.scrollLeft !== from.scrollLeft) to.scrollLeft = from.scrollLeft;
+  }
+
+  // Back to the opening zoom: the fixed one when given (the phone ledger's
+  // 100%), otherwise fitted to the stage width.
+  function resetZoom() {
+    if (initialZoom) {
+      autoFitRef.current = false;
+      setZoom(initialZoom);
+      return;
+    }
+    autoFitRef.current = true;
+    fitToStage();
   }
 
   function zoomBy(step) {
@@ -664,8 +676,8 @@ export function PrintShell({ headerActions, landscape = false, children, ...prop
               variant="ghost"
               size="icon"
               className="h-7 w-7 rounded-full"
-              onClick={() => { autoFitRef.current = true; fitToStage(); }}
-              title="Fit to width"
+              onClick={resetZoom}
+              title={initialZoom ? 'Reset zoom' : 'Fit to width'}
             >
               <RotateCcw size={13} />
             </Button>
