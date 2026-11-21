@@ -7,6 +7,7 @@ import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
+import { CheckboxLine } from '../../components/ui/CheckboxLine';
 import { Table } from '../../components/ui/Table';
 import { useAuth } from '../../context/AuthContext';
 import { useFY } from '../../context/FYContext';
@@ -633,6 +634,14 @@ export function ReportViewerPage() {
               onChange={(event) => setFilters((current) => ({ ...current, rate: event.target.value }))}
             />
           </div>
+          {!(filters.mode || 'branchwise-opening').startsWith('branchwise') && (
+            <CheckboxLine
+              checked={filters.showPfNo !== false}
+              onChange={(checked) => setFilters((current) => ({ ...current, showPfNo: checked }))}
+            >
+              Show PF No.
+            </CheckboxLine>
+          )}
         </div>
       );
     }

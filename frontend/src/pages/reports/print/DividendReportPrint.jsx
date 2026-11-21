@@ -10,7 +10,9 @@ import { formatMoneyLegacy as money } from './printStyles';
 //               footer (the sheet a branch returns after payment), then a
 //               grand-total sheet
 //   MemberWise  one row per member: branch, code, PF no., grade, dividend
-// Member rows carry both the member code and the PF no. (client, 2026-11-19).
+// Member rows carry both the member code and the PF no. (client, 2026-11-19);
+// the "Show PF No." filter (default on) drops the PF column — its width goes
+// to the member's name and the colspans shrink by one (client, 2026-11-21).
 // Legacy's look: an outer box, a rule under the header, no inner grid, dashed
 // rules around subtotals and dotted lines to sign on. Rows arrive sorted.
 
@@ -128,13 +130,16 @@ function BranchwiseTable({ rows, rate, withFooter }) {
   );
 }
 
-function SummaryColumns() {
+// Summary columns: SN, CODE, (PF NO.), NAME, SHARE, DIVIDEND, SIGNATURE.
+const summaryCols = (showPfNo) => (showPfNo ? 7 : 6);
+
+function SummaryColumns({ showPfNo }) {
   return (
     <colgroup>
       <col style={{ width: '6%' }} />
       <col style={{ width: '8%' }} />
-      <col style={{ width: '9%' }} />
-      <col style={{ width: '29%' }} />
+      {showPfNo && <col style={{ width: '9%' }} />}
+      <col style={{ width: showPfNo ? '29%' : '38%' }} />
       <col style={{ width: '13%' }} />
       <col style={{ width: '14%' }} />
       <col style={{ width: '21%' }} />
@@ -142,13 +147,13 @@ function SummaryColumns() {
   );
 }
 
-function SummaryHead({ rate }) {
+function SummaryHead({ rate, showPfNo }) {
   return (
     <thead>
       <tr>
         <th className={th}>SN.</th>
         <th className={th}>CODE</th>
-        <th className={th}>PF NO.</th>
+        {showPfNo && <th className={th}>PF NO.</th>}
         <th className={th}>MEMBER'S NAME</th>
         <th className={thRight}>SHARE</th>
         <th className={`${th} text-center`}>DIVIDEND AMOUNT<br />ON {rate}</th>
@@ -158,17 +163,17 @@ function SummaryHead({ rate }) {
   );
 }
 
-function BranchRows({ group, totalLabel = '' }) {
+function BranchRows({ group, totalLabel = '', showPfNo }) {
   return (
     <>
       <tr data-group-row>
-        <td colSpan={7} className={`${cell} pt-1 font-bold`}>BRANCH : {group.branchName}</td>
+        <td colSpan={summaryCols(showPfNo)} className={`${cell} pt-1 font-bold`}>BRANCH : {group.branchName}</td>
       </tr>
       {group.rows.map((row, i) => (
         <tr key={row.memberCode}>
           <td className={cell}>{group.firstSerial + i}</td>
           <td className={cell}>{row.memberCode}</td>
-          <td className={cell}>{row.pfNo}</td>
+          {showPfNo && <td className={cell}>{row.pfNo}</td>}
           <td className={cell}>{row.memberName}</td>
           <td className={num}>{money(row.share)}</td>
           <td className={num}>{money(row.dividendAmount)}</td>
@@ -176,7 +181,7 @@ function BranchRows({ group, totalLabel = '' }) {
         </tr>
       ))}
       <tr className="font-bold">
-        <td colSpan={4} className={`${cell} ${dashedTop} text-right`}>{totalLabel}</td>
+        <td colSpan={showPfNo ? 4 : 3} className={`${cell} ${dashedTop} text-right`}>{totalLabel}</td>
         <td className={`${num} ${dashedTop}`}>{money(sum(group.rows, shareOf))}</td>
         <td className={`${num} ${dashedTop}`}>{money(sum(group.rows, dividendOf))}</td>
         <td className={`${cell} ${dashedTop}`} />
@@ -187,24 +192,24 @@ function BranchRows({ group, totalLabel = '' }) {
 
 // Summary (Based on Opening): one running list, a subtotal per branch, the
 // grand total and the footer once at the end.
-function SummaryOpeningTable({ rows, rate }) {
+function SummaryOpeningTable({ rows, rate, showPfNo }) {
   const groups = groupByBranch(rows);
   return (
     <table className={box}>
-      <SummaryColumns />
-      <SummaryHead rate={rate} />
+      <SummaryColumns showPfNo={showPfNo} />
+      <SummaryHead rate={rate} showPfNo={showPfNo} />
       <tbody>
-        {groups.map((group) => <BranchRows key={group.branch} group={group} />)}
-        {rows.length === 0 && <EmptyRow colSpan={7} />}
+        {groups.map((group) => <BranchRows key={group.branch} group={group} showPfNo={showPfNo} />)}
+        {rows.length === 0 && <EmptyRow colSpan={summaryCols(showPfNo)} />}
         {rows.length > 0 && (
           <>
             <tr className="font-bold">
-              <td colSpan={4} className={`${cell} ${dashedTop} text-right`}>TOTAL</td>
+              <td colSpan={showPfNo ? 4 : 3} className={`${cell} ${dashedTop} text-right`}>TOTAL</td>
               <td className={`${num} ${dashedTop}`}>{money(sum(rows, shareOf))}</td>
               <td className={`${num} ${dashedTop}`}>{money(sum(rows, dividendOf))}</td>
               <td className={`${cell} ${dashedTop}`} />
             </tr>
-            <SanctionFooter colSpan={7} />
+            <SanctionFooter colSpan={summaryCols(showPfNo)} />
           </>
         )}
       </tbody>
@@ -214,13 +219,13 @@ function SummaryOpeningTable({ rows, rate }) {
 
 // Summary (Based on Closing): a sheet per branch, each with the letterhead,
 // its TOTAL and its own footer, then a sheet with the grand total.
-function SummaryClosingSheets({ rows, rate, title }) {
+function SummaryClosingSheets({ rows, rate, title, showPfNo }) {
   const groups = groupByBranch(rows);
   if (!groups.length) {
     return (
       <>
         <PrintLetterhead title={title} />
-        <table className={box}><SummaryColumns /><SummaryHead rate={rate} /><tbody><EmptyRow colSpan={7} /></tbody></table>
+        <table className={box}><SummaryColumns showPfNo={showPfNo} /><SummaryHead rate={rate} showPfNo={showPfNo} /><tbody><EmptyRow colSpan={summaryCols(showPfNo)} /></tbody></table>
       </>
     );
   }
@@ -232,11 +237,11 @@ function SummaryClosingSheets({ rows, rate, title }) {
             <PrintLetterhead title={title} />
           </div>
           <table className={box}>
-            <SummaryColumns />
-            <SummaryHead rate={rate} />
+            <SummaryColumns showPfNo={showPfNo} />
+            <SummaryHead rate={rate} showPfNo={showPfNo} />
             <tbody>
-              <BranchRows group={group} totalLabel="TOTAL :" />
-              <SanctionFooter colSpan={7} label="SANCTIONED AMOUNT Rs." signedBy="Chairman / Vice Chairman" />
+              <BranchRows group={group} totalLabel="TOTAL :" showPfNo={showPfNo} />
+              <SanctionFooter colSpan={summaryCols(showPfNo)} label="SANCTIONED AMOUNT Rs." signedBy="Chairman / Vice Chairman" />
             </tbody>
           </table>
         </div>
@@ -246,11 +251,11 @@ function SummaryClosingSheets({ rows, rate, title }) {
           <PrintLetterhead title={title} />
         </div>
         <table className={box}>
-          <SummaryColumns />
-          <SummaryHead rate={rate} />
+          <SummaryColumns showPfNo={showPfNo} />
+          <SummaryHead rate={rate} showPfNo={showPfNo} />
           <tbody>
             <tr className="font-bold">
-              <td colSpan={4} className={`${cell} text-right`}>GRAND TOTAL :</td>
+              <td colSpan={showPfNo ? 4 : 3} className={`${cell} text-right`}>GRAND TOTAL :</td>
               <td className={num}>{money(sum(rows, shareOf))}</td>
               <td className={num}>{money(sum(rows, dividendOf))}</td>
               <td className={cell} />
@@ -262,15 +267,16 @@ function SummaryClosingSheets({ rows, rate, title }) {
   );
 }
 
-function MemberwiseTable({ rows, rate }) {
+function MemberwiseTable({ rows, rate, showPfNo }) {
+  const cols = showPfNo ? 8 : 7;
   return (
     <table className={box}>
       <colgroup>
         <col style={{ width: '5%' }} />
         <col style={{ width: '19%' }} />
         <col style={{ width: '7%' }} />
-        <col style={{ width: '7%' }} />
-        <col style={{ width: '21%' }} />
+        {showPfNo && <col style={{ width: '7%' }} />}
+        <col style={{ width: showPfNo ? '21%' : '28%' }} />
         <col style={{ width: '13%' }} />
         <col style={{ width: '10%' }} />
         <col style={{ width: '18%' }} />
@@ -280,7 +286,7 @@ function MemberwiseTable({ rows, rate }) {
           <th className={th}>SN.</th>
           <th className={th}>BRANCH</th>
           <th className={th}>CODE</th>
-          <th className={th}>PF</th>
+          {showPfNo && <th className={th}>PF</th>}
           <th className={th}>MEMBER'S NAME</th>
           <th className={th}>GRADE</th>
           <th className={`${th} text-center`}>DIVIDEND ON<br />{rate} %</th>
@@ -293,22 +299,22 @@ function MemberwiseTable({ rows, rate }) {
             <td className={cell}>{i + 1}</td>
             <td className={`${cell} font-semibold`}>{row.branch} - {row.branchName}</td>
             <td className={cell}>{row.memberCode}</td>
-            <td className={cell}>{row.pfNo}</td>
+            {showPfNo && <td className={cell}>{row.pfNo}</td>}
             <td className={cell}>{row.memberName}</td>
             <td className={cell}>{row.grade}</td>
             <td className={num}>{money(row.dividendAmount)}</td>
             <td className={cell}><SignatureLine /></td>
           </tr>
         ))}
-        {rows.length === 0 && <EmptyRow colSpan={8} />}
+        {rows.length === 0 && <EmptyRow colSpan={cols} />}
         {rows.length > 0 && (
           <>
             <tr className="font-bold">
-              <td colSpan={6} className={`${cell} ${dashedTop} text-right`}>TOTAL</td>
+              <td colSpan={cols - 2} className={`${cell} ${dashedTop} text-right`}>TOTAL</td>
               <td className={`${num} ${dashedTop}`}>{money(sum(rows, dividendOf))}</td>
               <td className={`${cell} ${dashedTop}`} />
             </tr>
-            <SanctionFooter colSpan={8} />
+            <SanctionFooter colSpan={cols} />
           </>
         )}
       </tbody>
@@ -318,6 +324,7 @@ function MemberwiseTable({ rows, rate }) {
 
 export function DividendReportPrint({ data, headerActions }) {
   const mode = data?.mode || 'branchwise-opening';
+  const showPfNo = data?.showPfNo !== false;
   const rows = Array.isArray(data?.rows) ? data.rows : [];
   const rate = Number(rows[0]?.dividendRate || 0).toFixed(2);
   const isClosing = mode.endsWith('-closing');
@@ -330,7 +337,7 @@ export function DividendReportPrint({ data, headerActions }) {
   if (mode === 'summary-closing') {
     return (
       <PrintShell headerActions={headerActions}>
-        <SummaryClosingSheets rows={rows} rate={rate} title={title} />
+        <SummaryClosingSheets rows={rows} rate={rate} title={title} showPfNo={showPfNo} />
       </PrintShell>
     );
   }
@@ -340,8 +347,8 @@ export function DividendReportPrint({ data, headerActions }) {
       <PrintLetterhead title={title} meta={isBranchwise ? `Date : ${shortDate()}` : ''} />
       <div className="overflow-x-auto">
         {isBranchwise && <BranchwiseTable rows={rows} rate={rate} withFooter={!isClosing} />}
-        {mode === 'summary-opening' && <SummaryOpeningTable rows={rows} rate={rate} />}
-        {mode.startsWith('memberwise') && <MemberwiseTable rows={rows} rate={rate} />}
+        {mode === 'summary-opening' && <SummaryOpeningTable rows={rows} rate={rate} showPfNo={showPfNo} />}
+        {mode.startsWith('memberwise') && <MemberwiseTable rows={rows} rate={rate} showPfNo={showPfNo} />}
       </div>
     </PrintShell>
   );

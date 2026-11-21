@@ -212,6 +212,8 @@ export function getReportDefaultFilters(reportKey = '', lookups = {}, user = {},
       sortBy: 'branchName',
       // Blank = the dividend declared for the FY (Rates Config > Dividend).
       rate: '',
+      // Print / show the member's PF no. (Summary + MemberWise layouts).
+      showPfNo: true,
       dateFrom: fyStart,
       uptoDate: asOnDate
     };
@@ -775,6 +777,7 @@ export function getReportConfig(reportKey = '') {
         });
         const rows = sortDividendRows(Array.isArray(response.data) ? response.data : [], filters.sortBy);
         const isBranchwise = mode.startsWith('branchwise');
+        const showPfNo = filters.showPfNo !== false;
         const shareOf = (row) => Number(row.shareTotal ?? row.share ?? 0);
         const dividendOf = (row) => Number(row.dividendTotal ?? row.dividendAmount ?? 0);
         const totalShare = rows.reduce((sum, row) => sum + shareOf(row), 0);
@@ -799,12 +802,12 @@ export function getReportConfig(reportKey = '') {
               : {
                 title: modeLabel,
                 description: 'Dividend on member share, one row per member.',
-                headers: ['Branch Code', 'Branch', 'Code', 'PF', "Member's Name", 'Grade', 'Share', 'Dividend'],
-                rows: rows.map((row) => [row.branch, row.branchName, row.memberCode, row.pfNo, row.memberName, row.grade, formatAmount(row.share), formatAmount(row.dividendAmount)])
+                headers: ['Branch Code', 'Branch', 'Code', ...(showPfNo ? ['PF'] : []), "Member's Name", 'Grade', 'Share', 'Dividend'],
+                rows: rows.map((row) => [row.branch, row.branchName, row.memberCode, ...(showPfNo ? [row.pfNo] : []), row.memberName, row.grade, formatAmount(row.share), formatAmount(row.dividendAmount)])
               }
           ],
           csvRows: rows,
-          raw: { mode, rows }
+          raw: { mode, rows, showPfNo }
         };
       }
     },
