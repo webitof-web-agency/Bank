@@ -70,10 +70,10 @@ export function LedgerViewPage() {
   return (
     // No printing or PDF here: an app's web view cannot save or print them.
     <ReportActionsContext.Provider value={{ canPrint: false, canExport: false }}>
-      {/* Fitted to the width (a small gap each side), as the website shows
-          it; the frame takes the height the screen gives it, upright or
-          turned, and scrolls a taller sheet. */}
-      <PrintViewContext.Provider value={{ compact: true, availableHeight: (rotated ? viewport.width : viewport.height) - PAGE_PADDING * 2 }}>
+      {/* Opens at 100% (user, 2026-11-21; Reset zoom fits it to the width);
+          the frame takes the height the screen gives it, upright or turned,
+          and the sheet scrolls both ways. */}
+      <PrintViewContext.Provider value={{ compact: true, initialZoom: 1, availableHeight: (rotated ? viewport.width : viewport.height) - PAGE_PADDING * 2 }}>
         <div className="fixed inset-0 overflow-hidden bg-slate-50">
           <div className="overflow-hidden" style={{ ...box, padding: PAGE_PADDING }}>
             {template}

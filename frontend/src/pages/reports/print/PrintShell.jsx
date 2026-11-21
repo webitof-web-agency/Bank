@@ -405,9 +405,12 @@ export function PrintShell({ headerActions, landscape = false, children, ...prop
   // A small screen's toolbar (the app's ledger view): no paper-size chip, and
   // no page buttons for a one-page report.
   const compact = props.compact ?? view.compact ?? false;
+  // A fixed opening zoom (the app's ledger view opens at 100%) instead of
+  // fitting the sheet to the stage width; Reset zoom still fits it.
+  const initialZoom = props.initialZoom ?? view.initialZoom ?? null;
   const { canPrint, canExport } = useContext(ReportActionsContext);
   const watermark = useWatermark();
-  const [zoom, setZoom] = useState(1);
+  const [zoom, setZoom] = useState(() => initialZoom || 1);
   const [exporting, setExporting] = useState(false);
   // The preview shows one sheet at a time (0-based); print / PDF still get
   // every page.
@@ -431,7 +434,7 @@ export function PrintShell({ headerActions, landscape = false, children, ...prop
   const [stageScroll, setStageScroll] = useState({ scrollWidth: 0, clientWidth: 0 });
   // Fit the sheet to the stage width until the zoom is set by hand; Reset
   // zoom fits it again.
-  const autoFitRef = useRef(true);
+  const autoFitRef = useRef(!initialZoom);
   const exportingRef = useRef(false);
   zoomRef.current = zoom;
   exportingRef.current = exporting;
@@ -494,11 +497,23 @@ export function PrintShell({ headerActions, landscape = false, children, ...prop
 
   useLayoutEffect(measureStage, [measureStage, zoom, layout, exporting]);
 
-  const hasTopScroll = stageScroll.scrollWidth > stageScroll.clientWidth + 1;
+  // No second scrollbar on a phone's compact view: a finger drags the sheet.
+  const hasTopScroll = !compact && stageScroll.scrollWidth > stageScroll.clientWidth + 1;
 
-  // Each bar follows the other (the echo finds them equal and stops).
+  // The bar being scrolled leads and the other only follows. Letting each
+  // follow the other made the follower's scroll event (a frame late, with
+  // the old position) pull the stage back every other frame: a drag stuck,
+  // moved, stuck.
+  const scrollLeadRef = useRef({ el: null, timer: 0 });
+  useEffect(() => () => clearTimeout(scrollLeadRef.current.timer), []);
   function syncScroll(from, to) {
-    if (from && to && to.scrollLeft !== from.scrollLeft) to.scrollLeft = from.scrollLeft;
+    if (!from || !to) return;
+    const lead = scrollLeadRef.current;
+    if (lead.el && lead.el !== from) return;
+    lead.el = from;
+    clearTimeout(lead.timer);
+    lead.timer = setTimeout(() => { lead.el = null; }, 150);
+    if (to.scrollLeft !== from.scrollLeft) to.scrollLeft = from.scrollLeft;
   }
 
   function zoomBy(step) {
