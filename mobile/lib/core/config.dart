@@ -57,3 +57,28 @@ class AppConfig {
   /// The society logo bundled with the app (not the uploaded one).
   static const String logoAsset = 'assets/logo.png';
 }
+
+/// The phone app is a locked web view of the browser copy of the app at
+/// [memberAppUrl] (frontend/public/member), so app changes ship with the
+/// website and need no new APK. `--dart-define=MEMBER_APP_URL=...` points it
+/// elsewhere (e.g. a local site through `adb reverse`).
+const String memberAppUrl = String.fromEnvironment(
+  'MEMBER_APP_URL',
+  defaultValue: 'https://thriftrpr.in/member/',
+);
+
+/// Whether the shell may open [target]: only the member app and the ledger
+/// page it embeds, on the member app's own site. Every other page (the staff
+/// website, other sites, tel:/mailto:) stays out of the app.
+bool isMemberAppUrl(Uri target, {required Uri home}) {
+  if (target.toString() == 'about:blank') return true;
+  if (target.scheme != home.scheme || target.authority != home.authority) {
+    return false;
+  }
+  final base = home.path.endsWith('/') ? home.path : '${home.path}/';
+  final path = target.path.isEmpty ? '/' : target.path;
+  return path == base.substring(0, base.length - 1) ||
+      path.startsWith(base) ||
+      path == '/ledger-view' ||
+      path.startsWith('/ledger-view/');
+}

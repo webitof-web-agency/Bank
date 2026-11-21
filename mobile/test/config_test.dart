@@ -93,4 +93,31 @@ void main() {
       );
     },
   );
+
+  group('the phone shell stays on the member app', () {
+    final home = Uri.parse('https://thriftrpr.in/member/');
+    bool ok(String url) => isMemberAppUrl(Uri.parse(url), home: home);
+
+    test('member app pages and the ledger page open', () {
+      expect(ok('https://thriftrpr.in/member/'), isTrue);
+      expect(ok('https://thriftrpr.in/member'), isTrue);
+      expect(ok('https://thriftrpr.in/member/index.html'), isTrue);
+      expect(ok('https://thriftrpr.in/member/#/profile'), isTrue);
+      expect(ok('https://thriftrpr.in/ledger-view?ticket=abc'), isTrue);
+      expect(ok('about:blank'), isTrue);
+    });
+
+    test('the staff website and other sites are blocked', () {
+      expect(ok('https://thriftrpr.in/'), isFalse);
+      expect(ok('https://thriftrpr.in/app/dashboard'), isFalse);
+      expect(ok('https://thriftrpr.in/login'), isFalse);
+      expect(ok('https://thriftrpr.in/membership'), isFalse);
+      expect(ok('http://thriftrpr.in/member/'), isFalse);
+      expect(ok('https://evil.example/member/'), isFalse);
+      expect(ok('https://thriftrpr.in.evil.example/member/'), isFalse);
+      expect(ok('tel:9999999999'), isFalse);
+      expect(ok('mailto:a@b.c'), isFalse);
+    });
+  });
 }
+

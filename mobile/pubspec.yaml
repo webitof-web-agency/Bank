@@ -43,6 +43,8 @@ dependencies:
   package_info_plus: ^9.0.1
   # Ledger tab: the website's ledger page (web view on the phone, iframe on web).
   webview_flutter: ^4.10.0
+  # Android web view extras: remote debugging in debug builds (phone shell).
+  webview_flutter_android: ^4.14.1
   web: ^1.1.0
 
 dev_dependencies:
