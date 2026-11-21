@@ -9,6 +9,18 @@ export function normalizeMobile(value = '') {
   return digits;
 }
 
+// Value for the react-phone-input-2 box, which works in "country code +
+// number" digits. What the box itself emitted (kept as "+<digits>") goes back
+// unchanged — normalizing it would turn a half-typed "+9191919191" into a bare
+// 10-digit number and add another 91 on every keystroke. Only a bare stored
+// number ("9425526729") gets the 91, else "94" is read as Sri Lanka.
+export function toPhoneInputValue(value = '') {
+  const raw = String(value == null ? '' : value).trim();
+  if (raw.startsWith('+')) return raw.replace(/\D/g, '');
+  const digits = normalizeMobile(raw);
+  return digits.length === 10 ? `91${digits}` : digits;
+}
+
 export function isValidMobile(value = '') {
   return /^[6-9]\d{9}$/.test(normalizeMobile(value));
 }

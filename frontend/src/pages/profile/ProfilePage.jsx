@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import imageCompression from 'browser-image-compression';
-import PhoneInput from 'react-phone-input-2';
 import { Camera, Save, User, Mail, Phone, MapPin, Trash2, Upload, Key } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../context/AuthContext';
@@ -11,6 +10,7 @@ import { Input, PasswordInput } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
 import { UserAvatar } from '../../components/ui/UserAvatar';
 import { stripPhoneDigits } from '../master/employees/employeeUtils';
+import { PhoneNumberInput } from '../../components/ui/PhoneNumberInput';
 
 function unwrapProfileResponse(response) {
   return response?.data?.data ?? response?.data ?? null;
@@ -255,19 +255,9 @@ function ProfilePage() {
 
             <div>
               <label className="mb-1.5 block text-[13px] font-medium text-slate-700">Mobile Number</label>
-              <PhoneInput
-                country="in"
-                preferredCountries={['in']}
-                enableSearch
-                countryCodeEditable={false}
-                placeholder="9876543210"
-                value={stripPhoneDigits(profileForm.mobileNo || '')}
-                onChange={(nextValue) => setProfileForm((current) => ({ ...current, mobileNo: nextValue ? `+${nextValue}` : '' }))}
-                containerClass="employee-phone-input"
-                inputClass="!h-[42px] !w-full !rounded-[var(--radius-input,0.75rem)] !border-slate-200 focus:!border-[var(--primary)] focus:!ring-1 focus:!ring-[var(--primary)]"
-                buttonClass="!border-r !border-slate-200 !rounded-l-[var(--radius-input,0.75rem)] !bg-slate-50"
-                dropdownClass="!z-50"
-                inputProps={{ name: 'mobileNo' }}
+              <PhoneNumberInput
+                value={profileForm.mobileNo}
+                onChange={(mobileNo) => setProfileForm((current) => ({ ...current, mobileNo }))}
               />
             </div>
 

@@ -1,13 +1,13 @@
 import { useRef, useState } from 'react';
 import { Camera, Trash2, Upload, User, Briefcase, FileText, Wallet } from 'lucide-react';
-import PhoneInput from 'react-phone-input-2';
 import { Input, Textarea, PasswordInput } from '../../../components/ui/Input';
 import { Select } from '../../../components/ui/Select';
 import { normalizeSocialCategory, socialCategoryOptions } from '../../../lib/socialCategory';
 import { UserAvatar } from '../../../components/ui/UserAvatar';
 import { DocumentSection } from '../../../components/master/DocumentSection';
 import { MEMBER_DOCUMENT_DEFS } from '../../../components/master/documentUtils';
-import { formatBranchLabel, toPhoneInputValue } from './memberUtils';
+import { formatBranchLabel } from './memberUtils';
+import { PhoneNumberInput } from '../../../components/ui/PhoneNumberInput';
 import { MEMBER_DEMAND_FIELDS, demandAmountError, demandDefaultsTotal } from './memberDemand';
 import { LEDGER_TRACKED_HEADS, MEMBER_OPENING_FIELDS } from './memberBalances';
 
@@ -189,19 +189,9 @@ export function MemberForm({
 
             <div className="space-y-1.5">
               <label className="text-[13px] font-semibold text-slate-700">Mobile No <span className="text-rose-500">*</span></label>
-              <PhoneInput
-                country="in"
-                preferredCountries={['in']}
-                enableSearch
-                countryCodeEditable={false}
-                placeholder="9876543210"
-                value={toPhoneInputValue(value.mobileNo)}
-                onChange={(nextValue) => setValue({ ...value, mobileNo: nextValue ? `+${nextValue}` : '' })}
-                containerClass="employee-phone-input"
-                inputClass="!h-[42px] !w-full !rounded-[var(--radius-input,0.75rem)] !border-slate-200 focus:!border-[var(--primary)] focus:!ring-1 focus:!ring-[var(--primary)]"
-                buttonClass="!border-r !border-slate-200 !rounded-l-[var(--radius-input,0.75rem)] !bg-slate-50"
-                dropdownClass="!z-50"
-                inputProps={{ name: 'mobileNo' }}
+              <PhoneNumberInput
+                value={value.mobileNo}
+                onChange={(mobileNo) => setValue({ ...value, mobileNo })}
               />
             </div>
 

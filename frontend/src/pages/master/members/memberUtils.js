@@ -11,13 +11,6 @@ export function stripPhoneDigits(value = '') {
   return String(value || '').replace(/[^\d]/g, '');
 }
 
-// The phone box reads its value as country code + number, so a bare 10-digit
-// mobile ("9425526729") must carry the 91, or "94" is read as Sri Lanka.
-export function toPhoneInputValue(value = '') {
-  const digits = normalizeMobile(value);
-  return digits.length === 10 ? `91${digits}` : digits;
-}
-
 // <input type="date"> only shows YYYY-MM-DD; the API sends timestamps.
 // Uses the local calendar day (dates are stored at local midnight).
 export function toDateInputValue(value) {

@@ -1,6 +1,5 @@
 import { useRef, useState } from 'react';
 import { Camera, Trash2, Upload, User, Briefcase, FileText, Lock } from 'lucide-react';
-import PhoneInput from 'react-phone-input-2';
 import { Input, Textarea, PasswordInput } from '../../../components/ui/Input';
 import { AmountSideInput } from '../../../components/ui/AmountSideInput';
 import { Select } from '../../../components/ui/Select';
@@ -8,7 +7,8 @@ import { normalizeSocialCategory, socialCategoryOptions } from '../../../lib/soc
 import { UserAvatar } from '../../../components/ui/UserAvatar';
 import { DocumentSection } from '../../../components/master/DocumentSection';
 import { EMPLOYEE_DOCUMENT_DEFS } from '../../../components/master/documentUtils';
-import { formatBranchLabel, stripPhoneDigits } from './employeeUtils';
+import { formatBranchLabel } from './employeeUtils';
+import { PhoneNumberInput } from '../../../components/ui/PhoneNumberInput';
 
 export function EmployeeForm({
   value,
@@ -183,19 +183,9 @@ export function EmployeeForm({
             </div>
             <div className="space-y-1.5">
               <label className="text-[13px] font-semibold text-slate-700">Mobile Number <span className="text-rose-500">*</span></label>
-              <PhoneInput
-                country="in"
-                preferredCountries={['in']}
-                enableSearch
-                countryCodeEditable={false}
-                placeholder="9876543210"
-                value={stripPhoneDigits(value.mobileNo || '')}
-                onChange={(nextValue) => setValue({ ...value, mobileNo: nextValue ? `+${nextValue}` : '' })}
-                containerClass="employee-phone-input"
-                inputClass="!h-[42px] !w-full !rounded-[var(--radius-input,0.75rem)] !border-slate-200 focus:!border-[var(--primary)] focus:!ring-1 focus:!ring-[var(--primary)]"
-                buttonClass="!border-r !border-slate-200 !rounded-l-[var(--radius-input,0.75rem)] !bg-slate-50"
-                dropdownClass="!z-50"
-                inputProps={{ name: 'mobileNo' }}
+              <PhoneNumberInput
+                value={value.mobileNo}
+                onChange={(mobileNo) => setValue({ ...value, mobileNo })}
               />
             </div>
 
