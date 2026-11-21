@@ -735,7 +735,8 @@ export function PrintShell({ headerActions, landscape = false, children, ...prop
         <div
           ref={stageRef}
           onScroll={() => syncScroll(stageRef.current, topScrollRef.current)}
-          className={`report-scroll w-full max-h-[calc(100vh-11rem)] rounded-2xl ${STAGE_BG} border border-slate-200 overflow-auto print:max-h-none print:bg-transparent print:!p-0 print:border-0 print:overflow-visible`}
+          // Compact (the app's phone view): no scrollbars drawn; a finger drags the sheet.
+          className={`report-scroll w-full max-h-[calc(100vh-11rem)] rounded-2xl ${compact ? '[scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : ''} ${STAGE_BG} border border-slate-200 overflow-auto print:max-h-none print:bg-transparent print:!p-0 print:border-0 print:overflow-visible`}
           style={{ padding: STAGE_PAD_PX, ...(stageMaxHeight ? { maxHeight: stageMaxHeight } : {}) }}
         >
           <ZoomStage zoom={zoom}>
